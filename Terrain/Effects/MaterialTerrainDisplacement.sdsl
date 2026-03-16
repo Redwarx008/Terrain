@@ -1,0 +1,36 @@
+namespace Terrain
+{
+    shader MaterialTerrainDisplacement : IMaterialSurface, PositionStream4, NormalStream, Transformation, ShaderBase, Texturing
+    {
+        rgroup PerMaterial
+        {
+            stage Texture2D<float> HeightTexture;
+            stage StructuredBuffer<int4> ChunkBuffer;
+        }
+
+        cbuffer PerMaterial
+        {
+            stage float2 HeightTextureTexelSize;
+            stage float2 HeightmapDimensionsInSamples;
+            stage float HeightScale;
+            stage int BaseChunkSize;
+        }
+
+        override void Compute()
+        {
+            int4 chunk = ChunkBuffer[streams.InstanceID];
+            float lodLevel = chunk.z;
+            float lodScale = exp2(lodLevel);
+            float chunkWorldSize = BaseChunkSize * lodScale;
+            float2 worldOrigin = float2(chunk.x, chunk.y) * chunkWorldSize;
+            float2 sampleCoord = worldOrigin + streams.Position.xz * lodScale;
+            sampleCoord = clamp(sampleCoord, 0.0f, HeightmapDimensionsInSamples);
+
+            float2 uv = sampleCoord / HeightmapDimensionsInSamples;
+            float height = HeightTexture.SampleLevel(LinearSampler, uv, 0).x;
+
+            streams.TexCoord = uv;
+            streams.Position = float4(sampleCoord.x, height * HeightScale, sampleCoord.y, 1.0f);
+        }
+    };
+}

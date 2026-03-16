@@ -1,0 +1,716 @@
+#nullable enable
+
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
+using Stride.Core;
+using Stride.Core.Annotations;
+using Stride.Core.Collections;
+using Stride.Core.Diagnostics;
+using Stride.Core.Mathematics;
+using Stride.Core.Threading;
+using Stride.Graphics;
+using Stride.Rendering;
+using Stride.Rendering.Lights;
+using Stride.Rendering.Materials;
+using Stride.Rendering.Shadows;
+using Buffer = Stride.Graphics.Buffer;
+
+namespace Terrain;
+
+public sealed class TerrainRenderFeature : RootEffectRenderFeature
+{
+    private const string OpaqueStageName = "Opaque";
+    private const string TransparentStageName = "Transparent";
+    private const string ShadowCasterStageName = "ShadowMapCaster";
+    private const string ShadowCasterParaboloidStageName = "ShadowMapCasterParaboloid";
+    private const string ShadowCasterCubeMapStageName = "ShadowMapCasterCubeMap";
+
+    private static readonly Logger Log = GlobalLogger.GetLogger(nameof(TerrainRenderFeature));
+    private static readonly ProfilingKey ExtractKey = new("TerrainRenderFeature.Extract");
+    private static readonly ProfilingKey PreparePermutationsImplKey = new("TerrainRenderFeature.PreparePermutationsImpl");
+    private static readonly ProfilingKey PrepareKey = new("TerrainRenderFeature.Prepare");
+    private static readonly ProfilingKey DrawKey = new("TerrainRenderFeature.Draw");
+
+    private readonly ThreadLocal<DescriptorSet[]> descriptorSets = new();
+    private Buffer? emptyBuffer;
+    private static readonly MethodInfo? AttachRootRenderFeatureMethod = typeof(SubRenderFeature).GetMethod("AttachRootRenderFeature", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+    private static readonly FieldInfo? RootRenderFeatureField = typeof(SubRenderFeature).GetField("RootRenderFeature", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly PropertyInfo? RenderSystemProperty = typeof(RenderFeature).GetProperty("RenderSystem", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+    public const string EffectName = "TerrainForwardShadingEffect";
+    public const string ShadowCasterEffectName = $"{EffectName}.ShadowMapCaster";
+    public const string ShadowCasterParaboloidEffectName = $"{EffectName}.ShadowMapCasterParaboloid";
+    public const string ShadowCasterCubeMapEffectName = $"{EffectName}.ShadowMapCasterCubeMap";
+
+    private MeshPipelineProcessor? meshPipelineProcessor;
+    private ShadowMeshPipelineProcessor? shadowMapPipelineProcessor;
+    private ShadowMeshPipelineProcessor? shadowParaboloidPipelineProcessor;
+    private ShadowMeshPipelineProcessor? shadowCubeMapPipelineProcessor;
+
+    [DataMember]
+    [Category]
+    [MemberCollection(CanReorderItems = true, NotNullItems = true)]
+    public TrackingCollection<SubRenderFeature> RenderFeatures { get; } = new();
+
+    public override Type SupportedRenderObjectType => typeof(TerrainRenderObject);
+
+    protected override void InitializeCore()
+    {
+        base.InitializeCore();
+
+        EnsureConfiguredSubRenderFeatures();
+        RenderFeatures.CollectionChanged += RenderFeatures_CollectionChanged;
+
+        EnsureDefaultPipelineProcessors();
+
+        foreach (var renderFeature in RenderFeatures)
+        {
+            BindSubRenderFeature(renderFeature);
+            renderFeature.Initialize(Context);
+        }
+
+        emptyBuffer = Buffer.Vertex.New(Context.GraphicsDevice, new Vector4[1]);
+        SyncRenderStageBindings();
+        SyncPipelineBindings();
+    }
+
+    protected override void Destroy()
+    {
+        foreach (var renderFeature in RenderFeatures)
+        {
+            renderFeature.Dispose();
+        }
+
+        RenderFeatures.CollectionChanged -= RenderFeatures_CollectionChanged;
+        descriptorSets.Dispose();
+
+        emptyBuffer?.Dispose();
+        emptyBuffer = null;
+
+        base.Destroy();
+    }
+
+    protected override void OnRenderSystemChanged()
+    {
+        base.OnRenderSystemChanged();
+        SyncRenderStageBindings();
+        SyncPipelineBindings();
+    }
+
+    public override void Collect()
+    {
+        foreach (var renderFeature in RenderFeatures)
+        {
+            renderFeature.Collect();
+        }
+    }
+
+    public override void Extract()
+    {
+        using var _ = Profiler.Begin(ExtractKey);
+        foreach (var renderFeature in RenderFeatures)
+        {
+            renderFeature.Extract();
+        }
+    }
+
+    public override void PrepareEffectPermutationsImpl(RenderDrawContext context)
+    {
+        using var _ = Profiler.Begin(PreparePermutationsImplKey);
+
+        Dispatcher.ForEach(RenderObjects, renderObject =>
+        {
+            var renderMesh = (TerrainRenderObject)renderObject;
+            renderMesh.ActiveMeshDraw = renderMesh.Mesh.Draw;
+        });
+
+        base.PrepareEffectPermutationsImpl(context);
+
+        foreach (var renderFeature in RenderFeatures)
+        {
+            renderFeature.PrepareEffectPermutations(context);
+        }
+    }
+
+    public override void Prepare(RenderDrawContext context)
+    {
+        using var _ = Profiler.Begin(PrepareKey);
+
+        base.Prepare(context);
+
+        foreach (var renderFeature in RenderFeatures)
+        {
+            renderFeature.Prepare(context);
+        }
+    }
+
+    protected override void ProcessPipelineState(RenderContext context, RenderNodeReference renderNodeReference, ref RenderNode renderNode, RenderObject renderObject, PipelineStateDescription pipelineState)
+    {
+        var renderMesh = (TerrainRenderObject)renderObject;
+        var drawData = renderMesh.ActiveMeshDraw;
+
+        pipelineState.InputElements = PrepareInputElements(pipelineState, drawData);
+        pipelineState.PrimitiveType = drawData.PrimitiveType;
+
+        foreach (var renderFeature in RenderFeatures)
+        {
+            renderFeature.ProcessPipelineState(context, renderNodeReference, ref renderNode, renderObject, pipelineState);
+        }
+    }
+
+    public override void Draw(RenderDrawContext context, RenderView renderView, RenderViewStage renderViewStage)
+    {
+        using var _ = Profiler.Begin(DrawKey);
+        foreach (var renderFeature in RenderFeatures)
+        {
+            renderFeature.Draw(context, renderView, renderViewStage);
+        }
+    }
+
+    public override void Draw(RenderDrawContext context, RenderView renderView, RenderViewStage renderViewStage, int startIndex, int endIndex)
+    {
+        using var _ = Profiler.Begin(DrawKey);
+        var commandList = context.CommandList;
+
+        foreach (var renderFeature in RenderFeatures)
+        {
+            renderFeature.Draw(context, renderView, renderViewStage, startIndex, endIndex);
+        }
+
+        var descriptorSetsLocal = descriptorSets.Value;
+        if (descriptorSetsLocal == null || descriptorSetsLocal.Length < EffectDescriptorSetSlotCount)
+        {
+            descriptorSetsLocal = descriptorSets.Value = new DescriptorSet[EffectDescriptorSetSlotCount];
+        }
+
+        MeshDraw? currentDrawData = null;
+        int emptyBufferSlot = -1;
+        for (int index = startIndex; index < endIndex; index++)
+        {
+            var renderNodeReference = renderViewStage.SortedRenderNodes[index].RenderNode;
+            var renderNode = GetRenderNode(renderNodeReference);
+
+            var renderMesh = (TerrainRenderObject)renderNode.RenderObject;
+            var drawData = renderMesh.ActiveMeshDraw;
+
+            var renderEffect = renderNode.RenderEffect;
+            if (renderEffect.Effect == null)
+            {
+                continue;
+            }
+
+            if (!ReferenceEquals(currentDrawData, drawData))
+            {
+                for (int slot = 0; slot < drawData.VertexBuffers.Length; slot++)
+                {
+                    var vertexBuffer = drawData.VertexBuffers[slot];
+                    commandList.SetVertexBuffer(slot, vertexBuffer.Buffer, vertexBuffer.Offset, vertexBuffer.Stride);
+                }
+
+                if (emptyBuffer != null && emptyBufferSlot != drawData.VertexBuffers.Length)
+                {
+                    commandList.SetVertexBuffer(drawData.VertexBuffers.Length, emptyBuffer, 0, 0);
+                    emptyBufferSlot = drawData.VertexBuffers.Length;
+                }
+
+                if (drawData.IndexBuffer != null)
+                {
+                    commandList.SetIndexBuffer(drawData.IndexBuffer.Buffer, drawData.IndexBuffer.Offset, drawData.IndexBuffer.Is32Bit);
+                }
+
+                currentDrawData = drawData;
+            }
+
+            var resourceGroupOffset = ComputeResourceGroupOffset(renderNodeReference);
+            renderEffect.Reflection.BufferUploader.Apply(commandList, ResourceGroupPool, resourceGroupOffset);
+
+            for (int i = 0; i < descriptorSetsLocal.Length; ++i)
+            {
+                var resourceGroup = ResourceGroupPool[resourceGroupOffset++];
+                if (resourceGroup != null)
+                {
+                    descriptorSetsLocal[i] = resourceGroup.DescriptorSet;
+                }
+            }
+
+            commandList.SetPipelineState(renderEffect.PipelineState);
+            commandList.SetDescriptorSets(0, descriptorSetsLocal);
+
+            if (drawData.IndexBuffer == null || renderMesh.InstanceCount <= 0)
+            {
+                continue;
+            }
+
+            commandList.DrawIndexedInstanced(drawData.DrawCount, renderMesh.InstanceCount, drawData.StartLocation);
+        }
+    }
+
+    public override void Flush(RenderDrawContext context)
+    {
+        base.Flush(context);
+
+        foreach (var renderFeature in RenderFeatures)
+        {
+            renderFeature.Flush(context);
+        }
+    }
+
+    private void EnsureConfiguredSubRenderFeatures()
+    {
+        var unmanagedFeatures = RenderFeatures
+            .Where(feature => !IsManagedSubRenderFeature(feature))
+            .ToList();
+
+        RenderFeatures.Clear();
+
+        foreach (var renderFeature in CreateManagedSubRenderFeatures())
+        {
+            RenderFeatures.Add(renderFeature);
+        }
+
+        foreach (var renderFeature in unmanagedFeatures)
+        {
+            RenderFeatures.Add(renderFeature);
+        }
+    }
+
+    private IEnumerable<SubRenderFeature> CreateManagedSubRenderFeatures()
+    {
+        yield return new TransformRenderFeature();
+        yield return new MaterialRenderFeature();
+        yield return new ShadowCasterRenderFeature();
+        yield return CreateForwardLightingFeatureFromMeshTemplateOrDefault();
+    }
+
+    private MeshRenderFeature? TryFindMeshRenderFeatureTemplate()
+    {
+        if (RenderSystem == null)
+        {
+            return null;
+        }
+
+        return RenderSystem.RenderFeatures
+            .OfType<MeshRenderFeature>()
+            .FirstOrDefault();
+    }
+
+    private static bool IsManagedSubRenderFeature(SubRenderFeature renderFeature)
+    {
+        return renderFeature is TransformRenderFeature
+            or MaterialRenderFeature
+            or ForwardLightingRenderFeature
+            or ShadowCasterRenderFeature;
+    }
+
+    private ForwardLightingRenderFeature CreateForwardLightingFeatureFromMeshTemplateOrDefault()
+    {
+        var source = TryFindMeshRenderFeatureTemplate()?
+            .RenderFeatures
+            .OfType<ForwardLightingRenderFeature>()
+            .FirstOrDefault();
+
+        if (source == null)
+        {
+            return CreateDefaultForwardLightingFeature();
+        }
+
+        if (!TryCreateLightRenderers(source, out var lightRenderers, out var failureReason))
+        {
+            Log.Warning($"Terrain render feature fell back to default lighting configuration: {failureReason}");
+            return CreateDefaultForwardLightingFeature();
+        }
+
+        if (!TryCreateShadowMapRenderer(source.ShadowMapRenderer, out var shadowMapRenderer, out failureReason))
+        {
+            Log.Warning($"Terrain render feature fell back to default lighting configuration: {failureReason}");
+            return CreateDefaultForwardLightingFeature();
+        }
+
+        var forwardLighting = new ForwardLightingRenderFeature();
+        foreach (var lightRenderer in lightRenderers)
+        {
+            forwardLighting.LightRenderers.Add(lightRenderer);
+        }
+
+        forwardLighting.ShadowMapRenderer = shadowMapRenderer;
+        return forwardLighting;
+    }
+
+    private ForwardLightingRenderFeature CreateDefaultForwardLightingFeature()
+    {
+        var forwardLighting = new ForwardLightingRenderFeature();
+        AddDefaultLightRenderers(forwardLighting.LightRenderers);
+        forwardLighting.ShadowMapRenderer = CreateDefaultShadowMapRenderer();
+        return forwardLighting;
+    }
+
+    private bool TryCreateLightRenderers(ForwardLightingRenderFeature source, out List<LightGroupRendererBase> lightRenderers, out string failureReason)
+    {
+        lightRenderers = new List<LightGroupRendererBase>(source.LightRenderers.Count);
+
+        foreach (var renderer in source.LightRenderers)
+        {
+            var clonedRenderer = CreateLightRenderer(renderer);
+            if (clonedRenderer == null)
+            {
+                failureReason = $"unsupported light renderer '{renderer.GetType().FullName}' in mesh template";
+                lightRenderers.Clear();
+                return false;
+            }
+
+            lightRenderers.Add(clonedRenderer);
+        }
+
+        failureReason = string.Empty;
+        return true;
+    }
+
+    private LightGroupRendererBase? CreateLightRenderer(LightGroupRendererBase renderer)
+    {
+        return renderer switch
+        {
+            LightAmbientRenderer => new LightAmbientRenderer(),
+            LightDirectionalGroupRenderer => new LightDirectionalGroupRenderer(),
+            LightSkyboxRenderer => new LightSkyboxRenderer(),
+            LightPointGroupRenderer => new LightPointGroupRenderer(),
+            LightSpotGroupRenderer => new LightSpotGroupRenderer(),
+            LightClusteredPointSpotGroupRenderer => new LightClusteredPointSpotGroupRenderer(),
+            _ => null,
+        };
+    }
+
+    private bool TryCreateShadowMapRenderer(IShadowMapRenderer? source, out IShadowMapRenderer? shadowMapRenderer, out string failureReason)
+    {
+        if (source == null)
+        {
+            shadowMapRenderer = null;
+            failureReason = string.Empty;
+            return true;
+        }
+
+        if (source is not ShadowMapRenderer sourceRenderer)
+        {
+            shadowMapRenderer = null;
+            failureReason = $"unsupported shadow map renderer '{source.GetType().FullName}' in mesh template";
+            return false;
+        }
+
+        var clone = new ShadowMapRenderer();
+        foreach (var renderer in sourceRenderer.Renderers)
+        {
+            var clonedRenderer = CreateShadowRenderer(renderer);
+            if (clonedRenderer == null)
+            {
+                shadowMapRenderer = null;
+                failureReason = $"unsupported shadow renderer '{renderer.GetType().FullName}' in mesh template";
+                return false;
+            }
+
+            clone.Renderers.Add(clonedRenderer);
+        }
+
+        shadowMapRenderer = clone;
+        failureReason = string.Empty;
+        return true;
+    }
+
+    private ILightShadowMapRenderer? CreateShadowRenderer(ILightShadowMapRenderer renderer)
+    {
+        return renderer switch
+        {
+            LightDirectionalShadowMapRenderer directional => new LightDirectionalShadowMapRenderer
+            {
+                ShadowCasterRenderStage = MapShadowStage(directional.ShadowCasterRenderStage, ShadowCasterStageName),
+            },
+            LightSpotShadowMapRenderer spot => new LightSpotShadowMapRenderer
+            {
+                ShadowCasterRenderStage = MapShadowStage(spot.ShadowCasterRenderStage, ShadowCasterStageName),
+            },
+            LightPointShadowMapRendererParaboloid paraboloid => new LightPointShadowMapRendererParaboloid
+            {
+                ShadowCasterRenderStage = MapShadowStage(paraboloid.ShadowCasterRenderStage, ShadowCasterParaboloidStageName),
+            },
+            LightPointShadowMapRendererCubeMap cubeMap => new LightPointShadowMapRendererCubeMap
+            {
+                ShadowCasterRenderStage = MapShadowStage(cubeMap.ShadowCasterRenderStage, ShadowCasterCubeMapStageName),
+            },
+            _ => null,
+        };
+    }
+
+    private ShadowMapRenderer CreateDefaultShadowMapRenderer()
+    {
+        var shadowMapRenderer = new ShadowMapRenderer();
+        AddDefaultShadowRenderers(shadowMapRenderer.Renderers);
+        return shadowMapRenderer;
+    }
+
+    private void AddDefaultLightRenderers(ICollection<LightGroupRendererBase> lightRenderers)
+    {
+        lightRenderers.Add(new LightAmbientRenderer());
+        lightRenderers.Add(new LightDirectionalGroupRenderer());
+        lightRenderers.Add(new LightSkyboxRenderer());
+        lightRenderers.Add(new LightPointGroupRenderer());
+        lightRenderers.Add(new LightSpotGroupRenderer());
+    }
+
+    private void AddDefaultShadowRenderers(ICollection<ILightShadowMapRenderer> renderers)
+    {
+        renderers.Add(new LightDirectionalShadowMapRenderer
+        {
+            ShadowCasterRenderStage = MapShadowStage(defaultStageName: ShadowCasterStageName),
+        });
+        renderers.Add(new LightSpotShadowMapRenderer
+        {
+            ShadowCasterRenderStage = MapShadowStage(defaultStageName: ShadowCasterStageName),
+        });
+        renderers.Add(new LightPointShadowMapRendererParaboloid
+        {
+            ShadowCasterRenderStage = MapShadowStage(defaultStageName: ShadowCasterParaboloidStageName),
+        });
+        renderers.Add(new LightPointShadowMapRendererCubeMap
+        {
+            ShadowCasterRenderStage = MapShadowStage(defaultStageName: ShadowCasterCubeMapStageName),
+        });
+    }
+
+    private RenderStage? MapShadowStage(RenderStage? sourceStage, string defaultStageName)
+    {
+        return MapShadowStage(sourceStage?.Name, defaultStageName);
+    }
+
+    private RenderStage? MapShadowStage(string? stageName = null, string defaultStageName = ShadowCasterStageName)
+    {
+        return (stageName ?? defaultStageName) switch
+        {
+            ShadowCasterParaboloidStageName => FindStage(ShadowCasterParaboloidStageName),
+            ShadowCasterCubeMapStageName => FindStage(ShadowCasterCubeMapStageName),
+            ShadowCasterStageName => FindStage(ShadowCasterStageName),
+            _ => FindStage(defaultStageName),
+        };
+    }
+
+    private void EnsureDefaultPipelineProcessors()
+    {
+        meshPipelineProcessor ??= PipelineProcessors.OfType<MeshPipelineProcessor>().FirstOrDefault();
+        if (meshPipelineProcessor == null)
+        {
+            meshPipelineProcessor = new MeshPipelineProcessor();
+            PipelineProcessors.Add(meshPipelineProcessor);
+        }
+
+        var shadowProcessors = PipelineProcessors.OfType<ShadowMeshPipelineProcessor>().ToList();
+
+        shadowMapPipelineProcessor ??= shadowProcessors.FirstOrDefault(processor =>
+            string.Equals(processor.ShadowMapRenderStage?.Name, ShadowCasterStageName, StringComparison.Ordinal))
+            ?? shadowProcessors.FirstOrDefault(processor => processor.ShadowMapRenderStage == null && !processor.DepthClipping);
+        if (shadowMapPipelineProcessor == null)
+        {
+            shadowMapPipelineProcessor = new ShadowMeshPipelineProcessor { DepthClipping = false };
+            PipelineProcessors.Add(shadowMapPipelineProcessor);
+        }
+
+        shadowParaboloidPipelineProcessor ??= shadowProcessors.FirstOrDefault(processor =>
+            string.Equals(processor.ShadowMapRenderStage?.Name, ShadowCasterParaboloidStageName, StringComparison.Ordinal))
+            ?? shadowProcessors.FirstOrDefault(processor => processor != shadowMapPipelineProcessor && processor.ShadowMapRenderStage == null && processor.DepthClipping);
+        if (shadowParaboloidPipelineProcessor == null)
+        {
+            shadowParaboloidPipelineProcessor = new ShadowMeshPipelineProcessor { DepthClipping = true };
+            PipelineProcessors.Add(shadowParaboloidPipelineProcessor);
+        }
+
+        shadowCubeMapPipelineProcessor ??= shadowProcessors.FirstOrDefault(processor =>
+            string.Equals(processor.ShadowMapRenderStage?.Name, ShadowCasterCubeMapStageName, StringComparison.Ordinal))
+            ?? shadowProcessors.FirstOrDefault(processor => processor != shadowMapPipelineProcessor && processor != shadowParaboloidPipelineProcessor && processor.ShadowMapRenderStage == null && processor.DepthClipping);
+        if (shadowCubeMapPipelineProcessor == null)
+        {
+            shadowCubeMapPipelineProcessor = new ShadowMeshPipelineProcessor { DepthClipping = true };
+            PipelineProcessors.Add(shadowCubeMapPipelineProcessor);
+        }
+    }
+
+    private void RenderFeatures_CollectionChanged(object? sender, TrackingCollectionChangedEventArgs e)
+    {
+        if (e.Item is not SubRenderFeature renderFeature)
+        {
+            return;
+        }
+
+        switch (e.Action)
+        {
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Add:
+                BindSubRenderFeature(renderFeature);
+                renderFeature.Initialize(Context);
+                break;
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Remove:
+                renderFeature.Dispose();
+                break;
+        }
+    }
+
+    private void BindSubRenderFeature(SubRenderFeature renderFeature)
+    {
+        if (AttachRootRenderFeatureMethod != null)
+        {
+            AttachRootRenderFeatureMethod.Invoke(renderFeature, new object[] { this });
+            return;
+        }
+
+        RootRenderFeatureField?.SetValue(renderFeature, this);
+        RenderSystemProperty?.SetValue(renderFeature, RenderSystem);
+    }
+
+    private void SyncRenderStageBindings()
+    {
+        if (RenderSystem == null)
+        {
+            return;
+        }
+        SyncOpaqueSelector();
+        SyncShadowSelector(ShadowCasterStageName, ShadowCasterEffectName);
+        SyncShadowSelector(ShadowCasterParaboloidStageName, ShadowCasterParaboloidEffectName);
+        SyncShadowSelector(ShadowCasterCubeMapStageName, ShadowCasterCubeMapEffectName);
+    }
+
+    private void SyncOpaqueSelector()
+    {
+        var opaqueStage = FindStage(OpaqueStageName);
+        var selector = RenderStageSelectors.OfType<SimpleGroupToRenderStageSelector>()
+            .FirstOrDefault(item => string.Equals(item.EffectName, EffectName, StringComparison.Ordinal));
+
+        if (opaqueStage == null)
+        {
+            if (selector != null)
+            {
+                RenderStageSelectors.Remove(selector);
+            }
+
+            return;
+        }
+
+        selector ??= new SimpleGroupToRenderStageSelector();
+        if (!RenderStageSelectors.Contains(selector))
+        {
+            RenderStageSelectors.Add(selector);
+        }
+
+        selector.RenderGroup = RenderGroupMask.Group0;
+        selector.RenderStage = opaqueStage;
+        selector.EffectName = EffectName;
+    }
+
+    private void SyncShadowSelector(string stageName, string effectName)
+    {
+        var shadowStage = FindStage(stageName);
+        var selector = RenderStageSelectors.OfType<ShadowMapRenderStageSelector>()
+            .FirstOrDefault(item => string.Equals(item.EffectName, effectName, StringComparison.Ordinal));
+
+        if (shadowStage == null)
+        {
+            if (selector != null)
+            {
+                RenderStageSelectors.Remove(selector);
+            }
+
+            return;
+        }
+
+        selector ??= new ShadowMapRenderStageSelector();
+        if (!RenderStageSelectors.Contains(selector))
+        {
+            RenderStageSelectors.Add(selector);
+        }
+
+        selector.RenderGroup = RenderGroupMask.Group0;
+        selector.ShadowMapRenderStage = shadowStage;
+        selector.EffectName = effectName;
+    }
+
+    private void SyncPipelineBindings()
+    {
+        if (RenderSystem == null)
+        {
+            return;
+        }
+
+        meshPipelineProcessor ??= PipelineProcessors.OfType<MeshPipelineProcessor>().FirstOrDefault();
+        if (meshPipelineProcessor != null)
+        {
+            meshPipelineProcessor.TransparentRenderStage = FindStage(TransparentStageName);
+        }
+
+        shadowMapPipelineProcessor ??= PipelineProcessors.OfType<ShadowMeshPipelineProcessor>().FirstOrDefault(processor =>
+            string.Equals(processor.ShadowMapRenderStage?.Name, ShadowCasterStageName, StringComparison.Ordinal));
+        if (shadowMapPipelineProcessor != null)
+        {
+            shadowMapPipelineProcessor.DepthClipping = false;
+            shadowMapPipelineProcessor.ShadowMapRenderStage = FindStage(ShadowCasterStageName);
+        }
+
+        shadowParaboloidPipelineProcessor ??= PipelineProcessors.OfType<ShadowMeshPipelineProcessor>().FirstOrDefault(processor =>
+            string.Equals(processor.ShadowMapRenderStage?.Name, ShadowCasterParaboloidStageName, StringComparison.Ordinal));
+        if (shadowParaboloidPipelineProcessor != null)
+        {
+            shadowParaboloidPipelineProcessor.DepthClipping = true;
+            shadowParaboloidPipelineProcessor.ShadowMapRenderStage = FindStage(ShadowCasterParaboloidStageName);
+        }
+
+        shadowCubeMapPipelineProcessor ??= PipelineProcessors.OfType<ShadowMeshPipelineProcessor>().FirstOrDefault(processor =>
+            string.Equals(processor.ShadowMapRenderStage?.Name, ShadowCasterCubeMapStageName, StringComparison.Ordinal));
+        if (shadowCubeMapPipelineProcessor != null)
+        {
+            shadowCubeMapPipelineProcessor.DepthClipping = true;
+            shadowCubeMapPipelineProcessor.ShadowMapRenderStage = FindStage(ShadowCasterCubeMapStageName);
+        }
+    }
+
+    private RenderStage? FindStage(string stageName)
+    {
+        return RenderSystem?.RenderStages.FirstOrDefault(stage => string.Equals(stage.Name, stageName, StringComparison.Ordinal));
+    }
+
+    private static InputElementDescription[] PrepareInputElements(PipelineStateDescription pipelineState, MeshDraw drawData)
+    {
+        var availableInputElements = drawData.VertexBuffers.CreateInputElements();
+        var inputElements = new List<InputElementDescription>(availableInputElements);
+
+        foreach (var inputAttribute in pipelineState.EffectBytecode.Reflection.InputAttributes)
+        {
+            if (FindElementBySemantic(availableInputElements, inputAttribute.SemanticName, inputAttribute.SemanticIndex) >= 0)
+            {
+                continue;
+            }
+
+            inputElements.Add(new InputElementDescription
+            {
+                AlignedByteOffset = 0,
+                Format = PixelFormat.R32G32B32A32_Float,
+                InputSlot = drawData.VertexBuffers.Length,
+                InputSlotClass = InputClassification.Vertex,
+                InstanceDataStepRate = 0,
+                SemanticIndex = inputAttribute.SemanticIndex,
+                SemanticName = inputAttribute.SemanticName,
+            });
+        }
+
+        return inputElements.ToArray();
+    }
+
+    private static int FindElementBySemantic(InputElementDescription[] inputElements, string semanticName, int semanticIndex)
+    {
+        int foundDescIndex = -1;
+        for (int index = 0; index < inputElements.Length; index++)
+        {
+            if (semanticName == inputElements[index].SemanticName && semanticIndex == inputElements[index].SemanticIndex)
+            {
+                foundDescIndex = index;
+            }
+        }
+
+        return foundDescIndex;
+    }
+}

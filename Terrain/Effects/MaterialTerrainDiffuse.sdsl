@@ -1,0 +1,25 @@
+namespace Terrain
+{
+shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturing
+    {
+        rgroup PerMaterial
+        {
+            stage Texture2D DefaultDiffuseTexture;
+        }
+
+        cbuffer PerMaterial
+        {
+            stage float DiffuseWorldRepeatSize;
+            [Color]
+            stage float4 BaseColor;
+        }
+
+        override void Compute()
+        {
+            float2 uv = streams.Position.xz / DiffuseWorldRepeatSize;
+            float4 baseColor = DefaultDiffuseTexture.Sample(LinearSampler, uv) * BaseColor;
+            streams.matDiffuse = baseColor;
+            streams.matColorBase = baseColor;
+        }
+    };
+}

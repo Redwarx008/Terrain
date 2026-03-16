@@ -1,0 +1,7 @@
+namespace Terrain
+{
+    effect TerrainForwardShadingEffect
+    {
+        mixin StrideForwardShadingEffect;
+    };
+}
