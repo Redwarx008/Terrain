@@ -7,33 +7,39 @@ using Stride.Core.Annotations;
 using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
 using Stride.Engine;
+using Stride.Engine.Processors;
 using Stride.Graphics;
 using Stride.Rendering;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
-using Buffer = Stride.Graphics.Buffer;
 
 namespace Terrain;
 
-public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, TerrainRuntimeData>, IEntityComponentRenderProcessor
+public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, TerrainRenderObject>, IEntityComponentRenderProcessor
 {
     private const float DiffuseWorldRepeatSize = 8.0f;
     private static readonly Logger Log = GlobalLogger.GetLogger(nameof(TerrainProcessor));
 
     public VisibilityGroup VisibilityGroup { get; set; } = null!;
 
-    protected override TerrainRuntimeData GenerateComponentData([NotNull] Entity entity, [NotNull] TerrainComponent component) => new();
-
-    protected override void OnEntityComponentRemoved(Entity entity, [NotNull] TerrainComponent component, [NotNull] TerrainRuntimeData data)
+    protected override TerrainRenderObject GenerateComponentData([NotNull] Entity entity, [NotNull] TerrainComponent component)
     {
-        if (data.RenderObject != null)
+        return new TerrainRenderObject
         {
-            VisibilityGroup.RenderObjects.Remove(data.RenderObject);
-            data.RenderObject = null;
+            Source = component,
+        };
+    }
+
+    protected override void OnEntityComponentRemoved(Entity entity, [NotNull] TerrainComponent component, [NotNull] TerrainRenderObject renderObject)
+    {
+        if (component.IsRegisteredWithVisibilityGroup)
+        {
+            VisibilityGroup.RenderObjects.Remove(renderObject);
+            component.IsRegisteredWithVisibilityGroup = false;
         }
 
-        data.Dispose();
-        base.OnEntityComponentRemoved(entity, component, data);
+        renderObject.Dispose();
+        base.OnEntityComponentRemoved(entity, component, renderObject);
     }
 
     public override void Draw(RenderContext context)
@@ -41,15 +47,6 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         base.Draw(context);
 
         var graphicsDevice = Services.GetService<IGraphicsDeviceService>()!.GraphicsDevice;
-        var camera = context.GetCurrentCamera();
-        if (camera == null)
-        {
-            return;
-        }
-
-        float aspectRatio = graphicsDevice.Presenter.BackBuffer.Width / (float)Math.Max(1, graphicsDevice.Presenter.BackBuffer.Height);
-        camera.Update(aspectRatio);
-
         foreach (var pair in ComponentDatas)
         {
             if (!EnsureInitialized(graphicsDevice, pair.Key, pair.Value))
@@ -57,41 +54,58 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
                 continue;
             }
 
-            UpdateRenderObject(pair.Key.Entity, pair.Key, pair.Value, camera, graphicsDevice);
+            UpdateRenderObject(pair.Key.Entity, pair.Key, pair.Value, graphicsDevice);
         }
     }
 
-    private bool EnsureInitialized(GraphicsDevice graphicsDevice, TerrainComponent component, TerrainRuntimeData data)
+    private bool EnsureInitialized(GraphicsDevice graphicsDevice, TerrainComponent component, TerrainRenderObject renderObject)
     {
         string resolvedPath = ResolveHeightmapPath(component.HeightmapPath);
-        if (data.IsInitialized
-            && string.Equals(data.LoadedPath, resolvedPath, StringComparison.OrdinalIgnoreCase)
-            && data.LoadedBaseChunkSize == component.BaseChunkSize)
+        if (IsCurrentInitializationValid(component, renderObject, resolvedPath))
         {
             return true;
         }
 
-        if (!File.Exists(resolvedPath))
+        if (!TryLoadTerrainData(resolvedPath, component.BaseChunkSize, out var loadedData))
         {
-            if (data.RenderObject != null)
+            if (!IsGpuDataValid(renderObject) || !component.IsInitialized)
             {
-                data.RenderObject.Enabled = false;
+                renderObject.Enabled = false;
+                return false;
             }
 
+            return true;
+        }
+
+        ApplyLoadedTerrainData(graphicsDevice, component, renderObject, loadedData);
+        return true;
+    }
+
+    private static bool IsCurrentInitializationValid(TerrainComponent component, TerrainRenderObject renderObject, string resolvedPath)
+    {
+        return component.IsInitialized
+            && string.Equals(component.LoadedPath, resolvedPath, StringComparison.OrdinalIgnoreCase)
+            && component.LoadedBaseChunkSize == component.BaseChunkSize
+            && IsGpuDataValid(renderObject);
+    }
+
+    private static bool IsGpuDataValid(TerrainRenderObject renderObject)
+    {
+        return renderObject.HeightTexture != null
+            && renderObject.InstanceBuffer != null
+            && renderObject.PatchVertexBuffer != null
+            && renderObject.PatchIndexBuffer != null
+            && renderObject.Mesh != null;
+    }
+
+    private bool TryLoadTerrainData(string resolvedPath, int baseChunkSize, out LoadedTerrainData loadedData)
+    {
+        loadedData = default;
+        if (!File.Exists(resolvedPath))
+        {
             Log.Warning($"Terrain heightmap was not found at '{resolvedPath}'.");
             return false;
         }
-
-        if (data.RenderObject != null)
-        {
-            VisibilityGroup.RenderObjects.Remove(data.RenderObject);
-            data.RenderObject = null;
-        }
-
-        data.Dispose();
-        data.IsInitialized = false;
-        data.LoadedPath = null;
-        data.LoadedBaseChunkSize = 0;
 
         using var bitmap = new Bitmap(resolvedPath);
         if (bitmap.Width < 2 || bitmap.Height < 2)
@@ -118,7 +132,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         }
 
         int sampleExtent = Math.Max(width - 1, height - 1);
-        int rootSampleSize = Math.Max(1, component.BaseChunkSize);
+        int rootSampleSize = Math.Max(1, baseChunkSize);
         int maxLod = 0;
         while (rootSampleSize < sampleExtent)
         {
@@ -126,62 +140,72 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             maxLod++;
         }
 
-        data.HeightmapWidth = width;
-        data.HeightmapHeight = height;
-        data.MaxLod = maxLod;
-        data.MinHeight = minHeight;
-        data.MaxHeight = maxHeight;
-        data.MinMaxErrorMaps = CreateMinMaxErrorMaps(heights, width, height, component.BaseChunkSize, maxLod);
-
-        data.HeightTexture = Texture.New2D(
-            graphicsDevice,
+        loadedData = new LoadedTerrainData(
+            resolvedPath,
             width,
             height,
-            PixelFormat.R32_Float,
             heights,
-            TextureFlags.ShaderResource);
-
-        CreatePatchDraw(graphicsDevice, component.BaseChunkSize, data);
-        data.RenderObject = CreateRenderObject(data);
-        VisibilityGroup.RenderObjects.Add(data.RenderObject);
-
-        data.LoadedPath = resolvedPath;
-        data.LoadedBaseChunkSize = component.BaseChunkSize;
-        data.IsInitialized = true;
+            minHeight,
+            maxHeight,
+            maxLod,
+            CreateMinMaxErrorMaps(heights, width, height, baseChunkSize, maxLod));
         return true;
     }
 
-    private void UpdateRenderObject(Entity entity, TerrainComponent component, TerrainRuntimeData data, CameraComponent camera, GraphicsDevice graphicsDevice)
+    private void ApplyLoadedTerrainData(GraphicsDevice graphicsDevice, TerrainComponent component, TerrainRenderObject renderObject, LoadedTerrainData loadedData)
     {
-        if (data.RenderObject == null || data.HeightTexture == null || data.MinMaxErrorMaps == null)
+        renderObject.ReinitializeGpuResources(graphicsDevice, component.BaseChunkSize, loadedData.Width, loadedData.Height, loadedData.Heights);
+
+        component.HeightmapWidth = loadedData.Width;
+        component.HeightmapHeight = loadedData.Height;
+        component.MaxLod = loadedData.MaxLod;
+        component.MinHeight = loadedData.MinHeight;
+        component.MaxHeight = loadedData.MaxHeight;
+        component.MinMaxErrorMaps = loadedData.MinMaxErrorMaps;
+
+        // Reinitialization replaces the underlying GPU resources, so the old "material is ready" markers
+        // must be cleared or EnsureMaterial() will incorrectly reuse a pass bound to stale buffers/textures.
+        component.LoadedDiffuseTexture = null;
+        renderObject.ResetRenderState();
+
+        // Reinitialization only swaps GPU resources; the same render object must stay registered exactly once.
+        if (!component.IsRegisteredWithVisibilityGroup)
+        {
+            VisibilityGroup.RenderObjects.Add(renderObject);
+            component.IsRegisteredWithVisibilityGroup = true;
+        }
+
+        component.LoadedPath = loadedData.Path;
+        component.LoadedBaseChunkSize = component.BaseChunkSize;
+        component.IsInitialized = true;
+    }
+
+    private void UpdateRenderObject(Entity entity, TerrainComponent component, TerrainRenderObject renderObject, GraphicsDevice graphicsDevice)
+    {
+        if (renderObject.HeightTexture == null || component.MinMaxErrorMaps == null)
         {
             return;
         }
 
-        if (!EnsureMaterial(graphicsDevice, component, data))
+        if (!EnsureMaterial(graphicsDevice, component, renderObject))
         {
-            data.RenderObject.Enabled = false;
+            renderObject.Enabled = false;
             return;
         }
 
         entity.Transform.UpdateWorldMatrix();
         var terrainWorldMatrix = CreateTerrainWorldMatrix(entity.Transform.WorldMatrix);
-        var renderObject = data.RenderObject;
-        renderObject.MaterialPass = data.RuntimeMaterial!.Passes[0];
         renderObject.Enabled = component.Enabled;
         renderObject.RenderGroup = component.RenderGroup;
         renderObject.World = terrainWorldMatrix;
         renderObject.IsScalingNegative = false;
         renderObject.IsShadowCaster = component.CastShadows;
-        renderObject.HeightTextureAsset = data.HeightTexture;
 
-        SelectChunks(terrainWorldMatrix, component, data, camera, graphicsDevice);
-        UploadChunkBuffer(data);
-        UpdateBounds(terrainWorldMatrix, component, data);
-        UpdateMaterialParameters(component, data);
+        UpdateBounds(terrainWorldMatrix, component, renderObject);
+        UpdateMaterialParameters(component, renderObject);
     }
 
-    private bool EnsureMaterial(GraphicsDevice graphicsDevice, TerrainComponent component, TerrainRuntimeData data)
+    private bool EnsureMaterial(GraphicsDevice graphicsDevice, TerrainComponent component, TerrainRenderObject renderObject)
     {
         if (component.DefaultDiffuseTexture == null)
         {
@@ -189,7 +213,10 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             return false;
         }
 
-        if (data.RuntimeMaterial != null && ReferenceEquals(data.LoadedDiffuseTexture, component.DefaultDiffuseTexture))
+        if (renderObject.MaterialPass != null
+            && renderObject.HeightTexture != null
+            && renderObject.InstanceBuffer != null
+            && ReferenceEquals(component.LoadedDiffuseTexture, component.DefaultDiffuseTexture))
         {
             return true;
         }
@@ -202,155 +229,60 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         descriptor.Attributes.Specular = new MaterialMetalnessMapFeature(new ComputeFloat(0.0f));
         descriptor.Attributes.SpecularModel = new MaterialSpecularMicrofacetModelFeature();
 
-        data.RuntimeMaterial = Material.New(graphicsDevice, descriptor);
-        data.LoadedDiffuseTexture = component.DefaultDiffuseTexture;
+        var material = Material.New(graphicsDevice, descriptor);
+        renderObject.MaterialPass = material.Passes[0];
+        component.LoadedDiffuseTexture = component.DefaultDiffuseTexture;
         return true;
     }
 
-    private void UpdateMaterialParameters(TerrainComponent component, TerrainRuntimeData data)
+    private void UpdateMaterialParameters(TerrainComponent component, TerrainRenderObject renderObject)
     {
-        var renderObject = data.RenderObject;
-        var materialPass = renderObject?.MaterialPass;
-        if (materialPass == null || data.HeightTexture == null || data.ChunkBuffer == null || component.DefaultDiffuseTexture == null)
+        var materialPass = renderObject.MaterialPass;
+        if (materialPass == null || renderObject.HeightTexture == null || renderObject.InstanceBuffer == null || component.DefaultDiffuseTexture == null)
         {
             return;
         }
 
         var parameters = materialPass.Parameters;
-        parameters.Set(TerrainKeys.HeightTexture, data.HeightTexture);
-        parameters.Set(TerrainKeys.ChunkBuffer, data.ChunkBuffer);
-        parameters.Set(TerrainKeys.DefaultDiffuseTexture, component.DefaultDiffuseTexture);
-        parameters.Set(TerrainKeys.HeightTextureTexelSize, new Vector2(1.0f / data.HeightmapWidth, 1.0f / data.HeightmapHeight));
-        parameters.Set(TerrainKeys.HeightmapDimensionsInSamples, new Vector2(data.HeightmapWidth - 1, data.HeightmapHeight - 1));
-        parameters.Set(TerrainKeys.HeightScale, component.HeightScale);
-        parameters.Set(TerrainKeys.BaseChunkSize, component.BaseChunkSize);
-        parameters.Set(TerrainKeys.DiffuseWorldRepeatSize, DiffuseWorldRepeatSize);
-        parameters.Set(TerrainKeys.BaseColor, component.BaseColor);
+        var texelSize = new Vector2(1.0f / component.HeightmapWidth, 1.0f / component.HeightmapHeight);
+        var dimensionsInSamples = new Vector2(component.HeightmapWidth - 1, component.HeightmapHeight - 1);
+
+        parameters.Set(MaterialTerrainDisplacementKeys.HeightTexture, renderObject.HeightTexture);
+        parameters.Set(MaterialTerrainDisplacementKeys.InstanceBuffer, renderObject.InstanceBuffer);
+        parameters.Set(MaterialTerrainDisplacementKeys.HeightTextureTexelSize, texelSize);
+        parameters.Set(MaterialTerrainDisplacementKeys.HeightmapDimensionsInSamples, dimensionsInSamples);
+        parameters.Set(MaterialTerrainDisplacementKeys.HeightScale, component.HeightScale);
+        parameters.Set(MaterialTerrainDisplacementKeys.BaseChunkSize, component.BaseChunkSize);
+
+        parameters.Set(TerrainMaterialStreamInitializerKeys.HeightTexture, renderObject.HeightTexture);
+        parameters.Set(TerrainMaterialStreamInitializerKeys.HeightTextureTexelSize, texelSize);
+        parameters.Set(TerrainMaterialStreamInitializerKeys.HeightScale, component.HeightScale);
+
+        parameters.Set(MaterialTerrainDiffuseKeys.DefaultDiffuseTexture, component.DefaultDiffuseTexture);
+        parameters.Set(MaterialTerrainDiffuseKeys.DiffuseWorldRepeatSize, DiffuseWorldRepeatSize);
+        parameters.Set(MaterialTerrainDiffuseKeys.BaseColor, component.BaseColor);
     }
 
-    private void UploadChunkBuffer(TerrainRuntimeData data)
+    private void UpdateBounds(Matrix terrainWorldMatrix, TerrainComponent component, TerrainRenderObject renderObject)
     {
-        var graphicsDevice = Services.GetService<IGraphicsDeviceService>()!.GraphicsDevice;
-
-        data.ChunkBuffer?.Dispose();
-        if (data.SelectedChunks.Count == 0)
-        {
-            data.ChunkBuffer = Buffer.Structured.New(graphicsDevice, new[] { new Int4(0, 0, 0, 0) });
-            data.RenderObject!.InstanceCount = 0;
-        }
-        else
-        {
-            var chunkData = new Int4[data.SelectedChunks.Count];
-            for (int i = 0; i < data.SelectedChunks.Count; i++)
-            {
-                var chunk = data.SelectedChunks[i];
-                chunkData[i] = new Int4(chunk.ChunkX, chunk.ChunkY, chunk.LodLevel, 0);
-            }
-
-            data.ChunkBuffer = Buffer.Structured.New(graphicsDevice, chunkData);
-            data.RenderObject!.InstanceCount = chunkData.Length;
-        }
-
-        data.RenderObject!.ChunkBufferAsset = data.ChunkBuffer;
+        // The terrain can be drawn by shadow views that see different chunks than the main camera,
+        // so shrinking bounds to the current selection would cull shadow-casting terrain too early.
+        int terrainSampleExtent = Math.Max(component.HeightmapWidth - 1, component.HeightmapHeight - 1);
+        var fullTerrainBounds = ComputeWorldBounds(
+            terrainWorldMatrix,
+            component,
+            0,
+            0,
+            terrainSampleExtent,
+            component.MinHeight,
+            component.MaxHeight);
+        renderObject.BoundingBox = (BoundingBoxExt)fullTerrainBounds;
     }
 
-    private void SelectChunks(Matrix terrainWorldMatrix, TerrainComponent component, TerrainRuntimeData data, CameraComponent camera, GraphicsDevice graphicsDevice)
+    private static BoundingBox ComputeWorldBounds(Matrix terrainWorldMatrix, TerrainComponent component, int originSampleX, int originSampleY, int sizeInSamples, float minHeight, float maxHeight)
     {
-        data.SelectedChunks.Clear();
-        if (data.MinMaxErrorMaps == null)
-        {
-            return;
-        }
-
-        float viewHeight = Math.Max(1.0f, graphicsDevice.Presenter.BackBuffer.Height);
-        float k = camera.ProjectionMatrix.M44 != 1.0f
-            ? viewHeight / (2.0f * MathF.Tan(MathUtil.DegreesToRadians(camera.VerticalFieldOfView) * 0.5f))
-            : viewHeight / Math.Max(camera.OrthographicSize, 1e-3f);
-        var cameraPosition = camera.Entity.Transform.WorldMatrix.TranslationVector;
-        var topMap = data.MinMaxErrorMaps[data.MaxLod];
-
-        for (int y = 0; y < topMap.Height; y++)
-        {
-            for (int x = 0; x < topMap.Width; x++)
-            {
-                TraverseChunk(terrainWorldMatrix, component, data, cameraPosition, camera.Frustum, k, component.MaxScreenSpaceErrorPixels, x, y, data.MaxLod);
-            }
-        }
-    }
-
-    private void TraverseChunk(Matrix terrainWorldMatrix, TerrainComponent component, TerrainRuntimeData data, Vector3 cameraPosition, BoundingFrustum frustum, float k, float maxErrorPixels, int chunkX, int chunkY, int lodLevel)
-    {
-        int sizeInSamples = component.BaseChunkSize << lodLevel;
-        int originSampleX = chunkX * sizeInSamples;
-        int originSampleY = chunkY * sizeInSamples;
-        if (originSampleX >= data.HeightmapWidth - 1 || originSampleY >= data.HeightmapHeight - 1)
-        {
-            return;
-        }
-
-        var minMaxErrorMap = data.MinMaxErrorMaps![lodLevel];
-        minMaxErrorMap.Get(chunkX, chunkY, out var minHeight, out var maxHeight, out var geometricError);
-        var bounds = ComputeWorldBounds(terrainWorldMatrix, component, data, originSampleX, originSampleY, sizeInSamples, minHeight, maxHeight);
-        var boundsExt = (BoundingBoxExt)bounds;
-        if (!frustum.Contains(ref boundsExt))
-        {
-            return;
-        }
-
-        float distance = DistanceToAabb(cameraPosition, bounds);
-        float sse = distance > 1e-4f ? k * (geometricError * component.HeightScale) / distance : float.MaxValue;
-        if (lodLevel == 0 || sse <= maxErrorPixels)
-        {
-            data.SelectedChunks.Add(new TerrainSelectedChunk
-            {
-                ChunkX = chunkX,
-                ChunkY = chunkY,
-                LodLevel = lodLevel,
-                MinHeight = minHeight,
-                MaxHeight = maxHeight,
-                WorldBounds = bounds,
-            });
-            return;
-        }
-
-        var childMap = data.MinMaxErrorMaps[lodLevel - 1];
-        childMap.GetSubNodesExist(chunkX, chunkY, out var subTLExist, out var subTRExist, out var subBLExist, out var subBRExist);
-
-        int childChunkX = chunkX * 2;
-        int childChunkY = chunkY * 2;
-        if (subTLExist)
-        {
-            TraverseChunk(terrainWorldMatrix, component, data, cameraPosition, frustum, k, maxErrorPixels, childChunkX, childChunkY, lodLevel - 1);
-        }
-
-        if (subTRExist)
-        {
-            TraverseChunk(terrainWorldMatrix, component, data, cameraPosition, frustum, k, maxErrorPixels, childChunkX + 1, childChunkY, lodLevel - 1);
-        }
-
-        if (subBLExist)
-        {
-            TraverseChunk(terrainWorldMatrix, component, data, cameraPosition, frustum, k, maxErrorPixels, childChunkX, childChunkY + 1, lodLevel - 1);
-        }
-
-        if (subBRExist)
-        {
-            TraverseChunk(terrainWorldMatrix, component, data, cameraPosition, frustum, k, maxErrorPixels, childChunkX + 1, childChunkY + 1, lodLevel - 1);
-        }
-    }
-
-    private static float DistanceToAabb(Vector3 point, BoundingBox bounds)
-    {
-        float dx = MathF.Max(MathF.Max(bounds.Minimum.X - point.X, 0.0f), point.X - bounds.Maximum.X);
-        float dy = MathF.Max(MathF.Max(bounds.Minimum.Y - point.Y, 0.0f), point.Y - bounds.Maximum.Y);
-        float dz = MathF.Max(MathF.Max(bounds.Minimum.Z - point.Z, 0.0f), point.Z - bounds.Maximum.Z);
-        return MathF.Sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    private static BoundingBox ComputeWorldBounds(Matrix terrainWorldMatrix, TerrainComponent component, TerrainRuntimeData data, int originSampleX, int originSampleY, int sizeInSamples, float minHeight, float maxHeight)
-    {
-        int endSampleX = Math.Min(originSampleX + sizeInSamples, data.HeightmapWidth - 1);
-        int endSampleY = Math.Min(originSampleY + sizeInSamples, data.HeightmapHeight - 1);
+        int endSampleX = Math.Min(originSampleX + sizeInSamples, component.HeightmapWidth - 1);
+        int endSampleY = Math.Min(originSampleY + sizeInSamples, component.HeightmapHeight - 1);
 
         Vector3[] corners =
         {
@@ -490,35 +422,6 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         return maxError;
     }
 
-    private void UpdateBounds(Matrix terrainWorldMatrix, TerrainComponent component, TerrainRuntimeData data)
-    {
-        if (data.SelectedChunks.Count > 0)
-        {
-            var min = new Vector3(float.MaxValue);
-            var max = new Vector3(float.MinValue);
-
-            foreach (var chunk in data.SelectedChunks)
-            {
-                min = Vector3.Min(min, chunk.WorldBounds.Minimum);
-                max = Vector3.Max(max, chunk.WorldBounds.Maximum);
-            }
-
-            data.RenderObject!.BoundingBox = (BoundingBoxExt)new BoundingBox(min, max);
-            return;
-        }
-
-        var fallbackBounds = ComputeWorldBounds(
-            terrainWorldMatrix,
-            component,
-            data,
-            0,
-            0,
-            Math.Max(data.HeightmapWidth - 1, data.HeightmapHeight - 1),
-            data.MinHeight,
-            data.MaxHeight);
-        data.RenderObject!.BoundingBox = (BoundingBoxExt)fallbackBounds;
-    }
-
     private static string ResolveHeightmapPath(string path)
     {
         if (Path.IsPathRooted(path))
@@ -544,81 +447,20 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         return Path.GetFullPath(path);
     }
 
-    private static TerrainRenderObject CreateRenderObject(TerrainRuntimeData data)
-    {
-        var mesh = new Mesh(data.PatchDraw!, new ParameterCollection());
-        return new TerrainRenderObject
-        {
-            Mesh = mesh,
-            ActiveMeshDraw = mesh.Draw,
-            MaterialPass = new MaterialPass
-            {
-                HasTransparency = false,
-                IsLightDependent = true,
-                PassIndex = 0,
-            },
-            InstanceCount = 0,
-            World = Matrix.Identity,
-            BoundingBox = (BoundingBoxExt)new BoundingBox(Vector3.Zero, Vector3.One),
-        };
-    }
-
-    private static void CreatePatchDraw(GraphicsDevice graphicsDevice, int baseChunkSize, TerrainRuntimeData data)
-    {
-        int vertexCountPerAxis = baseChunkSize + 1;
-        var vertices = new TerrainPatchVertex[vertexCountPerAxis * vertexCountPerAxis];
-        int vertexIndex = 0;
-
-        for (int y = 0; y < vertexCountPerAxis; y++)
-        {
-            for (int x = 0; x < vertexCountPerAxis; x++)
-            {
-                vertices[vertexIndex++] = new TerrainPatchVertex
-                {
-                    Position = new Vector3(x, 0.0f, y),
-                };
-            }
-        }
-
-        var indices = new int[baseChunkSize * baseChunkSize * 6];
-        int index = 0;
-        for (int y = 0; y < baseChunkSize; y++)
-        {
-            for (int x = 0; x < baseChunkSize; x++)
-            {
-                int topLeft = y * vertexCountPerAxis + x;
-                int topRight = topLeft + 1;
-                int bottomLeft = topLeft + vertexCountPerAxis;
-                int bottomRight = bottomLeft + 1;
-
-                indices[index++] = topLeft;
-                indices[index++] = bottomRight;
-                indices[index++] = bottomLeft;
-                indices[index++] = topLeft;
-                indices[index++] = topRight;
-                indices[index++] = bottomRight;
-            }
-        }
-
-        data.PatchVertexBuffer = Buffer.Vertex.New(graphicsDevice, vertices);
-        data.PatchIndexBuffer = Buffer.Index.New(graphicsDevice, indices);
-        data.PatchDraw = new MeshDraw
-        {
-            PrimitiveType = PrimitiveType.TriangleList,
-            DrawCount = indices.Length,
-            StartLocation = 0,
-            VertexBuffers =
-            [
-                new VertexBufferBinding(data.PatchVertexBuffer, TerrainPatchVertex.Layout, vertices.Length),
-            ],
-            IndexBuffer = new IndexBufferBinding(data.PatchIndexBuffer, true, indices.Length),
-        };
-    }
-
     private static Matrix CreateTerrainWorldMatrix(Matrix entityWorldMatrix)
     {
         entityWorldMatrix.Decompose(out _, out Matrix rotation, out var translation);
         rotation.TranslationVector = translation;
         return rotation;
     }
+
+    private readonly record struct LoadedTerrainData(
+        string Path,
+        int Width,
+        int Height,
+        float[] Heights,
+        float MinHeight,
+        float MaxHeight,
+        int MaxLod,
+        TerrainMinMaxErrorMap[] MinMaxErrorMaps);
 }

@@ -5,7 +5,7 @@ namespace Terrain
         rgroup PerMaterial
         {
             stage Texture2D<float> HeightTexture;
-            stage StructuredBuffer<int4> ChunkBuffer;
+            stage StructuredBuffer<int4> InstanceBuffer;
         }
 
         cbuffer PerMaterial
@@ -18,7 +18,7 @@ namespace Terrain
 
         override void Compute()
         {
-            int4 chunk = ChunkBuffer[streams.InstanceID];
+            int4 chunk = InstanceBuffer[streams.InstanceID];
             float lodLevel = chunk.z;
             float lodScale = exp2(lodLevel);
             float chunkWorldSize = BaseChunkSize * lodScale;

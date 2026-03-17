@@ -19,7 +19,7 @@ namespace Terrain
     public static partial class MaterialTerrainDisplacementKeys
     {
         public static readonly ObjectParameterKey<Texture> HeightTexture = ParameterKeys.NewObject<Texture>();
-        public static readonly ObjectParameterKey<Buffer> ChunkBuffer = ParameterKeys.NewObject<Buffer>();
+        public static readonly ObjectParameterKey<Buffer> InstanceBuffer = ParameterKeys.NewObject<Buffer>();
         public static readonly ValueParameterKey<Vector2> HeightTextureTexelSize = ParameterKeys.NewValue<Vector2>();
         public static readonly ValueParameterKey<Vector2> HeightmapDimensionsInSamples = ParameterKeys.NewValue<Vector2>();
         public static readonly ValueParameterKey<float> HeightScale = ParameterKeys.NewValue<float>();

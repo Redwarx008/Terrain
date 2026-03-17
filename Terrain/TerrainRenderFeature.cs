@@ -62,10 +62,10 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     {
         base.InitializeCore();
 
-        EnsureConfiguredSubRenderFeatures();
         RenderFeatures.CollectionChanged += RenderFeatures_CollectionChanged;
-
+        EnsureConfiguredSubRenderFeatures();
         EnsureDefaultPipelineProcessors();
+           
 
         foreach (var renderFeature in RenderFeatures)
         {
@@ -175,6 +175,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     {
         using var _ = Profiler.Begin(DrawKey);
         var commandList = context.CommandList;
+        var preparedRenderObjects = new HashSet<TerrainRenderObject>();
 
         foreach (var renderFeature in RenderFeatures)
         {
@@ -201,6 +202,14 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             if (renderEffect.Effect == null)
             {
                 continue;
+            }
+
+            // 更新InstanceBuffer数据
+            if (preparedRenderObjects.Add(renderMesh))
+            {
+                // Terrain is drawn by multiple RenderViews in the same frame, and shadow views do not share
+                // the main camera frustum, so chunk selection must happen against the view being drawn now.
+                PrepareTerrainDraw(renderMesh, renderView, commandList);
             }
 
             if (!ReferenceEquals(currentDrawData, drawData))
@@ -671,6 +680,163 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     private RenderStage? FindStage(string stageName)
     {
         return RenderSystem?.RenderStages.FirstOrDefault(stage => string.Equals(stage.Name, stageName, StringComparison.Ordinal));
+    }
+
+    private static void PrepareTerrainDraw(TerrainRenderObject renderObject, RenderView renderView, CommandList commandList)
+    {
+        if (renderObject.Source is not TerrainComponent component
+            || component.MinMaxErrorMaps == null
+            || renderObject.InstanceBuffer == null
+            || renderObject.HeightTexture == null)
+        {
+            renderObject.InstanceCount = 0;
+            return;
+        }
+
+        int instanceCount = SelectChunks(renderObject.World, component, renderView, component.InstanceData);
+        renderObject.UpdateInstanceData(commandList, component.InstanceData, instanceCount);
+    }
+
+    private static int SelectChunks(Matrix terrainWorldMatrix, TerrainComponent component, RenderView renderView, Int4[] instanceData)
+    {
+        if (component.MinMaxErrorMaps == null)
+        {
+            return 0;
+        }
+
+        float viewHeight = Math.Max(1.0f, renderView.ViewSize.Y);
+        float screenSpaceScale = viewHeight * 0.5f * MathF.Abs(renderView.Projection.M22);
+        Matrix.Invert(ref renderView.View, out var viewInverse);
+        var cameraPosition = viewInverse.TranslationVector;
+        var topMap = component.MinMaxErrorMaps[component.MaxLod];
+
+        int selectedCount = 0;
+        for (int y = 0; y < topMap.Height; y++)
+        {
+            for (int x = 0; x < topMap.Width; x++)
+            {
+                TraverseChunk(
+                    terrainWorldMatrix,
+                    component,
+                    cameraPosition,
+                    renderView.Frustum,
+                    screenSpaceScale,
+                    component.MaxScreenSpaceErrorPixels,
+                    x,
+                    y,
+                    component.MaxLod,
+                    instanceData,
+                    ref selectedCount);
+            }
+        }
+
+        return selectedCount;
+    }
+
+    private static void TraverseChunk(
+        Matrix terrainWorldMatrix,
+        TerrainComponent component,
+        Vector3 cameraPosition,
+        BoundingFrustum frustum,
+        float screenSpaceScale,
+        float maxErrorPixels,
+        int chunkX,
+        int chunkY,
+        int lodLevel,
+        Int4[] instanceData,
+        ref int selectedCount)
+    {
+        if (selectedCount >= TerrainComponent.MaxInstanceCount)
+        {
+            return;
+        }
+
+        int sizeInSamples = component.BaseChunkSize << lodLevel;
+        int originSampleX = chunkX * sizeInSamples;
+        int originSampleY = chunkY * sizeInSamples;
+        if (originSampleX >= component.HeightmapWidth - 1 || originSampleY >= component.HeightmapHeight - 1)
+        {
+            return;
+        }
+
+        var minMaxErrorMap = component.MinMaxErrorMaps![lodLevel];
+        minMaxErrorMap.Get(chunkX, chunkY, out var minHeight, out var maxHeight, out var geometricError);
+        var bounds = ComputeWorldBounds(terrainWorldMatrix, component, originSampleX, originSampleY, sizeInSamples, minHeight, maxHeight);
+        var boundsExt = (BoundingBoxExt)bounds;
+        if (!frustum.Contains(ref boundsExt))
+        {
+            return;
+        }
+
+        float distance = DistanceToAabb(cameraPosition, bounds);
+        float sse = distance > 1e-4f ? screenSpaceScale * (geometricError * component.HeightScale) / distance : float.MaxValue;
+        if (lodLevel == 0 || sse <= maxErrorPixels)
+        {
+            instanceData[selectedCount++] = new Int4(chunkX, chunkY, lodLevel, 0);
+            return;
+        }
+
+        var childMap = component.MinMaxErrorMaps[lodLevel - 1];
+        childMap.GetSubNodesExist(chunkX, chunkY, out var subTLExist, out var subTRExist, out var subBLExist, out var subBRExist);
+
+        int childChunkX = chunkX * 2;
+        int childChunkY = chunkY * 2;
+        if (subTLExist)
+        {
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX, childChunkY, lodLevel - 1, instanceData, ref selectedCount);
+        }
+
+        if (subTRExist)
+        {
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX + 1, childChunkY, lodLevel - 1, instanceData, ref selectedCount);
+        }
+
+        if (subBLExist)
+        {
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX, childChunkY + 1, lodLevel - 1, instanceData, ref selectedCount);
+        }
+
+        if (subBRExist)
+        {
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX + 1, childChunkY + 1, lodLevel - 1, instanceData, ref selectedCount);
+        }
+    }
+
+    private static float DistanceToAabb(Vector3 point, BoundingBox bounds)
+    {
+        float dx = MathF.Max(MathF.Max(bounds.Minimum.X - point.X, 0.0f), point.X - bounds.Maximum.X);
+        float dy = MathF.Max(MathF.Max(bounds.Minimum.Y - point.Y, 0.0f), point.Y - bounds.Maximum.Y);
+        float dz = MathF.Max(MathF.Max(bounds.Minimum.Z - point.Z, 0.0f), point.Z - bounds.Maximum.Z);
+        return MathF.Sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    private static BoundingBox ComputeWorldBounds(Matrix terrainWorldMatrix, TerrainComponent component, int originSampleX, int originSampleY, int sizeInSamples, float minHeight, float maxHeight)
+    {
+        int endSampleX = Math.Min(originSampleX + sizeInSamples, component.HeightmapWidth - 1);
+        int endSampleY = Math.Min(originSampleY + sizeInSamples, component.HeightmapHeight - 1);
+
+        Vector3[] corners =
+        {
+            new(originSampleX, minHeight * component.HeightScale, originSampleY),
+            new(endSampleX, minHeight * component.HeightScale, originSampleY),
+            new(originSampleX, minHeight * component.HeightScale, endSampleY),
+            new(endSampleX, minHeight * component.HeightScale, endSampleY),
+            new(originSampleX, maxHeight * component.HeightScale, originSampleY),
+            new(endSampleX, maxHeight * component.HeightScale, originSampleY),
+            new(originSampleX, maxHeight * component.HeightScale, endSampleY),
+            new(endSampleX, maxHeight * component.HeightScale, endSampleY),
+        };
+
+        var worldMin = new Vector3(float.MaxValue);
+        var worldMax = new Vector3(float.MinValue);
+        foreach (var corner in corners)
+        {
+            var world = Vector3.TransformCoordinate(corner, terrainWorldMatrix);
+            worldMin = Vector3.Min(worldMin, world);
+            worldMax = Vector3.Max(worldMax, world);
+        }
+
+        return new BoundingBox(worldMin, worldMax);
     }
 
     private static InputElementDescription[] PrepareInputElements(PipelineStateDescription pipelineState, MeshDraw drawData)

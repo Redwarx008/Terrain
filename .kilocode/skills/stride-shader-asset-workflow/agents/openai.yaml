@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stride Shader Assets"
+  short_description: "Register Stride .sdsl shaders and force asset rebuilds safely"
+  default_prompt: "Use $stride-shader-asset-workflow to add a new Stride .sdsl shader and rebuild the asset database correctly before runtime testing."
