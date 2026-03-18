@@ -1,5 +1,6 @@
 #nullable enable
 
+using System;
 using System.ComponentModel;
 using Stride.Core;
 using Stride.Core.Mathematics;
@@ -28,6 +29,10 @@ public sealed class TerrainComponent : ActivableEntityComponent
     [DataMember(40)]
     public float MaxScreenSpaceErrorPixels { get; set; } = 8.0f;
 
+    [DataMember(45)]
+    [DefaultValue(8192)]
+    public int MaxVisibleChunkInstances { get; set; } = 8192;
+
     [DataMember(50)]
     public Texture? DefaultDiffuseTexture { get; set; }
 
@@ -42,10 +47,14 @@ public sealed class TerrainComponent : ActivableEntityComponent
     [DefaultValue(true)]
     public bool CastShadows { get; set; } = true;
 
-    public const int MaxInstanceCount = 200;
+    [DataMemberIgnore]
+    internal Int4[] InstanceData = Array.Empty<Int4>();
 
     [DataMemberIgnore]
-    internal readonly Int4[] InstanceData = new Int4[MaxInstanceCount];
+    internal int MaxLeafChunkCount;
+
+    [DataMemberIgnore]
+    internal int InstanceCapacity;
 
     [DataMemberIgnore]
     internal TerrainMinMaxErrorMap[]? MinMaxErrorMaps;
@@ -73,6 +82,9 @@ public sealed class TerrainComponent : ActivableEntityComponent
 
     [DataMemberIgnore]
     internal int LoadedBaseChunkSize;
+
+    [DataMemberIgnore]
+    internal int LoadedMaxVisibleChunkInstances;
 
     [DataMemberIgnore]
     internal Texture? LoadedDiffuseTexture;

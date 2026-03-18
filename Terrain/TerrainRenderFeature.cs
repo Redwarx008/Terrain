@@ -29,7 +29,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     private const string ShadowCasterParaboloidStageName = "ShadowMapCasterParaboloid";
     private const string ShadowCasterCubeMapStageName = "ShadowMapCasterCubeMap";
 
-    private static readonly Logger Log = GlobalLogger.GetLogger(nameof(TerrainRenderFeature));
+    private static readonly Logger Log = GlobalLogger.GetLogger("Quantum");
     private static readonly ProfilingKey ExtractKey = new("TerrainRenderFeature.Extract");
     private static readonly ProfilingKey PreparePermutationsImplKey = new("TerrainRenderFeature.PreparePermutationsImpl");
     private static readonly ProfilingKey PrepareKey = new("TerrainRenderFeature.Prepare");
@@ -682,10 +682,12 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         return RenderSystem?.RenderStages.FirstOrDefault(stage => string.Equals(stage.Name, stageName, StringComparison.Ordinal));
     }
 
-    private static void PrepareTerrainDraw(TerrainRenderObject renderObject, RenderView renderView, CommandList commandList)
+    private void PrepareTerrainDraw(TerrainRenderObject renderObject, RenderView renderView, CommandList commandList)
     {
         if (renderObject.Source is not TerrainComponent component
             || component.MinMaxErrorMaps == null
+            || component.InstanceCapacity <= 0
+            || component.InstanceData.Length == 0
             || renderObject.InstanceBuffer == null
             || renderObject.HeightTexture == null)
         {
@@ -697,7 +699,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         renderObject.UpdateInstanceData(commandList, component.InstanceData, instanceCount);
     }
 
-    private static int SelectChunks(Matrix terrainWorldMatrix, TerrainComponent component, RenderView renderView, Int4[] instanceData)
+    private int SelectChunks(Matrix terrainWorldMatrix, TerrainComponent component, RenderView renderView, Int4[] instanceData)
     {
         if (component.MinMaxErrorMaps == null)
         {
@@ -709,6 +711,8 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         Matrix.Invert(ref renderView.View, out var viewInverse);
         var cameraPosition = viewInverse.TranslationVector;
         var topMap = component.MinMaxErrorMaps[component.MaxLod];
+        int instanceCapacity = Math.Min(component.InstanceCapacity, instanceData.Length);
+        bool truncated = false;
 
         int selectedCount = 0;
         for (int y = 0; y < topMap.Height; y++)
@@ -725,9 +729,19 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
                     x,
                     y,
                     component.MaxLod,
+                    instanceCapacity,
                     instanceData,
+                    ref truncated,
                     ref selectedCount);
             }
+        }
+
+        if (truncated)
+        {
+            Log.Warning(
+                $"Terrain chunk selection truncated by instance budget, missing patches may occur. " +
+                $"selectedCount={selectedCount}, instanceCapacity={instanceCapacity}, maxVisibleChunkInstances={component.MaxVisibleChunkInstances}, renderViewIndex={renderView.Index}, renderView=\"{renderView}\", " +
+                $"heightmap={component.HeightmapWidth}x{component.HeightmapHeight}, baseChunkSize={component.BaseChunkSize}, maxScreenSpaceErrorPixels={component.MaxScreenSpaceErrorPixels}.");
         }
 
         return selectedCount;
@@ -743,11 +757,14 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         int chunkX,
         int chunkY,
         int lodLevel,
+        int instanceCapacity,
         Int4[] instanceData,
+        ref bool truncated,
         ref int selectedCount)
     {
-        if (selectedCount >= TerrainComponent.MaxInstanceCount)
+        if (selectedCount >= instanceCapacity)
         {
+            truncated = true;
             return;
         }
 
@@ -783,22 +800,22 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         int childChunkY = chunkY * 2;
         if (subTLExist)
         {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX, childChunkY, lodLevel - 1, instanceData, ref selectedCount);
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX, childChunkY, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
         }
 
         if (subTRExist)
         {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX + 1, childChunkY, lodLevel - 1, instanceData, ref selectedCount);
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX + 1, childChunkY, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
         }
 
         if (subBLExist)
         {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX, childChunkY + 1, lodLevel - 1, instanceData, ref selectedCount);
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX, childChunkY + 1, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
         }
 
         if (subBRExist)
         {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX + 1, childChunkY + 1, lodLevel - 1, instanceData, ref selectedCount);
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX + 1, childChunkY + 1, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
         }
     }
 

@@ -21,7 +21,7 @@ public sealed class TerrainRenderObject : RenderMesh
         BoundingBox = (BoundingBoxExt)new BoundingBox(Vector3.Zero, Vector3.One);
     }
 
-    public void ReinitializeGpuResources(GraphicsDevice graphicsDevice, int baseChunkSize, int heightmapWidth, int heightmapHeight, float[] heights)
+    public void ReinitializeGpuResources(GraphicsDevice graphicsDevice, int baseChunkSize, int heightmapWidth, int heightmapHeight, float[] heights, int instanceCapacity)
     {
         ReleaseGpuResources();
 
@@ -33,7 +33,7 @@ public sealed class TerrainRenderObject : RenderMesh
             heights,
             TextureFlags.ShaderResource);
 
-        InstanceBuffer = Buffer.Structured.New<Int4>(graphicsDevice, TerrainComponent.MaxInstanceCount);
+        InstanceBuffer = Buffer.Structured.New<Int4>(graphicsDevice, instanceCapacity);
         CreatePatchGeometry(graphicsDevice, baseChunkSize);
         ResetRenderState();
     }

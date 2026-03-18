@@ -94,6 +94,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         return component.IsInitialized
             && ReferenceEquals(component.LoadedHeightmapTexture, component.HeightmapTexture)
             && component.LoadedBaseChunkSize == component.BaseChunkSize
+            && component.LoadedMaxVisibleChunkInstances == component.MaxVisibleChunkInstances
             && IsGpuDataValid(renderObject);
     }
 
@@ -144,6 +145,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
                 minHeight,
                 maxHeight,
                 maxLod,
+                ComputeMaxLeafChunkCount(width, height, baseChunkSize),
                 CreateMinMaxErrorMaps(heights, width, height, baseChunkSize, maxLod));
             return true;
         }
@@ -156,7 +158,17 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
     private void ApplyLoadedTerrainData(GraphicsDevice graphicsDevice, TerrainComponent component, TerrainRenderObject renderObject, LoadedTerrainData loadedData)
     {
-        renderObject.ReinitializeGpuResources(graphicsDevice, component.BaseChunkSize, loadedData.Width, loadedData.Height, loadedData.Heights);
+        component.MaxLeafChunkCount = loadedData.MaxLeafChunkCount;
+        component.InstanceCapacity = Math.Min(loadedData.MaxLeafChunkCount, Math.Max(1, component.MaxVisibleChunkInstances));
+        component.InstanceData = new Int4[component.InstanceCapacity];
+
+        renderObject.ReinitializeGpuResources(
+            graphicsDevice,
+            component.BaseChunkSize,
+            loadedData.Width,
+            loadedData.Height,
+            loadedData.Heights,
+            component.InstanceCapacity);
 
         component.HeightmapWidth = loadedData.Width;
         component.HeightmapHeight = loadedData.Height;
@@ -179,6 +191,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
         component.LoadedHeightmapTexture = component.HeightmapTexture;
         component.LoadedBaseChunkSize = component.BaseChunkSize;
+        component.LoadedMaxVisibleChunkInstances = component.MaxVisibleChunkInstances;
         component.IsInitialized = true;
     }
 
@@ -359,6 +372,13 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         return maps;
     }
 
+    private static int ComputeMaxLeafChunkCount(int width, int height, int baseChunkSize)
+    {
+        int baseDimX = (width - 1 + baseChunkSize - 1) / baseChunkSize;
+        int baseDimY = (height - 1 + baseChunkSize - 1) / baseChunkSize;
+        return baseDimX * baseDimY;
+    }
+
     private static void ComputeMinMax(float[] heights, int width, int height, int originX, int originY, int size, out float minHeight, out float maxHeight)
     {
         minHeight = float.MaxValue;
@@ -489,5 +509,6 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         float MinHeight,
         float MaxHeight,
         int MaxLod,
+        int MaxLeafChunkCount,
         TerrainMinMaxErrorMap[] MinMaxErrorMaps);
 }
