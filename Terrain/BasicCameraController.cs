@@ -16,6 +16,7 @@ namespace Terrain;
 public class BasicCameraController : SyncScript
 {
     private const float MaximumPitch = MathUtil.PiOverTwo * 0.99f;
+    private static readonly float[] SprintSpeedFactors = [2.0f, 4.0f, 8.0f, 16.0f, 32.0f];
 
     private Vector3 upVector;
     private Vector3 translation;
@@ -24,11 +25,13 @@ public class BasicCameraController : SyncScript
 
     public bool Gamepad { get; set; } = false;
 
-    public Vector3 KeyboardMovementSpeed { get; set; } = new Vector3(5.0f);
+    public Vector3 KeyboardMovementSpeed { get; set; } = new Vector3(15.0f);
 
     public Vector3 TouchMovementSpeed { get; set; } = new Vector3(0.7f, 0.7f, 0.3f);
 
-    public float SpeedFactor { get; set; } = 5.0f;
+    public float SpeedFactor { get; set; } = 4.0f;
+
+    public int SprintSpeedGearIndex { get; set; } = 1;
 
     public Vector2 KeyboardRotationSpeed { get; set; } = new Vector2(3.0f);
 
@@ -42,6 +45,8 @@ public class BasicCameraController : SyncScript
 
         // Default up-direction
         upVector = Vector3.UnitY;
+        SprintSpeedGearIndex = Math.Clamp(SprintSpeedGearIndex, 0, SprintSpeedFactors.Length - 1);
+        SpeedFactor = SprintSpeedFactors[SprintSpeedGearIndex];
 
         // Configure touch input
         if (!Platform.IsWindowsDesktop)
@@ -66,6 +71,8 @@ public class BasicCameraController : SyncScript
 
         // Keyboard and Gamepad based movement
         {
+            UpdateSprintSpeedGearSelection();
+
             // Our base speed is: one unit per second:
             //    deltaTime contains the duration of the previous frame, let's say that in this update
             //    or frame it is equal to 1/60, that means that the previous update ran 1/60 of a second ago
@@ -276,5 +283,25 @@ public class BasicCameraController : SyncScript
 
         // Yaw around global up-vector, pitch and roll in local space
         Entity.Transform.Rotation *= Quaternion.RotationAxis(right, pitch) * Quaternion.RotationAxis(upVector, yaw);
+    }
+
+    private void UpdateSprintSpeedGearSelection()
+    {
+        if (!Input.HasMouse)
+        {
+            return;
+        }
+
+        bool isShiftDown = Input.IsKeyDown(Keys.LeftShift) || Input.IsKeyDown(Keys.RightShift);
+        if (!isShiftDown || Math.Abs(Input.MouseWheelDelta) <= MathUtil.ZeroTolerance)
+        {
+            return;
+        }
+
+        SprintSpeedGearIndex = Math.Clamp(
+            SprintSpeedGearIndex + Math.Sign(Input.MouseWheelDelta),
+            0,
+            SprintSpeedFactors.Length - 1);
+        SpeedFactor = SprintSpeedFactors[SprintSpeedGearIndex];
     }
 }

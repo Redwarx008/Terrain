@@ -78,7 +78,7 @@ Hierarchy:
                 Components:
                     9369e8ff95be1e0793aad62d5ea93d91: !TransformComponent
                         Id: fde748c5-18a3-4bb7-a09a-71e7b37e7498
-                        Position: {X: 10.0, Y: 10.0, Z: 10.0}
+                        Position: {X: 3055.6055, Y: 7.906925, Z: 297.55392}
                         Rotation: {X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
                         Scale: {X: 6.0, Y: 6.0, Z: 6.0}
                         Children: {}
@@ -100,13 +100,15 @@ Hierarchy:
                         Id: 30e15808-a2eb-4691-b1a5-15c658c53f74
                         Name: null
                         Projection: Perspective
+                        FarClipPlane: 100000.0
                         Slot: aa82821e-a0b7-4ac6-a4e7-7930bbac699c
                     91a17be5c01f5bc39182f3ae5861e110: !Terrain.BasicCameraController,Terrain
                         Id: 3fb5026f-6062-4696-8157-f211f021bbc4
                         Gamepad: false
-                        KeyboardMovementSpeed: {X: 5.0, Y: 5.0, Z: 5.0}
+                        KeyboardMovementSpeed: {X: 15.0, Y: 15.0, Z: 15.0}
                         TouchMovementSpeed: {X: 0.7, Y: 0.7, Z: 0.3}
-                        SpeedFactor: 5.0
+                        SpeedFactor: 4.0
+                        SprintSpeedGearIndex: 1
                         KeyboardRotationSpeed: {X: 3.0, Y: 3.0}
                         MouseRotationSpeed: {X: 1.0, Y: 1.0}
                         TouchRotationSpeed: {X: 1.0, Y: 0.7}
