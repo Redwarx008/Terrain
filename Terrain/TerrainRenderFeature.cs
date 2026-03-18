@@ -15,6 +15,7 @@ using Stride.Core.Threading;
 using Stride.Graphics;
 using Stride.Rendering;
 using Stride.Rendering.Lights;
+using Stride.Rendering.LightProbes;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Shadows;
 using Buffer = Stride.Graphics.Buffer;
@@ -385,6 +386,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             LightAmbientRenderer => new LightAmbientRenderer(),
             LightDirectionalGroupRenderer => new LightDirectionalGroupRenderer(),
             LightSkyboxRenderer => new LightSkyboxRenderer(),
+            LightProbeRenderer => new LightProbeRenderer(),
             LightPointGroupRenderer => new LightPointGroupRenderer(),
             LightSpotGroupRenderer => new LightSpotGroupRenderer(),
             LightClusteredPointSpotGroupRenderer => new LightClusteredPointSpotGroupRenderer(),
@@ -463,8 +465,10 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         lightRenderers.Add(new LightAmbientRenderer());
         lightRenderers.Add(new LightDirectionalGroupRenderer());
         lightRenderers.Add(new LightSkyboxRenderer());
+        lightRenderers.Add(new LightClusteredPointSpotGroupRenderer());
         lightRenderers.Add(new LightPointGroupRenderer());
         lightRenderers.Add(new LightSpotGroupRenderer());
+        lightRenderers.Add(new LightProbeRenderer());
     }
 
     private void AddDefaultShadowRenderers(ICollection<ILightShadowMapRenderer> renderers)
