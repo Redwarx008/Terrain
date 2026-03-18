@@ -17,7 +17,7 @@ namespace Terrain;
 public sealed class TerrainComponent : ActivableEntityComponent
 {
     [DataMember(10)]
-    public string HeightmapPath { get; set; } = "Resources/terrain_heightmap.png";
+    public Texture? HeightmapTexture { get; set; }
 
     [DataMember(20)]
     public float HeightScale { get; set; } = 24.0f;
@@ -69,7 +69,7 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal bool IsInitialized;
 
     [DataMemberIgnore]
-    internal string? LoadedPath;
+    internal Texture? LoadedHeightmapTexture;
 
     [DataMemberIgnore]
     internal int LoadedBaseChunkSize;

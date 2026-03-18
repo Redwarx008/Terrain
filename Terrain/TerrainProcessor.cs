@@ -1,13 +1,12 @@
 #nullable enable
 
 using System;
-using System.Drawing;
-using System.IO;
 using Stride.Core.Annotations;
 using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Engine.Processors;
+using Stride.Games;
 using Stride.Graphics;
 using Stride.Rendering;
 using Stride.Rendering.Materials;
@@ -18,7 +17,7 @@ namespace Terrain;
 public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, TerrainRenderObject>, IEntityComponentRenderProcessor
 {
     private const float DiffuseWorldRepeatSize = 8.0f;
-    private static readonly Logger Log = GlobalLogger.GetLogger(nameof(TerrainProcessor));
+    private static readonly Logger Log = GlobalLogger.GetLogger("Quantum");
 
     public VisibilityGroup VisibilityGroup { get; set; } = null!;
 
@@ -46,10 +45,16 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     {
         base.Draw(context);
 
-        var graphicsDevice = Services.GetService<IGraphicsDeviceService>()!.GraphicsDevice;
+        var graphicsDevice = Services.GetService<IGraphicsDeviceService>()?.GraphicsDevice;
+        var graphicsContext = Services.GetService<IGame>()?.GraphicsContext;
+        if (graphicsDevice == null || graphicsContext == null)
+        {
+            return;
+        }
+
         foreach (var pair in ComponentDatas)
         {
-            if (!EnsureInitialized(graphicsDevice, pair.Key, pair.Value))
+            if (!EnsureInitialized(graphicsDevice, graphicsContext.CommandList, pair.Key, pair.Value))
             {
                 continue;
             }
@@ -58,33 +63,36 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         }
     }
 
-    private bool EnsureInitialized(GraphicsDevice graphicsDevice, TerrainComponent component, TerrainRenderObject renderObject)
+    private bool EnsureInitialized(GraphicsDevice graphicsDevice, CommandList commandList, TerrainComponent component, TerrainRenderObject renderObject)
     {
-        string resolvedPath = ResolveHeightmapPath(component.HeightmapPath);
-        if (IsCurrentInitializationValid(component, renderObject, resolvedPath))
+        if (component.HeightmapTexture == null)
+        {
+            Log.Warning("Terrain component is missing HeightmapTexture.");
+            component.IsInitialized = false;
+            renderObject.Enabled = false;
+            return false;
+        }
+
+        if (IsCurrentInitializationValid(component, renderObject))
         {
             return true;
         }
 
-        if (!TryLoadTerrainData(resolvedPath, component.BaseChunkSize, out var loadedData))
+        if (!TryLoadTerrainData(commandList, component.HeightmapTexture, component.BaseChunkSize, out var loadedData))
         {
-            if (!IsGpuDataValid(renderObject) || !component.IsInitialized)
-            {
-                renderObject.Enabled = false;
-                return false;
-            }
-
-            return true;
+            component.IsInitialized = false;
+            renderObject.Enabled = false;
+            return false;
         }
 
         ApplyLoadedTerrainData(graphicsDevice, component, renderObject, loadedData);
         return true;
     }
 
-    private static bool IsCurrentInitializationValid(TerrainComponent component, TerrainRenderObject renderObject, string resolvedPath)
+    private static bool IsCurrentInitializationValid(TerrainComponent component, TerrainRenderObject renderObject)
     {
         return component.IsInitialized
-            && string.Equals(component.LoadedPath, resolvedPath, StringComparison.OrdinalIgnoreCase)
+            && ReferenceEquals(component.LoadedHeightmapTexture, component.HeightmapTexture)
             && component.LoadedBaseChunkSize == component.BaseChunkSize
             && IsGpuDataValid(renderObject);
     }
@@ -98,58 +106,52 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             && renderObject.Mesh != null;
     }
 
-    private bool TryLoadTerrainData(string resolvedPath, int baseChunkSize, out LoadedTerrainData loadedData)
+    private bool TryLoadTerrainData(CommandList commandList, Texture heightmapTexture, int baseChunkSize, out LoadedTerrainData loadedData)
     {
         loadedData = default;
-        if (!File.Exists(resolvedPath))
+        try
         {
-            Log.Warning($"Terrain heightmap was not found at '{resolvedPath}'.");
-            return false;
-        }
+            using var image = heightmapTexture.GetDataAsImage(commandList);
+            var pixelBuffer = image.PixelBuffer[0];
 
-        using var bitmap = new Bitmap(resolvedPath);
-        if (bitmap.Width < 2 || bitmap.Height < 2)
-        {
-            Log.Warning($"Terrain heightmap '{resolvedPath}' is too small.");
-            return false;
-        }
-
-        int width = bitmap.Width;
-        int height = bitmap.Height;
-        var heights = new float[width * height];
-        float minHeight = float.MaxValue;
-        float maxHeight = float.MinValue;
-
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
+            if (pixelBuffer.Width < 2 || pixelBuffer.Height < 2)
             {
-                float value = bitmap.GetPixel(x, y).R / 255.0f;
-                heights[y * width + x] = value;
-                minHeight = MathF.Min(minHeight, value);
-                maxHeight = MathF.Max(maxHeight, value);
+                Log.Warning("Terrain HeightmapTexture is too small.");
+                return false;
             }
-        }
 
-        int sampleExtent = Math.Max(width - 1, height - 1);
-        int rootSampleSize = Math.Max(1, baseChunkSize);
-        int maxLod = 0;
-        while (rootSampleSize < sampleExtent)
+            if (!TryReadHeightData(pixelBuffer, image.Description.Format, out var heights, out var minHeight, out var maxHeight))
+            {
+                Log.Warning($"Terrain HeightmapTexture uses unsupported pixel format '{image.Description.Format}'.");
+                return false;
+            }
+
+            int width = pixelBuffer.Width;
+            int height = pixelBuffer.Height;
+            int sampleExtent = Math.Max(width - 1, height - 1);
+            int rootSampleSize = Math.Max(1, baseChunkSize);
+            int maxLod = 0;
+            while (rootSampleSize < sampleExtent)
+            {
+                rootSampleSize <<= 1;
+                maxLod++;
+            }
+
+            loadedData = new LoadedTerrainData(
+                width,
+                height,
+                heights,
+                minHeight,
+                maxHeight,
+                maxLod,
+                CreateMinMaxErrorMaps(heights, width, height, baseChunkSize, maxLod));
+            return true;
+        }
+        catch (Exception exception)
         {
-            rootSampleSize <<= 1;
-            maxLod++;
+            Log.Warning($"Terrain HeightmapTexture could not be read: {exception.Message}");
+            return false;
         }
-
-        loadedData = new LoadedTerrainData(
-            resolvedPath,
-            width,
-            height,
-            heights,
-            minHeight,
-            maxHeight,
-            maxLod,
-            CreateMinMaxErrorMaps(heights, width, height, baseChunkSize, maxLod));
-        return true;
     }
 
     private void ApplyLoadedTerrainData(GraphicsDevice graphicsDevice, TerrainComponent component, TerrainRenderObject renderObject, LoadedTerrainData loadedData)
@@ -175,7 +177,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             component.IsRegisteredWithVisibilityGroup = true;
         }
 
-        component.LoadedPath = loadedData.Path;
+        component.LoadedHeightmapTexture = component.HeightmapTexture;
         component.LoadedBaseChunkSize = component.BaseChunkSize;
         component.IsInitialized = true;
     }
@@ -422,29 +424,55 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         return maxError;
     }
 
-    private static string ResolveHeightmapPath(string path)
+    private static bool TryReadHeightData(PixelBuffer pixelBuffer, PixelFormat format, out float[] heights, out float minHeight, out float maxHeight)
     {
-        if (Path.IsPathRooted(path))
+        switch (format)
         {
-            return path;
+            case PixelFormat.R8_UNorm:
+                return TryConvertHeights(pixelBuffer.GetPixels<byte>(), static value => value / (float)byte.MaxValue, out heights, out minHeight, out maxHeight);
+            case PixelFormat.R16_UNorm:
+                return TryConvertHeights(pixelBuffer.GetPixels<ushort>(), static value => value / (float)ushort.MaxValue, out heights, out minHeight, out maxHeight);
+            case PixelFormat.R16_Float:
+                return TryConvertHeights(pixelBuffer.GetPixels<global::System.Half>(), static value => (float)value, out heights, out minHeight, out maxHeight);
+            case PixelFormat.R32_Float:
+                return TryConvertHeights(pixelBuffer.GetPixels<float>(), static value => value, out heights, out minHeight, out maxHeight);
+            case PixelFormat.B8G8R8A8_UNorm:
+            case PixelFormat.B8G8R8A8_UNorm_SRgb:
+            case PixelFormat.B8G8R8X8_UNorm:
+            case PixelFormat.B8G8R8X8_UNorm_SRgb:
+            case PixelFormat.R8G8B8A8_UNorm:
+            case PixelFormat.R8G8B8A8_UNorm_SRgb:
+                return TryConvertHeights(pixelBuffer.GetPixels<Color>(), static value => value.R / (float)byte.MaxValue, out heights, out minHeight, out maxHeight);
+            default:
+                heights = Array.Empty<float>();
+                minHeight = 0.0f;
+                maxHeight = 0.0f;
+                return false;
+        }
+    }
+
+    private static bool TryConvertHeights<T>(T[] source, Func<T, float> convert, out float[] heights, out float minHeight, out float maxHeight)
+    {
+        if (source.Length == 0)
+        {
+            heights = Array.Empty<float>();
+            minHeight = 0.0f;
+            maxHeight = 0.0f;
+            return false;
         }
 
-        var candidates = new[]
+        heights = new float[source.Length];
+        minHeight = float.MaxValue;
+        maxHeight = float.MinValue;
+        for (int index = 0; index < source.Length; index++)
         {
-            Path.Combine(AppContext.BaseDirectory, path),
-            Path.Combine(Environment.CurrentDirectory, path),
-            Path.Combine(Directory.GetCurrentDirectory(), path),
-        };
-
-        foreach (var candidate in candidates)
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
+            float value = convert(source[index]);
+            heights[index] = value;
+            minHeight = MathF.Min(minHeight, value);
+            maxHeight = MathF.Max(maxHeight, value);
         }
 
-        return Path.GetFullPath(path);
+        return true;
     }
 
     private static Matrix CreateTerrainWorldMatrix(Matrix entityWorldMatrix)
@@ -455,7 +483,6 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     }
 
     private readonly record struct LoadedTerrainData(
-        string Path,
         int Width,
         int Height,
         float[] Heights,
