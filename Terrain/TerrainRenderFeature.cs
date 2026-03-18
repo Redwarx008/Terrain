@@ -316,45 +316,45 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             or ShadowCasterRenderFeature;
     }
 
+    // Terrain still clones the mesh pipeline's light renderer configuration so it shades with the same
+    // light groups as regular meshes. It no longer owns a private ShadowMapRenderer, because Stride's
+    // ForwardRenderer only drives shadow-map rendering from the main MeshRenderFeature shadow system.
     private ForwardLightingRenderFeature CreateForwardLightingFeatureFromMeshTemplateOrDefault()
     {
+        var forwardLighting = new ForwardLightingRenderFeature();
+        var failureReason = string.Empty;
         var source = TryFindMeshRenderFeatureTemplate()?
             .RenderFeatures
             .OfType<ForwardLightingRenderFeature>()
             .FirstOrDefault();
 
-        if (source == null)
+        if (source != null && TryCreateLightRenderers(source, out var lightRenderers, out failureReason))
         {
-            return CreateDefaultForwardLightingFeature();
+            foreach (var lightRenderer in lightRenderers)
+            {
+                forwardLighting.LightRenderers.Add(lightRenderer);
+            }
+        }
+        else
+        {
+            if (source != null)
+            {
+                Log.Warning($"Terrain render feature fell back to default light renderer configuration: {failureReason}");
+            }
+
+            AddDefaultLightRenderers(forwardLighting.LightRenderers);
         }
 
-        if (!TryCreateLightRenderers(source, out var lightRenderers, out var failureReason))
+        var sharedShadowMapRenderer = TryFindMainShadowMapRenderer();
+        if (sharedShadowMapRenderer != null)
         {
-            Log.Warning($"Terrain render feature fell back to default lighting configuration: {failureReason}");
-            return CreateDefaultForwardLightingFeature();
+            forwardLighting.ShadowMapRenderer = new TerrainSharedShadowMapRendererProxy(sharedShadowMapRenderer);
+        }
+        else
+        {
+            Log.Warning("Terrain render feature could not find the main MeshRenderFeature shadow map renderer. Terrain shadow receiving is disabled.");
         }
 
-        if (!TryCreateShadowMapRenderer(source.ShadowMapRenderer, out var shadowMapRenderer, out failureReason))
-        {
-            Log.Warning($"Terrain render feature fell back to default lighting configuration: {failureReason}");
-            return CreateDefaultForwardLightingFeature();
-        }
-
-        var forwardLighting = new ForwardLightingRenderFeature();
-        foreach (var lightRenderer in lightRenderers)
-        {
-            forwardLighting.LightRenderers.Add(lightRenderer);
-        }
-
-        forwardLighting.ShadowMapRenderer = shadowMapRenderer;
-        return forwardLighting;
-    }
-
-    private ForwardLightingRenderFeature CreateDefaultForwardLightingFeature()
-    {
-        var forwardLighting = new ForwardLightingRenderFeature();
-        AddDefaultLightRenderers(forwardLighting.LightRenderers);
-        forwardLighting.ShadowMapRenderer = CreateDefaultShadowMapRenderer();
         return forwardLighting;
     }
 
@@ -394,72 +394,6 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         };
     }
 
-    private bool TryCreateShadowMapRenderer(IShadowMapRenderer? source, out IShadowMapRenderer? shadowMapRenderer, out string failureReason)
-    {
-        if (source == null)
-        {
-            shadowMapRenderer = null;
-            failureReason = string.Empty;
-            return true;
-        }
-
-        if (source is not ShadowMapRenderer sourceRenderer)
-        {
-            shadowMapRenderer = null;
-            failureReason = $"unsupported shadow map renderer '{source.GetType().FullName}' in mesh template";
-            return false;
-        }
-
-        var clone = new ShadowMapRenderer();
-        foreach (var renderer in sourceRenderer.Renderers)
-        {
-            var clonedRenderer = CreateShadowRenderer(renderer);
-            if (clonedRenderer == null)
-            {
-                shadowMapRenderer = null;
-                failureReason = $"unsupported shadow renderer '{renderer.GetType().FullName}' in mesh template";
-                return false;
-            }
-
-            clone.Renderers.Add(clonedRenderer);
-        }
-
-        shadowMapRenderer = clone;
-        failureReason = string.Empty;
-        return true;
-    }
-
-    private ILightShadowMapRenderer? CreateShadowRenderer(ILightShadowMapRenderer renderer)
-    {
-        return renderer switch
-        {
-            LightDirectionalShadowMapRenderer directional => new LightDirectionalShadowMapRenderer
-            {
-                ShadowCasterRenderStage = MapShadowStage(directional.ShadowCasterRenderStage, ShadowCasterStageName),
-            },
-            LightSpotShadowMapRenderer spot => new LightSpotShadowMapRenderer
-            {
-                ShadowCasterRenderStage = MapShadowStage(spot.ShadowCasterRenderStage, ShadowCasterStageName),
-            },
-            LightPointShadowMapRendererParaboloid paraboloid => new LightPointShadowMapRendererParaboloid
-            {
-                ShadowCasterRenderStage = MapShadowStage(paraboloid.ShadowCasterRenderStage, ShadowCasterParaboloidStageName),
-            },
-            LightPointShadowMapRendererCubeMap cubeMap => new LightPointShadowMapRendererCubeMap
-            {
-                ShadowCasterRenderStage = MapShadowStage(cubeMap.ShadowCasterRenderStage, ShadowCasterCubeMapStageName),
-            },
-            _ => null,
-        };
-    }
-
-    private ShadowMapRenderer CreateDefaultShadowMapRenderer()
-    {
-        var shadowMapRenderer = new ShadowMapRenderer();
-        AddDefaultShadowRenderers(shadowMapRenderer.Renderers);
-        return shadowMapRenderer;
-    }
-
     private void AddDefaultLightRenderers(ICollection<LightGroupRendererBase> lightRenderers)
     {
         lightRenderers.Add(new LightAmbientRenderer());
@@ -471,24 +405,16 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         lightRenderers.Add(new LightProbeRenderer());
     }
 
-    private void AddDefaultShadowRenderers(ICollection<ILightShadowMapRenderer> renderers)
+    // This looks up the shadow renderer that is actually driven by ForwardRenderer at runtime.
+    // Terrain shadow receiving depends on that mesh shadow system collecting first, so compositor order
+    // must keep MeshRenderFeature ahead of TerrainRenderFeature.
+    private IShadowMapRenderer? TryFindMainShadowMapRenderer()
     {
-        renderers.Add(new LightDirectionalShadowMapRenderer
-        {
-            ShadowCasterRenderStage = MapShadowStage(defaultStageName: ShadowCasterStageName),
-        });
-        renderers.Add(new LightSpotShadowMapRenderer
-        {
-            ShadowCasterRenderStage = MapShadowStage(defaultStageName: ShadowCasterStageName),
-        });
-        renderers.Add(new LightPointShadowMapRendererParaboloid
-        {
-            ShadowCasterRenderStage = MapShadowStage(defaultStageName: ShadowCasterParaboloidStageName),
-        });
-        renderers.Add(new LightPointShadowMapRendererCubeMap
-        {
-            ShadowCasterRenderStage = MapShadowStage(defaultStageName: ShadowCasterCubeMapStageName),
-        });
+        return TryFindMeshRenderFeatureTemplate()?
+            .RenderFeatures
+            .OfType<ForwardLightingRenderFeature>()
+            .FirstOrDefault()?
+            .ShadowMapRenderer;
     }
 
     private RenderStage? MapShadowStage(RenderStage? sourceStage, string defaultStageName)
@@ -899,5 +825,78 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         }
 
         return foundDescIndex;
+    }
+}
+
+// This adapter is intentionally read-only from Terrain's point of view: it lets Terrain lighting query
+// shadow maps produced by the main mesh pipeline, but it is not the owner of shadow-map allocation,
+// rendering, or lifetime management.
+internal sealed class TerrainSharedShadowMapRendererProxy : IShadowMapRenderer
+{
+    private readonly IShadowMapRenderer sharedShadowMapRenderer;
+
+    public TerrainSharedShadowMapRendererProxy(IShadowMapRenderer sharedShadowMapRenderer)
+    {
+        this.sharedShadowMapRenderer = sharedShadowMapRenderer;
+    }
+
+    public RenderSystem RenderSystem
+    {
+        get => sharedShadowMapRenderer.RenderSystem;
+        set => sharedShadowMapRenderer.RenderSystem = value;
+    }
+
+    public HashSet<RenderView> RenderViewsWithShadows => sharedShadowMapRenderer.RenderViewsWithShadows;
+
+    public List<ILightShadowMapRenderer> Renderers => sharedShadowMapRenderer.Renderers;
+
+    public LightShadowMapTexture FindShadowMap(RenderView renderView, RenderLight light)
+    {
+        return sharedShadowMapRenderer.FindShadowMap(renderView, light);
+    }
+
+    public void Collect(RenderContext context, Dictionary<RenderView, ForwardLightingRenderFeature.RenderViewLightData> renderViewLightDatas)
+    {
+        foreach (var renderViewData in renderViewLightDatas)
+        {
+            // Do not allocate atlases or create shadow render views here. The main mesh shadow system has
+            // already done that work; Terrain only remaps those finished LightShadowMapTexture entries into
+            // its own per-view lighting data.
+            renderViewData.Value.RenderLightsWithShadows.Clear();
+
+            foreach (var light in renderViewData.Value.VisibleLightsWithShadows)
+            {
+                var shadowMap = sharedShadowMapRenderer.FindShadowMap(renderViewData.Key, light);
+                if (shadowMap != null)
+                {
+                    renderViewData.Value.RenderLightsWithShadows[light] = shadowMap;
+                }
+            }
+        }
+    }
+
+    public void Draw(RenderDrawContext drawContext)
+    {
+        // Shadow-map drawing is owned by the main ForwardRenderer -> MeshRenderFeature path.
+        // Doing anything here would risk drawing the same shared renderer twice.
+    }
+
+    public void PrepareAtlasAsRenderTargets(CommandList commandList)
+    {
+        // Forward these calls so the shadow/lighting contract still sees the main atlas resources, even
+        // though Terrain itself does not own or manage atlas allocation.
+        sharedShadowMapRenderer.PrepareAtlasAsRenderTargets(commandList);
+    }
+
+    public void PrepareAtlasAsShaderResourceViews(CommandList commandList)
+    {
+        // Forward these calls so the shadow/lighting contract still sees the main atlas resources, even
+        // though Terrain itself does not own or manage atlas allocation.
+        sharedShadowMapRenderer.PrepareAtlasAsShaderResourceViews(commandList);
+    }
+
+    public void Flush(RenderDrawContext context)
+    {
+        // Do not flush shared shadow state from Terrain; the main mesh pipeline owns that lifecycle.
     }
 }
