@@ -11,6 +11,7 @@ using Stride.Graphics;
 using Stride.Rendering;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
+using System.Threading.Tasks;
 
 namespace Terrain;
 
@@ -332,16 +333,17 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         maps[0] = new TerrainMinMaxErrorMap(baseDimX, baseDimY);
 
         var baseMap = maps[0];
-        for (int y = 0; y < baseMap.Height; y++)
+        Parallel.For(0, baseMap.Height, y =>
         {
             int originY = y * baseChunkSize;
             for (int x = 0; x < baseMap.Width; x++)
             {
                 int originX = x * baseChunkSize;
                 ComputeMinMax(heights, width, height, originX, originY, baseChunkSize, out var minHeight, out var maxHeight);
+                // The leaf patch already matches the rendered mesh resolution, so its simplification error is zero.
                 baseMap.Set(x, y, minHeight, maxHeight, 0.0f);
             }
-        }
+        });
 
         for (int lod = 1; lod <= maxLod; lod++)
         {
@@ -349,7 +351,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             var map = maps[lod] = new TerrainMinMaxErrorMap((childMap.Width + 1) / 2, (childMap.Height + 1) / 2);
             int size = baseChunkSize << lod;
 
-            for (int y = 0; y < map.Height; y++)
+            Parallel.For(0, map.Height, y =>
             {
                 int childY = y * 2;
                 int originY = y * size;
@@ -364,10 +366,10 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
                     AccumulateChildMinMax(childMap, childX + 1, childY, ref minHeight, ref maxHeight);
                     AccumulateChildMinMax(childMap, childX, childY + 1, ref minHeight, ref maxHeight);
                     AccumulateChildMinMax(childMap, childX + 1, childY + 1, ref minHeight, ref maxHeight);
-                    float geometricError = ComputeLevelError(heights, width, height, originX, originY, size);
+                    float geometricError = ComputeLocalError(heights, width, height, originX, originY, size, lod);
                     map.Set(x, y, minHeight, maxHeight, geometricError);
                 }
-            }
+            });
         }
 
         return maps;
@@ -412,37 +414,61 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         maxHeight = MathF.Max(maxHeight, childMax);
     }
 
-    private static float ComputeLevelError(float[] heights, int width, int height, int originX, int originY, int size)
+    private static float ComputeLocalError(float[] heights, int width, int height, int originX, int originY, int size, int lod)
     {
-        int x0 = Math.Clamp(originX, 0, width - 1);
-        int y0 = Math.Clamp(originY, 0, height - 1);
-        int x1 = Math.Clamp(originX + size, 0, width - 1);
-        int y1 = Math.Clamp(originY + size, 0, height - 1);
-
-        float h00 = heights[y0 * width + x0];
-        float h10 = heights[y0 * width + x1];
-        float h01 = heights[y1 * width + x0];
-        float h11 = heights[y1 * width + x1];
-
         float maxError = 0.0f;
+        int stride = 1 << lod;
+        int halfStride = stride >> 1;
         int maxX = Math.Min(originX + size, width - 1);
         int maxY = Math.Min(originY + size, height - 1);
 
-        for (int y = originY; y <= maxY; y++)
+        // Horizontal edge midpoints that disappear when this LOD collapses the finer mesh.
+        for (int y = originY; y <= maxY; y += stride)
         {
-            float fy = size > 0 ? (y - originY) / (float)size : 0.0f;
-            for (int x = originX; x <= maxX; x++)
+            for (int x = originX + halfStride; x <= maxX - halfStride; x += stride)
             {
-                float fx = size > 0 ? (x - originX) / (float)size : 0.0f;
-                float top = MathUtil.Lerp(h00, h10, fx);
-                float bottom = MathUtil.Lerp(h01, h11, fx);
-                float approx = MathUtil.Lerp(top, bottom, fy);
-                float actual = heights[Math.Clamp(y, 0, height - 1) * width + Math.Clamp(x, 0, width - 1)];
-                maxError = MathF.Max(maxError, MathF.Abs(actual - approx));
+                float actual = GetHeightClamped(heights, width, height, x, y);
+                float left = GetHeightClamped(heights, width, height, x - halfStride, y);
+                float right = GetHeightClamped(heights, width, height, x + halfStride, y);
+                float simplified = (left + right) * 0.5f;
+                maxError = MathF.Max(maxError, MathF.Abs(actual - simplified));
+            }
+        }
+
+        // Vertical edge midpoints removed by the same simplification step.
+        for (int y = originY + halfStride; y <= maxY - halfStride; y += stride)
+        {
+            for (int x = originX; x <= maxX; x += stride)
+            {
+                float actual = GetHeightClamped(heights, width, height, x, y);
+                float top = GetHeightClamped(heights, width, height, x, y - halfStride);
+                float bottom = GetHeightClamped(heights, width, height, x, y + halfStride);
+                float simplified = (top + bottom) * 0.5f;
+                maxError = MathF.Max(maxError, MathF.Abs(actual - simplified));
+            }
+        }
+
+        // Cell centers are evaluated against the diagonal implied by the patch triangulation.
+        for (int y = originY + halfStride; y <= maxY - halfStride; y += stride)
+        {
+            for (int x = originX + halfStride; x <= maxX - halfStride; x += stride)
+            {
+                float actual = GetHeightClamped(heights, width, height, x, y);
+                float topLeft = GetHeightClamped(heights, width, height, x - halfStride, y - halfStride);
+                float bottomRight = GetHeightClamped(heights, width, height, x + halfStride, y + halfStride);
+                float simplified = (topLeft + bottomRight) * 0.5f;
+                maxError = MathF.Max(maxError, MathF.Abs(actual - simplified));
             }
         }
 
         return maxError;
+    }
+
+    private static float GetHeightClamped(float[] heights, int width, int height, int x, int y)
+    {
+        int clampedX = Math.Clamp(x, 0, width - 1);
+        int clampedY = Math.Clamp(y, 0, height - 1);
+        return heights[clampedY * width + clampedX];
     }
 
     private static bool TryReadHeightData(PixelBuffer pixelBuffer, PixelFormat format, out float[] heights, out float minHeight, out float maxHeight)
