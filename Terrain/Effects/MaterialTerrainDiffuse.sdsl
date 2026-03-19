@@ -5,6 +5,7 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
         rgroup PerMaterial
         {
             stage Texture2D DefaultDiffuseTexture;
+            stage SamplerState TerrainDiffuseRepeatSampler;
         }
 
         cbuffer PerMaterial
@@ -17,7 +18,7 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
         override void Compute()
         {
             float2 uv = streams.Position.xz / DiffuseWorldRepeatSize;
-            float4 baseColor = DefaultDiffuseTexture.Sample(LinearSampler, uv) * BaseColor;
+            float4 baseColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv) * BaseColor;
             streams.matDiffuse = baseColor;
             streams.matColorBase = baseColor;
         }

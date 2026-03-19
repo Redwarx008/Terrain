@@ -217,7 +217,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         renderObject.IsShadowCaster = component.CastShadows;
 
         UpdateBounds(terrainWorldMatrix, component, renderObject);
-        UpdateMaterialParameters(component, renderObject);
+        UpdateMaterialParameters(component, renderObject, graphicsDevice);
     }
 
     private bool EnsureMaterial(GraphicsDevice graphicsDevice, TerrainComponent component, TerrainRenderObject renderObject)
@@ -250,7 +250,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         return true;
     }
 
-    private void UpdateMaterialParameters(TerrainComponent component, TerrainRenderObject renderObject)
+    private void UpdateMaterialParameters(TerrainComponent component, TerrainRenderObject renderObject, GraphicsDevice graphicsDevice)
     {
         var materialPass = renderObject.MaterialPass;
         if (materialPass == null || renderObject.HeightTexture == null || renderObject.InstanceBuffer == null || component.DefaultDiffuseTexture == null)
@@ -274,6 +274,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         parameters.Set(TerrainMaterialStreamInitializerKeys.HeightScale, component.HeightScale);
 
         parameters.Set(MaterialTerrainDiffuseKeys.DefaultDiffuseTexture, component.DefaultDiffuseTexture);
+        parameters.Set(MaterialTerrainDiffuseKeys.TerrainDiffuseRepeatSampler, graphicsDevice.SamplerStates.LinearWrap);
         parameters.Set(MaterialTerrainDiffuseKeys.DiffuseWorldRepeatSize, DiffuseWorldRepeatSize);
         parameters.Set(MaterialTerrainDiffuseKeys.BaseColor, component.BaseColor);
     }
