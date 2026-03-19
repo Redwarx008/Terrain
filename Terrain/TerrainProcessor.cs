@@ -93,9 +93,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     private static bool IsCurrentInitializationValid(TerrainComponent component, TerrainRenderObject renderObject)
     {
         return component.IsInitialized
-            && ReferenceEquals(component.LoadedHeightmapTexture, component.HeightmapTexture)
-            && component.LoadedBaseChunkSize == component.BaseChunkSize
-            && component.LoadedMaxVisibleChunkInstances == component.MaxVisibleChunkInstances
+            && component.LoadedConfig == TerrainConfig.Capture(component)
             && IsGpuDataValid(renderObject);
     }
 
@@ -190,9 +188,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             component.IsRegisteredWithVisibilityGroup = true;
         }
 
-        component.LoadedHeightmapTexture = component.HeightmapTexture;
-        component.LoadedBaseChunkSize = component.BaseChunkSize;
-        component.LoadedMaxVisibleChunkInstances = component.MaxVisibleChunkInstances;
+        component.LoadedConfig = TerrainConfig.Capture(component);
         component.IsInitialized = true;
     }
 

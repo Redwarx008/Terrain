@@ -78,19 +78,52 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal bool IsInitialized;
 
     [DataMemberIgnore]
-    internal Texture? LoadedHeightmapTexture;
-
-    [DataMemberIgnore]
-    internal int LoadedBaseChunkSize;
-
-    [DataMemberIgnore]
-    internal int LoadedMaxVisibleChunkInstances;
+    internal TerrainConfig LoadedConfig;
 
     [DataMemberIgnore]
     internal Texture? LoadedDiffuseTexture;
 
     [DataMemberIgnore]
     internal bool IsRegisteredWithVisibilityGroup;
+}
+
+/// <summary>
+/// 地形配置，用于检测需要触发重构建的配置变化。
+/// </summary>
+internal struct TerrainConfig : IEquatable<TerrainConfig>
+{
+    public Texture? HeightmapTexture;
+    public int BaseChunkSize;
+    public int MaxVisibleChunkInstances;
+
+    public static TerrainConfig Capture(TerrainComponent component)
+    {
+        return new TerrainConfig
+        {
+            HeightmapTexture = component.HeightmapTexture,
+            BaseChunkSize = component.BaseChunkSize,
+            MaxVisibleChunkInstances = component.MaxVisibleChunkInstances
+        };
+    }
+
+    public bool Equals(TerrainConfig other)
+    {
+        return ReferenceEquals(HeightmapTexture, other.HeightmapTexture)
+            && BaseChunkSize == other.BaseChunkSize
+            && MaxVisibleChunkInstances == other.MaxVisibleChunkInstances;
+    }
+
+    public override bool Equals(object? obj)
+        => obj is TerrainConfig other && Equals(other);
+
+    public override int GetHashCode()
+        => HashCode.Combine(HeightmapTexture, BaseChunkSize, MaxVisibleChunkInstances);
+
+    public static bool operator ==(TerrainConfig left, TerrainConfig right)
+        => left.Equals(right);
+
+    public static bool operator !=(TerrainConfig left, TerrainConfig right)
+        => !left.Equals(right);
 }
 
 internal sealed class TerrainMinMaxErrorMap
