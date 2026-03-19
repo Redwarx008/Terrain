@@ -176,7 +176,6 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     {
         using var _ = Profiler.Begin(DrawKey);
         var commandList = context.CommandList;
-        var preparedRenderObjects = new HashSet<TerrainRenderObject>();
 
         foreach (var renderFeature in RenderFeatures)
         {
@@ -205,13 +204,9 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
                 continue;
             }
 
-            // 更新InstanceBuffer数据
-            if (preparedRenderObjects.Add(renderMesh))
-            {
-                // Terrain is drawn by multiple RenderViews in the same frame, and shadow views do not share
-                // the main camera frustum, so chunk selection must happen against the view being drawn now.
-                PrepareTerrainDraw(renderMesh, renderView, commandList);
-            }
+            // Terrain is drawn by multiple RenderViews in the same frame, and shadow views do not share
+            // the main camera frustum, so chunk selection must happen against the view being drawn now.
+            PrepareTerrainDraw(renderMesh, renderView, commandList);
 
             if (!ReferenceEquals(currentDrawData, drawData))
             {
