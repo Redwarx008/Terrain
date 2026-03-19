@@ -3,6 +3,7 @@ Id: 4ecb1370-7ee3-41d3-a06f-17ca7336ae72
 SerializedVersion: {Stride: 2.0.0.0}
 Tags: []
 Source: !file ../Resources/Grid_Gray_128x128.png
+IsCompressed: false
 Type: !ColorTextureType
-    UseSRgbSampling: true
     ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
+IsStreamable: false

@@ -1,0 +1,54 @@
+namespace Terrain
+{
+    shader TerrainBuildNeighborMask : ComputeShaderBase
+    {
+        stage RWStructuredBuffer<int4> InstanceBuffer;
+        stage Texture2D<uint> LodMap;
+        stage int InstanceCount;
+        stage int LodMapWidth;
+        stage int LodMapHeight;
+
+        uint LoadNeighborLod(int x, int y, uint fallbackLod)
+        {
+            if ((uint)x >= (uint)LodMapWidth || (uint)y >= (uint)LodMapHeight)
+            {
+                return fallbackLod;
+            }
+
+            return LodMap.Load(int3(x, y, 0));
+        }
+
+        override void Compute()
+        {
+            uint instanceIndex = streams.DispatchThreadId.x;
+            if (instanceIndex >= (uint)InstanceCount)
+            {
+                return;
+            }
+
+            int4 chunk = InstanceBuffer[instanceIndex];
+            uint currentLod = (uint)chunk.z;
+            int lodScale = 1 << chunk.z;
+            int originX = chunk.x * lodScale;
+            int originY = chunk.y * lodScale;
+
+            uint leftLod = LoadNeighborLod(originX - 1, originY, currentLod);
+            uint rightLod = LoadNeighborLod(originX + lodScale, originY, currentLod);
+            uint topLod = LoadNeighborLod(originX, originY - 1, currentLod);
+            uint bottomLod = LoadNeighborLod(originX, originY + lodScale, currentLod);
+
+            uint leftDelta = leftLod > currentLod ? leftLod - currentLod : 0;
+            uint rightDelta = rightLod > currentLod ? rightLod - currentLod : 0;
+            uint topDelta = topLod > currentLod ? topLod - currentLod : 0;
+            uint bottomDelta = bottomLod > currentLod ? bottomLod - currentLod : 0;
+
+            uint packedMask = (leftDelta & 0xFF);
+            packedMask |= (rightDelta & 0xFF) << 8;
+            packedMask |= (topDelta & 0xFF) << 16;
+            packedMask |= (bottomDelta & 0xFF) << 24;
+
+            chunk.w = (int)packedMask;
+            InstanceBuffer[instanceIndex] = chunk;
+        }
+    };
+}

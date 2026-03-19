@@ -1,0 +1,46 @@
+namespace Terrain
+{
+    shader TerrainBuildLodMap : ComputeShaderBase
+    {
+        stage StructuredBuffer<int4> InstanceBuffer;
+        stage RWTexture2D<uint> LodMap;
+        stage int InstanceCount;
+        stage int LodMapWidth;
+        stage int LodMapHeight;
+
+        override void Compute()
+        {
+            uint instanceIndex = streams.DispatchThreadId.x;
+            if (instanceIndex >= (uint)InstanceCount)
+            {
+                return;
+            }
+
+            int4 chunk = InstanceBuffer[instanceIndex];
+            int lodLevel = chunk.z;
+            int lodScale = 1 << lodLevel;
+            int originX = chunk.x * lodScale;
+            int originY = chunk.y * lodScale;
+
+            for (int y = 0; y < lodScale; y++)
+            {
+                int mapY = originY + y;
+                if ((uint)mapY >= (uint)LodMapHeight)
+                {
+                    break;
+                }
+
+                for (int x = 0; x < lodScale; x++)
+                {
+                    int mapX = originX + x;
+                    if ((uint)mapX >= (uint)LodMapWidth)
+                    {
+                        break;
+                    }
+
+                    LodMap[int2(mapX, mapY)] = (uint)lodLevel;
+                }
+            }
+        }
+    };
+}

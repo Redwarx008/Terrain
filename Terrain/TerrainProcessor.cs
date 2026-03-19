@@ -101,6 +101,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     {
         return renderObject.HeightTexture != null
             && renderObject.InstanceBuffer != null
+            && renderObject.LodMapTexture != null
             && renderObject.PatchVertexBuffer != null
             && renderObject.PatchIndexBuffer != null
             && renderObject.Mesh != null;
