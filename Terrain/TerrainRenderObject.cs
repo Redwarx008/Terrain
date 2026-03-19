@@ -1,9 +1,11 @@
 #nullable enable
 
+using System;
 using System.Runtime.InteropServices;
 using Stride.Core.Mathematics;
 using Stride.Graphics;
 using Stride.Rendering;
+using Buffer = Stride.Graphics.Buffer;
 
 namespace Terrain;
 
@@ -11,6 +13,7 @@ public sealed class TerrainRenderObject : RenderMesh
 {
     public Texture? HeightTexture;
     public Buffer? InstanceBuffer;
+    public Texture? LodMapTexture;
     public Buffer? PatchVertexBuffer;
     public Buffer? PatchIndexBuffer;
 
@@ -33,7 +36,17 @@ public sealed class TerrainRenderObject : RenderMesh
             heights,
             TextureFlags.ShaderResource);
 
-        InstanceBuffer = Buffer.Structured.New<Int4>(graphicsDevice, instanceCapacity);
+        int lodMapWidth = Math.Max(1, (heightmapWidth - 1 + baseChunkSize - 1) / baseChunkSize);
+        int lodMapHeight = Math.Max(1, (heightmapHeight - 1 + baseChunkSize - 1) / baseChunkSize);
+
+        InstanceBuffer = Buffer.Structured.New<Int4>(graphicsDevice, instanceCapacity, true);
+        LodMapTexture = Texture.New2D(
+            graphicsDevice,
+            lodMapWidth,
+            lodMapHeight,
+            1,
+            PixelFormat.R8_UInt,
+            TextureFlags.ShaderResource | TextureFlags.UnorderedAccess);
         CreatePatchGeometry(graphicsDevice, baseChunkSize);
         ResetRenderState();
     }
@@ -55,23 +68,53 @@ public sealed class TerrainRenderObject : RenderMesh
             }
         }
 
-        var indices = new int[baseChunkSize * baseChunkSize * 6];
+        var indices = new int[(baseChunkSize / 2) * (baseChunkSize / 2) * 8 * 3];
         int index = 0;
-        for (int y = 0; y < baseChunkSize; y++)
+        for (int y = 0; y < baseChunkSize; y += 2)
         {
-            for (int x = 0; x < baseChunkSize; x++)
+            for (int x = 0; x < baseChunkSize; x += 2)
             {
-                int topLeft = y * vertexCountPerAxis + x;
-                int topRight = topLeft + 1;
-                int bottomLeft = topLeft + vertexCountPerAxis;
-                int bottomRight = bottomLeft + 1;
+                int a = y * vertexCountPerAxis + x;
+                int b = a + vertexCountPerAxis;
+                int c = a + vertexCountPerAxis * 2;
+                int d = a + 1 + vertexCountPerAxis * 2;
+                int e = a + 1 + vertexCountPerAxis;
+                int f = a + 1;
+                int g = a + 2;
+                int h = a + 2 + vertexCountPerAxis;
+                int i = a + 2 + vertexCountPerAxis * 2;
 
-                indices[index++] = topLeft;
-                indices[index++] = bottomRight;
-                indices[index++] = bottomLeft;
-                indices[index++] = topLeft;
-                indices[index++] = topRight;
-                indices[index++] = bottomRight;
+                indices[index++] = e;
+                indices[index++] = a;
+                indices[index++] = f;
+
+                indices[index++] = e;
+                indices[index++] = b;
+                indices[index++] = a;
+
+                indices[index++] = e;
+                indices[index++] = c;
+                indices[index++] = b;
+
+                indices[index++] = e;
+                indices[index++] = d;
+                indices[index++] = c;
+
+                indices[index++] = e;
+                indices[index++] = i;
+                indices[index++] = d;
+
+                indices[index++] = e;
+                indices[index++] = h;
+                indices[index++] = i;
+
+                indices[index++] = e;
+                indices[index++] = g;
+                indices[index++] = h;
+
+                indices[index++] = e;
+                indices[index++] = f;
+                indices[index++] = g;
             }
         }
 
@@ -113,6 +156,9 @@ public sealed class TerrainRenderObject : RenderMesh
 
         InstanceBuffer?.Dispose();
         InstanceBuffer = null;
+
+        LodMapTexture?.Dispose();
+        LodMapTexture = null;
 
         PatchVertexBuffer?.Dispose();
         PatchVertexBuffer = null;

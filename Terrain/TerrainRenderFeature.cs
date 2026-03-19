@@ -18,6 +18,7 @@ using Stride.Rendering.Lights;
 using Stride.Rendering.LightProbes;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Shadows;
+using Stride.Rendering.ComputeEffect;
 using Buffer = Stride.Graphics.Buffer;
 
 namespace Terrain;
@@ -51,6 +52,10 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     private ShadowMeshPipelineProcessor? shadowMapPipelineProcessor;
     private ShadowMeshPipelineProcessor? shadowParaboloidPipelineProcessor;
     private ShadowMeshPipelineProcessor? shadowCubeMapPipelineProcessor;
+    private ComputeEffectShader? buildLodMapEffect;
+    private ComputeEffectShader? buildNeighborMaskEffect;
+
+    private const int ComputeThreadCountX = 64;
 
     [DataMember]
     [Category]
@@ -88,6 +93,11 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
 
         RenderFeatures.CollectionChanged -= RenderFeatures_CollectionChanged;
         descriptorSets.Dispose();
+
+        buildLodMapEffect?.Dispose();
+        buildLodMapEffect = null;
+        buildNeighborMaskEffect?.Dispose();
+        buildNeighborMaskEffect = null;
 
         emptyBuffer?.Dispose();
         emptyBuffer = null;
@@ -141,6 +151,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     {
         using var _ = Profiler.Begin(PrepareKey);
 
+        BuildComputeEffects(context.RenderContext);
         base.Prepare(context);
 
         foreach (var renderFeature in RenderFeatures)
@@ -206,7 +217,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
 
             // Terrain is drawn by multiple RenderViews in the same frame, and shadow views do not share
             // the main camera frustum, so chunk selection must happen against the view being drawn now.
-            PrepareTerrainDraw(renderMesh, renderView, commandList);
+            PrepareTerrainDraw(context, renderMesh, renderView);
 
             if (!ReferenceEquals(currentDrawData, drawData))
             {
@@ -607,27 +618,89 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         return RenderSystem?.RenderStages.FirstOrDefault(stage => string.Equals(stage.Name, stageName, StringComparison.Ordinal));
     }
 
-    private void PrepareTerrainDraw(TerrainRenderObject renderObject, RenderView renderView, CommandList commandList)
+    private void PrepareTerrainDraw(RenderDrawContext drawContext, TerrainRenderObject renderObject, RenderView renderView)
     {
+        var commandList = drawContext.CommandList;
         if (renderObject.Source is not TerrainComponent component
             || component.MinMaxErrorMaps == null
             || component.InstanceCapacity <= 0
             || component.InstanceData.Length == 0
             || renderObject.InstanceBuffer == null
-            || renderObject.HeightTexture == null)
+            || renderObject.HeightTexture == null
+            || renderObject.LodMapTexture == null)
         {
             renderObject.InstanceCount = 0;
             return;
         }
 
-        int instanceCount = SelectChunks(renderObject.World, component, renderView, component.InstanceData);
+        int instanceCount = SelectChunks(renderObject.World, component, renderView, component.InstanceData, out bool truncated);
         renderObject.UpdateInstanceData(commandList, component.InstanceData, instanceCount);
+        if (instanceCount <= 0 || truncated)
+        {
+            return;
+        }
+
+        DispatchTerrainCompute(drawContext, renderObject, instanceCount);
     }
 
-    private int SelectChunks(Matrix terrainWorldMatrix, TerrainComponent component, RenderView renderView, Int4[] instanceData)
+    private void DispatchTerrainCompute(RenderDrawContext drawContext, TerrainRenderObject renderObject, int instanceCount)
+    {
+        if (renderObject.InstanceBuffer == null || renderObject.LodMapTexture == null || instanceCount <= 0 || buildLodMapEffect == null || buildNeighborMaskEffect == null)
+        {
+            return;
+        }
+
+        int threadGroupCountX = (instanceCount + ComputeThreadCountX - 1) / ComputeThreadCountX;
+        if (threadGroupCountX <= 0)
+        {
+            return;
+        }
+
+        drawContext.CommandList.ResourceBarrierTransition(renderObject.InstanceBuffer, GraphicsResourceState.NonPixelShaderResource);
+        drawContext.CommandList.ResourceBarrierTransition(renderObject.LodMapTexture, GraphicsResourceState.UnorderedAccess);
+
+        buildLodMapEffect!.ThreadGroupCounts = new Int3(threadGroupCountX, 1, 1);
+        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.InstanceBuffer, renderObject.InstanceBuffer);
+        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.LodMap, renderObject.LodMapTexture);
+        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.InstanceCount, instanceCount);
+        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.LodMapWidth, renderObject.LodMapTexture.Width);
+        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.LodMapHeight, renderObject.LodMapTexture.Height);
+        buildLodMapEffect.Draw(drawContext);
+
+        drawContext.CommandList.ResourceBarrierTransition(renderObject.LodMapTexture, GraphicsResourceState.NonPixelShaderResource);
+        drawContext.CommandList.ResourceBarrierTransition(renderObject.InstanceBuffer, GraphicsResourceState.UnorderedAccess);
+
+        buildNeighborMaskEffect!.ThreadGroupCounts = new Int3(threadGroupCountX, 1, 1);
+        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.InstanceBuffer, renderObject.InstanceBuffer);
+        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.LodMap, renderObject.LodMapTexture);
+        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.InstanceCount, instanceCount);
+        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.LodMapWidth, renderObject.LodMapTexture.Width);
+        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.LodMapHeight, renderObject.LodMapTexture.Height);
+        buildNeighborMaskEffect.Draw(drawContext);
+
+        drawContext.CommandList.ResourceBarrierTransition(renderObject.InstanceBuffer, GraphicsResourceState.NonPixelShaderResource);
+    }
+
+    private void BuildComputeEffects(RenderContext renderContext)
+    {
+        buildLodMapEffect ??= new ComputeEffectShader(renderContext)
+        {
+            ShaderSourceName = "TerrainBuildLodMap",
+            ThreadNumbers = new Int3(ComputeThreadCountX, 1, 1),
+        };
+
+        buildNeighborMaskEffect ??= new ComputeEffectShader(renderContext)
+        {
+            ShaderSourceName = "TerrainBuildNeighborMask",
+            ThreadNumbers = new Int3(ComputeThreadCountX, 1, 1),
+        };
+    }
+
+    private int SelectChunks(Matrix terrainWorldMatrix, TerrainComponent component, RenderView renderView, Int4[] instanceData, out bool truncated)
     {
         if (component.MinMaxErrorMaps == null)
         {
+            truncated = false;
             return 0;
         }
 
@@ -637,7 +710,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         var cameraPosition = viewInverse.TranslationVector;
         var topMap = component.MinMaxErrorMaps[component.MaxLod];
         int instanceCapacity = Math.Min(component.InstanceCapacity, instanceData.Length);
-        bool truncated = false;
+        truncated = false;
 
         int selectedCount = 0;
         for (int y = 0; y < topMap.Height; y++)

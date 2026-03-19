@@ -16,14 +16,64 @@ namespace Terrain
             stage int BaseChunkSize;
         }
 
+        int DecodeNeighborDelta(int packedMask, int shift)
+        {
+            return (packedMask >> shift) & 0xFF;
+        }
+
+        float SnapCoordToCoarserGrid(float coord, float coarseStrideInCells)
+        {
+            float phase = fmod(coord, coarseStrideInCells);
+            if (phase < 1e-4 || coarseStrideInCells - phase < 1e-4)
+            {
+                return coord;
+            }
+
+            return coord + (coarseStrideInCells - phase);
+        }
+
+        float2 ApplyCrackSnap(float2 localPos, int neighborMask)
+        {
+            int onLeftEdge = localPos.x <= 0.0f ? 1 : 0;
+            int onRightEdge = localPos.x >= (float)BaseChunkSize ? 1 : 0;
+            int onTopEdge = localPos.y <= 0.0f ? 1 : 0;
+            int onBottomEdge = localPos.y >= (float)BaseChunkSize ? 1 : 0;
+
+            int leftDelta = DecodeNeighborDelta(neighborMask, 0);
+            int rightDelta = DecodeNeighborDelta(neighborMask, 8);
+            int topDelta = DecodeNeighborDelta(neighborMask, 16);
+            int bottomDelta = DecodeNeighborDelta(neighborMask, 24);
+
+            float leftStride = float(1 << (leftDelta > 0 ? leftDelta : 0));
+            float rightStride = float(1 << (rightDelta > 0 ? rightDelta : 0));
+            float topStride = float(1 << (topDelta > 0 ? topDelta : 0));
+            float bottomStride = float(1 << (bottomDelta > 0 ? bottomDelta : 0));
+
+            float snappedYLeft = SnapCoordToCoarserGrid(localPos.y, leftStride);
+            float snappedYRight = SnapCoordToCoarserGrid(localPos.y, rightStride);
+            float snappedXTop = SnapCoordToCoarserGrid(localPos.x, topStride);
+            float snappedXBottom = SnapCoordToCoarserGrid(localPos.x, bottomStride);
+
+            localPos.y += (snappedYLeft - localPos.y) * float(onLeftEdge * (leftDelta > 0 ? 1 : 0));
+            localPos.y += (snappedYRight - localPos.y) * float((1 - onLeftEdge) * onRightEdge * (rightDelta > 0 ? 1 : 0));
+            localPos.x += (snappedXTop - localPos.x) * float((1 - onLeftEdge) * (1 - onRightEdge) * onTopEdge * (topDelta > 0 ? 1 : 0));
+            localPos.x += (snappedXBottom - localPos.x) * float((1 - onLeftEdge) * (1 - onRightEdge) * (1 - onTopEdge) * onBottomEdge * (bottomDelta > 0 ? 1 : 0));
+
+            return localPos;
+        }
+
         override void Compute()
         {
             int4 chunk = InstanceBuffer[streams.InstanceID];
             float lodLevel = chunk.z;
+            int neighborMask = chunk.w;
             float lodScale = exp2(lodLevel);
             float chunkWorldSize = BaseChunkSize * lodScale;
             float2 worldOrigin = float2(chunk.x, chunk.y) * chunkWorldSize;
-            float2 sampleCoord = worldOrigin + streams.Position.xz * lodScale;
+            float2 localPos = streams.Position.xz;
+            localPos = ApplyCrackSnap(localPos, neighborMask);
+
+            float2 sampleCoord = worldOrigin + localPos * lodScale;
             sampleCoord = clamp(sampleCoord, 0.0f, HeightmapDimensionsInSamples);
 
             float2 uv = sampleCoord / HeightmapDimensionsInSamples;

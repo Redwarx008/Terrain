@@ -19,6 +19,7 @@ namespace Terrain
     public static partial class MaterialTerrainDiffuseKeys
     {
         public static readonly ObjectParameterKey<Texture> DefaultDiffuseTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> TerrainDiffuseRepeatSampler = ParameterKeys.NewObject<SamplerState>();
         public static readonly ValueParameterKey<float> DiffuseWorldRepeatSize = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<Color4> BaseColor = ParameterKeys.NewValue<Color4>();
     }
