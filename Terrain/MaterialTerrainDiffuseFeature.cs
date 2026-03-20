@@ -15,6 +15,5 @@ public sealed class MaterialTerrainDiffuseFeature : MaterialFeature, IMaterialDi
         var mixin = new ShaderMixinSource();
         mixin.Mixins.Add(new ShaderClassSource("MaterialTerrainDiffuse"));
         context.AddShaderSource(MaterialShaderStage.Pixel, mixin);
-        context.AddStreamInitializer(MaterialShaderStage.Pixel, "TerrainMaterialStreamInitializer");
     }
 }

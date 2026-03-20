@@ -1,0 +1,10 @@
+namespace Terrain
+{
+    shader TerrainHeightStream
+    {
+        stage stream float TerrainSliceIndex;
+        stage stream float2 TerrainPageLocalPos;
+        stage stream float TerrainPageTexelStride;
+        stage stream float TerrainSampleSpacing;
+    };
+}

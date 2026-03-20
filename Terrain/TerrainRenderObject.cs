@@ -11,7 +11,7 @@ namespace Terrain;
 
 public sealed class TerrainRenderObject : RenderMesh
 {
-    public Texture? HeightTexture;
+    public Texture? HeightmapArray;
     public Buffer? InstanceBuffer;
     public Texture? LodMapTexture;
     public Buffer? PatchVertexBuffer;
@@ -24,22 +24,24 @@ public sealed class TerrainRenderObject : RenderMesh
         BoundingBox = (BoundingBoxExt)new BoundingBox(Vector3.Zero, Vector3.One);
     }
 
-    public void ReinitializeGpuResources(GraphicsDevice graphicsDevice, int baseChunkSize, int heightmapWidth, int heightmapHeight, float[] heights, int instanceCapacity)
+    public void ReinitializeGpuResources(GraphicsDevice graphicsDevice, int baseChunkSize, int heightmapWidth, int heightmapHeight, int tileSize, int tilePadding, int maxResidentChunks, int instanceCapacity)
     {
         ReleaseGpuResources();
 
-        HeightTexture = Texture.New2D(
+        int fullTileSize = tileSize + tilePadding * 2;
+        HeightmapArray = Texture.New2D(
             graphicsDevice,
-            heightmapWidth,
-            heightmapHeight,
-            PixelFormat.R32_Float,
-            heights,
-            TextureFlags.ShaderResource);
+            fullTileSize,
+            fullTileSize,
+            1,
+            PixelFormat.R16_UNorm,
+            TextureFlags.ShaderResource,
+            maxResidentChunks);
 
         int lodMapWidth = Math.Max(1, (heightmapWidth - 1 + baseChunkSize - 1) / baseChunkSize);
         int lodMapHeight = Math.Max(1, (heightmapHeight - 1 + baseChunkSize - 1) / baseChunkSize);
 
-        InstanceBuffer = Buffer.Structured.New<Int4>(graphicsDevice, instanceCapacity, true);
+        InstanceBuffer = Buffer.Structured.New<TerrainChunkInstance>(graphicsDevice, instanceCapacity, true);
         LodMapTexture = Texture.New2D(
             graphicsDevice,
             lodMapWidth,
@@ -137,7 +139,7 @@ public sealed class TerrainRenderObject : RenderMesh
         ActiveMeshDraw = meshDraw;
     }
 
-    public void UpdateInstanceData(CommandList commandList, Int4[] data, int count)
+    internal void UpdateInstanceData(CommandList commandList, TerrainChunkInstance[] data, int count)
     {
         if (InstanceBuffer == null || count <= 0)
         {
@@ -145,14 +147,14 @@ public sealed class TerrainRenderObject : RenderMesh
             return;
         }
 
-        InstanceBuffer.SetData(commandList, new global::System.ReadOnlySpan<Int4>(data, 0, count));
+        InstanceBuffer.SetData(commandList, new global::System.ReadOnlySpan<TerrainChunkInstance>(data, 0, count));
         InstanceCount = count;
     }
 
     public void ReleaseGpuResources()
     {
-        HeightTexture?.Dispose();
-        HeightTexture = null;
+        HeightmapArray?.Dispose();
+        HeightmapArray = null;
 
         InstanceBuffer?.Dispose();
         InstanceBuffer = null;

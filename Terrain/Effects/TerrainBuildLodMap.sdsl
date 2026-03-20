@@ -2,7 +2,13 @@ namespace Terrain
 {
     shader TerrainBuildLodMap : ComputeShaderBase
     {
-        stage StructuredBuffer<int4> InstanceBuffer;
+        struct TerrainBuildLodMapChunkInstance
+        {
+            int4 ChunkInfo;
+            int4 StreamInfo;
+        };
+
+        stage StructuredBuffer<TerrainBuildLodMapChunkInstance> InstanceBuffer;
         stage RWTexture2D<uint> LodMap;
         stage int InstanceCount;
         stage int LodMapWidth;
@@ -16,7 +22,8 @@ namespace Terrain
                 return;
             }
 
-            int4 chunk = InstanceBuffer[instanceIndex];
+            TerrainBuildLodMapChunkInstance instance = InstanceBuffer[instanceIndex];
+            int4 chunk = instance.ChunkInfo;
             int lodLevel = chunk.z;
             int lodScale = 1 << lodLevel;
             int originX = chunk.x * lodScale;

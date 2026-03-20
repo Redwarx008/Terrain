@@ -1,0 +1,58 @@
+namespace Terrain
+{
+    shader TerrainHeightParameters : Texturing
+    {
+        rgroup PerMaterial
+        {
+            stage Texture2DArray<float> HeightmapArray;
+        }
+
+        cbuffer PerMaterial
+        {
+            stage float HeightScale;
+            stage int BaseChunkSize;
+            stage int HeightmapTileSize;
+            stage int HeightmapTilePadding;
+        }
+
+        float2 GetHeightmapTexelSize()
+        {
+            float fullSize = float(HeightmapTileSize + HeightmapTilePadding * 2);
+            return float2(1.0f / fullSize, 1.0f / fullSize);
+        }
+
+        float2 ComputeHeightmapUv(float2 pageLocalPos)
+        {
+            float fullSize = float(HeightmapTileSize + HeightmapTilePadding * 2);
+            float padding = float(HeightmapTilePadding);
+            float2 paddedMin = float2(-padding, -padding);
+            float2 paddedMax = float2((float)(HeightmapTileSize - 1) + padding, (float)(HeightmapTileSize - 1) + padding);
+            float2 clampedPageLocalPos = clamp(pageLocalPos, paddedMin, paddedMax);
+            return (float2(padding + 0.5f, padding + 0.5f) + clampedPageLocalPos) / fullSize;
+        }
+
+        int2 ComputeHeightmapTexelCoord(float2 pageLocalPos)
+        {
+            float padding = float(HeightmapTilePadding);
+            float2 paddedMin = float2(-padding, -padding);
+            float2 paddedMax = float2((float)(HeightmapTileSize - 1) + padding, (float)(HeightmapTileSize - 1) + padding);
+            float2 clampedPageLocalPos = clamp(pageLocalPos, paddedMin, paddedMax);
+            return int2(clampedPageLocalPos + float2(padding, padding) + 0.5f);
+        }
+
+        float SampleHeightFromUv(float2 pageUv, int sliceIndex)
+        {
+            float fullSize = float(HeightmapTileSize + HeightmapTilePadding * 2);
+            float padding = float(HeightmapTilePadding);
+            float2 texelCoord = pageUv * fullSize - float2(0.5f, 0.5f);
+            float2 pageLocalPos = texelCoord - float2(padding, padding);
+            return SampleHeightAtLocalPos(pageLocalPos, sliceIndex);
+        }
+
+        float SampleHeightAtLocalPos(float2 pageLocalPos, int sliceIndex)
+        {
+            int2 texelCoord = ComputeHeightmapTexelCoord(pageLocalPos);
+            return HeightmapArray.Load(int4(texelCoord.x, texelCoord.y, sliceIndex, 0)).x * HeightScale;
+        }
+    };
+}

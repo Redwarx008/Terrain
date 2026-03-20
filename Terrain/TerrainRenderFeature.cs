@@ -626,7 +626,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             || component.InstanceCapacity <= 0
             || component.InstanceData.Length == 0
             || renderObject.InstanceBuffer == null
-            || renderObject.HeightTexture == null
+            || renderObject.HeightmapArray == null
             || renderObject.LodMapTexture == null)
         {
             renderObject.InstanceCount = 0;
@@ -635,7 +635,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
 
         int instanceCount = SelectChunks(renderObject.World, component, renderView, component.InstanceData, out bool truncated);
         renderObject.UpdateInstanceData(commandList, component.InstanceData, instanceCount);
-        if (instanceCount <= 0 || truncated)
+        if (instanceCount <= 0)
         {
             return;
         }
@@ -696,9 +696,9 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         };
     }
 
-    private int SelectChunks(Matrix terrainWorldMatrix, TerrainComponent component, RenderView renderView, Int4[] instanceData, out bool truncated)
+    private int SelectChunks(Matrix terrainWorldMatrix, TerrainComponent component, RenderView renderView, TerrainChunkInstance[] instanceData, out bool truncated)
     {
-        if (component.MinMaxErrorMaps == null)
+        if (component.MinMaxErrorMaps == null || component.StreamingManager == null)
         {
             truncated = false;
             return 0;
@@ -724,6 +724,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
                     renderView.Frustum,
                     screenSpaceScale,
                     component.MaxScreenSpaceErrorPixels,
+                    component.StreamingManager,
                     x,
                     y,
                     component.MaxLod,
@@ -752,11 +753,12 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         BoundingFrustum frustum,
         float screenSpaceScale,
         float maxErrorPixels,
+        TerrainStreamingManager streamingManager,
         int chunkX,
         int chunkY,
         int lodLevel,
         int instanceCapacity,
-        Int4[] instanceData,
+        TerrainChunkInstance[] instanceData,
         ref bool truncated,
         ref int selectedCount)
     {
@@ -783,38 +785,70 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             return;
         }
 
+        var key = new TerrainChunkKey(lodLevel, chunkX, chunkY);
+        bool isResident = streamingManager.TryGetResidentPageForChunk(key, out int sliceIndex, out int pageOffsetX, out int pageOffsetY, out int pageTexelStride);
+        if (!isResident)
+        {
+            streamingManager.RequestChunk(key, pinned: lodLevel == component.MaxLod);
+        }
+
         float distance = DistanceToAabb(cameraPosition, bounds);
-        float sse = distance > 1e-4f ? screenSpaceScale * (geometricError * component.HeightScale) / distance : float.MaxValue;
+        float sse = distance > 1e-4f
+            ? screenSpaceScale * (geometricError * component.HeightScale * TerrainComponent.HeightSampleNormalization) / distance
+            : float.MaxValue;
         if (lodLevel == 0 || sse <= maxErrorPixels)
         {
-            instanceData[selectedCount++] = new Int4(chunkX, chunkY, lodLevel, 0);
+            if (isResident)
+            {
+                EmitChunkInstance(chunkX, chunkY, lodLevel, sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride, instanceData, ref selectedCount);
+            }
             return;
         }
 
         var childMap = component.MinMaxErrorMaps[lodLevel - 1];
         childMap.GetSubNodesExist(chunkX, chunkY, out var subTLExist, out var subTRExist, out var subBLExist, out var subBRExist);
 
+        bool allChildrenResident = streamingManager.AreChildrenResident(chunkX, chunkY, lodLevel);
+        if (!allChildrenResident)
+        {
+            streamingManager.RequestChildren(chunkX, chunkY, lodLevel);
+            if (isResident)
+            {
+                EmitChunkInstance(chunkX, chunkY, lodLevel, sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride, instanceData, ref selectedCount);
+            }
+            return;
+        }
+
         int childChunkX = chunkX * 2;
         int childChunkY = chunkY * 2;
         if (subTLExist)
         {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX, childChunkY, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, streamingManager, childChunkX, childChunkY, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
         }
 
         if (subTRExist)
         {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX + 1, childChunkY, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, streamingManager, childChunkX + 1, childChunkY, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
         }
 
         if (subBLExist)
         {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX, childChunkY + 1, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, streamingManager, childChunkX, childChunkY + 1, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
         }
 
         if (subBRExist)
         {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, childChunkX + 1, childChunkY + 1, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
+            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, streamingManager, childChunkX + 1, childChunkY + 1, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
         }
+    }
+
+    private static void EmitChunkInstance(int chunkX, int chunkY, int lodLevel, int sliceIndex, int pageOffsetX, int pageOffsetY, int pageTexelStride, TerrainChunkInstance[] instanceData, ref int selectedCount)
+    {
+        instanceData[selectedCount++] = new TerrainChunkInstance
+        {
+            ChunkInfo = new Int4(chunkX, chunkY, lodLevel, 0),
+            StreamInfo = new Int4(sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
+        };
     }
 
     private static float DistanceToAabb(Vector3 point, BoundingBox bounds)
@@ -829,17 +863,18 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     {
         int endSampleX = Math.Min(originSampleX + sizeInSamples, component.HeightmapWidth - 1);
         int endSampleY = Math.Min(originSampleY + sizeInSamples, component.HeightmapHeight - 1);
+        float worldHeightScale = component.HeightScale * TerrainComponent.HeightSampleNormalization;
 
         Vector3[] corners =
         {
-            new(originSampleX, minHeight * component.HeightScale, originSampleY),
-            new(endSampleX, minHeight * component.HeightScale, originSampleY),
-            new(originSampleX, minHeight * component.HeightScale, endSampleY),
-            new(endSampleX, minHeight * component.HeightScale, endSampleY),
-            new(originSampleX, maxHeight * component.HeightScale, originSampleY),
-            new(endSampleX, maxHeight * component.HeightScale, originSampleY),
-            new(originSampleX, maxHeight * component.HeightScale, endSampleY),
-            new(endSampleX, maxHeight * component.HeightScale, endSampleY),
+            new(originSampleX, minHeight * worldHeightScale, originSampleY),
+            new(endSampleX, minHeight * worldHeightScale, originSampleY),
+            new(originSampleX, minHeight * worldHeightScale, endSampleY),
+            new(endSampleX, minHeight * worldHeightScale, endSampleY),
+            new(originSampleX, maxHeight * worldHeightScale, originSampleY),
+            new(endSampleX, maxHeight * worldHeightScale, originSampleY),
+            new(originSampleX, maxHeight * worldHeightScale, endSampleY),
+            new(endSampleX, maxHeight * worldHeightScale, endSampleY),
         };
 
         var worldMin = new Vector3(float.MaxValue);

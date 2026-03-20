@@ -1,19 +1,21 @@
 namespace Terrain
 {
-    shader MaterialTerrainDisplacement : IMaterialSurface, PositionStream4, NormalStream, Transformation, ShaderBase, Texturing
+    shader MaterialTerrainDisplacement : IMaterialSurface, PositionStream4, NormalStream, Transformation, ShaderBase, Texturing, TerrainHeightStream, TerrainHeightParameters
     {
+        struct MaterialTerrainChunkInstance
+        {
+            int4 ChunkInfo;
+            int4 StreamInfo;
+        };
+
         rgroup PerMaterial
         {
-            stage Texture2D<float> HeightTexture;
-            stage StructuredBuffer<int4> InstanceBuffer;
+            stage StructuredBuffer<MaterialTerrainChunkInstance> InstanceBuffer;
         }
 
         cbuffer PerMaterial
         {
-            stage float2 HeightTextureTexelSize;
             stage float2 HeightmapDimensionsInSamples;
-            stage float HeightScale;
-            stage int BaseChunkSize;
         }
 
         int DecodeNeighborDelta(int packedMask, int shift)
@@ -61,10 +63,13 @@ namespace Terrain
 
             return localPos;
         }
-
         override void Compute()
         {
-            int4 chunk = InstanceBuffer[streams.InstanceID];
+            MaterialTerrainChunkInstance instance = InstanceBuffer[streams.InstanceID];
+            int4 chunk = instance.ChunkInfo;
+            int4 streamInfo = instance.StreamInfo;
+            int sliceIndex = streamInfo.x;
+            float pageTexelStride = max(1.0f, (float)streamInfo.w);
             float lodLevel = chunk.z;
             int neighborMask = chunk.w;
             float lodScale = exp2(lodLevel);
@@ -76,11 +81,15 @@ namespace Terrain
             float2 sampleCoord = worldOrigin + localPos * lodScale;
             sampleCoord = clamp(sampleCoord, 0.0f, HeightmapDimensionsInSamples);
 
-            float2 uv = sampleCoord / HeightmapDimensionsInSamples;
-            float height = HeightTexture.SampleLevel(LinearSampler, uv, 0).x;
+            float2 pageLocalPos = float2(streamInfo.y, streamInfo.z) + localPos * pageTexelStride;
+            float height = SampleHeightAtLocalPos(pageLocalPos, sliceIndex);
 
-            streams.TexCoord = uv;
-            streams.Position = float4(sampleCoord.x, height * HeightScale, sampleCoord.y, 1.0f);
+            streams.TexCoord = ComputeHeightmapUv(pageLocalPos);
+            streams.TerrainSliceIndex = (float)sliceIndex;
+            streams.TerrainPageLocalPos = pageLocalPos;
+            streams.TerrainPageTexelStride = pageTexelStride;
+            streams.TerrainSampleSpacing = max(1.0f, lodScale);
+            streams.Position = float4(sampleCoord.x, height, sampleCoord.y, 1.0f);
         }
     };
 }

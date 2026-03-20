@@ -1,35 +1,10 @@
 namespace Terrain
 {
-    shader TerrainMaterialStreamInitializer : IStreamInitializer, Texturing, NormalStream, PositionStream4, Transformation
+    shader TerrainMaterialStreamInitializer : IStreamInitializer
     {
-        rgroup PerMaterial
-        {
-            stage Texture2D<float> HeightTexture;
-        }
-
-        cbuffer PerMaterial
-        {
-            stage float2 HeightTextureTexelSize;
-            stage float HeightScale;
-        }
-
         override void ResetStream()
         {
             base.ResetStream();
-
-            float2 uv = streams.TexCoord;
-            float2 texelSize = HeightTextureTexelSize;
-            float requestMip = 0.0f;
-
-            float left = HeightTexture.SampleLevel(LinearSampler, saturate(uv + float2(-texelSize.x, 0.0f)), requestMip).x * HeightScale;
-            float right = HeightTexture.SampleLevel(LinearSampler, saturate(uv + float2(texelSize.x, 0.0f)), requestMip).x * HeightScale;
-            float up = HeightTexture.SampleLevel(LinearSampler, saturate(uv + float2(0.0f, -texelSize.y)), requestMip).x * HeightScale;
-            float down = HeightTexture.SampleLevel(LinearSampler, saturate(uv + float2(0.0f, texelSize.y)), requestMip).x * HeightScale;
-
-            float3 localNormal = normalize(float3(left - right, 2.0f, up - down));
-            streams.meshNormal = localNormal;
-            streams.meshNormalWS = normalize(mul(localNormal, (float3x3)WorldInverseTranspose));
-            streams.normalWS = streams.meshNormalWS;
         }
     };
 }

@@ -1,6 +1,6 @@
 namespace Terrain
 {
-shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturing
+shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturing, NormalStream, Transformation, TerrainHeightStream, TerrainHeightParameters
     {
         rgroup PerMaterial
         {
@@ -17,6 +17,20 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
 
         override void Compute()
         {
+            int sliceIndex = (int)(streams.TerrainSliceIndex + 0.5f);
+            float2 pageLocalPos = streams.TerrainPageLocalPos;
+            float pageTexelStride = max(1.0f, streams.TerrainPageTexelStride);
+            float left = SampleHeightAtLocalPos(pageLocalPos + float2(-pageTexelStride, 0.0f), sliceIndex);
+            float right = SampleHeightAtLocalPos(pageLocalPos + float2(pageTexelStride, 0.0f), sliceIndex);
+            float up = SampleHeightAtLocalPos(pageLocalPos + float2(0.0f, -pageTexelStride), sliceIndex);
+            float down = SampleHeightAtLocalPos(pageLocalPos + float2(0.0f, pageTexelStride), sliceIndex);
+            float sampleSpacing = max(1.0f, streams.TerrainSampleSpacing);
+            float3 localNormal = normalize(float3(left - right, sampleSpacing * 2.0f, up - down));
+            float3 worldNormal = normalize(mul(localNormal, (float3x3)WorldInverseTranspose));
+            streams.meshNormal = localNormal;
+            streams.meshNormalWS = worldNormal;
+            streams.normalWS = worldNormal;
+
             float2 uv = streams.Position.xz / DiffuseWorldRepeatSize;
             float4 baseColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv) * BaseColor;
             streams.matDiffuse = baseColor;

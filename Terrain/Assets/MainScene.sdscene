@@ -24,9 +24,8 @@ Hierarchy:
                         Children: {}
                     2ba1961aff3ebcce0bb304a3bbc609ea: !TerrainComponent
                         Id: ac8e605b-05c2-4bc6-9829-5ccb824040d0
-                        HeightmapTexture: 815a409d-36cf-47e6-8c0e-d45081a3f814:heightmap
+                        TerrainDataPath: C:\Users\Redwa\Desktop\heightmap.terrain
                         HeightScale: 42.0
-                        BaseChunkSize: 32
                         MaxScreenSpaceErrorPixels: 8.0
                         DefaultDiffuseTexture: 4ecb1370-7ee3-41d3-a06f-17ca7336ae72:Grid Gray 128x128
                         BaseColor: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}

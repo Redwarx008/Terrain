@@ -2,6 +2,8 @@
 
 using System;
 using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
 using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Engine;
@@ -17,21 +19,28 @@ namespace Terrain;
 [DefaultEntityComponentRenderer(typeof(TerrainProcessor))]
 public sealed class TerrainComponent : ActivableEntityComponent
 {
+    internal const float HeightSampleNormalization = 1.0f / ushort.MaxValue;
+
     [DataMember(10)]
-    public Texture? HeightmapTexture { get; set; }
+    public string? TerrainDataPath { get; set; }
 
     [DataMember(20)]
     public float HeightScale { get; set; } = 24.0f;
-
-    [DataMember(30)]
-    public int BaseChunkSize { get; set; } = 32;
 
     [DataMember(40)]
     public float MaxScreenSpaceErrorPixels { get; set; } = 8.0f;
 
     [DataMember(45)]
-    [DefaultValue(8192)]
-    public int MaxVisibleChunkInstances { get; set; } = 8192;
+    [DefaultValue(65536)]
+    public int MaxVisibleChunkInstances { get; set; } = 65536;
+
+    [DataMember(47)]
+    [DefaultValue(1024)]
+    public int MaxResidentChunks { get; set; } = 1024;
+
+    [DataMember(49)]
+    [DefaultValue(8)]
+    public int MaxStreamingUploadsPerFrame { get; set; } = 8;
 
     [DataMember(50)]
     public Texture? DefaultDiffuseTexture { get; set; }
@@ -48,7 +57,7 @@ public sealed class TerrainComponent : ActivableEntityComponent
     public bool CastShadows { get; set; } = true;
 
     [DataMemberIgnore]
-    internal Int4[] InstanceData = Array.Empty<Int4>();
+    internal TerrainChunkInstance[] InstanceData = Array.Empty<TerrainChunkInstance>();
 
     [DataMemberIgnore]
     internal int MaxLeafChunkCount;
@@ -69,6 +78,15 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal int MaxLod;
 
     [DataMemberIgnore]
+    internal int BaseChunkSize = 32;
+
+    [DataMemberIgnore]
+    internal int HeightmapTileSize;
+
+    [DataMemberIgnore]
+    internal int HeightmapTilePadding;
+
+    [DataMemberIgnore]
     internal float MinHeight;
 
     [DataMemberIgnore]
@@ -85,6 +103,9 @@ public sealed class TerrainComponent : ActivableEntityComponent
 
     [DataMemberIgnore]
     internal bool IsRegisteredWithVisibilityGroup;
+
+    [DataMemberIgnore]
+    internal TerrainStreamingManager? StreamingManager;
 }
 
 /// <summary>
@@ -92,32 +113,32 @@ public sealed class TerrainComponent : ActivableEntityComponent
 /// </summary>
 internal struct TerrainConfig : IEquatable<TerrainConfig>
 {
-    public Texture? HeightmapTexture;
-    public int BaseChunkSize;
+    public string? TerrainDataPath;
     public int MaxVisibleChunkInstances;
+    public int MaxResidentChunks;
 
     public static TerrainConfig Capture(TerrainComponent component)
     {
         return new TerrainConfig
         {
-            HeightmapTexture = component.HeightmapTexture,
-            BaseChunkSize = component.BaseChunkSize,
-            MaxVisibleChunkInstances = component.MaxVisibleChunkInstances
+            TerrainDataPath = component.TerrainDataPath,
+            MaxVisibleChunkInstances = component.MaxVisibleChunkInstances,
+            MaxResidentChunks = component.MaxResidentChunks
         };
     }
 
     public bool Equals(TerrainConfig other)
     {
-        return ReferenceEquals(HeightmapTexture, other.HeightmapTexture)
-            && BaseChunkSize == other.BaseChunkSize
-            && MaxVisibleChunkInstances == other.MaxVisibleChunkInstances;
+        return string.Equals(TerrainDataPath, other.TerrainDataPath, StringComparison.OrdinalIgnoreCase)
+            && MaxVisibleChunkInstances == other.MaxVisibleChunkInstances
+            && MaxResidentChunks == other.MaxResidentChunks;
     }
 
     public override bool Equals(object? obj)
         => obj is TerrainConfig other && Equals(other);
 
     public override int GetHashCode()
-        => HashCode.Combine(HeightmapTexture, BaseChunkSize, MaxVisibleChunkInstances);
+        => HashCode.Combine(TerrainDataPath, MaxVisibleChunkInstances, MaxResidentChunks);
 
     public static bool operator ==(TerrainConfig left, TerrainConfig right)
         => left.Equals(right);
@@ -165,4 +186,38 @@ internal sealed class TerrainMinMaxErrorMap
         subBLExist = x < Width && y + 1 < Height;
         subBRExist = x + 1 < Width && y + 1 < Height;
     }
+
+    public void GetGlobalMinMax(out float minHeight, out float maxHeight)
+    {
+        minHeight = float.MaxValue;
+        maxHeight = float.MinValue;
+        for (int y = 0; y < Height; y++)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                Get(x, y, out var min, out var max, out _);
+                minHeight = MathF.Min(minHeight, min);
+                maxHeight = MathF.Max(maxHeight, max);
+            }
+        }
+
+        if (minHeight == float.MaxValue)
+        {
+            minHeight = 0.0f;
+            maxHeight = 0.0f;
+        }
+    }
+
+    public static TerrainMinMaxErrorMap ReadFrom(BinaryReader reader)
+    {
+        int width = reader.ReadInt32();
+        int height = reader.ReadInt32();
+        var map = new TerrainMinMaxErrorMap(width, height);
+
+        reader.BaseStream.ReadExactly(map.GetByteView());
+        return map;
+    }
+
+    internal Span<byte> GetByteView()
+        => MemoryMarshal.AsBytes(data.AsSpan());
 }

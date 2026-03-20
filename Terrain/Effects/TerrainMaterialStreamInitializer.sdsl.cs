@@ -18,8 +18,5 @@ namespace Terrain
 {
     public static partial class TerrainMaterialStreamInitializerKeys
     {
-        public static readonly ObjectParameterKey<Texture> HeightTexture = ParameterKeys.NewObject<Texture>();
-        public static readonly ValueParameterKey<Vector2> HeightTextureTexelSize = ParameterKeys.NewValue<Vector2>();
-        public static readonly ValueParameterKey<float> HeightScale = ParameterKeys.NewValue<float>();
     }
 }
