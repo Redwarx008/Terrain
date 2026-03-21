@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:TerrainPreProcessor.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:res="clr-namespace:TerrainPreProcessor.Resources;assembly=TerrainPreProcessor"
+        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="150"
+        x:Class="TerrainPreProcessor.Views.ProgressWindow"
+        x:DataType="vm:ProgressWindowViewModel"
+        Title="{x:Static res:Strings.ProcessingProgress}"
+        Width="450" Height="180"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        ShowInTaskbar="False">
+
+  <Window.Styles>
+    <Style Selector="ProgressBar">
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+  </Window.Styles>
+
+  <Grid Margin="25">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <TextBlock Grid.Row="0" 
+               Text="{Binding StatusText}" 
+               FontSize="14"
+               TextWrapping="Wrap"
+               Margin="0,0,0,15"/>
+
+    <ProgressBar Grid.Row="1"
+                 Value="{Binding ProgressValue}"
+                 Maximum="{Binding ProgressMaximum}"
+                 IsIndeterminate="False"/>
+
+    <TextBlock Grid.Row="2"
+               Text="{Binding ProgressValue, StringFormat={}{0}%}"
+               HorizontalAlignment="Center"
+               Margin="0,10,0,0"
+               FontSize="13"
+               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+  </Grid>
+</Window>

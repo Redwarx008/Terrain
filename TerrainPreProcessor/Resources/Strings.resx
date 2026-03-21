@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- Window Titles -->
+  <data name="AppTitle" xml:space="preserve">
+    <value>Terrain PreProcessor</value>
+  </data>
+  <data name="ProcessingProgress" xml:space="preserve">
+    <value>Processing Progress</value>
+  </data>
+
+  <!-- Section Headers -->
+  <data name="InputFiles" xml:space="preserve">
+    <value>Input Files</value>
+  </data>
+  <data name="ProcessingParameters" xml:space="preserve">
+    <value>Processing Parameters</value>
+  </data>
+  <data name="OutputFile" xml:space="preserve">
+    <value>Output File</value>
+  </data>
+
+  <!-- Labels -->
+  <data name="HeightMap" xml:space="preserve">
+    <value>Height Map:</value>
+  </data>
+  <data name="SplatMap" xml:space="preserve">
+    <value>SplatMap:</value>
+  </data>
+  <data name="OutputPath" xml:space="preserve">
+    <value>Output Path:</value>
+  </data>
+  <data name="LeafNodeSize" xml:space="preserve">
+    <value>Leaf Node Size</value>
+  </data>
+  <data name="TileSize" xml:space="preserve">
+    <value>Tile Size (2^n + 1)</value>
+  </data>
+
+  <!-- Buttons -->
+  <data name="Browse" xml:space="preserve">
+    <value>Browse...</value>
+  </data>
+  <data name="Clear" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="StartProcessing" xml:space="preserve">
+    <value>Start Processing</value>
+  </data>
+  <data name="OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+
+  <!-- Watermarks -->
+  <data name="HeightMapWatermark" xml:space="preserve">
+    <value>Select height map file (*.png, *.raw, *.r16)</value>
+  </data>
+  <data name="SplatMapWatermark" xml:space="preserve">
+    <value>Optional - Select SplatMap file</value>
+  </data>
+  <data name="OutputPathWatermark" xml:space="preserve">
+    <value>Auto use height map directory</value>
+  </data>
+
+  <!-- Status Messages -->
+  <data name="Ready" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="Processing" xml:space="preserve">
+    <value>Processing...</value>
+  </data>
+  <data name="ProcessingComplete" xml:space="preserve">
+    <value>Processing Complete!</value>
+  </data>
+
+  <!-- Dialog Titles -->
+  <data name="SelectHeightMap" xml:space="preserve">
+    <value>Select Height Map</value>
+  </data>
+  <data name="SelectSplatMap" xml:space="preserve">
+    <value>Select SplatMap</value>
+  </data>
+  <data name="SaveTerrainFile" xml:space="preserve">
+    <value>Save .terrain File</value>
+  </data>
+  <data name="ProcessingTerrainData" xml:space="preserve">
+    <value>Processing Terrain Data</value>
+  </data>
+
+  <!-- Error Dialogs -->
+  <data name="ConfigurationError" xml:space="preserve">
+    <value>Configuration Error</value>
+  </data>
+  <data name="ProcessingError" xml:space="preserve">
+    <value>Processing Error</value>
+  </data>
+  <data name="Complete" xml:space="preserve">
+    <value>Complete</value>
+  </data>
+  <data name="TerrainProcessingComplete" xml:space="preserve">
+    <value>Terrain data processing complete!</value>
+  </data>
+</root>

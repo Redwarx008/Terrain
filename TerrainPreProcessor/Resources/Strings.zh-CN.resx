@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- Window Titles -->
+  <data name="AppTitle" xml:space="preserve">
+    <value>Terrain PreProcessor</value>
+  </data>
+  <data name="ProcessingProgress" xml:space="preserve">
+    <value>处理进度</value>
+  </data>
+
+  <!-- Section Headers -->
+  <data name="InputFiles" xml:space="preserve">
+    <value>输入文件</value>
+  </data>
+  <data name="ProcessingParameters" xml:space="preserve">
+    <value>处理参数</value>
+  </data>
+  <data name="OutputFile" xml:space="preserve">
+    <value>输出文件</value>
+  </data>
+
+  <!-- Labels -->
+  <data name="HeightMap" xml:space="preserve">
+    <value>高度图:</value>
+  </data>
+  <data name="SplatMap" xml:space="preserve">
+    <value>SplatMap:</value>
+  </data>
+  <data name="OutputPath" xml:space="preserve">
+    <value>输出路径:</value>
+  </data>
+  <data name="LeafNodeSize" xml:space="preserve">
+    <value>叶子节点尺寸 (LeafNodeSize)</value>
+  </data>
+  <data name="TileSize" xml:space="preserve">
+    <value>Tile 尺寸 (2^n + 1)</value>
+  </data>
+
+  <!-- Buttons -->
+  <data name="Browse" xml:space="preserve">
+    <value>浏览...</value>
+  </data>
+  <data name="Clear" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="StartProcessing" xml:space="preserve">
+    <value>开始处理</value>
+  </data>
+  <data name="OK" xml:space="preserve">
+    <value>确定</value>
+  </data>
+
+  <!-- Watermarks -->
+  <data name="HeightMapWatermark" xml:space="preserve">
+    <value>选择高度图文件 (*.png, *.raw, *.r16)</value>
+  </data>
+  <data name="SplatMapWatermark" xml:space="preserve">
+    <value>可选 - 选择 SplatMap 文件</value>
+  </data>
+  <data name="OutputPathWatermark" xml:space="preserve">
+    <value>自动使用高度图原目录</value>
+  </data>
+
+  <!-- Status Messages -->
+  <data name="Ready" xml:space="preserve">
+    <value>就绪</value>
+  </data>
+  <data name="Processing" xml:space="preserve">
+    <value>处理中...</value>
+  </data>
+  <data name="ProcessingComplete" xml:space="preserve">
+    <value>处理完成！</value>
+  </data>
+
+  <!-- Dialog Titles -->
+  <data name="SelectHeightMap" xml:space="preserve">
+    <value>选择高度图</value>
+  </data>
+  <data name="SelectSplatMap" xml:space="preserve">
+    <value>选择 SplatMap</value>
+  </data>
+  <data name="SaveTerrainFile" xml:space="preserve">
+    <value>保存 .terrain 文件</value>
+  </data>
+  <data name="ProcessingTerrainData" xml:space="preserve">
+    <value>处理地形数据</value>
+  </data>
+
+  <!-- Error Dialogs -->
+  <data name="ConfigurationError" xml:space="preserve">
+    <value>配置错误</value>
+  </data>
+  <data name="ProcessingError" xml:space="preserve">
+    <value>处理错误</value>
+  </data>
+  <data name="Complete" xml:space="preserve">
+    <value>完成</value>
+  </data>
+  <data name="TerrainProcessingComplete" xml:space="preserve">
+    <value>地形数据处理完成！</value>
+  </data>
+</root>

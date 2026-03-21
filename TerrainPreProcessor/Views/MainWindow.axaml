@@ -1,0 +1,149 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:TerrainPreProcessor.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:res="clr-namespace:TerrainPreProcessor.Resources;assembly=TerrainPreProcessor"
+        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
+        x:Class="TerrainPreProcessor.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{x:Static res:Strings.AppTitle}"
+        Width="650" Height="600"
+        WindowStartupLocation="CenterScreen"
+        CanResize="True"
+        MinWidth="500" MinHeight="400">
+
+  <Window.Styles>
+    <Style Selector="TextBox">
+      <Setter Property="Margin" Value="0,0,10,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Padding" Value="8,6"/>
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Padding" Value="15,8"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Padding" Value="8,6"/>
+      <Setter Property="MinWidth" Value="100"/>
+    </Style>
+  </Window.Styles>
+
+  <Grid Margin="20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <!-- 输入区域 -->
+    <Border Grid.Row="0" BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
+            BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,15">
+      <StackPanel Spacing="15">
+        <TextBlock Text="{x:Static res:Strings.InputFiles}" FontSize="16" FontWeight="SemiBold"/>
+
+        <!-- 高度图 -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+
+          <TextBlock Grid.Column="0" Text="{x:Static res:Strings.HeightMap}" VerticalAlignment="Center" Width="80"/>
+          <TextBox Grid.Column="1" Text="{Binding HeightMapPath}" IsReadOnly="True" 
+                   Watermark="{x:Static res:Strings.HeightMapWatermark}"/>
+          <Button Grid.Column="2" Content="{x:Static res:Strings.Browse}" Command="{Binding BrowseHeightMapCommand}" Margin="10,0,0,0"/>
+        </Grid>
+
+        <!-- SplatMap -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+
+          <TextBlock Grid.Column="0" Text="{x:Static res:Strings.SplatMap}" VerticalAlignment="Center" Width="80"/>
+          <TextBox Grid.Column="1" Text="{Binding SplatMapPath}" IsReadOnly="True" 
+                   Watermark="{x:Static res:Strings.SplatMapWatermark}"/>
+          <Button Grid.Column="2" Content="{x:Static res:Strings.Browse}" Command="{Binding BrowseSplatMapCommand}" Margin="10,0,0,0"/>
+          <Button Grid.Column="3" Content="{x:Static res:Strings.Clear}" Command="{Binding ClearSplatMapCommand}" Margin="5,0,0,0"/>
+        </Grid>
+      </StackPanel>
+    </Border>
+
+    <!-- 参数区域 -->
+    <Border Grid.Row="1" BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
+            BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,15">
+      <StackPanel Spacing="15">
+        <TextBlock Text="{x:Static res:Strings.ProcessingParameters}" FontSize="16" FontWeight="SemiBold"/>
+
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+
+          <!-- LeafNodeSize -->
+          <StackPanel Grid.Column="0" Margin="0,0,10,0">
+            <TextBlock Text="{x:Static res:Strings.LeafNodeSize}" Margin="0,0,0,5"/>
+            <ComboBox ItemsSource="{Binding LeafNodeSizeOptions}" 
+                      SelectedIndex="{Binding SelectedLeafNodeSizeIndex}"/>
+          </StackPanel>
+
+          <!-- TileSize -->
+          <StackPanel Grid.Column="1" Margin="10,0,0,0">
+            <TextBlock Text="{x:Static res:Strings.TileSize}" Margin="0,0,0,5"/>
+            <ComboBox ItemsSource="{Binding TileSizeOptions}" 
+                      SelectedIndex="{Binding SelectedTileSizeIndex}"/>
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+    </Border>
+
+    <!-- 输出区域 -->
+    <Border Grid.Row="2" BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
+            BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,15">
+      <StackPanel Spacing="15">
+        <TextBlock Text="{x:Static res:Strings.OutputFile}" FontSize="16" FontWeight="SemiBold"/>
+
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+
+          <TextBlock Grid.Column="0" Text="{x:Static res:Strings.OutputPath}" VerticalAlignment="Center" Width="80"/>
+          <TextBox Grid.Column="1" Text="{Binding OutputPath}" IsReadOnly="True" 
+                   Watermark="{x:Static res:Strings.OutputPathWatermark}"/>
+          <Button Grid.Column="2" Content="{x:Static res:Strings.Browse}" Command="{Binding BrowseOutputPathCommand}" Margin="10,0,0,0"/>
+        </Grid>
+      </StackPanel>
+    </Border>
+
+    <!-- 底部按钮区域 -->
+    <Border Grid.Row="3" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" 
+            Padding="15" Margin="0,0,0,0" VerticalAlignment="Bottom">
+      <StackPanel Spacing="10">
+        <TextBlock Text="{Binding StatusMessage}" 
+                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                   FontSize="13"/>
+        
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+          <Button Content="{x:Static res:Strings.StartProcessing}" 
+                  Command="{Binding StartProcessingCommand}"
+                  IsEnabled="{Binding !IsProcessing}"
+                  Background="{DynamicResource SystemAccentColor}"
+                  Foreground="White"
+                  Padding="25,10"
+                  FontWeight="SemiBold"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
