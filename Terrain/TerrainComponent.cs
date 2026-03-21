@@ -105,7 +105,7 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal bool IsRegisteredWithVisibilityGroup;
 
     [DataMemberIgnore]
-    internal TerrainStreamingManager? StreamingManager;
+    internal TerrainQuadTree? QuadTree;
 }
 
 /// <summary>

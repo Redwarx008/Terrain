@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -18,7 +19,6 @@ using Stride.Rendering.Lights;
 using Stride.Rendering.LightProbes;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Shadows;
-using Stride.Rendering.ComputeEffect;
 using Buffer = Stride.Graphics.Buffer;
 
 namespace Terrain;
@@ -52,10 +52,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     private ShadowMeshPipelineProcessor? shadowMapPipelineProcessor;
     private ShadowMeshPipelineProcessor? shadowParaboloidPipelineProcessor;
     private ShadowMeshPipelineProcessor? shadowCubeMapPipelineProcessor;
-    private ComputeEffectShader? buildLodMapEffect;
-    private ComputeEffectShader? buildNeighborMaskEffect;
-
-    private const int ComputeThreadCountX = 64;
+    private readonly TerrainComputeDispatcher computeDispatcher = new();
     private bool rebuildingManagedRenderFeatures;
 
     [DataMember]
@@ -94,11 +91,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
 
         RenderFeatures.CollectionChanged -= RenderFeatures_CollectionChanged;
         descriptorSets.Dispose();
-
-        buildLodMapEffect?.Dispose();
-        buildLodMapEffect = null;
-        buildNeighborMaskEffect?.Dispose();
-        buildNeighborMaskEffect = null;
+        computeDispatcher.Dispose();
 
         emptyBuffer?.Dispose();
         emptyBuffer = null;
@@ -152,7 +145,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     {
         using var _ = Profiler.Begin(PrepareKey);
 
-        BuildComputeEffects(context.RenderContext);
+        computeDispatcher.Initialize(context.RenderContext);
         base.Prepare(context);
 
         foreach (var renderFeature in RenderFeatures)
@@ -639,269 +632,49 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     private void PrepareTerrainDraw(RenderDrawContext drawContext, TerrainRenderObject renderObject, RenderView renderView)
     {
         var commandList = drawContext.CommandList;
-        if (renderObject.Source is not TerrainComponent component
-            || component.MinMaxErrorMaps == null
+        if (renderObject.Source is not TerrainComponent component)
+        {
+            renderObject.InstanceCount = 0;
+            return;
+        }
+
+        Debug.Assert(component.QuadTree != null);
+        Debug.Assert(component.InstanceCapacity > 0);
+        Debug.Assert(component.InstanceData.Length > 0);
+        Debug.Assert(renderObject.InstanceBuffer != null);
+        Debug.Assert(renderObject.LodMapTexture != null);
+
+        if (component.QuadTree == null
             || component.InstanceCapacity <= 0
             || component.InstanceData.Length == 0
             || renderObject.InstanceBuffer == null
-            || renderObject.HeightmapArray == null
             || renderObject.LodMapTexture == null)
         {
             renderObject.InstanceCount = 0;
             return;
         }
 
-        int instanceCount = SelectChunks(renderObject.World, component, renderView, component.InstanceData, out bool truncated);
+        int instanceCount = component.QuadTree.Select(
+            renderObject.World.TranslationVector,
+            renderView,
+            component.InstanceData,
+            out bool truncated);
+        if (truncated)
+        {
+            int instanceCapacity = Math.Min(component.InstanceCapacity, component.InstanceData.Length);
+            Log.Warning(
+                $"Terrain chunk selection truncated by instance budget, missing patches may occur. " +
+                $"selectedCount={instanceCount}, instanceCapacity={instanceCapacity}, maxVisibleChunkInstances={component.MaxVisibleChunkInstances}, renderViewIndex={renderView.Index}, renderView=\"{renderView}\", " +
+                $"heightmap={component.HeightmapWidth}x{component.HeightmapHeight}, baseChunkSize={component.BaseChunkSize}, maxScreenSpaceErrorPixels={component.MaxScreenSpaceErrorPixels}.");
+        }
+
         renderObject.UpdateInstanceData(commandList, component.InstanceData, instanceCount);
         if (instanceCount <= 0)
         {
             return;
         }
 
-        DispatchTerrainCompute(drawContext, renderObject, instanceCount);
-    }
-
-    private void DispatchTerrainCompute(RenderDrawContext drawContext, TerrainRenderObject renderObject, int instanceCount)
-    {
-        if (renderObject.InstanceBuffer == null || renderObject.LodMapTexture == null || instanceCount <= 0 || buildLodMapEffect == null || buildNeighborMaskEffect == null)
-        {
-            return;
-        }
-
-        int threadGroupCountX = (instanceCount + ComputeThreadCountX - 1) / ComputeThreadCountX;
-        if (threadGroupCountX <= 0)
-        {
-            return;
-        }
-
-        drawContext.CommandList.ResourceBarrierTransition(renderObject.InstanceBuffer, GraphicsResourceState.NonPixelShaderResource);
-        drawContext.CommandList.ResourceBarrierTransition(renderObject.LodMapTexture, GraphicsResourceState.UnorderedAccess);
-
-        buildLodMapEffect!.ThreadGroupCounts = new Int3(threadGroupCountX, 1, 1);
-        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.InstanceBuffer, renderObject.InstanceBuffer);
-        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.LodMap, renderObject.LodMapTexture);
-        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.InstanceCount, instanceCount);
-        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.LodMapWidth, renderObject.LodMapTexture.Width);
-        buildLodMapEffect.Parameters.Set(TerrainBuildLodMapKeys.LodMapHeight, renderObject.LodMapTexture.Height);
-        buildLodMapEffect.Draw(drawContext);
-
-        drawContext.CommandList.ResourceBarrierTransition(renderObject.LodMapTexture, GraphicsResourceState.NonPixelShaderResource);
-        drawContext.CommandList.ResourceBarrierTransition(renderObject.InstanceBuffer, GraphicsResourceState.UnorderedAccess);
-
-        buildNeighborMaskEffect!.ThreadGroupCounts = new Int3(threadGroupCountX, 1, 1);
-        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.InstanceBuffer, renderObject.InstanceBuffer);
-        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.LodMap, renderObject.LodMapTexture);
-        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.InstanceCount, instanceCount);
-        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.LodMapWidth, renderObject.LodMapTexture.Width);
-        buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.LodMapHeight, renderObject.LodMapTexture.Height);
-        buildNeighborMaskEffect.Draw(drawContext);
-
-        drawContext.CommandList.ResourceBarrierTransition(renderObject.InstanceBuffer, GraphicsResourceState.NonPixelShaderResource);
-    }
-
-    private void BuildComputeEffects(RenderContext renderContext)
-    {
-        buildLodMapEffect ??= new ComputeEffectShader(renderContext)
-        {
-            ShaderSourceName = "TerrainBuildLodMap",
-            ThreadNumbers = new Int3(ComputeThreadCountX, 1, 1),
-        };
-
-        buildNeighborMaskEffect ??= new ComputeEffectShader(renderContext)
-        {
-            ShaderSourceName = "TerrainBuildNeighborMask",
-            ThreadNumbers = new Int3(ComputeThreadCountX, 1, 1),
-        };
-    }
-
-    private int SelectChunks(Matrix terrainWorldMatrix, TerrainComponent component, RenderView renderView, TerrainChunkInstance[] instanceData, out bool truncated)
-    {
-        if (component.MinMaxErrorMaps == null || component.StreamingManager == null)
-        {
-            truncated = false;
-            return 0;
-        }
-
-        float viewHeight = Math.Max(1.0f, renderView.ViewSize.Y);
-        float screenSpaceScale = viewHeight * 0.5f * MathF.Abs(renderView.Projection.M22);
-        Matrix.Invert(ref renderView.View, out var viewInverse);
-        var cameraPosition = viewInverse.TranslationVector;
-        var topMap = component.MinMaxErrorMaps[component.MaxLod];
-        int instanceCapacity = Math.Min(component.InstanceCapacity, instanceData.Length);
-        truncated = false;
-
-        int selectedCount = 0;
-        for (int y = 0; y < topMap.Height; y++)
-        {
-            for (int x = 0; x < topMap.Width; x++)
-            {
-                TraverseChunk(
-                    terrainWorldMatrix,
-                    component,
-                    cameraPosition,
-                    renderView.Frustum,
-                    screenSpaceScale,
-                    component.MaxScreenSpaceErrorPixels,
-                    component.StreamingManager,
-                    x,
-                    y,
-                    component.MaxLod,
-                    instanceCapacity,
-                    instanceData,
-                    ref truncated,
-                    ref selectedCount);
-            }
-        }
-
-        if (truncated)
-        {
-            Log.Warning(
-                $"Terrain chunk selection truncated by instance budget, missing patches may occur. " +
-                $"selectedCount={selectedCount}, instanceCapacity={instanceCapacity}, maxVisibleChunkInstances={component.MaxVisibleChunkInstances}, renderViewIndex={renderView.Index}, renderView=\"{renderView}\", " +
-                $"heightmap={component.HeightmapWidth}x{component.HeightmapHeight}, baseChunkSize={component.BaseChunkSize}, maxScreenSpaceErrorPixels={component.MaxScreenSpaceErrorPixels}.");
-        }
-
-        return selectedCount;
-    }
-
-    private static void TraverseChunk(
-        Matrix terrainWorldMatrix,
-        TerrainComponent component,
-        Vector3 cameraPosition,
-        BoundingFrustum frustum,
-        float screenSpaceScale,
-        float maxErrorPixels,
-        TerrainStreamingManager streamingManager,
-        int chunkX,
-        int chunkY,
-        int lodLevel,
-        int instanceCapacity,
-        TerrainChunkInstance[] instanceData,
-        ref bool truncated,
-        ref int selectedCount)
-    {
-        if (selectedCount >= instanceCapacity)
-        {
-            truncated = true;
-            return;
-        }
-
-        int sizeInSamples = component.BaseChunkSize << lodLevel;
-        int originSampleX = chunkX * sizeInSamples;
-        int originSampleY = chunkY * sizeInSamples;
-        if (originSampleX >= component.HeightmapWidth - 1 || originSampleY >= component.HeightmapHeight - 1)
-        {
-            return;
-        }
-
-        var minMaxErrorMap = component.MinMaxErrorMaps![lodLevel];
-        minMaxErrorMap.Get(chunkX, chunkY, out var minHeight, out var maxHeight, out var geometricError);
-        var bounds = ComputeWorldBounds(terrainWorldMatrix, component, originSampleX, originSampleY, sizeInSamples, minHeight, maxHeight);
-        var boundsExt = (BoundingBoxExt)bounds;
-        if (!frustum.Contains(ref boundsExt))
-        {
-            return;
-        }
-
-        var key = new TerrainChunkKey(lodLevel, chunkX, chunkY);
-        bool isResident = streamingManager.TryGetResidentPageForChunk(key, out int sliceIndex, out int pageOffsetX, out int pageOffsetY, out int pageTexelStride);
-        if (!isResident)
-        {
-            streamingManager.RequestChunk(key);
-        }
-
-        float distance = DistanceToAabb(cameraPosition, bounds);
-        float sse = distance > 1e-4f
-            ? screenSpaceScale * (geometricError * component.HeightScale * TerrainComponent.HeightSampleNormalization) / distance
-            : float.MaxValue;
-        if (lodLevel == 0 || sse <= maxErrorPixels)
-        {
-            if (isResident)
-            {
-                EmitChunkInstance(chunkX, chunkY, lodLevel, sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride, instanceData, ref selectedCount);
-            }
-            return;
-        }
-
-        var childMap = component.MinMaxErrorMaps[lodLevel - 1];
-        childMap.GetSubNodesExist(chunkX, chunkY, out var subTLExist, out var subTRExist, out var subBLExist, out var subBRExist);
-
-        bool allChildrenResident = streamingManager.AreChildrenResident(chunkX, chunkY, lodLevel);
-        if (!allChildrenResident)
-        {
-            streamingManager.RequestChildren(chunkX, chunkY, lodLevel);
-            if (isResident)
-            {
-                EmitChunkInstance(chunkX, chunkY, lodLevel, sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride, instanceData, ref selectedCount);
-            }
-            return;
-        }
-
-        int childChunkX = chunkX * 2;
-        int childChunkY = chunkY * 2;
-        if (subTLExist)
-        {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, streamingManager, childChunkX, childChunkY, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
-        }
-
-        if (subTRExist)
-        {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, streamingManager, childChunkX + 1, childChunkY, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
-        }
-
-        if (subBLExist)
-        {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, streamingManager, childChunkX, childChunkY + 1, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
-        }
-
-        if (subBRExist)
-        {
-            TraverseChunk(terrainWorldMatrix, component, cameraPosition, frustum, screenSpaceScale, maxErrorPixels, streamingManager, childChunkX + 1, childChunkY + 1, lodLevel - 1, instanceCapacity, instanceData, ref truncated, ref selectedCount);
-        }
-    }
-
-    private static void EmitChunkInstance(int chunkX, int chunkY, int lodLevel, int sliceIndex, int pageOffsetX, int pageOffsetY, int pageTexelStride, TerrainChunkInstance[] instanceData, ref int selectedCount)
-    {
-        instanceData[selectedCount++] = new TerrainChunkInstance
-        {
-            ChunkInfo = new Int4(chunkX, chunkY, lodLevel, 0),
-            StreamInfo = new Int4(sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
-        };
-    }
-
-    private static float DistanceToAabb(Vector3 point, BoundingBox bounds)
-    {
-        float dx = MathF.Max(MathF.Max(bounds.Minimum.X - point.X, 0.0f), point.X - bounds.Maximum.X);
-        float dy = MathF.Max(MathF.Max(bounds.Minimum.Y - point.Y, 0.0f), point.Y - bounds.Maximum.Y);
-        float dz = MathF.Max(MathF.Max(bounds.Minimum.Z - point.Z, 0.0f), point.Z - bounds.Maximum.Z);
-        return MathF.Sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    private static BoundingBox ComputeWorldBounds(Matrix terrainWorldMatrix, TerrainComponent component, int originSampleX, int originSampleY, int sizeInSamples, float minHeight, float maxHeight)
-    {
-        int endSampleX = Math.Min(originSampleX + sizeInSamples, component.HeightmapWidth - 1);
-        int endSampleY = Math.Min(originSampleY + sizeInSamples, component.HeightmapHeight - 1);
-        float worldHeightScale = component.HeightScale * TerrainComponent.HeightSampleNormalization;
-        Span<Vector3> corners = stackalloc Vector3[8];
-        corners[0] = new Vector3(originSampleX, minHeight * worldHeightScale, originSampleY);
-        corners[1] = new Vector3(endSampleX, minHeight * worldHeightScale, originSampleY);
-        corners[2] = new Vector3(originSampleX, minHeight * worldHeightScale, endSampleY);
-        corners[3] = new Vector3(endSampleX, minHeight * worldHeightScale, endSampleY);
-        corners[4] = new Vector3(originSampleX, maxHeight * worldHeightScale, originSampleY);
-        corners[5] = new Vector3(endSampleX, maxHeight * worldHeightScale, originSampleY);
-        corners[6] = new Vector3(originSampleX, maxHeight * worldHeightScale, endSampleY);
-        corners[7] = new Vector3(endSampleX, maxHeight * worldHeightScale, endSampleY);
-
-        var worldMin = new Vector3(float.MaxValue);
-        var worldMax = new Vector3(float.MinValue);
-        foreach (ref readonly var corner in corners)
-        {
-            var world = Vector3.TransformCoordinate(corner, terrainWorldMatrix);
-            worldMin = Vector3.Min(worldMin, world);
-            worldMax = Vector3.Max(worldMax, world);
-        }
-
-        return new BoundingBox(worldMin, worldMax);
+        computeDispatcher.Dispatch(drawContext, renderObject, instanceCount);
     }
 
     private static InputElementDescription[] PrepareInputElements(PipelineStateDescription pipelineState, MeshDraw drawData)

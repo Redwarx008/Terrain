@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using Stride.Core.Annotations;
 using Stride.Core.Diagnostics;
@@ -38,8 +39,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             component.IsRegisteredWithVisibilityGroup = false;
         }
 
-        component.StreamingManager?.Dispose();
-        component.StreamingManager = null;
+        component.QuadTree?.Dispose();
+        component.QuadTree = null;
         renderObject.Dispose();
         base.OnEntityComponentRemoved(entity, component, renderObject);
     }
@@ -57,19 +58,19 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
         foreach (var pair in ComponentDatas)
         {
-            if (!EnsureInitialized(graphicsDevice, graphicsContext.CommandList, pair.Key, pair.Value))
+            if (!Initialize(graphicsDevice, graphicsContext.CommandList, pair.Key, pair.Value))
             {
                 continue;
             }
 
-            pair.Key.StreamingManager?.ProcessPendingUploads(
+            pair.Key.QuadTree?.ProcessPendingUploads(
                 graphicsContext.CommandList,
                 pair.Key.MaxStreamingUploadsPerFrame);
             UpdateRenderObject(pair.Key.Entity, pair.Key, pair.Value, graphicsDevice);
         }
     }
 
-    private bool EnsureInitialized(GraphicsDevice graphicsDevice, CommandList commandList, TerrainComponent component, TerrainRenderObject renderObject)
+    private bool Initialize(GraphicsDevice graphicsDevice, CommandList commandList, TerrainComponent component, TerrainRenderObject renderObject)
     {
         if (string.IsNullOrWhiteSpace(component.TerrainDataPath))
         {
@@ -99,6 +100,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     {
         return component.IsInitialized
             && component.LoadedConfig == TerrainConfig.Capture(component)
+            && component.QuadTree != null
             && IsGpuDataValid(renderObject);
     }
 
@@ -157,8 +159,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
     private void ApplyLoadedTerrainData(GraphicsDevice graphicsDevice, CommandList commandList, TerrainComponent component, TerrainRenderObject renderObject, LoadedTerrainData loadedData)
     {
-        component.StreamingManager?.Dispose();
-        component.StreamingManager = null;
+        component.QuadTree?.Dispose();
+        component.QuadTree = null;
 
         component.MaxLeafChunkCount = loadedData.MaxLeafChunkCount;
         component.InstanceCapacity = Math.Min(loadedData.MaxLeafChunkCount, Math.Max(1, component.MaxVisibleChunkInstances));
@@ -172,20 +174,16 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             component.BaseChunkSize,
             loadedData.Width,
             loadedData.Height,
-            loadedData.HeightmapTileSize,
-            loadedData.HeightmapTilePadding,
+            component.HeightmapTileSize,
+            component.HeightmapTilePadding,
             loadedData.MaxResidentChunks,
             component.InstanceCapacity);
 
-        if (renderObject.HeightmapArray == null)
-        {
-            throw new InvalidOperationException("Terrain heightmap array was not created.");
-        }
+        Debug.Assert(renderObject.HeightmapArray != null);
 
-        var gpuHeightArray = new GpuHeightArray(renderObject.HeightmapArray, loadedData.HeightmapTileSize, loadedData.HeightmapTilePadding, loadedData.MaxResidentChunks);
+        var gpuHeightArray = new GpuHeightArray(renderObject.HeightmapArray!, component.HeightmapTileSize, component.HeightmapTilePadding, loadedData.MaxResidentChunks);
         var streamingManager = new TerrainStreamingManager(loadedData.FileReader, gpuHeightArray, component.BaseChunkSize);
         streamingManager.PreloadTopLevelChunks(commandList, loadedData.MinMaxErrorMaps[loadedData.MaxLod]);
-        component.StreamingManager = streamingManager;
 
         component.HeightmapWidth = loadedData.Width;
         component.HeightmapHeight = loadedData.Height;
@@ -193,6 +191,13 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         component.MinHeight = loadedData.MinHeight;
         component.MaxHeight = loadedData.MaxHeight;
         component.MinMaxErrorMaps = loadedData.MinMaxErrorMaps;
+        component.QuadTree = new TerrainQuadTree(
+            loadedData.MinMaxErrorMaps,
+            loadedData.BaseChunkSize,
+            loadedData.Width,
+            loadedData.Height,
+            component,
+            streamingManager);
 
         // Reinitialization replaces the underlying GPU resources, so the old "material is ready" markers
         // must be cleared or EnsureMaterial() will incorrectly reuse a pass bound to stale buffers/textures.
@@ -212,7 +217,10 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
     private void UpdateRenderObject(Entity entity, TerrainComponent component, TerrainRenderObject renderObject, GraphicsDevice graphicsDevice)
     {
-        if (renderObject.HeightmapArray == null || component.MinMaxErrorMaps == null || component.StreamingManager == null)
+        Debug.Assert(renderObject.HeightmapArray != null);
+        Debug.Assert(component.QuadTree != null);
+
+        if (renderObject.HeightmapArray == null || component.QuadTree == null)
         {
             return;
         }
@@ -294,43 +302,17 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     {
         // The terrain can be drawn by shadow views that see different chunks than the main camera,
         // so shrinking bounds to the current selection would cull shadow-casting terrain too early.
-        int terrainSampleExtent = Math.Max(component.HeightmapWidth - 1, component.HeightmapHeight - 1);
-        var fullTerrainBounds = ComputeWorldBounds(
-            terrainWorldMatrix,
-            component,
-            0,
-            0,
-            terrainSampleExtent,
-            component.MinHeight,
-            component.MaxHeight);
-        renderObject.BoundingBox = (BoundingBoxExt)fullTerrainBounds;
-    }
-
-    private static BoundingBox ComputeWorldBounds(Matrix terrainWorldMatrix, TerrainComponent component, int originSampleX, int originSampleY, int sizeInSamples, float minHeight, float maxHeight)
-    {
-        int endSampleX = Math.Min(originSampleX + sizeInSamples, component.HeightmapWidth - 1);
-        int endSampleY = Math.Min(originSampleY + sizeInSamples, component.HeightmapHeight - 1);
         float worldHeightScale = component.HeightScale * TerrainComponent.HeightSampleNormalization;
-        Span<Vector3> corners = stackalloc Vector3[8];
-        corners[0] = new Vector3(originSampleX, minHeight * worldHeightScale, originSampleY);
-        corners[1] = new Vector3(endSampleX, minHeight * worldHeightScale, originSampleY);
-        corners[2] = new Vector3(originSampleX, minHeight * worldHeightScale, endSampleY);
-        corners[3] = new Vector3(endSampleX, minHeight * worldHeightScale, endSampleY);
-        corners[4] = new Vector3(originSampleX, maxHeight * worldHeightScale, originSampleY);
-        corners[5] = new Vector3(endSampleX, maxHeight * worldHeightScale, originSampleY);
-        corners[6] = new Vector3(originSampleX, maxHeight * worldHeightScale, endSampleY);
-        corners[7] = new Vector3(endSampleX, maxHeight * worldHeightScale, endSampleY);
-
-        var worldMin = new Vector3(float.MaxValue);
-        var worldMax = new Vector3(float.MinValue);
-        foreach (ref readonly var corner in corners)
-        {
-            var world = Vector3.TransformCoordinate(corner, terrainWorldMatrix);
-            worldMin = Vector3.Min(worldMin, world);
-            worldMax = Vector3.Max(worldMax, world);
-        }
-
-        return new BoundingBox(worldMin, worldMax);
+        var terrainOffset = terrainWorldMatrix.TranslationVector;
+        var boundsMin = new Vector3(
+            terrainOffset.X,
+            terrainOffset.Y + component.MinHeight * worldHeightScale,
+            terrainOffset.Z);
+        var boundsMax = new Vector3(
+            terrainOffset.X + component.HeightmapWidth - 1,
+            terrainOffset.Y + component.MaxHeight * worldHeightScale,
+            terrainOffset.Z + component.HeightmapHeight - 1);
+        renderObject.BoundingBox = (BoundingBoxExt)new BoundingBox(boundsMin, boundsMax);
     }
 
     private static int ComputeMaxLeafChunkCount(int width, int height, int baseChunkSize)
@@ -342,9 +324,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
     private static Matrix CreateTerrainWorldMatrix(Matrix entityWorldMatrix)
     {
-        entityWorldMatrix.Decompose(out _, out Matrix rotation, out var translation);
-        rotation.TranslationVector = translation;
-        return rotation;
+        return Matrix.Translation(entityWorldMatrix.TranslationVector);
     }
 
     private static string ResolveTerrainDataPath(string terrainDataPath)
