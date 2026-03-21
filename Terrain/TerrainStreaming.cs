@@ -342,7 +342,11 @@ internal sealed class GpuHeightArray : IDisposable
                 continue;
             }
 
-            EvictSlice(sliceIndex);
+            // We are immediately reusing this slice for the incoming page, so do not
+            // put it back into the free queue here. Otherwise the same slice can be
+            // handed out again later while it is already occupied, corrupting page-to-slice
+            // mappings after enough streaming churn.
+            EvictSlice(sliceIndex, enqueueFreeSlice: false);
             return true;
         }
 
@@ -350,7 +354,7 @@ internal sealed class GpuHeightArray : IDisposable
         return false;
     }
 
-    private void EvictSlice(int sliceIndex)
+    private void EvictSlice(int sliceIndex, bool enqueueFreeSlice = true)
     {
         ref var slot = ref slots[sliceIndex];
         if (!slot.IsOccupied)
@@ -361,7 +365,10 @@ internal sealed class GpuHeightArray : IDisposable
         pageToSlice.Remove(slot.Key);
         RemoveFromLru(sliceIndex);
         slot = default;
-        freeSlices.Enqueue(sliceIndex);
+        if (enqueueFreeSlice)
+        {
+            freeSlices.Enqueue(sliceIndex);
+        }
     }
 
     private void TouchSlice(int sliceIndex)
