@@ -22,10 +22,10 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
         // the world-space spacing of a single source height texel, so lod0/lod1 can share the same normal detail.
         float3 CaculateNormal(float2 pageLocalPos, int sliceIndex, float pageTexelStride, float sampleSpacing)
         {
-            float left = SampleHeightAtLocalPos(pageLocalPos + float2(-1.0f, 0.0f), sliceIndex);
-            float right = SampleHeightAtLocalPos(pageLocalPos + float2(1.0f, 0.0f), sliceIndex);
-            float up = SampleHeightAtLocalPos(pageLocalPos + float2(0.0f, -1.0f), sliceIndex);
-            float down = SampleHeightAtLocalPos(pageLocalPos + float2(0.0f, 1.0f), sliceIndex);
+            float left = SampleHeightAtLocalPosLinear(pageLocalPos + float2(-1.0f, 0.0f), sliceIndex);
+            float right = SampleHeightAtLocalPosLinear(pageLocalPos + float2(1.0f, 0.0f), sliceIndex);
+            float up = SampleHeightAtLocalPosLinear(pageLocalPos + float2(0.0f, -1.0f), sliceIndex);
+            float down = SampleHeightAtLocalPosLinear(pageLocalPos + float2(0.0f, 1.0f), sliceIndex);
             float sourceSampleSpacing = sampleSpacing / pageTexelStride;
             return normalize(float3(left - right, sourceSampleSpacing * 2.0f, up - down));
         }

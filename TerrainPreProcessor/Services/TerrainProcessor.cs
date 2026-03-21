@@ -19,12 +19,12 @@ public class TerrainProcessor
     /// <summary>
     /// 高度图默认 Padding（用于跨页邻域采样）
     /// </summary>
-    private const int HeightMapPadding = 1;
+    private const int HeightMapPadding = 2;
 
     /// <summary>
     /// SplatMap 默认 Padding
     /// </summary>
-    private const int SplatMapPadding = 1;
+    private const int SplatMapPadding = 2;
 
     /// <summary>
     /// 处理地形数据并生成 .terrain 文件

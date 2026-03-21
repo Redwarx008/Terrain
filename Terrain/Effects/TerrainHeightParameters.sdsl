@@ -54,5 +54,11 @@ namespace Terrain
             int2 texelCoord = ComputeHeightmapTexelCoord(pageLocalPos);
             return HeightmapArray.Load(int4(texelCoord.x, texelCoord.y, sliceIndex, 0)).x * HeightScale;
         }
+
+        float SampleHeightAtLocalPosLinear(float2 pageLocalPos, int sliceIndex)
+        {
+            float2 pageUv = ComputeHeightmapUv(pageLocalPos);
+            return HeightmapArray.SampleLevel(LinearSampler, float3(pageUv, (float)sliceIndex), 0.0f).x * HeightScale;
+        }
     };
 }

@@ -50,7 +50,7 @@ public struct TerrainFileHeader
             Height = 0,
             LeafNodeSize = 16,
             TileSize = 129,
-            Padding = 1,
+            Padding = 2,
             HeightMapMipLevels = 0,
             HasSplatMap = 0,
             SplatMapFormat = 0,
