@@ -138,7 +138,10 @@ internal struct TerrainConfig : IEquatable<TerrainConfig>
         => obj is TerrainConfig other && Equals(other);
 
     public override int GetHashCode()
-        => HashCode.Combine(TerrainDataPath, MaxVisibleChunkInstances, MaxResidentChunks);
+        => HashCode.Combine(
+            StringComparer.OrdinalIgnoreCase.GetHashCode(TerrainDataPath ?? string.Empty),
+            MaxVisibleChunkInstances,
+            MaxResidentChunks);
 
     public static bool operator ==(TerrainConfig left, TerrainConfig right)
         => left.Equals(right);

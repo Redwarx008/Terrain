@@ -10,6 +10,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
 using Stride.Graphics;
 
@@ -78,6 +79,7 @@ internal readonly struct TerrainPageKey : IEquatable<TerrainPageKey>
 internal struct TerrainFileHeader
 {
     public const int MagicValue = 0x52524554;
+    public const int SupportedVersion = 1;
 
     public int Magic;
     public int Version;
@@ -109,6 +111,7 @@ internal struct TerrainVirtualTextureHeader
 
 internal sealed class TerrainFileReader : IDisposable
 {
+    private const int MaxTerrainDimension = 1 << 16;
     private readonly SafeFileHandle fileHandle;
     private readonly TerrainMinMaxErrorMap[] minMaxErrorMaps;
     private readonly TerrainVirtualTextureHeader heightmapHeader;
@@ -127,6 +130,7 @@ internal sealed class TerrainFileReader : IDisposable
         }
 
         int mapCount = ReadInt32(fileHandle, ref offset);
+        ValidateHeader(Header, mapCount);
         minMaxErrorMaps = new TerrainMinMaxErrorMap[mapCount];
         for (int i = 0; i < mapCount; i++)
         {
@@ -134,13 +138,9 @@ internal sealed class TerrainFileReader : IDisposable
         }
 
         heightmapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref offset);
-        if (heightmapHeader.BytesPerPixel != sizeof(ushort))
-        {
-            throw new InvalidDataException($"Unsupported heightmap block format. Expected 16-bit heights, got {heightmapHeader.BytesPerPixel} bytes per pixel.");
-        }
-
-        int paddedTileSize = heightmapHeader.TileSize + heightmapHeader.Padding * 2;
-        tileByteSize = paddedTileSize * paddedTileSize * heightmapHeader.BytesPerPixel;
+        ValidateHeightmapHeader(Header, heightmapHeader);
+        int paddedTileSize = checked(heightmapHeader.TileSize + heightmapHeader.Padding * 2);
+        tileByteSize = checked(paddedTileSize * paddedTileSize * heightmapHeader.BytesPerPixel);
 
         mipLayouts = new TerrainMipLayout[heightmapHeader.Mipmaps];
         long currentOffset = offset;
@@ -151,7 +151,7 @@ internal sealed class TerrainFileReader : IDisposable
             int tilesX = DivideRoundUp(mipWidth, heightmapHeader.TileSize);
             int tilesY = DivideRoundUp(mipHeight, heightmapHeader.TileSize);
             mipLayouts[mip] = new TerrainMipLayout(mipWidth, mipHeight, tilesX, tilesY, currentOffset);
-            currentOffset += (long)tilesX * tilesY * tileByteSize;
+            currentOffset = checked(currentOffset + checked((long)tilesX * tilesY * tileByteSize));
             mipWidth = Math.Max(1, (mipWidth + 1) / 2);
             mipHeight = Math.Max(1, (mipHeight + 1) / 2);
         }
@@ -236,6 +236,84 @@ internal sealed class TerrainFileReader : IDisposable
     private static int DivideRoundUp(int value, int divisor)
         => (value + divisor - 1) / divisor;
 
+    private static void ValidateHeader(TerrainFileHeader header, int mapCount)
+    {
+        if (header.Version != TerrainFileHeader.SupportedVersion)
+        {
+            throw new InvalidDataException($"Unsupported terrain file version {header.Version}. Expected {TerrainFileHeader.SupportedVersion}.");
+        }
+
+        if (header.Width <= 1 || header.Height <= 1 || header.Width > MaxTerrainDimension || header.Height > MaxTerrainDimension)
+        {
+            throw new InvalidDataException($"Invalid terrain dimensions {header.Width}x{header.Height}.");
+        }
+
+        if (header.LeafNodeSize is not (16 or 32 or 64))
+        {
+            throw new InvalidDataException($"Unsupported leaf node size {header.LeafNodeSize}. Expected 16, 32, or 64.");
+        }
+
+        if (header.HeightMapMipLevels <= 0)
+        {
+            throw new InvalidDataException($"Invalid heightmap mip count {header.HeightMapMipLevels}.");
+        }
+
+        int chunkCountX = DivideRoundUp(header.Width - 1, header.LeafNodeSize);
+        int chunkCountY = DivideRoundUp(header.Height - 1, header.LeafNodeSize);
+        int expectedMapCount = 0;
+        while (chunkCountX > 0 && chunkCountY > 0)
+        {
+            expectedMapCount++;
+            if (chunkCountX == 1 && chunkCountY == 1)
+            {
+                break;
+            }
+
+            chunkCountX = Math.Max(1, (chunkCountX + 1) / 2);
+            chunkCountY = Math.Max(1, (chunkCountY + 1) / 2);
+        }
+
+        if (mapCount != expectedMapCount)
+        {
+            throw new InvalidDataException($"Invalid MinMaxErrorMap count {mapCount}. Expected {expectedMapCount}.");
+        }
+    }
+
+    private static void ValidateHeightmapHeader(TerrainFileHeader header, TerrainVirtualTextureHeader heightmapHeader)
+    {
+        if (heightmapHeader.BytesPerPixel != sizeof(ushort))
+        {
+            throw new InvalidDataException($"Unsupported heightmap block format. Expected 16-bit heights, got {heightmapHeader.BytesPerPixel} bytes per pixel.");
+        }
+
+        if (heightmapHeader.Width != header.Width || heightmapHeader.Height != header.Height)
+        {
+            throw new InvalidDataException(
+                $"Heightmap dimensions {heightmapHeader.Width}x{heightmapHeader.Height} do not match terrain dimensions {header.Width}x{header.Height}.");
+        }
+
+        if (heightmapHeader.TileSize != header.TileSize || heightmapHeader.Padding != header.Padding)
+        {
+            throw new InvalidDataException("Heightmap tile metadata does not match the terrain header.");
+        }
+
+        if (heightmapHeader.TileSize is not (129 or 257 or 513))
+        {
+            throw new InvalidDataException($"Unsupported heightmap tile size {heightmapHeader.TileSize}. Expected 129, 257, or 513.");
+        }
+
+        if (heightmapHeader.Padding < 0 || heightmapHeader.Padding > 8)
+        {
+            throw new InvalidDataException($"Unsupported heightmap padding {heightmapHeader.Padding}.");
+        }
+
+        if (heightmapHeader.Mipmaps != header.HeightMapMipLevels)
+        {
+            throw new InvalidDataException(
+                $"Heightmap mip count {heightmapHeader.Mipmaps} does not match terrain header mip count {header.HeightMapMipLevels}.");
+        }
+    }
+
     private readonly record struct TerrainMipLayout(int Width, int Height, int TilesX, int TilesY, long Offset);
 }
 
@@ -300,6 +378,18 @@ internal sealed class GpuHeightArray : IDisposable
             IsPinned = isPinned,
             Key = key,
         };
+        TouchSlice(sliceIndex);
+        return true;
+    }
+
+    public bool TrySetPinned(TerrainPageKey key, bool pinned)
+    {
+        if (!pageToSlice.TryGetValue(key, out int sliceIndex))
+        {
+            return false;
+        }
+
+        slots[sliceIndex].IsPinned = pinned;
         TouchSlice(sliceIndex);
         return true;
     }
@@ -415,6 +505,7 @@ internal sealed class GpuHeightArray : IDisposable
 
 internal sealed class TerrainStreamingManager : IDisposable
 {
+    private static readonly Logger Log = GlobalLogger.GetLogger("Quantum");
     private readonly TerrainFileReader fileReader;
     private readonly GpuHeightArray gpuHeightArray;
     private readonly BlockingCollection<StreamingRequest> pendingRequests = new();
@@ -427,6 +518,7 @@ internal sealed class TerrainStreamingManager : IDisposable
     private readonly int pageByteSize;
     private readonly int heightmapLodOffset;
     private readonly PageBufferAllocator pageBufferAllocator;
+    private bool hasLoggedBufferPoolExhaustion;
 
     public TerrainStreamingManager(TerrainFileReader fileReader, GpuHeightArray gpuHeightArray, int baseChunkSize)
     {
@@ -513,7 +605,7 @@ internal sealed class TerrainStreamingManager : IDisposable
                 }
 
                 fileReader.ReadHeightPage(pageKey, pageData.Memory.Span);
-                gpuHeightArray.UploadPage(commandList, pageKey, pageData.Memory.Span, pinned: true);
+                gpuHeightArray.UploadPage(commandList, pageKey, pageData.Memory.Span, pinned: false);
             }
         }
     }
@@ -523,16 +615,25 @@ internal sealed class TerrainStreamingManager : IDisposable
         int processed = 0;
         while (processed < Math.Max(1, maxUploads) && completedRequests.TryDequeue(out var request))
         {
+            bool disposeRequest = true;
             try
             {
-                queuedKeys.TryRemove(request.Key, out _);
+                if (!gpuHeightArray.UploadPage(commandList, request.Key, request.Data.Memory.Span, request.IsPinned))
+                {
+                    completedRequests.Enqueue(request);
+                    disposeRequest = false;
+                    break;
+                }
 
-                gpuHeightArray.UploadPage(commandList, request.Key, request.Data.Memory.Span, request.IsPinned);
+                queuedKeys.TryRemove(request.Key, out _);
                 processed++;
             }
             finally
             {
-                request.Data.Dispose();
+                if (disposeRequest)
+                {
+                    request.Data.Dispose();
+                }
             }
         }
     }
@@ -581,6 +682,10 @@ internal sealed class TerrainStreamingManager : IDisposable
     {
         if (gpuHeightArray.IsPageResident(pageKey))
         {
+            if (pinned)
+            {
+                gpuHeightArray.TrySetPinned(pageKey, pinned: true);
+            }
             return;
         }
 
@@ -589,7 +694,19 @@ internal sealed class TerrainStreamingManager : IDisposable
             return;
         }
 
-        IMemoryOwner<byte> buffer = RentPageBuffer();
+        if (!pageBufferAllocator.TryRent(out IMemoryOwner<byte>? buffer) || buffer == null)
+        {
+            queuedKeys.TryRemove(pageKey, out _);
+            if (!hasLoggedBufferPoolExhaustion)
+            {
+                Log.Warning("Terrain streaming buffer pool is exhausted; deferring page request until a buffer is returned.");
+                hasLoggedBufferPoolExhaustion = true;
+            }
+            return;
+        }
+
+        hasLoggedBufferPoolExhaustion = false;
+
         try
         {
             pendingRequests.Add(new StreamingRequest(pageKey, buffer, pinned));
@@ -601,7 +718,6 @@ internal sealed class TerrainStreamingManager : IDisposable
             throw;
         }
     }
-
     private IMemoryOwner<byte> RentPageBuffer()
         => pageBufferAllocator.Rent();
 

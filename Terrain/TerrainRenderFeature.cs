@@ -56,6 +56,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     private ComputeEffectShader? buildNeighborMaskEffect;
 
     private const int ComputeThreadCountX = 64;
+    private bool rebuildingManagedRenderFeatures;
 
     [DataMember]
     [Category]
@@ -281,16 +282,24 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             .Where(feature => !IsManagedSubRenderFeature(feature))
             .ToList();
 
-        RenderFeatures.Clear();
-
-        foreach (var renderFeature in CreateManagedSubRenderFeatures())
+        rebuildingManagedRenderFeatures = true;
+        try
         {
-            RenderFeatures.Add(renderFeature);
+            RenderFeatures.Clear();
+
+            foreach (var renderFeature in CreateManagedSubRenderFeatures())
+            {
+                RenderFeatures.Add(renderFeature);
+            }
+
+            foreach (var renderFeature in unmanagedFeatures)
+            {
+                RenderFeatures.Add(renderFeature);
+            }
         }
-
-        foreach (var renderFeature in unmanagedFeatures)
+        finally
         {
-            RenderFeatures.Add(renderFeature);
+            rebuildingManagedRenderFeatures = false;
         }
     }
 
@@ -492,7 +501,10 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
                 renderFeature.Initialize(Context);
                 break;
             case System.Collections.Specialized.NotifyCollectionChangedAction.Remove:
-                renderFeature.Dispose();
+                if (!rebuildingManagedRenderFeatures)
+                {
+                    renderFeature.Dispose();
+                }
                 break;
         }
     }
@@ -503,6 +515,12 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         {
             AttachRootRenderFeatureMethod.Invoke(renderFeature, new object[] { this });
             return;
+        }
+
+        if (RootRenderFeatureField == null || RenderSystemProperty == null)
+        {
+            throw new InvalidOperationException(
+                $"Unable to bind sub render feature '{renderFeature.GetType().FullName}' because the required Stride binding hooks are unavailable.");
         }
 
         RootRenderFeatureField?.SetValue(renderFeature, this);
@@ -789,7 +807,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         bool isResident = streamingManager.TryGetResidentPageForChunk(key, out int sliceIndex, out int pageOffsetX, out int pageOffsetY, out int pageTexelStride);
         if (!isResident)
         {
-            streamingManager.RequestChunk(key, pinned: lodLevel == component.MaxLod);
+            streamingManager.RequestChunk(key);
         }
 
         float distance = DistanceToAabb(cameraPosition, bounds);
@@ -864,22 +882,19 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         int endSampleX = Math.Min(originSampleX + sizeInSamples, component.HeightmapWidth - 1);
         int endSampleY = Math.Min(originSampleY + sizeInSamples, component.HeightmapHeight - 1);
         float worldHeightScale = component.HeightScale * TerrainComponent.HeightSampleNormalization;
-
-        Vector3[] corners =
-        {
-            new(originSampleX, minHeight * worldHeightScale, originSampleY),
-            new(endSampleX, minHeight * worldHeightScale, originSampleY),
-            new(originSampleX, minHeight * worldHeightScale, endSampleY),
-            new(endSampleX, minHeight * worldHeightScale, endSampleY),
-            new(originSampleX, maxHeight * worldHeightScale, originSampleY),
-            new(endSampleX, maxHeight * worldHeightScale, originSampleY),
-            new(originSampleX, maxHeight * worldHeightScale, endSampleY),
-            new(endSampleX, maxHeight * worldHeightScale, endSampleY),
-        };
+        Span<Vector3> corners = stackalloc Vector3[8];
+        corners[0] = new Vector3(originSampleX, minHeight * worldHeightScale, originSampleY);
+        corners[1] = new Vector3(endSampleX, minHeight * worldHeightScale, originSampleY);
+        corners[2] = new Vector3(originSampleX, minHeight * worldHeightScale, endSampleY);
+        corners[3] = new Vector3(endSampleX, minHeight * worldHeightScale, endSampleY);
+        corners[4] = new Vector3(originSampleX, maxHeight * worldHeightScale, originSampleY);
+        corners[5] = new Vector3(endSampleX, maxHeight * worldHeightScale, originSampleY);
+        corners[6] = new Vector3(originSampleX, maxHeight * worldHeightScale, endSampleY);
+        corners[7] = new Vector3(endSampleX, maxHeight * worldHeightScale, endSampleY);
 
         var worldMin = new Vector3(float.MaxValue);
         var worldMax = new Vector3(float.MinValue);
-        foreach (var corner in corners)
+        foreach (ref readonly var corner in corners)
         {
             var world = Vector3.TransformCoordinate(corner, terrainWorldMatrix);
             worldMin = Vector3.Min(worldMin, world);

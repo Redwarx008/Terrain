@@ -3,6 +3,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -86,6 +87,26 @@ internal sealed unsafe class PageBufferAllocator : IDisposable
 
         Interlocked.Decrement(ref allocated);
         throw new OutOfMemoryException($"Page buffer pool exhausted. Max buffers: {maxCount}.");
+    }
+
+    public bool TryRent([NotNullWhen(true)] out IMemoryOwner<byte>? owner)
+    {
+        if (pool.TryTake(out nint pointer))
+        {
+            owner = new NativePageBufferOwner(this, (byte*)pointer, bytesPerPage);
+            return true;
+        }
+
+        if (Interlocked.Increment(ref allocated) <= maxCount)
+        {
+            nint memory = (nint)NativeMemory.Alloc((nuint)bytesPerPage);
+            owner = new NativePageBufferOwner(this, (byte*)memory, bytesPerPage);
+            return true;
+        }
+
+        Interlocked.Decrement(ref allocated);
+        owner = null;
+        return false;
     }
 
     internal void Return(byte* pointer)
