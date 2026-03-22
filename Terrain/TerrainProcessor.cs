@@ -230,11 +230,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     {
         Debug.Assert(renderObject.HeightmapArray != null);
         Debug.Assert(component.QuadTree != null);
-
-        if (renderObject.HeightmapArray == null || component.QuadTree == null)
-        {
-            return;
-        }
+        Debug.Assert(renderObject.InstanceBuffer != null);
 
         if (!EnsureMaterial(graphicsDevice, component, renderObject))
         {
@@ -287,20 +283,23 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     private void UpdateMaterialParameters(TerrainComponent component, TerrainRenderObject renderObject, GraphicsDevice graphicsDevice)
     {
         var materialPass = renderObject.MaterialPass;
-        if (materialPass == null || renderObject.HeightmapArray == null || renderObject.InstanceBuffer == null || component.DefaultDiffuseTexture == null)
+        if (materialPass == null || component.DefaultDiffuseTexture == null)
         {
             return;
         }
 
+        Debug.Assert(renderObject.HeightmapArray != null);
+        Debug.Assert(renderObject.InstanceBuffer != null);
+
         var parameters = materialPass.Parameters;
         var dimensionsInSamples = new Vector2(component.HeightmapWidth - 1, component.HeightmapHeight - 1);
-        parameters.Set(TerrainHeightParametersKeys.HeightmapArray, renderObject.HeightmapArray);
+        parameters.Set(TerrainHeightParametersKeys.HeightmapArray, renderObject.HeightmapArray!);
         parameters.Set(TerrainHeightParametersKeys.HeightScale, component.HeightScale);
         parameters.Set(TerrainHeightParametersKeys.BaseChunkSize, component.BaseChunkSize);
         parameters.Set(TerrainHeightParametersKeys.HeightmapTileSize, component.HeightmapTileSize);
         parameters.Set(TerrainHeightParametersKeys.HeightmapTilePadding, component.HeightmapTilePadding);
 
-        parameters.Set(MaterialTerrainDisplacementKeys.InstanceBuffer, renderObject.InstanceBuffer);
+        parameters.Set(MaterialTerrainDisplacementKeys.InstanceBuffer, renderObject.InstanceBuffer!);
         parameters.Set(MaterialTerrainDisplacementKeys.HeightmapDimensionsInSamples, dimensionsInSamples);
 
         parameters.Set(MaterialTerrainDiffuseKeys.DefaultDiffuseTexture, component.DefaultDiffuseTexture);

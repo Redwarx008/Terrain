@@ -632,7 +632,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
     private void PrepareTerrainDraw(RenderDrawContext drawContext, TerrainRenderObject renderObject, RenderView renderView)
     {
         var commandList = drawContext.CommandList;
-        if (renderObject.Source is not TerrainComponent component)
+        if (renderObject.Source is not TerrainComponent component || !component.IsInitialized)
         {
             renderObject.InstanceCount = 0;
             return;
@@ -647,20 +647,6 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         Debug.Assert(renderObject.LodLookupBuffer != null);
         Debug.Assert(renderObject.LodLookupLayoutBuffer != null);
         Debug.Assert(renderObject.LodMapTexture != null);
-
-        if (component.QuadTree == null
-            || component.InstanceCapacity <= 0
-            || component.InstanceData.Length == 0
-            || renderObject.InstanceBuffer == null
-            || component.LodLookupNodeData.Length == 0
-            || renderObject.LodLookupNodeBuffer == null
-            || renderObject.LodLookupBuffer == null
-            || renderObject.LodLookupLayoutBuffer == null
-            || renderObject.LodMapTexture == null)
-        {
-            renderObject.InstanceCount = 0;
-            return;
-        }
 
         int instanceCount = component.QuadTree.Select(
             renderObject.World.TranslationVector,

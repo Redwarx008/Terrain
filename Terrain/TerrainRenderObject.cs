@@ -148,44 +148,40 @@ public sealed class TerrainRenderObject : RenderMesh
 
     internal void UpdateInstanceData(CommandList commandList, TerrainChunkInstance[] data, int count)
     {
-        if (InstanceBuffer == null || count <= 0)
+        Debug.Assert(InstanceBuffer != null);
+        if (count <= 0)
         {
             InstanceCount = 0;
             return;
         }
 
-        InstanceBuffer.SetData(commandList, new global::System.ReadOnlySpan<TerrainChunkInstance>(data, 0, count));
+        InstanceBuffer!.SetData(commandList, new global::System.ReadOnlySpan<TerrainChunkInstance>(data, 0, count));
         InstanceCount = count;
     }
 
     internal void UpdateLodLookupNodeData(CommandList commandList, TerrainLodLookupNode[] data, int count)
     {
-        if (LodLookupNodeBuffer == null || count <= 0)
+        Debug.Assert(LodLookupNodeBuffer != null);
+        if (count <= 0)
         {
             return;
         }
 
-        LodLookupNodeBuffer.SetData(commandList, new global::System.ReadOnlySpan<TerrainLodLookupNode>(data, 0, count));
+        LodLookupNodeBuffer!.SetData(commandList, new global::System.ReadOnlySpan<TerrainLodLookupNode>(data, 0, count));
     }
 
     internal void UpdateLodLookupLayoutData(CommandList commandList, TerrainLodLookupLayout[] data)
     {
-        if (LodLookupLayoutBuffer == null || data.Length <= 0)
-        {
-            return;
-        }
-
-        LodLookupLayoutBuffer.SetData(commandList, data);
+        Debug.Assert(LodLookupLayoutBuffer != null);
+        Debug.Assert(data.Length > 0);
+        LodLookupLayoutBuffer!.SetData(commandList, data);
     }
 
     internal void InitializeLodLookupData(CommandList commandList, int entryCount)
     {
-        if (LodLookupBuffer == null || entryCount <= 0)
-        {
-            return;
-        }
-
-        LodLookupBuffer.SetData(commandList, new TerrainLodLookupEntry[entryCount]);
+        Debug.Assert(LodLookupBuffer != null);
+        Debug.Assert(entryCount > 0);
+        LodLookupBuffer!.SetData(commandList, new TerrainLodLookupEntry[entryCount]);
     }
 
     public void ReleaseGpuResources()
