@@ -2,52 +2,54 @@ namespace Terrain
 {
     shader TerrainBuildLodMap : ComputeShaderBase
     {
-        struct TerrainBuildLodMapChunkInstance
+        static const uint SubdividedState = (uint)1;
+
+        struct TerrainBuildLodMapLayoutEntry
         {
-            int4 ChunkInfo;
-            int4 StreamInfo;
+            int4 LayoutInfo;
         };
 
-        stage StructuredBuffer<TerrainBuildLodMapChunkInstance> InstanceBuffer;
+        stage StructuredBuffer<uint> LodLookupBuffer;
+        stage StructuredBuffer<TerrainBuildLodMapLayoutEntry> LodLookupLayoutBuffer;
         stage RWTexture2D<uint> LodMap;
-        stage int InstanceCount;
+        stage int MaxLod;
         stage int LodMapWidth;
         stage int LodMapHeight;
 
+        int ComputeLookupIndex(int lodLevel, int nodeX, int nodeY)
+        {
+            TerrainBuildLodMapLayoutEntry layout = LodLookupLayoutBuffer[lodLevel];
+            return layout.LayoutInfo.x + nodeY * layout.LayoutInfo.y + nodeX;
+        }
+
         override void Compute()
         {
-            uint instanceIndex = streams.DispatchThreadId.x;
-            if (instanceIndex >= (uint)InstanceCount)
+            uint texelX = streams.DispatchThreadId.x;
+            uint texelY = streams.DispatchThreadId.y;
+            if (texelX >= (uint)LodMapWidth || texelY >= (uint)LodMapHeight)
             {
                 return;
             }
 
-            TerrainBuildLodMapChunkInstance instance = InstanceBuffer[instanceIndex];
-            int4 chunk = instance.ChunkInfo;
-            int lodLevel = chunk.z;
-            int lodScale = 1 << lodLevel;
-            int originX = chunk.x * lodScale;
-            int originY = chunk.y * lodScale;
-
-            for (int y = 0; y < lodScale; y++)
+            for (int lodLevel = MaxLod; lodLevel >= 0; lodLevel--)
             {
-                int mapY = originY + y;
-                if ((uint)mapY >= (uint)LodMapHeight)
+                int nodeX = (int)texelX >> lodLevel;
+                int nodeY = (int)texelY >> lodLevel;
+                TerrainBuildLodMapLayoutEntry layout = LodLookupLayoutBuffer[lodLevel];
+                if ((uint)nodeX >= (uint)layout.LayoutInfo.y || (uint)nodeY >= (uint)layout.LayoutInfo.z)
                 {
-                    break;
+                    return;
                 }
 
-                for (int x = 0; x < lodScale; x++)
+                uint subdivided = LodLookupBuffer[ComputeLookupIndex(lodLevel, nodeX, nodeY)];
+                if (subdivided != SubdividedState)
                 {
-                    int mapX = originX + x;
-                    if ((uint)mapX >= (uint)LodMapWidth)
-                    {
-                        break;
-                    }
-
-                    LodMap[int2(mapX, mapY)] = (uint)lodLevel;
+                    LodMap[int2(texelX, texelY)] = (uint)lodLevel;
+                    return;
                 }
             }
+
+            LodMap[int2(texelX, texelY)] = 0;
         }
     };
 }

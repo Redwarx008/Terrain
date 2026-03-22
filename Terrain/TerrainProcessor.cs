@@ -108,6 +108,9 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     {
         return renderObject.HeightmapArray != null
             && renderObject.InstanceBuffer != null
+            && renderObject.LodLookupNodeBuffer != null
+            && renderObject.LodLookupBuffer != null
+            && renderObject.LodLookupLayoutBuffer != null
             && renderObject.LodMapTexture != null
             && renderObject.PatchVertexBuffer != null
             && renderObject.PatchIndexBuffer != null
@@ -165,9 +168,12 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         component.MaxLeafChunkCount = loadedData.MaxLeafChunkCount;
         component.InstanceCapacity = Math.Min(loadedData.MaxLeafChunkCount, Math.Max(1, component.MaxVisibleChunkInstances));
         component.InstanceData = new TerrainChunkInstance[component.InstanceCapacity];
+        int lodLookupEntryCount = ComputeLodLookupEntryCount(loadedData.MinMaxErrorMaps);
+        component.LodLookupNodeData = new TerrainLodLookupNode[lodLookupEntryCount];
         component.BaseChunkSize = loadedData.BaseChunkSize;
         component.HeightmapTileSize = loadedData.HeightmapTileSize;
         component.HeightmapTilePadding = loadedData.HeightmapTilePadding;
+        var lodLookupLayouts = CreateLodLookupLayouts(loadedData.MinMaxErrorMaps);
 
         renderObject.ReinitializeGpuResources(
             graphicsDevice,
@@ -177,7 +183,12 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             component.HeightmapTileSize,
             component.HeightmapTilePadding,
             loadedData.MaxResidentChunks,
-            component.InstanceCapacity);
+            component.InstanceCapacity,
+            lodLookupEntryCount,
+            lodLookupLayouts.Length,
+            lodLookupEntryCount);
+        renderObject.InitializeLodLookupData(commandList, lodLookupEntryCount);
+        renderObject.UpdateLodLookupLayoutData(commandList, lodLookupLayouts);
 
         Debug.Assert(renderObject.HeightmapArray != null);
 
@@ -320,6 +331,35 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         int baseDimX = (width - 1 + baseChunkSize - 1) / baseChunkSize;
         int baseDimY = (height - 1 + baseChunkSize - 1) / baseChunkSize;
         return baseDimX * baseDimY;
+    }
+
+    private static int ComputeLodLookupEntryCount(TerrainMinMaxErrorMap[] minMaxErrorMaps)
+    {
+        int totalNodeCount = 0;
+        foreach (var map in minMaxErrorMaps)
+        {
+            totalNodeCount += map.Width * map.Height;
+        }
+
+        return totalNodeCount;
+    }
+
+    private static TerrainLodLookupLayout[] CreateLodLookupLayouts(TerrainMinMaxErrorMap[] minMaxErrorMaps)
+    {
+        var layouts = new TerrainLodLookupLayout[minMaxErrorMaps.Length];
+        int offset = 0;
+        for (int lodLevel = 0; lodLevel < minMaxErrorMaps.Length; lodLevel++)
+        {
+            var map = minMaxErrorMaps[lodLevel];
+            layouts[lodLevel] = new TerrainLodLookupLayout
+            {
+                LayoutInfo = new Int4(offset, map.Width, map.Height, 0),
+            };
+
+            offset += map.Width * map.Height;
+        }
+
+        return layouts;
     }
 
     private static Matrix CreateTerrainWorldMatrix(Matrix entityWorldMatrix)

@@ -16,13 +16,11 @@ using Buffer = Stride.Graphics.Buffer;
 
 namespace Terrain
 {
-    public static partial class TerrainBuildLodMapKeys
+    public static partial class TerrainBuildLodLookupKeys
     {
-        public static readonly ObjectParameterKey<Buffer> LodLookupBuffer = ParameterKeys.NewObject<Buffer>();
+        public static readonly ObjectParameterKey<Buffer> LodLookupNodeBuffer = ParameterKeys.NewObject<Buffer>();
         public static readonly ObjectParameterKey<Buffer> LodLookupLayoutBuffer = ParameterKeys.NewObject<Buffer>();
-        public static readonly ObjectParameterKey<Texture> LodMap = ParameterKeys.NewObject<Texture>();
-        public static readonly ValueParameterKey<int> MaxLod = ParameterKeys.NewValue<int>();
-        public static readonly ValueParameterKey<int> LodMapWidth = ParameterKeys.NewValue<int>();
-        public static readonly ValueParameterKey<int> LodMapHeight = ParameterKeys.NewValue<int>();
+        public static readonly ObjectParameterKey<Buffer> LodLookupBuffer = ParameterKeys.NewObject<Buffer>();
+        public static readonly ValueParameterKey<int> LodLookupNodeCount = ParameterKeys.NewValue<int>();
     }
 }

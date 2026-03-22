@@ -24,6 +24,30 @@ internal struct TerrainChunkInstance
     public Int4 StreamInfo;
 }
 
+internal enum TerrainLodLookupNodeState : uint
+{
+    Stop = 0,
+    Subdivided = 1,
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct TerrainLodLookupNode
+{
+    public Int4 NodeInfo;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct TerrainLodLookupLayout
+{
+    public Int4 LayoutInfo;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct TerrainLodLookupEntry
+{
+    public uint Subdivided;
+}
+
 internal readonly struct TerrainChunkKey : IEquatable<TerrainChunkKey>
 {
     public TerrainChunkKey(int lodLevel, int chunkX, int chunkY)

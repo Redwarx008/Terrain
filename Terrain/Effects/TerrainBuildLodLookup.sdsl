@@ -1,0 +1,39 @@
+namespace Terrain
+{
+    shader TerrainBuildLodLookup : ComputeShaderBase
+    {
+        struct TerrainBuildLodLookupNode
+        {
+            int4 NodeInfo;
+        };
+
+        struct TerrainBuildLodLookupLayoutEntry
+        {
+            int4 LayoutInfo;
+        };
+
+        stage StructuredBuffer<TerrainBuildLodLookupNode> LodLookupNodeBuffer;
+        stage StructuredBuffer<TerrainBuildLodLookupLayoutEntry> LodLookupLayoutBuffer;
+        stage RWStructuredBuffer<uint> LodLookupBuffer;
+        stage int LodLookupNodeCount;
+
+        int ComputeLookupIndex(int lodLevel, int nodeX, int nodeY)
+        {
+            TerrainBuildLodLookupLayoutEntry layout = LodLookupLayoutBuffer[lodLevel];
+            return layout.LayoutInfo.x + nodeY * layout.LayoutInfo.y + nodeX;
+        }
+
+        override void Compute()
+        {
+            uint nodeIndex = streams.DispatchThreadId.x;
+            if (nodeIndex >= (uint)LodLookupNodeCount)
+            {
+                return;
+            }
+
+            TerrainBuildLodLookupNode node = LodLookupNodeBuffer[nodeIndex];
+            int4 nodeInfo = node.NodeInfo;
+            LodLookupBuffer[ComputeLookupIndex(nodeInfo.z, nodeInfo.x, nodeInfo.y)] = (uint)nodeInfo.w;
+        }
+    };
+}

@@ -18,8 +18,11 @@ internal sealed class TerrainQuadTree : IDisposable
         public float ScreenSpaceScale;
         public int InstanceCapacity;
         public TerrainChunkInstance[] InstanceData;
+        public int LodLookupNodeCapacity;
+        public TerrainLodLookupNode[] LodLookupNodeData;
         public bool Truncated;
         public int SelectedCount;
+        public int LodLookupNodeCount;
     }
 
     private readonly TerrainMinMaxErrorMap[] minMaxErrorMaps;
@@ -54,9 +57,12 @@ internal sealed class TerrainQuadTree : IDisposable
         Vector3 terrainOffset,
         RenderView renderView,
         TerrainChunkInstance[] instanceData,
+        TerrainLodLookupNode[] lodLookupNodeData,
+        out int lodLookupNodeCount,
         out bool truncated)
     {
         Debug.Assert(instanceData.Length > 0);
+        Debug.Assert(lodLookupNodeData.Length > 0);
 
         float viewHeight = Math.Max(1.0f, renderView.ViewSize.Y);
         float screenSpaceScale = viewHeight * 0.5f * MathF.Abs(renderView.Projection.M22);
@@ -69,8 +75,11 @@ internal sealed class TerrainQuadTree : IDisposable
             ScreenSpaceScale = screenSpaceScale,
             InstanceCapacity = instanceData.Length,
             InstanceData = instanceData,
+            LodLookupNodeCapacity = lodLookupNodeData.Length,
+            LodLookupNodeData = lodLookupNodeData,
             Truncated = false,
             SelectedCount = 0,
+            LodLookupNodeCount = 0,
         };
 
         for (int y = 0; y < topLevelChunkCountY; y++)
@@ -82,6 +91,7 @@ internal sealed class TerrainQuadTree : IDisposable
         }
 
         truncated = selectionState.Truncated;
+        lodLookupNodeCount = selectionState.LodLookupNodeCount;
         return selectionState.SelectedCount;
     }
 
@@ -100,6 +110,7 @@ internal sealed class TerrainQuadTree : IDisposable
         if (state.SelectedCount >= state.InstanceCapacity)
         {
             state.Truncated = true;
+            WriteLodLookupNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Stop);
             return;
         }
 
@@ -184,6 +195,8 @@ internal sealed class TerrainQuadTree : IDisposable
             return;
         }
 
+        WriteLodLookupNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Subdivided);
+
         if (subTLExist)
         {
             SelectNode(ref state, childChunkX, childChunkY, lodLevel - 1);
@@ -212,6 +225,7 @@ internal sealed class TerrainQuadTree : IDisposable
         if (!isResident)
         {
             streamingManager.RequestChunk(key);
+            WriteLodLookupNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Stop);
             return;
         }
 
@@ -219,6 +233,21 @@ internal sealed class TerrainQuadTree : IDisposable
         {
             ChunkInfo = new Int4(chunkX, chunkY, lodLevel, 0),
             StreamInfo = new Int4(sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
+        };
+        WriteLodLookupNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Stop);
+    }
+
+    private static void WriteLodLookupNode(ref SelectionState state, int chunkX, int chunkY, int lodLevel, TerrainLodLookupNodeState nodeState)
+    {
+        if (state.LodLookupNodeCount >= state.LodLookupNodeCapacity)
+        {
+            state.Truncated = true;
+            return;
+        }
+
+        state.LodLookupNodeData[state.LodLookupNodeCount++] = new TerrainLodLookupNode
+        {
+            NodeInfo = new Int4(chunkX, chunkY, lodLevel, (int)nodeState),
         };
     }
 }

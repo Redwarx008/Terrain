@@ -60,6 +60,9 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal TerrainChunkInstance[] InstanceData = Array.Empty<TerrainChunkInstance>();
 
     [DataMemberIgnore]
+    internal TerrainLodLookupNode[] LodLookupNodeData = Array.Empty<TerrainLodLookupNode>();
+
+    [DataMemberIgnore]
     internal int MaxLeafChunkCount;
 
     [DataMemberIgnore]

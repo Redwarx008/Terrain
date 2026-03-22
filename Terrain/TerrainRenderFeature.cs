@@ -641,13 +641,21 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         Debug.Assert(component.QuadTree != null);
         Debug.Assert(component.InstanceCapacity > 0);
         Debug.Assert(component.InstanceData.Length > 0);
+        Debug.Assert(component.LodLookupNodeData.Length > 0);
         Debug.Assert(renderObject.InstanceBuffer != null);
+        Debug.Assert(renderObject.LodLookupNodeBuffer != null);
+        Debug.Assert(renderObject.LodLookupBuffer != null);
+        Debug.Assert(renderObject.LodLookupLayoutBuffer != null);
         Debug.Assert(renderObject.LodMapTexture != null);
 
         if (component.QuadTree == null
             || component.InstanceCapacity <= 0
             || component.InstanceData.Length == 0
             || renderObject.InstanceBuffer == null
+            || component.LodLookupNodeData.Length == 0
+            || renderObject.LodLookupNodeBuffer == null
+            || renderObject.LodLookupBuffer == null
+            || renderObject.LodLookupLayoutBuffer == null
             || renderObject.LodMapTexture == null)
         {
             renderObject.InstanceCount = 0;
@@ -658,6 +666,8 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             renderObject.World.TranslationVector,
             renderView,
             component.InstanceData,
+            component.LodLookupNodeData,
+            out int lodLookupNodeCount,
             out bool truncated);
         if (truncated)
         {
@@ -669,12 +679,13 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         }
 
         renderObject.UpdateInstanceData(commandList, component.InstanceData, instanceCount);
+        renderObject.UpdateLodLookupNodeData(commandList, component.LodLookupNodeData, lodLookupNodeCount);
         if (instanceCount <= 0)
         {
             return;
         }
 
-        computeDispatcher.Dispatch(drawContext, renderObject, instanceCount);
+        computeDispatcher.Dispatch(drawContext, renderObject, instanceCount, lodLookupNodeCount, component.MaxLod);
     }
 
     private static InputElementDescription[] PrepareInputElements(PipelineStateDescription pipelineState, MeshDraw drawData)

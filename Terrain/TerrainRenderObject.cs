@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Stride.Core.Mathematics;
 using Stride.Graphics;
@@ -13,6 +14,9 @@ public sealed class TerrainRenderObject : RenderMesh
 {
     public Texture? HeightmapArray;
     public Buffer? InstanceBuffer;
+    public Buffer? LodLookupNodeBuffer;
+    public Buffer? LodLookupBuffer;
+    public Buffer? LodLookupLayoutBuffer;
     public Texture? LodMapTexture;
     public Buffer? PatchVertexBuffer;
     public Buffer? PatchIndexBuffer;
@@ -24,7 +28,7 @@ public sealed class TerrainRenderObject : RenderMesh
         BoundingBox = (BoundingBoxExt)new BoundingBox(Vector3.Zero, Vector3.One);
     }
 
-    public void ReinitializeGpuResources(GraphicsDevice graphicsDevice, int baseChunkSize, int heightmapWidth, int heightmapHeight, int tileSize, int tilePadding, int maxResidentChunks, int instanceCapacity)
+    public void ReinitializeGpuResources(GraphicsDevice graphicsDevice, int baseChunkSize, int heightmapWidth, int heightmapHeight, int tileSize, int tilePadding, int maxResidentChunks, int instanceCapacity, int lodLookupNodeCapacity, int lodLookupLevelCount, int lodLookupEntryCount)
     {
         ReleaseGpuResources();
 
@@ -42,6 +46,9 @@ public sealed class TerrainRenderObject : RenderMesh
         int lodMapHeight = Math.Max(1, (heightmapHeight - 1 + baseChunkSize - 1) / baseChunkSize);
 
         InstanceBuffer = Buffer.Structured.New<TerrainChunkInstance>(graphicsDevice, instanceCapacity, true);
+        LodLookupNodeBuffer = Buffer.Structured.New<TerrainLodLookupNode>(graphicsDevice, lodLookupNodeCapacity, true);
+        LodLookupBuffer = Buffer.Structured.New<TerrainLodLookupEntry>(graphicsDevice, lodLookupEntryCount, true);
+        LodLookupLayoutBuffer = Buffer.Structured.New<TerrainLodLookupLayout>(graphicsDevice, lodLookupLevelCount);
         LodMapTexture = Texture.New2D(
             graphicsDevice,
             lodMapWidth,
@@ -151,6 +158,36 @@ public sealed class TerrainRenderObject : RenderMesh
         InstanceCount = count;
     }
 
+    internal void UpdateLodLookupNodeData(CommandList commandList, TerrainLodLookupNode[] data, int count)
+    {
+        if (LodLookupNodeBuffer == null || count <= 0)
+        {
+            return;
+        }
+
+        LodLookupNodeBuffer.SetData(commandList, new global::System.ReadOnlySpan<TerrainLodLookupNode>(data, 0, count));
+    }
+
+    internal void UpdateLodLookupLayoutData(CommandList commandList, TerrainLodLookupLayout[] data)
+    {
+        if (LodLookupLayoutBuffer == null || data.Length <= 0)
+        {
+            return;
+        }
+
+        LodLookupLayoutBuffer.SetData(commandList, data);
+    }
+
+    internal void InitializeLodLookupData(CommandList commandList, int entryCount)
+    {
+        if (LodLookupBuffer == null || entryCount <= 0)
+        {
+            return;
+        }
+
+        LodLookupBuffer.SetData(commandList, new TerrainLodLookupEntry[entryCount]);
+    }
+
     public void ReleaseGpuResources()
     {
         HeightmapArray?.Dispose();
@@ -158,6 +195,15 @@ public sealed class TerrainRenderObject : RenderMesh
 
         InstanceBuffer?.Dispose();
         InstanceBuffer = null;
+
+        LodLookupNodeBuffer?.Dispose();
+        LodLookupNodeBuffer = null;
+
+        LodLookupBuffer?.Dispose();
+        LodLookupBuffer = null;
+
+        LodLookupLayoutBuffer?.Dispose();
+        LodLookupLayoutBuffer = null;
 
         LodMapTexture?.Dispose();
         LodMapTexture = null;
