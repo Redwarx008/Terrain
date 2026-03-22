@@ -132,13 +132,6 @@ internal sealed class TerrainQuadTree : IDisposable
             return;
         }
 
-        var key = new TerrainChunkKey(lodLevel, chunkX, chunkY);
-        bool isResident = streamingManager.TryGetResidentPageForChunk(key, out int sliceIndex, out int pageOffsetX, out int pageOffsetY, out int pageTexelStride);
-        if (!isResident)
-        {
-            streamingManager.RequestChunk(key);
-        }
-
         float dx = MathF.Max(MathF.Max(bounds.Minimum.X - state.CameraPosition.X, 0.0f), state.CameraPosition.X - bounds.Maximum.X);
         float dy = MathF.Max(MathF.Max(bounds.Minimum.Y - state.CameraPosition.Y, 0.0f), state.CameraPosition.Y - bounds.Maximum.Y);
         float dz = MathF.Max(MathF.Max(bounds.Minimum.Z - state.CameraPosition.Z, 0.0f), state.CameraPosition.Z - bounds.Maximum.Z);
@@ -148,39 +141,49 @@ internal sealed class TerrainQuadTree : IDisposable
             : float.MaxValue;
         if (lodLevel == 0 || sse <= terrain.MaxScreenSpaceErrorPixels)
         {
-            if (isResident)
-            {
-                state.InstanceData[state.SelectedCount++] = new TerrainChunkInstance
-                {
-                    ChunkInfo = new Int4(chunkX, chunkY, lodLevel, 0),
-                    StreamInfo = new Int4(sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
-                };
-            }
-
+            SelectCurrentNode(ref state, new TerrainChunkKey(lodLevel, chunkX, chunkY), chunkX, chunkY, lodLevel);
             return;
         }
 
         var childMap = minMaxErrorMaps[lodLevel - 1];
         childMap.GetSubNodesExist(chunkX, chunkY, out var subTLExist, out var subTRExist, out var subBLExist, out var subBRExist);
+        int childChunkX = chunkX * 2;
+        int childChunkY = chunkY * 2;
+        Span<bool> childExists = stackalloc bool[4] { subTLExist, subTRExist, subBLExist, subBRExist };
+        Span<TerrainChunkKey> childKeys = stackalloc TerrainChunkKey[4]
+        {
+            new TerrainChunkKey(lodLevel - 1, childChunkX, childChunkY),
+            new TerrainChunkKey(lodLevel - 1, childChunkX + 1, childChunkY),
+            new TerrainChunkKey(lodLevel - 1, childChunkX, childChunkY + 1),
+            new TerrainChunkKey(lodLevel - 1, childChunkX + 1, childChunkY + 1),
+        };
 
-        bool allChildrenResident = streamingManager.AreChildrenResident(chunkX, chunkY, lodLevel);
+        bool allChildrenResident = true;
+        for (int i = 0; i < childKeys.Length; i++)
+        {
+            if (childExists[i] && !streamingManager.IsChunkResident(childKeys[i]))
+            {
+                allChildrenResident = false;
+                break;
+            }
+        }
+
         if (!allChildrenResident)
         {
-            streamingManager.RequestChildren(chunkX, chunkY, lodLevel);
-            if (isResident)
+            // Keep the parent as the temporary draw node while finer children are still streaming in.
+            SelectCurrentNode(ref state, new TerrainChunkKey(lodLevel, chunkX, chunkY), chunkX, chunkY, lodLevel);
+
+            for (int i = 0; i < childKeys.Length; i++)
             {
-                state.InstanceData[state.SelectedCount++] = new TerrainChunkInstance
+                if (childExists[i])
                 {
-                    ChunkInfo = new Int4(chunkX, chunkY, lodLevel, 0),
-                    StreamInfo = new Int4(sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
-                };
+                    streamingManager.RequestChunk(childKeys[i]);
+                }
             }
 
             return;
         }
 
-        int childChunkX = chunkX * 2;
-        int childChunkY = chunkY * 2;
         if (subTLExist)
         {
             SelectNode(ref state, childChunkX, childChunkY, lodLevel - 1);
@@ -200,5 +203,22 @@ internal sealed class TerrainQuadTree : IDisposable
         {
             SelectNode(ref state, childChunkX + 1, childChunkY + 1, lodLevel - 1);
         }
+    }
+
+    private void SelectCurrentNode(ref SelectionState state, TerrainChunkKey key, int chunkX, int chunkY, int lodLevel)
+    {
+        // Only touch streaming for a node once it is actually selected for drawing or needed as fallback.
+        bool isResident = streamingManager.TryGetResidentPageForChunk(key, out int sliceIndex, out int pageOffsetX, out int pageOffsetY, out int pageTexelStride);
+        if (!isResident)
+        {
+            streamingManager.RequestChunk(key);
+            return;
+        }
+
+        state.InstanceData[state.SelectedCount++] = new TerrainChunkInstance
+        {
+            ChunkInfo = new Int4(chunkX, chunkY, lodLevel, 0),
+            StreamInfo = new Int4(sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
+        };
     }
 }

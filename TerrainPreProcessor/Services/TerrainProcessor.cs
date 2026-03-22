@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using Terrain.Shared;
 using TerrainPreProcessor.Models;
 
 namespace TerrainPreProcessor.Services;
@@ -444,9 +445,9 @@ public class TerrainProcessor
         where TPixel : unmanaged, IPixel<TPixel>
     {
         int paddedTileSize = tileSize + padding * 2;
-        int effectiveTileSpan = Math.Max(1, tileSize - 1);
-        int nTilesX = (int)Math.Ceiling(Math.Max(1, source.Width - 1) / (float)effectiveTileSpan);
-        int nTilesY = (int)Math.Ceiling(Math.Max(1, source.Height - 1) / (float)effectiveTileSpan);
+        int effectiveTileSpan = tileSize - 1;
+        int nTilesX = VirtualTextureLayout.ComputeTileCount(source.Width, tileSize);
+        int nTilesY = VirtualTextureLayout.ComputeTileCount(source.Height, tileSize);
 
         for (int ty = 0; ty < nTilesY; ty++)
         {

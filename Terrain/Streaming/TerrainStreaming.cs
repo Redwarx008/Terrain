@@ -10,6 +10,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Terrain.Shared;
 using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
 using Stride.Graphics;
@@ -144,16 +145,17 @@ internal sealed class TerrainFileReader : IDisposable
 
         mipLayouts = new TerrainMipLayout[heightmapHeader.Mipmaps];
         long currentOffset = offset;
-        int mipWidth = heightmapHeader.Width;
-        int mipHeight = heightmapHeader.Height;
         for (int mip = 0; mip < heightmapHeader.Mipmaps; mip++)
         {
-            int tilesX = DivideRoundUp(mipWidth, heightmapHeader.TileSize);
-            int tilesY = DivideRoundUp(mipHeight, heightmapHeader.TileSize);
-            mipLayouts[mip] = new TerrainMipLayout(mipWidth, mipHeight, tilesX, tilesY, currentOffset);
-            currentOffset = checked(currentOffset + checked((long)tilesX * tilesY * tileByteSize));
-            mipWidth = Math.Max(1, (mipWidth + 1) / 2);
-            mipHeight = Math.Max(1, (mipHeight + 1) / 2);
+            // Reader offsets must follow the same page layout rule as the preprocessor,
+            // otherwise valid page keys drift into the wrong mip span or look out of bounds.
+            VirtualTextureMipLayoutInfo layoutInfo = VirtualTextureLayout.GetMipLayout(
+                heightmapHeader.Width,
+                heightmapHeader.Height,
+                heightmapHeader.TileSize,
+                mip);
+            mipLayouts[mip] = new TerrainMipLayout(layoutInfo.Width, layoutInfo.Height, layoutInfo.TilesX, layoutInfo.TilesY, currentOffset);
+            currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * tileByteSize));
         }
     }
 
@@ -311,6 +313,13 @@ internal sealed class TerrainFileReader : IDisposable
         {
             throw new InvalidDataException(
                 $"Heightmap mip count {heightmapHeader.Mipmaps} does not match terrain header mip count {header.HeightMapMipLevels}.");
+        }
+
+        int expectedMipCount = VirtualTextureLayout.GetMipCount(heightmapHeader.Width, heightmapHeader.Height, heightmapHeader.TileSize);
+        if (heightmapHeader.Mipmaps != expectedMipCount)
+        {
+            throw new InvalidDataException(
+                $"Heightmap mip count {heightmapHeader.Mipmaps} does not match the shared VT layout rule; expected {expectedMipCount}.");
         }
     }
 
@@ -553,39 +562,9 @@ internal sealed class TerrainStreamingManager : IDisposable
         return gpuHeightArray.TryGetResidentSlice(pageKey, out sliceIndex);
     }
 
-    public bool AreChildrenResident(int chunkX, int chunkY, int lodLevel)
-    {
-        if (lodLevel <= 0)
-        {
-            return true;
-        }
-
-        int childX = chunkX * 2;
-        int childY = chunkY * 2;
-        return IsChunkResident(new TerrainChunkKey(lodLevel - 1, childX, childY))
-            && IsChunkResident(new TerrainChunkKey(lodLevel - 1, childX + 1, childY))
-            && IsChunkResident(new TerrainChunkKey(lodLevel - 1, childX, childY + 1))
-            && IsChunkResident(new TerrainChunkKey(lodLevel - 1, childX + 1, childY + 1));
-    }
-
     public void RequestChunk(TerrainChunkKey chunkKey, bool pinned = false)
     {
         RequestPage(GetPageKey(chunkKey, out _, out _, out _), pinned);
-    }
-
-    public void RequestChildren(int chunkX, int chunkY, int lodLevel)
-    {
-        if (lodLevel <= 0)
-        {
-            return;
-        }
-
-        int childX = chunkX * 2;
-        int childY = chunkY * 2;
-        RequestChunk(new TerrainChunkKey(lodLevel - 1, childX, childY));
-        RequestChunk(new TerrainChunkKey(lodLevel - 1, childX + 1, childY));
-        RequestChunk(new TerrainChunkKey(lodLevel - 1, childX, childY + 1));
-        RequestChunk(new TerrainChunkKey(lodLevel - 1, childX + 1, childY + 1));
     }
 
     public void PreloadTopLevelChunks(CommandList commandList, TerrainMinMaxErrorMap topMap)
@@ -663,8 +642,9 @@ internal sealed class TerrainStreamingManager : IDisposable
                     fileReader.ReadHeightPage(request.Key, request.Data.Memory.Span);
                     completedRequests.Enqueue(request);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Log.Warning($"Failed to read terrain page {request.Key}: {ex.Message}");
                     request.Data.Dispose();
                     queuedKeys.TryRemove(request.Key, out _);
                 }
@@ -672,10 +652,11 @@ internal sealed class TerrainStreamingManager : IDisposable
         }
         catch (OperationCanceledException)
         {
+            Log.Info("Terrain streaming thread exited.");
         }
     }
 
-    private bool IsChunkResident(TerrainChunkKey chunkKey)
+    public bool IsChunkResident(TerrainChunkKey chunkKey)
         => gpuHeightArray.IsPageResident(GetPageKey(chunkKey, out _, out _, out _));
 
     private void RequestPage(TerrainPageKey pageKey, bool pinned = false)
