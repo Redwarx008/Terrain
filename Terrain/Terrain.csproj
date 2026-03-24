@@ -19,12 +19,12 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\VirtualTextureLayout.cs" Link="Shared\VirtualTextureLayout.cs" />
-    <Compile Update="Effects\TerrainBuildLodLookup.sdsl.cs">
+    <Compile Update="Effects\Build\TerrainBuildLodLookup.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
-    <None Update="Effects\TerrainBuildLodLookup.sdsl">
+    <None Update="Effects\Build\TerrainBuildLodLookup.sdsl">
       <LastGenOutput>TerrainBuildLodLookup.sdsl.cs</LastGenOutput>
     </None>
     <None Update="Resources\heightmap.png">
