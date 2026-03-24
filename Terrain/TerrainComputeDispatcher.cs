@@ -44,30 +44,28 @@ internal sealed class TerrainComputeDispatcher : IDisposable
         };
     }
 
-    public void Dispatch(RenderDrawContext drawContext, TerrainRenderObject renderObject, int instanceCount, int lodLookupNodeCount, int maxLod)
+    public void Dispatch(RenderDrawContext drawContext, TerrainRenderObject renderObject, int renderCount, int nodeCount, int maxLod)
     {
         Debug.Assert(buildLodLookupEffect != null);
         Debug.Assert(buildLodMapEffect != null);
         Debug.Assert(buildNeighborMaskEffect != null);
-        Debug.Assert(renderObject.InstanceBuffer != null);
-        Debug.Assert(renderObject.LodLookupNodeBuffer != null);
+        Debug.Assert(renderObject.ChunkNodeBuffer != null);
         Debug.Assert(renderObject.LodLookupBuffer != null);
         Debug.Assert(renderObject.LodLookupLayoutBuffer != null);
         Debug.Assert(renderObject.LodMapTexture != null);
 
-        if (instanceCount <= 0 || lodLookupNodeCount <= 0)
+        if (renderCount <= 0 || nodeCount <= 0)
         {
             return;
         }
 
-        int lookupThreadGroupCountX = (lodLookupNodeCount + LookupThreadCountX - 1) / LookupThreadCountX;
-        int neighborThreadGroupCountX = (instanceCount + LookupThreadCountX - 1) / LookupThreadCountX;
+        int lookupThreadGroupCountX = (nodeCount + LookupThreadCountX - 1) / LookupThreadCountX;
+        int neighborThreadGroupCountX = (renderCount + LookupThreadCountX - 1) / LookupThreadCountX;
         int lodMapThreadGroupCountX = (renderObject.LodMapTexture.Width + LodMapThreadCountX - 1) / LodMapThreadCountX;
         int lodMapThreadGroupCountY = (renderObject.LodMapTexture.Height + LodMapThreadCountY - 1) / LodMapThreadCountY;
         var commandList = drawContext.CommandList;
 
-        commandList.ResourceBarrierTransition(renderObject.InstanceBuffer, GraphicsResourceState.NonPixelShaderResource);
-        commandList.ResourceBarrierTransition(renderObject.LodLookupNodeBuffer, GraphicsResourceState.NonPixelShaderResource);
+        commandList.ResourceBarrierTransition(renderObject.ChunkNodeBuffer, GraphicsResourceState.NonPixelShaderResource);
         commandList.ResourceBarrierTransition(renderObject.LodLookupLayoutBuffer, GraphicsResourceState.NonPixelShaderResource);
         commandList.ResourceBarrierTransition(renderObject.LodLookupBuffer, GraphicsResourceState.UnorderedAccess);
         commandList.ResourceBarrierTransition(renderObject.LodMapTexture, GraphicsResourceState.UnorderedAccess);
@@ -75,10 +73,10 @@ internal sealed class TerrainComputeDispatcher : IDisposable
         using (Profiler.Begin(BuildLodLookupKey))
         {
             buildLodLookupEffect!.ThreadGroupCounts = new Int3(lookupThreadGroupCountX, 1, 1);
-            buildLodLookupEffect.Parameters.Set(TerrainBuildLodLookupKeys.LodLookupNodeBuffer, renderObject.LodLookupNodeBuffer);
+            buildLodLookupEffect.Parameters.Set(TerrainBuildLodLookupKeys.ChunkNodeBuffer, renderObject.ChunkNodeBuffer);
             buildLodLookupEffect.Parameters.Set(TerrainBuildLodLookupKeys.LodLookupLayoutBuffer, renderObject.LodLookupLayoutBuffer);
             buildLodLookupEffect.Parameters.Set(TerrainBuildLodLookupKeys.LodLookupBuffer, renderObject.LodLookupBuffer);
-            buildLodLookupEffect.Parameters.Set(TerrainBuildLodLookupKeys.LodLookupNodeCount, lodLookupNodeCount);
+            buildLodLookupEffect.Parameters.Set(TerrainBuildLodLookupKeys.NodeCount, nodeCount);
             buildLodLookupEffect.Draw(drawContext);
         }
 
@@ -97,20 +95,20 @@ internal sealed class TerrainComputeDispatcher : IDisposable
         }
 
         commandList.ResourceBarrierTransition(renderObject.LodMapTexture, GraphicsResourceState.NonPixelShaderResource);
-        commandList.ResourceBarrierTransition(renderObject.InstanceBuffer, GraphicsResourceState.UnorderedAccess);
+        commandList.ResourceBarrierTransition(renderObject.ChunkNodeBuffer, GraphicsResourceState.UnorderedAccess);
 
         using (Profiler.Begin(BuildNeighborMaskKey))
         {
             buildNeighborMaskEffect!.ThreadGroupCounts = new Int3(neighborThreadGroupCountX, 1, 1);
-            buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.InstanceBuffer, renderObject.InstanceBuffer);
+            buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.InstanceBuffer, renderObject.ChunkNodeBuffer);
             buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.LodMap, renderObject.LodMapTexture);
-            buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.InstanceCount, instanceCount);
+            buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.InstanceCount, renderCount);
             buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.LodMapWidth, renderObject.LodMapTexture.Width);
             buildNeighborMaskEffect.Parameters.Set(TerrainBuildNeighborMaskKeys.LodMapHeight, renderObject.LodMapTexture.Height);
             buildNeighborMaskEffect.Draw(drawContext);
         }
 
-        commandList.ResourceBarrierTransition(renderObject.InstanceBuffer, GraphicsResourceState.NonPixelShaderResource);
+        commandList.ResourceBarrierTransition(renderObject.ChunkNodeBuffer, GraphicsResourceState.NonPixelShaderResource);
     }
 
     public void Dispose()

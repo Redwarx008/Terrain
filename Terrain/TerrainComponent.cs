@@ -57,16 +57,7 @@ public sealed class TerrainComponent : ActivableEntityComponent
     public bool CastShadows { get; set; } = true;
 
     [DataMemberIgnore]
-    internal TerrainChunkInstance[] InstanceData = Array.Empty<TerrainChunkInstance>();
-
-    [DataMemberIgnore]
-    internal TerrainLodLookupNode[] LodLookupNodeData = Array.Empty<TerrainLodLookupNode>();
-
-    [DataMemberIgnore]
-    internal int MaxLeafChunkCount;
-
-    [DataMemberIgnore]
-    internal int InstanceCapacity;
+    internal TerrainChunkNode[] ChunkNodeData = Array.Empty<TerrainChunkNode>();
 
     [DataMemberIgnore]
     internal TerrainMinMaxErrorMap[]? MinMaxErrorMaps;

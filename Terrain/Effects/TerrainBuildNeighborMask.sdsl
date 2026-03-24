@@ -2,13 +2,13 @@ namespace Terrain
 {
     shader TerrainBuildNeighborMask : ComputeShaderBase
     {
-        struct TerrainBuildNeighborMaskChunkInstance
+        struct TerrainBuildChunkNode
         {
-            int4 ChunkInfo;
+            int4 NodeInfo;
             int4 StreamInfo;
         };
 
-        stage RWStructuredBuffer<TerrainBuildNeighborMaskChunkInstance> InstanceBuffer;
+        stage RWStructuredBuffer<TerrainBuildChunkNode> InstanceBuffer;
         stage Texture2D<uint> LodMap;
         stage int InstanceCount;
         stage int LodMapWidth;
@@ -32,12 +32,12 @@ namespace Terrain
                 return;
             }
 
-            TerrainBuildNeighborMaskChunkInstance instance = InstanceBuffer[instanceIndex];
-            int4 chunk = instance.ChunkInfo;
-            uint currentLod = (uint)chunk.z;
-            int lodScale = 1 << chunk.z;
-            int originX = chunk.x * lodScale;
-            int originY = chunk.y * lodScale;
+            TerrainBuildChunkNode node = InstanceBuffer[instanceIndex];
+            int4 nodeInfo = node.NodeInfo;
+            uint currentLod = (uint)nodeInfo.z;
+            int lodScale = 1 << nodeInfo.z;
+            int originX = nodeInfo.x * lodScale;
+            int originY = nodeInfo.y * lodScale;
 
             uint leftLod = LoadNeighborLod(originX - 1, originY, currentLod);
             uint rightLod = LoadNeighborLod(originX + lodScale, originY, currentLod);
@@ -54,8 +54,8 @@ namespace Terrain
             packedMask |= (topDelta & 0xFF) << 16;
             packedMask |= (bottomDelta & 0xFF) << 24;
 
-            instance.ChunkInfo.w = (int)packedMask;
-            InstanceBuffer[instanceIndex] = instance;
+            node.NodeInfo.w = (int)packedMask;
+            InstanceBuffer[instanceIndex] = node;
         }
     };
 }

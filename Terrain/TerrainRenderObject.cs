@@ -13,8 +13,7 @@ namespace Terrain;
 public sealed class TerrainRenderObject : RenderMesh
 {
     public Texture? HeightmapArray;
-    public Buffer? InstanceBuffer;
-    public Buffer? LodLookupNodeBuffer;
+    public Buffer? ChunkNodeBuffer;
     public Buffer? LodLookupBuffer;
     public Buffer? LodLookupLayoutBuffer;
     public Texture? LodMapTexture;
@@ -28,7 +27,7 @@ public sealed class TerrainRenderObject : RenderMesh
         BoundingBox = (BoundingBoxExt)new BoundingBox(Vector3.Zero, Vector3.One);
     }
 
-    public void ReinitializeGpuResources(GraphicsDevice graphicsDevice, int baseChunkSize, int heightmapWidth, int heightmapHeight, int tileSize, int tilePadding, int maxResidentChunks, int instanceCapacity, int lodLookupNodeCapacity, int lodLookupLevelCount, int lodLookupEntryCount)
+    public void ReinitializeGpuResources(GraphicsDevice graphicsDevice, int baseChunkSize, int heightmapWidth, int heightmapHeight, int tileSize, int tilePadding, int maxResidentChunks, int chunkNodeCapacity, int lodLookupLevelCount, int lodLookupEntryCount)
     {
         ReleaseGpuResources();
 
@@ -45,8 +44,7 @@ public sealed class TerrainRenderObject : RenderMesh
         int lodMapWidth = Math.Max(1, (heightmapWidth - 1 + baseChunkSize - 1) / baseChunkSize);
         int lodMapHeight = Math.Max(1, (heightmapHeight - 1 + baseChunkSize - 1) / baseChunkSize);
 
-        InstanceBuffer = Buffer.Structured.New<TerrainChunkInstance>(graphicsDevice, instanceCapacity, true);
-        LodLookupNodeBuffer = Buffer.Structured.New<TerrainLodLookupNode>(graphicsDevice, lodLookupNodeCapacity, true);
+        ChunkNodeBuffer = Buffer.Structured.New<TerrainChunkNode>(graphicsDevice, chunkNodeCapacity, true);
         LodLookupBuffer = Buffer.Structured.New<TerrainLodLookupEntry>(graphicsDevice, lodLookupEntryCount, true);
         LodLookupLayoutBuffer = Buffer.Structured.New<TerrainLodLookupLayout>(graphicsDevice, lodLookupLevelCount);
         LodMapTexture = Texture.New2D(
@@ -146,28 +144,17 @@ public sealed class TerrainRenderObject : RenderMesh
         ActiveMeshDraw = meshDraw;
     }
 
-    internal void UpdateInstanceData(CommandList commandList, TerrainChunkInstance[] data, int count)
+    internal void UpdateChunkNodeData(CommandList commandList, TerrainChunkNode[] data, int renderCount, int nodeCount)
     {
-        Debug.Assert(InstanceBuffer != null);
-        if (count <= 0)
+        Debug.Assert(ChunkNodeBuffer != null);
+        if (nodeCount <= 0)
         {
             InstanceCount = 0;
             return;
         }
 
-        InstanceBuffer!.SetData(commandList, new global::System.ReadOnlySpan<TerrainChunkInstance>(data, 0, count));
-        InstanceCount = count;
-    }
-
-    internal void UpdateLodLookupNodeData(CommandList commandList, TerrainLodLookupNode[] data, int count)
-    {
-        Debug.Assert(LodLookupNodeBuffer != null);
-        if (count <= 0)
-        {
-            return;
-        }
-
-        LodLookupNodeBuffer!.SetData(commandList, new global::System.ReadOnlySpan<TerrainLodLookupNode>(data, 0, count));
+        ChunkNodeBuffer!.SetData(commandList, new global::System.ReadOnlySpan<TerrainChunkNode>(data, 0, nodeCount));
+        InstanceCount = renderCount;
     }
 
     internal void UpdateLodLookupLayoutData(CommandList commandList, TerrainLodLookupLayout[] data)
@@ -189,11 +176,8 @@ public sealed class TerrainRenderObject : RenderMesh
         HeightmapArray?.Dispose();
         HeightmapArray = null;
 
-        InstanceBuffer?.Dispose();
-        InstanceBuffer = null;
-
-        LodLookupNodeBuffer?.Dispose();
-        LodLookupNodeBuffer = null;
+        ChunkNodeBuffer?.Dispose();
+        ChunkNodeBuffer = null;
 
         LodLookupBuffer?.Dispose();
         LodLookupBuffer = null;

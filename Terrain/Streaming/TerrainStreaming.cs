@@ -17,23 +17,22 @@ using Stride.Graphics;
 
 namespace Terrain;
 
+/// <summary>
+/// Unified terrain chunk node structure for both rendering and LOD lookup.
+/// Render nodes (state=Stop) are placed at the beginning of the buffer,
+/// internal nodes (state=Subdivided) are placed after them.
+/// </summary>
 [StructLayout(LayoutKind.Sequential)]
-internal struct TerrainChunkInstance
+internal struct TerrainChunkNode
 {
-    public Int4 ChunkInfo;
-    public Int4 StreamInfo;
+    public Int4 NodeInfo;    // chunkX, chunkY, lodLevel, state (Stop=0, Subdivided=1)
+    public Int4 StreamInfo;  // sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride
 }
 
 internal enum TerrainLodLookupNodeState : uint
 {
     Stop = 0,
     Subdivided = 1,
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct TerrainLodLookupNode
-{
-    public Int4 NodeInfo;
 }
 
 [StructLayout(LayoutKind.Sequential)]

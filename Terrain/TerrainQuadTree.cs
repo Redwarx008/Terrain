@@ -16,13 +16,11 @@ internal sealed class TerrainQuadTree : IDisposable
         public BoundingFrustum Frustum;
         public Vector3 CameraPosition;
         public float ScreenSpaceScale;
-        public int InstanceCapacity;
-        public TerrainChunkInstance[] InstanceData;
-        public int LodLookupNodeCapacity;
-        public TerrainLodLookupNode[] LodLookupNodeData;
+        public int Capacity;
+        public TerrainChunkNode[] Data;
+        public int RenderCount;
+        public int SubdividedCount;
         public bool Truncated;
-        public int SelectedCount;
-        public int LodLookupNodeCount;
     }
 
     private readonly TerrainMinMaxErrorMap[] minMaxErrorMaps;
@@ -53,16 +51,12 @@ internal sealed class TerrainQuadTree : IDisposable
         this.streamingManager = streamingManager;
     }
 
-    public int Select(
+    public (int RenderCount, int NodeCount) Select(
         Vector3 terrainOffset,
         RenderView renderView,
-        TerrainChunkInstance[] instanceData,
-        TerrainLodLookupNode[] lodLookupNodeData,
-        out int lodLookupNodeCount,
-        out bool truncated)
+        TerrainChunkNode[] chunkNodeData)
     {
-        Debug.Assert(instanceData.Length > 0);
-        Debug.Assert(lodLookupNodeData.Length > 0);
+        Debug.Assert(chunkNodeData.Length > 0);
 
         float viewHeight = Math.Max(1.0f, renderView.ViewSize.Y);
         float screenSpaceScale = viewHeight * 0.5f * MathF.Abs(renderView.Projection.M22);
@@ -73,13 +67,11 @@ internal sealed class TerrainQuadTree : IDisposable
             Frustum = renderView.Frustum,
             CameraPosition = viewInverse.TranslationVector,
             ScreenSpaceScale = screenSpaceScale,
-            InstanceCapacity = instanceData.Length,
-            InstanceData = instanceData,
-            LodLookupNodeCapacity = lodLookupNodeData.Length,
-            LodLookupNodeData = lodLookupNodeData,
+            Capacity = chunkNodeData.Length,
+            Data = chunkNodeData,
+            RenderCount = 0,
+            SubdividedCount = 0,
             Truncated = false,
-            SelectedCount = 0,
-            LodLookupNodeCount = 0,
         };
 
         for (int y = 0; y < topLevelChunkCountY; y++)
@@ -90,9 +82,20 @@ internal sealed class TerrainQuadTree : IDisposable
             }
         }
 
-        truncated = selectionState.Truncated;
-        lodLookupNodeCount = selectionState.LodLookupNodeCount;
-        return selectionState.SelectedCount;
+        // Rearrange: subdivided nodes are currently at the end (backwards), move them after render nodes
+        int renderCount = selectionState.RenderCount;
+        int subdividedCount = selectionState.SubdividedCount;
+        int totalNodeCount = renderCount + subdividedCount;
+
+        if (subdividedCount > 0)
+        {
+            // Subdivided nodes are at indices [capacity - subdividedCount, capacity - 1]
+            // Move them to [renderCount, renderCount + subdividedCount - 1]
+            int subdividedStart = chunkNodeData.Length - subdividedCount;
+            Array.Copy(chunkNodeData, subdividedStart, chunkNodeData, renderCount, subdividedCount);
+        }
+
+        return (renderCount, totalNodeCount);
     }
 
     public void ProcessPendingUploads(CommandList commandList, int maxUploadsPerFrame)
@@ -107,10 +110,11 @@ internal sealed class TerrainQuadTree : IDisposable
 
     private void SelectNode(ref SelectionState state, int chunkX, int chunkY, int lodLevel)
     {
-        if (state.SelectedCount >= state.InstanceCapacity)
+        int totalNodeCount = state.RenderCount + state.SubdividedCount;
+        if (totalNodeCount >= state.Capacity)
         {
             state.Truncated = true;
-            WriteLodLookupNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Stop);
+            WriteSubdividedNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Stop);
             return;
         }
 
@@ -152,7 +156,7 @@ internal sealed class TerrainQuadTree : IDisposable
             : float.MaxValue;
         if (lodLevel == 0 || sse <= terrain.MaxScreenSpaceErrorPixels)
         {
-            SelectCurrentNode(ref state, new TerrainChunkKey(lodLevel, chunkX, chunkY), chunkX, chunkY, lodLevel);
+            SelectRenderNode(ref state, new TerrainChunkKey(lodLevel, chunkX, chunkY), chunkX, chunkY, lodLevel);
             return;
         }
 
@@ -182,7 +186,7 @@ internal sealed class TerrainQuadTree : IDisposable
         if (!allChildrenResident)
         {
             // Keep the parent as the temporary draw node while finer children are still streaming in.
-            SelectCurrentNode(ref state, new TerrainChunkKey(lodLevel, chunkX, chunkY), chunkX, chunkY, lodLevel);
+            SelectRenderNode(ref state, new TerrainChunkKey(lodLevel, chunkX, chunkY), chunkX, chunkY, lodLevel);
 
             for (int i = 0; i < childKeys.Length; i++)
             {
@@ -195,7 +199,7 @@ internal sealed class TerrainQuadTree : IDisposable
             return;
         }
 
-        WriteLodLookupNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Subdivided);
+        WriteSubdividedNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Subdivided);
 
         if (subTLExist)
         {
@@ -218,36 +222,40 @@ internal sealed class TerrainQuadTree : IDisposable
         }
     }
 
-    private void SelectCurrentNode(ref SelectionState state, TerrainChunkKey key, int chunkX, int chunkY, int lodLevel)
+    private void SelectRenderNode(ref SelectionState state, TerrainChunkKey key, int chunkX, int chunkY, int lodLevel)
     {
         // Only touch streaming for a node once it is actually selected for drawing or needed as fallback.
         bool isResident = streamingManager.TryGetResidentPageForChunk(key, out int sliceIndex, out int pageOffsetX, out int pageOffsetY, out int pageTexelStride);
         if (!isResident)
         {
             streamingManager.RequestChunk(key);
-            WriteLodLookupNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Stop);
+            WriteSubdividedNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Stop);
             return;
         }
 
-        state.InstanceData[state.SelectedCount++] = new TerrainChunkInstance
+        // Render nodes are written from the front
+        state.Data[state.RenderCount++] = new TerrainChunkNode
         {
-            ChunkInfo = new Int4(chunkX, chunkY, lodLevel, 0),
+            NodeInfo = new Int4(chunkX, chunkY, lodLevel, (int)TerrainLodLookupNodeState.Stop),
             StreamInfo = new Int4(sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
         };
-        WriteLodLookupNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Stop);
     }
 
-    private static void WriteLodLookupNode(ref SelectionState state, int chunkX, int chunkY, int lodLevel, TerrainLodLookupNodeState nodeState)
+    private void WriteSubdividedNode(ref SelectionState state, int chunkX, int chunkY, int lodLevel, TerrainLodLookupNodeState nodeState)
     {
-        if (state.LodLookupNodeCount >= state.LodLookupNodeCapacity)
+        // Subdivided nodes are written from the back (to avoid overlapping with render nodes)
+        int subdividedIndex = state.Capacity - 1 - state.SubdividedCount;
+        if (subdividedIndex < state.RenderCount)
         {
             state.Truncated = true;
             return;
         }
 
-        state.LodLookupNodeData[state.LodLookupNodeCount++] = new TerrainLodLookupNode
+        state.Data[subdividedIndex] = new TerrainChunkNode
         {
             NodeInfo = new Int4(chunkX, chunkY, lodLevel, (int)nodeState),
+            StreamInfo = default,
         };
+        state.SubdividedCount++;
     }
 }

@@ -639,39 +639,28 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         }
 
         Debug.Assert(component.QuadTree != null);
-        Debug.Assert(component.InstanceCapacity > 0);
-        Debug.Assert(component.InstanceData.Length > 0);
-        Debug.Assert(component.LodLookupNodeData.Length > 0);
-        Debug.Assert(renderObject.InstanceBuffer != null);
-        Debug.Assert(renderObject.LodLookupNodeBuffer != null);
+        Debug.Assert(component.ChunkNodeData.Length > 0);
+        Debug.Assert(renderObject.ChunkNodeBuffer != null);
         Debug.Assert(renderObject.LodLookupBuffer != null);
         Debug.Assert(renderObject.LodLookupLayoutBuffer != null);
         Debug.Assert(renderObject.LodMapTexture != null);
 
-        int instanceCount = component.QuadTree.Select(
+        var (renderCount, nodeCount) = component.QuadTree.Select(
             renderObject.World.TranslationVector,
             renderView,
-            component.InstanceData,
-            component.LodLookupNodeData,
-            out int lodLookupNodeCount,
-            out bool truncated);
-        if (truncated)
-        {
-            int instanceCapacity = Math.Min(component.InstanceCapacity, component.InstanceData.Length);
-            Log.Warning(
-                $"Terrain chunk selection truncated by instance budget, missing patches may occur. " +
-                $"selectedCount={instanceCount}, instanceCapacity={instanceCapacity}, maxVisibleChunkInstances={component.MaxVisibleChunkInstances}, renderViewIndex={renderView.Index}, renderView=\"{renderView}\", " +
-                $"heightmap={component.HeightmapWidth}x{component.HeightmapHeight}, baseChunkSize={component.BaseChunkSize}, maxScreenSpaceErrorPixels={component.MaxScreenSpaceErrorPixels}.");
-        }
-
-        renderObject.UpdateInstanceData(commandList, component.InstanceData, instanceCount);
-        renderObject.UpdateLodLookupNodeData(commandList, component.LodLookupNodeData, lodLookupNodeCount);
-        if (instanceCount <= 0)
+            component.ChunkNodeData);
+        if (nodeCount <= 0)
         {
             return;
         }
 
-        computeDispatcher.Dispatch(drawContext, renderObject, instanceCount, lodLookupNodeCount, component.MaxLod);
+        renderObject.UpdateChunkNodeData(commandList, component.ChunkNodeData, renderCount, nodeCount);
+        if (renderCount <= 0)
+        {
+            return;
+        }
+
+        computeDispatcher.Dispatch(drawContext, renderObject, renderCount, nodeCount, component.MaxLod);
     }
 
     private static InputElementDescription[] PrepareInputElements(PipelineStateDescription pipelineState, MeshDraw drawData)

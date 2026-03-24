@@ -2,15 +2,15 @@ namespace Terrain
 {
     shader MaterialTerrainDisplacement : IMaterialSurface, PositionStream4, NormalStream, Transformation, ShaderBase, Texturing, TerrainHeightStream, TerrainHeightParameters
     {
-        struct MaterialTerrainChunkInstance
+        struct MaterialTerrainChunkNode
         {
-            int4 ChunkInfo;
+            int4 NodeInfo;
             int4 StreamInfo;
         };
 
         rgroup PerMaterial
         {
-            stage StructuredBuffer<MaterialTerrainChunkInstance> InstanceBuffer;
+            stage StructuredBuffer<MaterialTerrainChunkNode> InstanceBuffer;
         }
 
         cbuffer PerMaterial
@@ -65,16 +65,16 @@ namespace Terrain
         }
         override void Compute()
         {
-            MaterialTerrainChunkInstance instance = InstanceBuffer[streams.InstanceID];
-            int4 chunk = instance.ChunkInfo;
+            MaterialTerrainChunkNode instance = InstanceBuffer[streams.InstanceID];
+            int4 nodeInfo = instance.NodeInfo;
             int4 streamInfo = instance.StreamInfo;
             int sliceIndex = streamInfo.x;
             float pageTexelStride = max(1.0f, (float)streamInfo.w);
-            float lodLevel = chunk.z;
-            int neighborMask = chunk.w;
+            float lodLevel = nodeInfo.z;
+            int neighborMask = nodeInfo.w;
             float lodScale = exp2(lodLevel);
             float chunkWorldSize = BaseChunkSize * lodScale;
-            float2 worldOrigin = float2(chunk.x, chunk.y) * chunkWorldSize;
+            float2 worldOrigin = float2(nodeInfo.x, nodeInfo.y) * chunkWorldSize;
             float2 localPos = streams.Position.xz;
             localPos = ApplyCrackSnap(localPos, neighborMask);
 
