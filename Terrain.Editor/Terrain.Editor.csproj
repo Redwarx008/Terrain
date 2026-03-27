@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Terrain.Editor</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <OutputPath>..\Bin\Editor\$(Configuration)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Stride.Engine" Version="4.3.0.2507" />
+    <PackageReference Include="Stride.Video" Version="4.3.0.2507" />
+    <PackageReference Include="Stride.Physics" Version="4.3.0.2507" />
+    <PackageReference Include="Stride.Navigation" Version="4.3.0.2507" />
+    <PackageReference Include="Stride.Particles" Version="4.3.0.2507" />
+    <PackageReference Include="Stride.UI" Version="4.3.0.2507" />
+    <PackageReference Include="Stride.Core.Assets.CompilerApp" Version="4.3.0.2507" IncludeAssets="build;buildTransitive" />
+    <PackageReference Include="Stride.CommunityToolkit.ImGui" Version="1.0.0-preview.62" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Terrain\Terrain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\VirtualTextureLayout.cs" Link="Shared\VirtualTextureLayout.cs" />
+  </ItemGroup>
+
+</Project>
