@@ -9,664 +9,501 @@ using Terrain.Editor.UI.Styling;
 namespace Terrain.Editor.UI.Panels;
 
 /// <summary>
-/// 资源类型
-/// </summary>
-public enum AssetType
-{
-    Folder,
-    Texture,
-    Material,
-    Mesh,
-    Scene,
-    Script,
-    Prefab,
-    Audio,
-    Animation,
-    Unknown
-}
-
-/// <summary>
-/// 资源条目
-/// </summary>
-public class AssetEntry
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
-    public string Name { get; set; } = "";
-    public string Path { get; set; } = "";
-    public AssetType Type { get; set; } = AssetType.Unknown;
-    public DateTime LastModified { get; set; }
-    public long Size { get; set; }
-    public bool IsSelected { get; set; }
-    public object? Tag { get; set; }
-}
-
-/// <summary>
-/// 资源视图面板 - 显示项目资源
+/// 资源面板 - 根据编辑模式显示不同的内容
+/// - Sculpt: Height layers
+/// - Paint: Texture slots (256 slots)
+/// - Foliage: Foliage prefabs
 /// </summary>
 public class AssetsPanel : PanelBase
 {
     #region 属性
 
-    /// <summary>
-    /// 当前路径
-    /// </summary>
-    public string CurrentPath { get; set; } = "";
+    public EditorMode CurrentMode { get; set; } = EditorMode.Sculpt;
 
     /// <summary>
-    /// 资源条目列表
+    /// 选中的纹理槽索引 (Paint mode)
     /// </summary>
-    public List<AssetEntry> Assets { get; } = new();
+    public int SelectedTextureSlot { get; set; } = 0;
 
     /// <summary>
-    /// 选中的资源
+    /// 选中的植被索引 (Foliage mode)
     /// </summary>
-    public List<AssetEntry> SelectedAssets { get; } = new();
+    public int SelectedFoliageIndex { get; set; } = 0;
 
     /// <summary>
-    /// 视图模式
+    /// 选中的图层索引 (Sculpt mode)
     /// </summary>
-    public AssetViewMode ViewMode { get; set; } = AssetViewMode.List;
-
-    /// <summary>
-    /// 图标大小
-    /// </summary>
-    public float IconSize { get; set; } = 64.0f;
-
-    /// <summary>
-    /// 搜索过滤
-    /// </summary>
-    public string SearchFilter { get; set; } = "";
+    public int SelectedLayerIndex { get; set; } = 0;
 
     #endregion
 
     #region 事件
 
-    /// <summary>
-    /// 资源选择改变事件
-    /// </summary>
-    public event EventHandler<AssetSelectionChangedEventArgs>? SelectionChanged;
-
-    /// <summary>
-    /// 资源双击事件
-    /// </summary>
-    public event EventHandler<AssetEventArgs>? AssetDoubleClicked;
-
-    /// <summary>
-    /// 路径改变事件
-    /// </summary>
-    public event EventHandler<AssetPathChangedEventArgs>? PathChanged;
+    public event EventHandler<TextureSlotSelectedEventArgs>? TextureSlotSelected;
+    public event EventHandler<FoliageSelectedEventArgs>? FoliageSelected;
+    public event EventHandler<LayerSelectedEventArgs>? LayerSelected;
 
     #endregion
 
     #region 私有字段
 
-    private string searchBuffer = "";
-    private List<string> pathHistory = new();
-    private int historyIndex = -1;
+    private List<TextureSlot> textureSlots = new();
+    private List<FoliageItem> foliageItems = new();
+    private List<HeightLayer> heightLayers = new();
 
     #endregion
-
-    #region 构造函数
 
     public AssetsPanel()
     {
         Title = "Assets";
         Icon = Icons.Folder;
         ShowTitleBar = true;
+
+        InitializeTextureSlots();
+        InitializeFoliageItems();
+        InitializeHeightLayers();
     }
 
-    #endregion
+    private void InitializeTextureSlots()
+    {
+        for (int i = 0; i < 256; i++)
+        {
+            textureSlots.Add(new TextureSlot
+            {
+                Index = i,
+                Name = i == 0 ? "Grass" : i == 1 ? "Dirt" : i == 2 ? "Rock" : i == 3 ? "Snow" : $"Texture {i}",
+                IsEmpty = i >= 4
+            });
+        }
+    }
 
-    #region 渲染
+    private void InitializeFoliageItems()
+    {
+        foliageItems.Add(new FoliageItem { Name = "Pine Tree", Icon = Icons.Tree });
+        foliageItems.Add(new FoliageItem { Name = "Bush", Icon = Icons.Tree });
+        foliageItems.Add(new FoliageItem { Name = "Rock", Icon = Icons.Cube });
+        foliageItems.Add(new FoliageItem { Name = "Grass", Icon = Icons.Plus });
+    }
+
+    private void InitializeHeightLayers()
+    {
+        heightLayers.Add(new HeightLayer { Name = "Base Layer", IsVisible = true, IsLocked = false });
+        heightLayers.Add(new HeightLayer { Name = "Mountain Layer", IsVisible = true, IsLocked = false });
+    }
 
     protected override void RenderContent()
     {
-        // 渲染工具栏
-        RenderToolbar();
-
-        // 渲染面包屑导航
-        RenderBreadcrumb();
-
-        // 渲染资源列表
-        RenderAssetList();
-    }
-
-    private void RenderToolbar()
-    {
-        float toolbarHeight = 28;
-
-        var drawList = ImGui.GetWindowDrawList();
-        Vector2 toolbarPos = new Vector2(ContentRect.X, ContentRect.Y);
-        Vector2 toolbarEnd = new Vector2(ContentRect.X + ContentRect.Width, ContentRect.Y + toolbarHeight);
-        drawList.AddRectFilled(toolbarPos, toolbarEnd, ColorPalette.DarkBackground.ToUint());
-
-        // 导航按钮
-        ImGui.SetCursorScreenPos(new Vector2(toolbarPos.X + 8, toolbarPos.Y + 4));
-
-        if (ImGui.Button(Icons.ArrowLeft, new Vector2(24, 20)))
+        switch (CurrentMode)
         {
-            NavigateBack();
-        }
-
-        ImGui.SameLine();
-
-        if (ImGui.Button(Icons.ArrowRight, new Vector2(24, 20)))
-        {
-            NavigateForward();
-        }
-
-        ImGui.SameLine();
-
-        if (ImGui.Button(Icons.ArrowUp, new Vector2(24, 20)))
-        {
-            NavigateUp();
-        }
-
-        ImGui.SameLine();
-        ImGui.Text("|");
-        ImGui.SameLine();
-
-        // 视图模式切换
-        PushViewModeButtonStyle(ViewMode == AssetViewMode.List);
-        if (ImGui.Button("List", new Vector2(40, 20)))
-            ViewMode = AssetViewMode.List;
-        PopViewModeButtonStyle();
-
-        ImGui.SameLine();
-
-        PushViewModeButtonStyle(ViewMode == AssetViewMode.Grid);
-        if (ImGui.Button("Grid", new Vector2(40, 20)))
-            ViewMode = AssetViewMode.Grid;
-        PopViewModeButtonStyle();
-
-        ImGui.SameLine();
-
-        // 搜索框
-        ImGui.SetCursorScreenPos(new Vector2(toolbarEnd.X - 150, toolbarPos.Y + 4));
-        ImGui.SetNextItemWidth(140);
-        if (ImGui.InputTextWithHint($"##search_{Id}", "Search...", ref searchBuffer, 256))
-        {
-            SearchFilter = searchBuffer;
-        }
-
-        // 底部边框
-        drawList.AddLine(
-            new Vector2(ContentRect.X, ContentRect.Y + toolbarHeight),
-            new Vector2(ContentRect.X + ContentRect.Width, ContentRect.Y + toolbarHeight),
-            ColorPalette.Border.ToUint(),
-            1.0f
-        );
-    }
-
-    private void RenderBreadcrumb()
-    {
-        float toolbarHeight = 28;
-        float breadcrumbHeight = 24;
-        float y = ContentRect.Y + toolbarHeight;
-
-        var drawList = ImGui.GetWindowDrawList();
-        Vector2 crumbPos = new Vector2(ContentRect.X, y);
-        Vector2 crumbEnd = new Vector2(ContentRect.X + ContentRect.Width, y + breadcrumbHeight);
-        drawList.AddRectFilled(crumbPos, crumbEnd, ColorPalette.Background.ToUint());
-
-        // 渲染路径
-        ImGui.SetCursorScreenPos(new Vector2(crumbPos.X + 8, crumbPos.Y + 4));
-
-        var parts = CurrentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        string currentPath = "";
-
-        for (int i = 0; i < parts.Length; i++)
-        {
-            currentPath += "/" + parts[i];
-
-            if (i > 0)
-            {
-                ImGui.TextDisabled("/");
-                ImGui.SameLine();
-            }
-
-            if (ImGui.Button(parts[i]))
-            {
-                NavigateTo(currentPath);
-            }
-
-            if (i < parts.Length - 1)
-            {
-                ImGui.SameLine();
-            }
-        }
-
-        // 底部边框
-        drawList.AddLine(
-            new Vector2(ContentRect.X, y + breadcrumbHeight),
-            new Vector2(ContentRect.X + ContentRect.Width, y + breadcrumbHeight),
-            ColorPalette.Border.ToUint(),
-            1.0f
-        );
-    }
-
-    private void RenderAssetList()
-    {
-        float toolbarHeight = 28;
-        float breadcrumbHeight = 24;
-        float listY = ContentRect.Y + toolbarHeight + breadcrumbHeight;
-        float listHeight = ContentRect.Height - toolbarHeight - breadcrumbHeight;
-
-        Vector2 listPos = new Vector2(ContentRect.X, listY);
-
-        // 开始滚动区域
-        ImGui.SetCursorScreenPos(listPos);
-        ImGui.BeginChild($"##asset_list_{Id}", new Vector2(ContentRect.Width, listHeight), ImGuiChildFlags.None);
-
-        if (ViewMode == AssetViewMode.List)
-        {
-            RenderListView();
-        }
-        else
-        {
-            RenderGridView();
-        }
-
-        // 右键菜单（空白处）
-        if (ImGui.BeginPopupContextWindow($"##context_empty_{Id}", ImGuiPopupFlags.MouseButtonRight | ImGuiPopupFlags.NoOpenOverItems))
-        {
-            RenderContextMenu(null);
-            ImGui.EndPopup();
-        }
-
-        ImGui.EndChild();
-    }
-
-    private void RenderListView()
-    {
-        // 表头
-        float nameWidth = ImGui.GetWindowWidth() * 0.4f;
-        float typeWidth = 100;
-        float dateWidth = 120;
-        float sizeWidth = 80;
-
-        ImGui.Columns(4, $"##columns_{Id}", true);
-        ImGui.SetColumnWidth(0, nameWidth);
-        ImGui.SetColumnWidth(1, typeWidth);
-        ImGui.SetColumnWidth(2, dateWidth);
-        ImGui.SetColumnWidth(3, sizeWidth);
-
-        ImGui.Text("Name");
-        ImGui.NextColumn();
-        ImGui.Text("Type");
-        ImGui.NextColumn();
-        ImGui.Text("Date Modified");
-        ImGui.NextColumn();
-        ImGui.Text("Size");
-        ImGui.NextColumn();
-
-        ImGui.Separator();
-
-        // 资源条目
-        foreach (var asset in Assets)
-        {
-            // 搜索过滤
-            if (!string.IsNullOrEmpty(SearchFilter) &&
-                !asset.Name.Contains(SearchFilter, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // 选中状态
-            if (asset.IsSelected)
-            {
-                ImGui.PushStyleColor(ImGuiCol.Text, ColorPalette.Accent.ToVector4());
-            }
-
-            // 名称（带图标）
-            string icon = GetAssetIcon(asset.Type);
-            if (ImGui.Selectable($"{icon} {asset.Name}", asset.IsSelected, ImGuiSelectableFlags.SpanAllColumns))
-            {
-                HandleAssetClick(asset);
-            }
-
-            if (asset.IsSelected)
-            {
-                ImGui.PopStyleColor();
-            }
-
-            // 双击
-            if (ImGui.IsItemHovered() && ImGuiP.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-            {
-                AssetDoubleClicked?.Invoke(this, new AssetEventArgs { Asset = asset });
-            }
-
-            // 右键菜单
-            if (ImGui.BeginPopupContextItem($"##context_{asset.Id}"))
-            {
-                RenderContextMenu(asset);
-                ImGui.EndPopup();
-            }
-
-            ImGui.NextColumn();
-
-            // 类型
-            ImGui.Text(asset.Type.ToString());
-            ImGui.NextColumn();
-
-            // 修改日期
-            ImGui.Text(asset.LastModified.ToString("yyyy-MM-dd HH:mm"));
-            ImGui.NextColumn();
-
-            // 大小
-            ImGui.Text(FormatFileSize(asset.Size));
-            ImGui.NextColumn();
-        }
-
-        ImGui.Columns(1);
-    }
-
-    private void RenderGridView()
-    {
-        float windowWidth = ImGui.GetWindowWidth();
-        int columns = Math.Max(1, (int)(windowWidth / (IconSize + 16)));
-
-        int index = 0;
-        foreach (var asset in Assets)
-        {
-            // 搜索过滤
-            if (!string.IsNullOrEmpty(SearchFilter) &&
-                !asset.Name.Contains(SearchFilter, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            if (index > 0 && index % columns != 0)
-            {
-                ImGui.SameLine();
-            }
-
-            RenderGridItem(asset);
-
-            index++;
+            case EditorMode.Sculpt:
+                RenderHeightLayers();
+                break;
+            case EditorMode.Paint:
+                RenderTextureSlots();
+                break;
+            case EditorMode.Foliage:
+                RenderFoliageItems();
+                break;
         }
     }
 
-    private void RenderGridItem(AssetEntry asset)
+    #region Sculpt Mode - Height Layers
+
+    private void RenderHeightLayers()
     {
-        Vector2 itemSize = new Vector2(IconSize + 16, IconSize + 32);
-        Vector2 cursorPos = ImGui.GetCursorScreenPos();
+        // Toolbar
+        RenderLayersToolbar();
 
-        // 背景
-        uint bgColor = asset.IsSelected ? ColorPalette.Selection.ToUint() : 0;
-        if (bgColor != 0)
+        ImGui.Spacing();
+
+        // Layer list
+        for (int i = 0; i < heightLayers.Count; i++)
         {
-            ImGui.GetWindowDrawList().AddRectFilled(
-                cursorPos,
-                new Vector2(cursorPos.X + itemSize.X, cursorPos.Y + itemSize.Y),
-                bgColor,
-                4
-            );
+            RenderLayerItem(heightLayers[i], i);
         }
+    }
 
-        // 开始组
-        ImGui.BeginGroup();
+    private void RenderLayersToolbar()
+    {
+        ImGui.SetCursorScreenPos(new Vector2(ContentRect.X + 4, ContentRect.Y + 4));
 
-        // 图标
-        string icon = GetAssetIcon(asset.Type);
-        var iconSize = ImGui.CalcTextSize(icon);
-        ImGui.SetCursorPosX((itemSize.X - iconSize.X) * 0.5f);
-        ImGui.Text(icon);
+        if (ImGui.Button($"{Icons.Plus}##add_layer", new Vector2(24, 24)))
+        {
+            heightLayers.Add(new HeightLayer { Name = $"Layer {heightLayers.Count}" });
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add Layer");
 
-        // 名称
-        var textSize = ImGui.CalcTextSize(asset.Name);
-        float maxTextWidth = itemSize.X - 8;
-        string displayName = textSize.X > maxTextWidth ?
-            asset.Name[..Math.Min(asset.Name.Length, 10)] + "..." :
-            asset.Name;
+        ImGui.SameLine();
 
-        ImGui.SetCursorPosX((itemSize.X - ImGui.CalcTextSize(displayName).X) * 0.5f);
-        ImGui.Text(displayName);
+        if (ImGui.Button($"{Icons.Trash}##delete_layer", new Vector2(24, 24)))
+        {
+            if (heightLayers.Count > 1 && SelectedLayerIndex < heightLayers.Count)
+            {
+                heightLayers.RemoveAt(SelectedLayerIndex);
+                SelectedLayerIndex = Math.Max(0, SelectedLayerIndex - 1);
+            }
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Delete Layer");
+    }
 
-        ImGui.EndGroup();
+    private void RenderLayerItem(HeightLayer layer, int index)
+    {
+        bool isSelected = SelectedLayerIndex == index;
 
-        // 检测点击
+        ImGui.PushID($"layer_{index}");
+
+        // Selectable background
+        ImGui.PushStyleColor(ImGuiCol.Header, ColorPalette.Selection.ToVector4());
+        ImGui.PushStyleColor(ImGuiCol.HeaderHovered, ColorPalette.Hover.ToVector4());
+        ImGui.PushStyleColor(ImGuiCol.HeaderActive, ColorPalette.Pressed.ToVector4());
+
+        ImGui.Selectable($"##layer_select_{index}", isSelected);
+
         if (ImGui.IsItemClicked())
         {
-            HandleAssetClick(asset);
+            SelectedLayerIndex = index;
+            LayerSelected?.Invoke(this, new LayerSelectedEventArgs { LayerIndex = index, Layer = layer });
         }
 
-        // 双击
-        if (ImGui.IsItemHovered() && ImGuiP.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+        ImGui.PopStyleColor(3);
+
+        // Layer controls on same line
+        ImGui.SameLine();
+
+        // Visibility toggle
+        bool visible = layer.IsVisible;
+        ImGui.PushStyleColor(ImGuiCol.Text, visible ? ColorPalette.TextPrimary.ToVector4() : ColorPalette.TextSecondary.ToVector4());
+        ImGui.Text(visible ? Icons.Eye : Icons.EyeOff);
+        ImGui.PopStyleColor();
+        if (ImGui.IsItemClicked())
         {
-            AssetDoubleClicked?.Invoke(this, new AssetEventArgs { Asset = asset });
+            layer.IsVisible = !layer.IsVisible;
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Toggle Visibility");
+
+        ImGui.SameLine();
+
+        // Lock toggle
+        bool locked = layer.IsLocked;
+        ImGui.PushStyleColor(ImGuiCol.Text, locked ? ColorPalette.Warning.ToVector4() : ColorPalette.TextSecondary.ToVector4());
+        ImGui.Text(locked ? Icons.Lock : Icons.Unlock);
+        ImGui.PopStyleColor();
+        if (ImGui.IsItemClicked())
+        {
+            layer.IsLocked = !layer.IsLocked;
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Toggle Lock");
+
+        ImGui.SameLine();
+
+        // Layer name
+        ImGui.Text(layer.Name);
+
+        ImGui.PopID();
+    }
+
+    #endregion
+
+    #region Paint Mode - Texture Slots
+
+    private void RenderTextureSlots()
+    {
+        // Search bar
+        RenderTextureSearch();
+
+        ImGui.Spacing();
+
+        // Texture grid
+        float itemWidth = EditorStyle.ScaleValue(64.0f);
+        float padding = EditorStyle.ScaleValue(4.0f);
+        float labelHeight = ImGui.GetTextLineHeight() + EditorStyle.ScaleValue(8.0f);
+        float itemHeight = itemWidth + labelHeight;
+        float availableWidth = ContentRect.Width - EditorStyle.ScaleValue(8.0f);
+        int itemsPerRow = Math.Max(1, (int)((availableWidth + padding) / (itemWidth + padding)));
+
+        int visibleCount = 0;
+        for (int i = 0; i < textureSlots.Count; i++)
+        {
+            var slot = textureSlots[i];
+
+            // Only show first 16 slots by default, or if searching
+            if (i >= 16 && string.IsNullOrEmpty(searchBuffer))
+                continue;
+
+            if (!string.IsNullOrEmpty(searchBuffer) &&
+                !slot.Name.Contains(searchBuffer, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            int col = visibleCount % itemsPerRow;
+            if (col > 0)
+                ImGui.SameLine(0.0f, padding);
+
+            RenderTextureSlot(slot, i, itemWidth, itemHeight, labelHeight);
+            visibleCount++;
         }
 
-        // 右键菜单
-        if (ImGui.BeginPopupContextItem($"##context_{asset.Id}"))
+        // Show more button
+        ImGui.Spacing();
+        ImGui.SetCursorScreenPos(new Vector2(ContentRect.X + 8, ImGui.GetCursorScreenPos().Y));
+        ImGui.TextDisabled($"Showing {Math.Min(16, textureSlots.Count)} of {textureSlots.Count} slots");
+    }
+
+    private string searchBuffer = "";
+
+    private void RenderTextureSearch()
+    {
+        ImGui.SetCursorScreenPos(new Vector2(ContentRect.X + 4, ContentRect.Y + 4));
+        ImGui.SetNextItemWidth(ContentRect.Width - 8);
+        ImGui.InputTextWithHint("##texture_search", "Search textures...", ref searchBuffer, 256);
+    }
+
+    private void RenderTextureSlot(TextureSlot slot, int index, float width, float height, float labelHeight)
+    {
+        bool isSelected = SelectedTextureSlot == index;
+
+        var drawList = ImGui.GetWindowDrawList();
+        Vector2 cursor = ImGui.GetCursorScreenPos();
+        float inset = EditorStyle.ScaleValue(4.0f);
+        float previewHeight = width - inset * 2.0f;
+
+        // Click area
+        ImGui.InvisibleButton($"##tex_slot_{index}", new Vector2(width, height));
+        bool isHovered = ImGui.IsItemHovered();
+
+        // Background
+        uint bgColor = isSelected ? ColorPalette.Selection.ToUint() :
+                       isHovered ? ColorPalette.Hover.ToUint() :
+                       ColorPalette.DarkBackground.ToUint();
+        drawList.AddRectFilled(cursor, new Vector2(cursor.X + width, cursor.Y + height), bgColor, 4.0f);
+
+        // Border
+        if (isSelected)
         {
-            RenderContextMenu(asset);
+            drawList.AddRect(cursor, new Vector2(cursor.X + width, cursor.Y + height), ColorPalette.Accent.ToUint(), 4.0f, ImDrawFlags.None, 2.0f);
+        }
+
+        // Texture preview (placeholder)
+        if (!slot.IsEmpty)
+        {
+            Vector2 previewPos = new Vector2(cursor.X + inset, cursor.Y + inset);
+            Vector2 previewSize = new Vector2(width - inset * 2.0f, previewHeight);
+            drawList.AddRectFilled(previewPos, new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y),
+                ColorPalette.Background.ToUint());
+
+            // Placeholder pattern
+            drawList.AddText(new Vector2(previewPos.X + 4, previewPos.Y + previewSize.Y * 0.4f),
+                ColorPalette.TextSecondary.ToUint(), $"#{index}");
+        }
+        else
+        {
+            // Empty slot indicator
+            Vector2 center = new Vector2(cursor.X + width * 0.5f, cursor.Y + inset + previewHeight * 0.5f);
+            Vector2 iconPos = new Vector2(center.X - FontManager.ScaledIconSize * 0.5f, center.Y - FontManager.ScaledIconSize * 0.5f);
+            ImGui.AddText(drawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, ColorPalette.TextSecondary.ToUint(), Icons.Plus);
+        }
+
+        // Name
+        string displayName = TruncateToWidth(slot.Name, width - inset * 2.0f);
+        Vector2 textSize = ImGui.CalcTextSize(displayName);
+        Vector2 namePos = new Vector2(
+            cursor.X + inset,
+            cursor.Y + width + MathF.Max(0.0f, (labelHeight - textSize.Y) * 0.5f));
+        drawList.AddText(namePos, ColorPalette.TextSecondary.ToUint(), displayName);
+
+        // Handle click
+        if (ImGui.IsItemClicked())
+        {
+            SelectedTextureSlot = index;
+            TextureSlotSelected?.Invoke(this, new TextureSlotSelectedEventArgs { SlotIndex = index, Slot = slot });
+        }
+
+        // Tooltip
+        if (isHovered)
+        {
+            ImGui.SetTooltip($"{slot.Name}\nIndex: {index}");
+        }
+
+        // Right click menu
+        if (ImGui.BeginPopupContextItem($"##tex_context_{index}"))
+        {
+            if (ImGui.MenuItem("Import Texture"))
+            {
+                // TODO: Import texture
+            }
+            if (ImGui.MenuItem("Clear"))
+            {
+                slot.IsEmpty = true;
+                slot.Name = $"Texture {index}";
+            }
             ImGui.EndPopup();
         }
-
-        // 设置下一个项目的位置
-        ImGui.Dummy(new Vector2(0, 0));
     }
 
-    private void RenderContextMenu(AssetEntry? asset)
+    #endregion
+
+    #region Foliage Mode
+
+    private void RenderFoliageItems()
     {
-        if (asset == null)
+        // Toolbar
+        RenderFoliageToolbar();
+
+        ImGui.Spacing();
+
+        // Foliage list
+        float itemWidth = EditorStyle.ScaleValue(80.0f);
+        float padding = EditorStyle.ScaleValue(4.0f);
+        float labelHeight = ImGui.GetTextLineHeight() + EditorStyle.ScaleValue(8.0f);
+        float itemHeight = itemWidth + labelHeight;
+        int itemsPerRow = Math.Max(1, (int)((ContentRect.Width + padding) / (itemWidth + padding)));
+        int visibleCount = 0;
+
+        for (int i = 0; i < foliageItems.Count; i++)
         {
-            if (ImGui.MenuItem("Create Folder"))
-            {
-                // TODO: 创建文件夹
-            }
+            int col = visibleCount % itemsPerRow;
+            if (col > 0)
+                ImGui.SameLine(0.0f, padding);
 
-            if (ImGui.BeginMenu("Import"))
-            {
-                if (ImGui.MenuItem("Texture..."))
-                {
-                    // TODO: 导入纹理
-                }
-                if (ImGui.MenuItem("Model..."))
-                {
-                    // TODO: 导入模型
-                }
-                ImGui.EndMenu();
-            }
-
-            ImGui.Separator();
-
-            if (ImGui.MenuItem("Show in Explorer"))
-            {
-                // TODO: 在资源管理器中打开
-            }
+            RenderFoliageItem(foliageItems[i], i, itemWidth, itemHeight, labelHeight);
+            visibleCount++;
         }
-        else
+    }
+
+    private void RenderFoliageToolbar()
+    {
+        ImGui.SetCursorScreenPos(new Vector2(ContentRect.X + 4, ContentRect.Y + 4));
+
+        if (ImGui.Button($"{Icons.Plus}##add_foliage", new Vector2(24, 24)))
         {
-            ImGui.TextDisabled(asset.Name);
-            ImGui.Separator();
+            foliageItems.Add(new FoliageItem { Name = $"Foliage {foliageItems.Count}", Icon = Icons.Tree });
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Add Foliage");
 
-            if (ImGui.MenuItem("Open"))
-            {
-                AssetDoubleClicked?.Invoke(this, new AssetEventArgs { Asset = asset });
-            }
+        ImGui.SameLine();
 
-            if (ImGui.MenuItem("Rename"))
-            {
-                // TODO: 重命名
-            }
+        if (ImGui.Button($"{Icons.Folder}##import_foliage", new Vector2(24, 24)))
+        {
+            // TODO: Import foliage prefab
+        }
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Import Prefab");
+    }
 
-            if (ImGui.MenuItem("Duplicate"))
-            {
-                // TODO: 复制
-            }
+    private void RenderFoliageItem(FoliageItem item, int index, float width, float height, float labelHeight)
+    {
+        bool isSelected = SelectedFoliageIndex == index;
 
-            if (ImGui.MenuItem("Delete"))
-            {
-                // TODO: 删除
-            }
+        var drawList = ImGui.GetWindowDrawList();
+        Vector2 cursor = ImGui.GetCursorScreenPos();
+        float inset = EditorStyle.ScaleValue(4.0f);
 
-            ImGui.Separator();
+        ImGui.InvisibleButton($"##foliage_{index}", new Vector2(width, height));
+        bool isHovered = ImGui.IsItemHovered();
 
-            if (ImGui.MenuItem("Show in Explorer"))
-            {
-                // TODO: 在资源管理器中打开
-            }
+        // Background
+        uint bgColor = isSelected ? ColorPalette.Selection.ToUint() :
+                       isHovered ? ColorPalette.Hover.ToUint() :
+                       ColorPalette.DarkBackground.ToUint();
+        drawList.AddRectFilled(cursor, new Vector2(cursor.X + width, cursor.Y + height), bgColor, 4.0f);
 
-            if (ImGui.MenuItem("Copy Path"))
-            {
-                ImGui.SetClipboardText(asset.Path);
-            }
+        // Border
+        if (isSelected)
+        {
+            drawList.AddRect(cursor, new Vector2(cursor.X + width, cursor.Y + height), ColorPalette.Accent.ToUint(), 4.0f);
+        }
+
+        // Icon
+        Vector2 iconPos = new Vector2(cursor.X + (width - FontManager.ScaledIconSize) * 0.5f, cursor.Y + EditorStyle.ScaleValue(8.0f));
+        uint iconColor = isSelected ? ColorPalette.Accent.ToUint() : ColorPalette.TextPrimary.ToUint();
+        ImGui.AddText(drawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, iconColor, item.Icon);
+
+        // Name
+        string displayName = TruncateToWidth(item.Name, width - inset * 2.0f);
+        Vector2 textSize = ImGui.CalcTextSize(displayName);
+        Vector2 namePos = new Vector2(
+            cursor.X + inset,
+            cursor.Y + width + MathF.Max(0.0f, (labelHeight - textSize.Y) * 0.5f));
+        drawList.AddText(namePos, ColorPalette.TextSecondary.ToUint(), displayName);
+
+        // Handle click
+        if (ImGui.IsItemClicked())
+        {
+            SelectedFoliageIndex = index;
+            FoliageSelected?.Invoke(this, new FoliageSelectedEventArgs { Index = index, Item = item });
         }
     }
 
     #endregion
 
-    #region 导航
-
-    private void NavigateBack()
+    public void SetMode(EditorMode mode)
     {
-        if (historyIndex > 0)
-        {
-            historyIndex--;
-            CurrentPath = pathHistory[historyIndex];
-            PathChanged?.Invoke(this, new AssetPathChangedEventArgs { Path = CurrentPath });
-        }
+        CurrentMode = mode;
     }
 
-    private void NavigateForward()
+    private static string TruncateToWidth(string text, float maxWidth)
     {
-        if (historyIndex < pathHistory.Count - 1)
-        {
-            historyIndex++;
-            CurrentPath = pathHistory[historyIndex];
-            PathChanged?.Invoke(this, new AssetPathChangedEventArgs { Path = CurrentPath });
-        }
-    }
+        if (string.IsNullOrEmpty(text) || ImGui.CalcTextSize(text).X <= maxWidth)
+            return text;
 
-    private void NavigateUp()
-    {
-        var parent = System.IO.Directory.GetParent(CurrentPath);
-        if (parent != null)
-        {
-            NavigateTo(parent.FullName);
-        }
-    }
+        const string ellipsis = "...";
+        float ellipsisWidth = ImGui.CalcTextSize(ellipsis).X;
+        if (ellipsisWidth >= maxWidth)
+            return ellipsis;
 
-    private void NavigateTo(string path)
-    {
-        // 移除当前位置之后的历史记录
-        if (historyIndex < pathHistory.Count - 1)
+        for (int length = text.Length - 1; length > 0; length--)
         {
-            pathHistory.RemoveRange(historyIndex + 1, pathHistory.Count - historyIndex - 1);
+            string candidate = text[..length] + ellipsis;
+            if (ImGui.CalcTextSize(candidate).X <= maxWidth)
+                return candidate;
         }
 
-        pathHistory.Add(path);
-        historyIndex = pathHistory.Count - 1;
-        CurrentPath = path;
-
-        PathChanged?.Invoke(this, new AssetPathChangedEventArgs { Path = CurrentPath });
+        return ellipsis;
     }
-
-    #endregion
-
-    #region 辅助方法
-
-    private void HandleAssetClick(AssetEntry asset)
-    {
-        // 清除其他选择
-        foreach (var a in Assets)
-        {
-            a.IsSelected = false;
-        }
-
-        asset.IsSelected = true;
-        SelectedAssets.Clear();
-        SelectedAssets.Add(asset);
-
-        SelectionChanged?.Invoke(this, new AssetSelectionChangedEventArgs
-        {
-            SelectedAssets = new List<AssetEntry>(SelectedAssets)
-        });
-    }
-
-    private string GetAssetIcon(AssetType type)
-    {
-        return type switch
-        {
-            AssetType.Folder => Icons.Folder,
-            AssetType.Texture => Icons.FileImage,
-            AssetType.Material => Icons.Paint,
-            AssetType.Mesh => Icons.Cube,
-            AssetType.Scene => Icons.File,
-            AssetType.Script => Icons.File,
-            AssetType.Prefab => Icons.Cube,
-            AssetType.Audio => Icons.File,
-            AssetType.Animation => Icons.File,
-            _ => Icons.File
-        };
-    }
-
-    private string FormatFileSize(long bytes)
-    {
-        string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
-        int counter = 0;
-        decimal number = bytes;
-
-        while (Math.Round(number / 1024) >= 1)
-        {
-            number /= 1024;
-            counter++;
-        }
-
-        return $"{number:n1} {suffixes[counter]}";
-    }
-
-    private void PushViewModeButtonStyle(bool isActive)
-    {
-        if (isActive)
-        {
-            ImGui.PushStyleColor(ImGuiCol.Button, ColorPalette.Accent.ToVector4());
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColorPalette.AccentHover.ToVector4());
-            ImGui.PushStyleColor(ImGuiCol.ButtonActive, ColorPalette.AccentPressed.ToVector4());
-        }
-        else
-        {
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0, 0, 0, 0));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColorPalette.Hover.ToVector4());
-            ImGui.PushStyleColor(ImGuiCol.ButtonActive, ColorPalette.Pressed.ToVector4());
-        }
-    }
-
-    private void PopViewModeButtonStyle()
-    {
-        ImGui.PopStyleColor(3);
-    }
-
-    #endregion
 }
 
-/// <summary>
-/// 资源视图模式
-/// </summary>
-public enum AssetViewMode
+#region 数据类
+
+public class TextureSlot
 {
-    List,
-    Grid
+    public int Index { get; set; }
+    public string Name { get; set; } = "";
+    public bool IsEmpty { get; set; } = true;
+    public string? TexturePath { get; set; }
 }
 
-/// <summary>
-/// 资源选择改变事件参数
-/// </summary>
-public class AssetSelectionChangedEventArgs : EventArgs
+public class FoliageItem
 {
-    public List<AssetEntry> SelectedAssets { get; set; } = new();
+    public string Name { get; set; } = "";
+    public string Icon { get; set; } = Icons.Tree;
+    public string? PrefabPath { get; set; }
 }
 
-/// <summary>
-/// 资源事件参数
-/// </summary>
-public class AssetEventArgs : EventArgs
+public class HeightLayer
 {
-    public AssetEntry Asset { get; set; } = null!;
+    public string Name { get; set; } = "";
+    public bool IsVisible { get; set; } = true;
+    public bool IsLocked { get; set; } = false;
 }
 
-/// <summary>
-/// 资源路径改变事件参数
-/// </summary>
-public class AssetPathChangedEventArgs : EventArgs
+#endregion
+
+#region 事件参数
+
+public class TextureSlotSelectedEventArgs : EventArgs
 {
-    public string Path { get; set; } = "";
+    public int SlotIndex { get; set; }
+    public TextureSlot Slot { get; set; } = null!;
 }
+
+public class FoliageSelectedEventArgs : EventArgs
+{
+    public int Index { get; set; }
+    public FoliageItem Item { get; set; } = null!;
+}
+
+public class LayerSelectedEventArgs : EventArgs
+{
+    public int LayerIndex { get; set; }
+    public HeightLayer Layer { get; set; } = null!;
+}
+
+#endregion

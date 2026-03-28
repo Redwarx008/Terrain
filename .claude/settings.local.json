@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(npx get-shit-done-cc@latest)",
+      "Skill(gsd:map-codebase)",
+      "Skill(gsd:map-codebase:*)",
+      "WebSearch",
+      "Bash(dotnet restore:*)",
+      "Read(//c/Users/Redwa/.nuget/packages/**)",
+      "Bash(find ~/.nuget/packages/stride.engine -name *.cs)",
+      "Bash(unzip -l ~/.nuget/packages/stride.rendering/4.3.0.2507/stride.rendering.4.3.0.2507.nupkg)",
+      "Bash(unzip -l ~/.nuget/packages/stride.engine/4.3.0.2507/stride.engine.4.3.0.2507.nupkg)",
+      "Read(//e/WorkSpace/stride/**)",
+      "Bash(2)",
+      "Bash(grep -rn \"ColorRgbProvider\\\\|IColorProvider\" E:/WorkSpace/stride/sources --include=*.cs)",
+      "Bash(timeout 10 ./Bin/Editor/Debug/Terrain.Editor.exe)",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(timeout 15 ./Bin/Editor/Debug/win-x64/Terrain.Editor.exe)",
+      "Bash(grep -rn ImGuiSystem ~/.nuget/packages/stride.communitytoolkit.imgui/1.0.0-preview.60/ --include=*.cs)",
+      "Bash(unzip -l ~/.nuget/packages/stride.communitytoolkit.imgui/1.0.0-preview.60/stride.communitytoolkit.imgui.1.0.0-preview.60.nupkg)",
+      "Bash(unzip -p ~/.nuget/packages/stride.communitytoolkit.imgui/1.0.0-preview.60/stride.communitytoolkit.imgui.1.0.0-preview.60.nupkg lib/net8.0/Stride.CommunityToolkit.ImGui.dll)",
+      "Read(//tmp/**)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(node \"$GSD_TOOLS\" workstream list --raw --cwd \"$CWD\")"
+    ]
+  }
+}

@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.IO;
 using Stride.Core.Mathematics;
 using StrideBuffer = Stride.Graphics.Buffer;
+using Terrain.Editor.Platform;
 
 namespace Terrain.Editor.UI;
 
@@ -43,6 +44,7 @@ public class EditorUIRenderer : GameSystemBase
     IndexBufferBinding indexBinding;
     EffectInstance? shader;
     Texture? fontTexture;
+    bool frameBegun;
 
     private Dictionary<Keys, ImGuiKey> keyMap = new();
 
@@ -53,7 +55,12 @@ public class EditorUIRenderer : GameSystemBase
         get => scale;
         set
         {
+            if (Math.Abs(scale - value) < 0.001f)
+                return;
+
             scale = value;
+            FontManager.UpdateScale(scale);
+            EditorStyle.Apply(scale);
             CreateFontTexture();
         }
     }
@@ -174,6 +181,7 @@ public class EditorUIRenderer : GameSystemBase
     private unsafe void CreateFontTexture()
     {
         ImGui.SetCurrentContext(ImGuiContext);
+        fontTexture?.Dispose();
 
         // 只有第一次才添加字体
         // Rebuild the atlas whenever the UI scale changes.
@@ -217,6 +225,16 @@ public class EditorUIRenderer : GameSystemBase
 
         // 更新显示尺寸
         var surfaceSize = Game.Window.ClientBounds;
+        if (Game.Window.IsMinimized || surfaceSize.Width <= 1 || surfaceSize.Height <= 1)
+        {
+            // 最小化时窗口可能退化到 1x1，直接跳过 ImGui 帧，避免后续渲染链使用非法尺寸。
+            io.DisplaySize = Vector2.Zero;
+            frameBegun = false;
+            input?.TextInput.DisableTextInput();
+            return;
+        }
+
+        Scale = GetUiScale();
         io.DisplaySize = new System.Numerics.Vector2(surfaceSize.Width, surfaceSize.Height);
 
         // 确保DeltaTime为正数
@@ -272,16 +290,46 @@ public class EditorUIRenderer : GameSystemBase
 
         // 开始新帧
         ImGui.NewFrame();
+        frameBegun = true;
 
         // 调用自定义渲染回调（在NewFrame之后，Render之前）
         OnRender?.Invoke();
     }
 
+    private float GetUiScale()
+    {
+        nint hwnd = Game.Window.NativeWindow?.Handle ?? nint.Zero;
+        float dpiScale = WindowInterop.GetWindowScaleFactor(hwnd);
+
+        // 量化到 0.05，避免连续拖动窗口或跨屏时频繁重建字体纹理。
+        return MathF.Round(dpiScale * 20.0f) / 20.0f;
+    }
+
     public override void EndDraw()
     {
+        if (!frameBegun)
+            return;
+
         ImGui.SetCurrentContext(ImGuiContext);
         ImGui.Render();
         RenderDrawData(ImGui.GetDrawData());
+        frameBegun = false;
+    }
+
+    /// <summary>
+    /// 在窗口最小化或恢复冷却期内主动终止当前 ImGui 帧，避免出现“本帧已开始但不会进入 EndDraw”的悬空状态。
+    /// </summary>
+    public void SuspendFrame()
+    {
+        ImGui.SetCurrentContext(ImGuiContext);
+        io.DisplaySize = Vector2.Zero;
+        input?.TextInput.DisableTextInput();
+
+        if (!frameBegun)
+            return;
+
+        ImGui.EndFrame();
+        frameBegun = false;
     }
 
     private void CheckBuffers(ImDrawDataPtr drawData)
@@ -329,6 +377,9 @@ public class EditorUIRenderer : GameSystemBase
 
         // 视图投影矩阵
         var surfaceSize = Game.Window.ClientBounds;
+        if (surfaceSize.Width <= 1 || surfaceSize.Height <= 1)
+            return;
+
         var projMatrix = Matrix.OrthoRH(surfaceSize.Width, -surfaceSize.Height, -1, 1);
 
         // 检查并更新缓冲区

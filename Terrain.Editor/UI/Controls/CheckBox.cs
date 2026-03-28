@@ -93,7 +93,7 @@ public class CheckBox : ControlBase
         var drawList = ImGui.GetWindowDrawList();
         var io = ImGui.GetIO();
 
-        float checkboxSize = EditorStyle.CheckboxSize;
+        float checkboxSize = EditorStyle.CheckboxSizeScaled;
         Vector2 checkboxPos = Position;
 
         // 绘制复选框背景
@@ -174,7 +174,7 @@ public class CheckBox : ControlBase
         // 绘制标签
         if (ShowLabel)
         {
-            var textPos = new Vector2(checkboxPos.X + checkboxSize + 6, checkboxPos.Y + (checkboxSize - ImGui.CalcTextSize(Label).Y) * 0.5f);
+            var textPos = new Vector2(checkboxPos.X + checkboxSize + EditorStyle.ScaleValue(6.0f), checkboxPos.Y + (checkboxSize - ImGui.CalcTextSize(Label).Y) * 0.5f);
             drawList.AddText(textPos, ColorPalette.TextPrimary.ToUint(), Label);
         }
 
@@ -187,13 +187,13 @@ public class CheckBox : ControlBase
 
     protected override Vector2 OnMeasure(Vector2 availableSize)
     {
-        float width = EditorStyle.CheckboxSize;
-        float height = EditorStyle.CheckboxSize;
+        float width = EditorStyle.CheckboxSizeScaled;
+        float height = EditorStyle.CheckboxSizeScaled;
 
         if (ShowLabel && !string.IsNullOrEmpty(Label))
         {
             var textSize = ImGui.CalcTextSize(Label);
-            width += 6 + textSize.X;
+            width += EditorStyle.ScaleValue(6.0f) + textSize.X;
             height = Math.Max(height, textSize.Y);
         }
 

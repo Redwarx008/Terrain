@@ -7,11 +7,22 @@ using Terrain.Editor.UI.Styling;
 
 namespace Terrain.Editor.UI.Panels;
 
+/// <summary>
+/// 编辑器模式
+/// </summary>
+public enum EditorMode
+{
+    Sculpt,
+    Paint,
+    Foliage
+}
+
 public class ToolbarPanel : PanelBase
 {
-    public string? SelectedTool { get; set; }
+    public EditorMode CurrentMode { get; set; } = EditorMode.Sculpt;
 
     public event EventHandler<ToolbarButtonEventArgs>? ButtonClicked;
+    public event EventHandler<EditorMode>? ModeChanged;
 
     public ToolbarPanel()
     {
@@ -22,6 +33,9 @@ public class ToolbarPanel : PanelBase
     protected override void RenderContent()
     {
         var drawList = ImGui.GetWindowDrawList();
+        float outerPaddingX = EditorStyle.ScaleValue(8.0f);
+        float outerPaddingY = EditorStyle.ScaleValue(4.0f);
+        float sectionSpacing = EditorStyle.ScaleValue(10.0f);
 
         drawList.AddRectFilled(
             Position,
@@ -34,63 +48,49 @@ public class ToolbarPanel : PanelBase
             ColorPalette.Border.ToUint(),
             1.0f);
 
-        ImGui.SetCursorScreenPos(new Vector2(Position.X + 8, Position.Y + 4));
+        ImGui.SetCursorScreenPos(new Vector2(Position.X + outerPaddingX, Position.Y + outerPaddingY));
 
+        // File operations
         RenderButton("New", Icons.New, "New Project");
         ImGui.SameLine();
         RenderButton("Open", Icons.Open, "Open Project");
         ImGui.SameLine();
         RenderButton("Save", Icons.Save, "Save");
 
-        ImGui.SameLine(0, 10);
+        // Separator
+        ImGui.SameLine(0, sectionSpacing);
         RenderInlineSeparator();
-        ImGui.SameLine(0, 10);
+        ImGui.SameLine(0, sectionSpacing);
 
+        // Edit operations
         RenderButton("Undo", Icons.Undo, "Undo");
         ImGui.SameLine();
         RenderButton("Redo", Icons.Redo, "Redo");
 
-        ImGui.SameLine(0, 10);
+        // Separator
+        ImGui.SameLine(0, sectionSpacing);
         RenderInlineSeparator();
-        ImGui.SameLine(0, 10);
+        ImGui.SameLine(0, sectionSpacing);
 
-        RenderButton("Play", Icons.Play, "Play", ButtonStyle.Primary);
+        // Mode selection
+        RenderModeButton(EditorMode.Sculpt, Icons.Terrain, "Sculpt Mode");
         ImGui.SameLine();
-        RenderButton("Pause", Icons.Pause, "Pause");
+        RenderModeButton(EditorMode.Paint, Icons.Brush, "Paint Mode");
         ImGui.SameLine();
-        RenderButton("Stop", Icons.Stop, "Stop", ButtonStyle.Danger);
-
-        ImGui.SameLine(0, 10);
-        RenderInlineSeparator();
-        ImGui.SameLine(0, 10);
-
-        RenderToolButton("Select", Icons.Cube, "Select Tool");
-        ImGui.SameLine();
-        RenderToolButton("Move", Icons.ArrowUp, "Move Tool");
-        ImGui.SameLine();
-        RenderToolButton("Rotate", Icons.Refresh, "Rotate Tool");
-        ImGui.SameLine();
-        RenderToolButton("Scale", Icons.Expand, "Scale Tool");
-
-        ImGui.SameLine(0, 10);
-        RenderInlineSeparator();
-        ImGui.SameLine(0, 10);
-
-        RenderToolButton("Height", Icons.Terrain, "Height Brush");
-        ImGui.SameLine();
-        RenderToolButton("Paint", Icons.Brush, "Paint Brush");
+        RenderModeButton(EditorMode.Foliage, Icons.Tree, "Foliage Mode");
     }
 
-    private void RenderButton(string name, string icon, string tooltip, ButtonStyle style = ButtonStyle.Default)
+    private void RenderButton(string name, string icon, string tooltip)
     {
-        PushButtonStyle(style);
-        // Toolbar buttons render icon-only labels, so switch to the icon font for
-        // the button text and then restore the normal font immediately after.
+        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0, 0, 0, 0));
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColorPalette.Hover.ToVector4());
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, ColorPalette.Pressed.ToVector4());
+
         FontManager.PushIcons();
-        bool pressed = ImGui.Button($"{icon}##{name}", new Vector2(28, 28));
+        bool pressed = ImGui.Button($"{icon}##{name}", new Vector2(EditorStyle.ScaleValue(28.0f), EditorStyle.ScaleValue(28.0f)));
         FontManager.PopFont();
 
-        PopButtonStyle();
+        ImGui.PopStyleColor(3);
 
         if (ImGui.IsItemHovered())
         {
@@ -103,9 +103,9 @@ public class ToolbarPanel : PanelBase
         }
     }
 
-    private void RenderToolButton(string name, string icon, string tooltip)
+    private void RenderModeButton(EditorMode mode, string icon, string tooltip)
     {
-        bool isSelected = SelectedTool == name;
+        bool isSelected = CurrentMode == mode;
 
         if (isSelected)
         {
@@ -120,9 +120,8 @@ public class ToolbarPanel : PanelBase
             ImGui.PushStyleColor(ImGuiCol.ButtonActive, ColorPalette.Pressed.ToVector4());
         }
 
-        // Tool buttons use the same icon-only rendering path as action buttons.
         FontManager.PushIcons();
-        bool pressed = ImGui.Button($"{icon}##{name}", new Vector2(28, 28));
+        bool pressed = ImGui.Button($"{icon}##{mode}", new Vector2(EditorStyle.ScaleValue(28.0f), EditorStyle.ScaleValue(28.0f)));
         FontManager.PopFont();
         ImGui.PopStyleColor(3);
 
@@ -133,70 +132,28 @@ public class ToolbarPanel : PanelBase
 
         if (pressed)
         {
-            SelectedTool = name;
-            ButtonClicked?.Invoke(this, new ToolbarButtonEventArgs { ButtonName = name });
+            CurrentMode = mode;
+            ModeChanged?.Invoke(this, mode);
+            ButtonClicked?.Invoke(this, new ToolbarButtonEventArgs { ButtonName = mode.ToString() });
         }
     }
 
     private void RenderInlineSeparator()
     {
         Vector2 pos = ImGui.GetCursorScreenPos();
-        Vector2 size = new Vector2(8, MathF.Max(28.0f, Size.Y - 8.0f));
+        Vector2 size = new Vector2(EditorStyle.ScaleValue(8.0f), MathF.Max(EditorStyle.ScaleValue(28.0f), Size.Y - EditorStyle.ScaleValue(8.0f)));
         float centerX = pos.X + size.X * 0.5f;
 
-        // Keep layout spacing, but let nearby buttons/tooltips win hover tests.
         ImGui.SetNextItemAllowOverlap();
         ImGui.Dummy(size);
 
         var drawList = ImGui.GetWindowDrawList();
         drawList.AddLine(
-            new Vector2(centerX, pos.Y + 4),
-            new Vector2(centerX, pos.Y + size.Y - 4),
+            new Vector2(centerX, pos.Y + EditorStyle.ScaleValue(4.0f)),
+            new Vector2(centerX, pos.Y + size.Y - EditorStyle.ScaleValue(4.0f)),
             ColorPalette.Border.ToUint(),
             1.0f);
     }
-
-    private void PushButtonStyle(ButtonStyle style)
-    {
-        switch (style)
-        {
-            case ButtonStyle.Primary:
-                ImGui.PushStyleColor(ImGuiCol.Button, ColorPalette.Accent.ToVector4());
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColorPalette.AccentHover.ToVector4());
-                ImGui.PushStyleColor(ImGuiCol.ButtonActive, ColorPalette.AccentPressed.ToVector4());
-                break;
-            case ButtonStyle.Danger:
-                ImGui.PushStyleColor(ImGuiCol.Button, ColorPalette.Error.ToVector4());
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(
-                    ColorPalette.Error.R * 1.2f,
-                    ColorPalette.Error.G * 1.2f,
-                    ColorPalette.Error.B * 1.2f,
-                    1.0f));
-                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(
-                    ColorPalette.Error.R * 0.8f,
-                    ColorPalette.Error.G * 0.8f,
-                    ColorPalette.Error.B * 0.8f,
-                    1.0f));
-                break;
-            default:
-                ImGui.PushStyleColor(ImGuiCol.Button, ColorPalette.ButtonDefault.ToVector4());
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColorPalette.ButtonHover.ToVector4());
-                ImGui.PushStyleColor(ImGuiCol.ButtonActive, ColorPalette.ButtonPressed.ToVector4());
-                break;
-        }
-    }
-
-    private static void PopButtonStyle()
-    {
-        ImGui.PopStyleColor(3);
-    }
-}
-
-public enum ButtonStyle
-{
-    Default,
-    Primary,
-    Danger
 }
 
 public class ToolbarButtonEventArgs : EventArgs

@@ -135,9 +135,14 @@ public abstract class PanelBase : ControlBase
     protected virtual void RenderTitleBar()
     {
         var drawList = ImGui.GetWindowDrawList();
+        float scaledTitleBarHeight = EditorStyle.ScaleValue(TitleBarHeight);
+        float horizontalPadding = EditorStyle.ScaleValue(8.0f);
+        float iconSpacing = EditorStyle.ScaleValue(6.0f);
+        float buttonSize = EditorStyle.ScaleValue(16.0f);
+        float collapsedButtonOffset = EditorStyle.ScaleValue(24.0f);
 
         // 标题栏背景
-        Vector2 titleBarEnd = new Vector2(Position.X + Size.X, Position.Y + TitleBarHeight);
+        Vector2 titleBarEnd = new Vector2(Position.X + Size.X, Position.Y + scaledTitleBarHeight);
         drawList.AddRectFilled(
             Position,
             titleBarEnd,
@@ -146,32 +151,31 @@ public abstract class PanelBase : ControlBase
 
         // 标题栏底部边框
         drawList.AddLine(
-            new Vector2(Position.X, Position.Y + TitleBarHeight),
-            new Vector2(Position.X + Size.X, Position.Y + TitleBarHeight),
+            new Vector2(Position.X, Position.Y + scaledTitleBarHeight),
+            new Vector2(Position.X + Size.X, Position.Y + scaledTitleBarHeight),
             ColorPalette.Border.ToUint(),
             1.0f
         );
 
         // 图标
-        float textX = Position.X + 8;
+        float textX = Position.X + horizontalPadding;
         if (!string.IsNullOrEmpty(Icon))
         {
             Vector2 iconSize = GetIconTextSize(Icon);
-            var iconPos = new Vector2(textX, Position.Y + (TitleBarHeight - iconSize.Y) * 0.5f);
+            var iconPos = new Vector2(textX, Position.Y + (scaledTitleBarHeight - iconSize.Y) * 0.5f);
             DrawIconText(drawList, iconPos, ColorPalette.TextSecondary.ToUint(), Icon);
-            textX += iconSize.X + 6;
+            textX += iconSize.X + iconSpacing;
         }
 
         // 标题文本
-        var titlePos = new Vector2(textX, Position.Y + (TitleBarHeight - ImGui.CalcTextSize(Title).Y) * 0.5f);
+        var titlePos = new Vector2(textX, Position.Y + (scaledTitleBarHeight - ImGui.CalcTextSize(Title).Y) * 0.5f);
         drawList.AddText(titlePos, ColorPalette.TextPrimary.ToUint(), Title);
 
         // 折叠按钮
         if (IsCollapsible)
         {
-            float buttonSize = 16;
-            float buttonX = Position.X + Size.X - buttonSize - 8;
-            float buttonY = Position.Y + (TitleBarHeight - buttonSize) * 0.5f;
+            float buttonX = Position.X + Size.X - buttonSize - horizontalPadding;
+            float buttonY = Position.Y + (scaledTitleBarHeight - buttonSize) * 0.5f;
 
             string collapseIcon = IsCollapsed ? Icons.ChevronDown : Icons.ChevronUp;
             var iconSize = GetIconTextSize(collapseIcon);
@@ -196,10 +200,9 @@ public abstract class PanelBase : ControlBase
         // 关闭按钮
         if (IsClosable)
         {
-            float buttonSize = 16;
-            float offset = IsCollapsible ? 24 : 8;
+            float offset = IsCollapsible ? collapsedButtonOffset : horizontalPadding;
             float buttonX = Position.X + Size.X - buttonSize - offset;
-            float buttonY = Position.Y + (TitleBarHeight - buttonSize) * 0.5f;
+            float buttonY = Position.Y + (scaledTitleBarHeight - buttonSize) * 0.5f;
 
             var iconSize = GetIconTextSize(Icons.Times);
             var iconPos = new Vector2(
@@ -240,8 +243,9 @@ public abstract class PanelBase : ControlBase
 
         if (ShowTitleBar)
         {
-            contentY += TitleBarHeight;
-            contentHeight -= TitleBarHeight;
+            float scaledTitleBarHeight = EditorStyle.ScaleValue(TitleBarHeight);
+            contentY += scaledTitleBarHeight;
+            contentHeight -= scaledTitleBarHeight;
         }
 
         ContentRect = new Rect(
@@ -293,7 +297,7 @@ public abstract class PanelBase : ControlBase
     {
         // Draw directly with the icon face because draw-list text bypasses the
         // current ImGui font stack.
-        ImGui.AddText(drawList, FontManager.Icons, FontManager.IconSize, position, color, icon);
+        ImGui.AddText(drawList, FontManager.Icons, FontManager.ScaledIconSize, position, color, icon);
     }
 
     #endregion

@@ -119,7 +119,7 @@ public class TextBox : ControlBase
             float labelWidth = 0;
             if (!string.IsNullOrEmpty(Label))
             {
-                labelWidth = ImGui.CalcTextSize(Label).X + 8;
+                labelWidth = ImGui.CalcTextSize(Label).X + EditorStyle.ScaleValue(8.0f);
                 ImGui.SetCursorScreenPos(Position);
                 ImGui.Text(Label);
             }
@@ -242,7 +242,7 @@ public class TextBox : ControlBase
 
     protected override Vector2 OnMeasure(Vector2 availableSize)
     {
-        float height = IsMultiline ? Math.Max(60, Size.Y) : EditorStyle.InputHeight;
+        float height = IsMultiline ? Math.Max(EditorStyle.ScaleValue(60.0f), Size.Y) : EditorStyle.InputHeightScaled;
         float width = availableSize.X;
 
         return new Vector2(width, height);
@@ -254,7 +254,7 @@ public class TextBox : ControlBase
 
     private void PushStyle()
     {
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(6, 4));
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(EditorStyle.ScaleValue(6.0f), EditorStyle.ScaleValue(4.0f)));
     }
 
     private void PopStyle()

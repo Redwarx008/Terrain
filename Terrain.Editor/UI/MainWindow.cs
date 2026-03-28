@@ -1,11 +1,14 @@
 #nullable enable
 
 using Hexa.NET.ImGui;
+using Stride.Core;
+using Stride.Games;
 using Stride.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Terrain.Editor.Platform;
 using Terrain.Editor.UI.Controls;
 using Terrain.Editor.UI.Layout;
 using Terrain.Editor.UI.Panels;
@@ -15,60 +18,100 @@ namespace Terrain.Editor.UI;
 
 public class MainWindow : ControlBase
 {
+    // 自绘标题栏的固定尺寸，按钮宽度与 Windows 常见标题栏接近，便于命中。
+    private const float TitleBarHeight = 28.0f;
+    // 恢复自绘无边框窗口后，这里保持 false，让标题栏按钮和顶部布局重新走编辑器自己的渲染逻辑。
+    private static bool UseSystemTitleBar => false;
+    private const float TitleBarButtonWidth = 40.0f;
+    // 无边框窗口最大化后，系统仍会保留一圈不可见边框；拿不到 DPI 信息时使用这个兜底值。
+    private const float BorderlessMaximizedInsetFallback = 8.0f;
+
     public LayoutManager LayoutManager { get; }
 
     public ToolbarPanel Toolbar { get; }
 
-    public SceneViewPanel SceneView { get; }
+    public ToolsPanel Tools { get; }
 
-    public HierarchyPanel Hierarchy { get; }
+    public SceneViewPanel Viewport { get; }
 
-    public InspectorPanel Inspector { get; }
-
-    public ConsolePanel Console { get; }
+    public RightPanel RightPanel { get; }
 
     public AssetsPanel Assets { get; }
 
-    public StatusBarPanel StatusBar { get; }
-
+    public ConsolePanel Console { get; }
 
     private GraphicsDevice? graphicsDevice;
+    private GameWindow? gameWindow;
     private bool showMenuBar = true;
-    private bool showDemoWindow = false;
-
+    private bool showDemoWindow;
+    private bool shouldClose;
 
     public MainWindow()
     {
         Toolbar = new ToolbarPanel();
-        SceneView = new SceneViewPanel();
-        Hierarchy = new HierarchyPanel();
-        Inspector = new InspectorPanel();
-        Console = new ConsolePanel();
+        Tools = new ToolsPanel();
+        Viewport = new SceneViewPanel();
+        RightPanel = new RightPanel();
         Assets = new AssetsPanel();
-        StatusBar = new StatusBarPanel();
+        Console = new ConsolePanel();
 
         LayoutManager = new LayoutManager
         {
             TopPanel = Toolbar,
-            CenterPanel = SceneView,
-            LeftPanel = Hierarchy,
-            RightPanel = Inspector,
-            BottomPanel = new TabPanelContainer(Console, Assets),
-            StatusBar = StatusBar
+            LeftPanel = Tools,
+            CenterPanel = Viewport,
+            RightPanel = RightPanel,
+            BottomPanel = new TabPanel(Assets, Console)
         };
 
-        InitializeHierarchyData();
-
-        InitializeInspectorData();
+        InitializeDefaultData();
     }
 
+    private float GetScaledTitleBarHeight()
+    {
+        return EditorStyle.ScaleValue(TitleBarHeight);
+    }
 
-    public void Initialize(GraphicsDevice device)
+    private float GetScaledTitleBarButtonWidth()
+    {
+        return EditorStyle.ScaleValue(TitleBarButtonWidth);
+    }
+
+    private void UpdateLayoutMetrics()
+    {
+        LayoutManager.ToolbarHeight = EditorStyle.ToolbarHeightScaled;
+        LayoutManager.MinPanelWidth = EditorStyle.MinPanelWidthScaled;
+        LayoutManager.MinPanelHeight = EditorStyle.MinPanelHeightScaled;
+        LayoutManager.MaxPanelWidth = EditorStyle.MaxPanelWidthScaled;
+        LayoutManager.MaxPanelHeight = EditorStyle.MaxPanelHeightScaled;
+        LayoutManager.SplitterThickness = EditorStyle.SplitterThicknessScaled;
+        LayoutManager.SplitterHitPadding = EditorStyle.ScaleValue(3.0f);
+    }
+
+    private void UpdateChromeMetrics()
+    {
+        if (UseSystemTitleBar)
+            return;
+
+        // 自绘标题栏的拖拽热区也要跟着 UI 缩放一起更新，
+        // 否则视觉尺寸变了，系统 hit-test 还是旧尺寸。
+        WindowInterop.EnableCustomChrome(
+            GetNativeWindowHandle(),
+            (int)MathF.Round(GetScaledTitleBarHeight()),
+            (int)MathF.Round(GetScaledTitleBarButtonWidth() * 3.0f),
+            (int)MathF.Round(EditorStyle.ScaleValue(8.0f)));
+    }
+
+    public void Initialize(GraphicsDevice device, GameWindow window, IServiceRegistry serviceRegistry)
     {
         graphicsDevice = device;
+        gameWindow = window;
+        // 自绘无边框窗口改用系统原生 hit-test 处理拖拽和缩放，避免手写标题栏状态机出现一次可拖一次不可拖的问题。
+        WindowInterop.EnableCustomChrome(GetNativeWindowHandle(), (int)TitleBarHeight, (int)(TitleBarButtonWidth * 3.0f), 8);
 
         EditorStyle.Apply();
-
+        UpdateLayoutMetrics();
+        UpdateChromeMetrics();
 
         LayoutManager.WindowSize = new Vector2(
             graphicsDevice.Presenter.BackBuffer.Width,
@@ -77,86 +120,33 @@ public class MainWindow : ControlBase
         LayoutManager.Initialize();
 
         Toolbar.Initialize();
-        SceneView.Initialize();
-        Hierarchy.Initialize();
-        Inspector.Initialize();
-        Console.Initialize();
+        Tools.Initialize();
+        Viewport.Initialize();
+        RightPanel.Initialize();
         Assets.Initialize();
-        StatusBar.Initialize();
+        Console.Initialize();
 
         LayoutManager.CalculateLayout();
-
         SubscribeEvents();
     }
 
-    private void InitializeHierarchyData()
+    private void InitializeDefaultData()
     {
-        var terrainNode = new HierarchyNode
-        {
-            Name = "Terrain",
-            Icon = Icons.Terrain,
-            IsExpanded = true
-        };
-
-        var chunk1 = new HierarchyNode
-        {
-            Name = "Chunk_0_0",
-            Icon = Icons.Grid,
-            Parent = terrainNode
-        };
-        terrainNode.Children.Add(chunk1);
-
-        var chunk2 = new HierarchyNode
-        {
-            Name = "Chunk_0_1",
-            Icon = Icons.Grid,
-            Parent = terrainNode
-        };
-        terrainNode.Children.Add(chunk2);
-
-        Hierarchy.Nodes.Add(terrainNode);
-
-        var cameraNode = new HierarchyNode
-        {
-            Name = "Main Camera",
-            Icon = Icons.Camera
-        };
-        Hierarchy.Nodes.Add(cameraNode);
-
-        var lightNode = new HierarchyNode
-        {
-            Name = "Directional Light",
-            Icon = Icons.Light
-        };
-        Hierarchy.Nodes.Add(lightNode);
-    }
-
-    private void InitializeInspectorData()
-    {
-        var transformGroup = Inspector.AddGroup("Transform");
-        transformGroup.AddProperty("Position", () => new System.Numerics.Vector3(0, 0, 0), v => { });
-        transformGroup.AddProperty("Rotation", () => new System.Numerics.Vector3(0, 0, 0), v => { });
-        transformGroup.AddProperty("Scale", () => new System.Numerics.Vector3(1, 1, 1), v => { });
-
-        var terrainGroup = Inspector.AddGroup("Terrain");
-        terrainGroup.AddProperty("Height Scale", () => 100f, v => { });
-        terrainGroup.AddProperty("Tile Size", () => 129, v => { });
-        terrainGroup.AddProperty("Leaf Node Size", () => 32, v => { });
+        Tools.SelectedTool = "Raise";
     }
 
     private void SubscribeEvents()
     {
-        Hierarchy.SelectionChanged += (s, e) =>
-        {
-            StatusBar.SetMessage($"Selected: {e.SelectedNodes.Count} objects");
-        };
+        Toolbar.ButtonClicked += (s, e) => HandleToolbarAction(e.ButtonName);
+        Toolbar.ModeChanged += (s, e) => HandleModeChange(e);
 
-        Toolbar.ButtonClicked += (s, e) =>
-        {
-            HandleToolbarAction(e.ButtonName);
-        };
+        Tools.ToolSelected += (s, e) => Console.LogInfo($"Tool selected: {e.Tool.Name}");
+        RightPanel.BrushSelected += (s, e) => Console.LogInfo($"Brush selected: {e.BrushName}");
+        RightPanel.BrushParamsChanged += (s, e) => Console.LogInfo($"Brush {e.Param} changed to {e.Value:F2}");
+        Assets.TextureSlotSelected += (s, e) => Console.LogInfo($"Texture slot selected: {e.SlotIndex}");
+        Assets.FoliageSelected += (s, e) => Console.LogInfo($"Foliage selected: {e.Item.Name}");
+        Assets.LayerSelected += (s, e) => Console.LogInfo($"Layer selected: {e.Layer.Name}");
     }
-
 
     protected override void OnRender()
     {
@@ -164,27 +154,36 @@ public class MainWindow : ControlBase
             return;
 
         var io = ImGui.GetIO();
-        LayoutManager.WindowSize = io.DisplaySize;
+        Vector2 hostWindowSize = io.DisplaySize;
+        if (gameWindow != null)
+        {
+            var clientBounds = gameWindow.ClientBounds;
+            if (clientBounds.Width > 0 && clientBounds.Height > 0)
+            {
+                hostWindowSize = new Vector2(clientBounds.Width, clientBounds.Height);
+            }
+        }
+
+        UpdateLayoutMetrics();
+        UpdateChromeMetrics();
+        LayoutManager.WindowSize = hostWindowSize;
 
         ImGuiViewportPtr viewport = ImGui.GetMainViewport();
-        ImGui.SetNextWindowPos(viewport.WorkPos);
-        ImGui.SetNextWindowSize(viewport.WorkSize);
+        ImGui.SetNextWindowPos(Vector2.Zero);
+        ImGui.SetNextWindowSize(hostWindowSize);
         ImGui.SetNextWindowViewport(viewport.ID);
 
         ImGuiWindowFlags windowFlags =
-            ImGuiWindowFlags.MenuBar |
             ImGuiWindowFlags.NoDocking |
             ImGuiWindowFlags.NoTitleBar |
             ImGuiWindowFlags.NoCollapse |
-            ImGuiWindowFlags.NoResize |
-            ImGuiWindowFlags.NoMove |
             ImGuiWindowFlags.NoBringToFrontOnFocus |
             ImGuiWindowFlags.NoNavFocus |
             ImGuiWindowFlags.NoBackground;
 
         ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0.0f);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0.0f);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(0.0f, 0.0f));
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
 
         bool open = true;
         bool began = ImGui.Begin("MainWindow", ref open, windowFlags);
@@ -192,18 +191,31 @@ public class MainWindow : ControlBase
 
         if (began)
         {
-            float menuBarHeight = 0.0f;
+            // 无边框窗口在“最大化”状态下要主动留出安全边距，否则右上角按钮会被屏幕边缘裁掉。
+            float windowInset = UseSystemTitleBar ? 0.0f : GetWindowContentInset();
 
-            if (showMenuBar)
+            if (!UseSystemTitleBar)
             {
-                RenderMenuBar();
-                menuBarHeight = ImGui.GetCursorPosY();
+                RenderCustomTitleBar(windowInset);
             }
 
-            LayoutManager.TopInset = menuBarHeight;
+            float menuBarHeight = 0.0f;
+            if (showMenuBar)
+            {
+                menuBarHeight = RenderMenuBar(windowInset);
+            }
+
+            float titleBarInset = UseSystemTitleBar ? 0.0f : GetScaledTitleBarHeight();
+            LayoutManager.TopInset = titleBarInset + menuBarHeight;
             LayoutManager.Render();
         }
+
         ImGui.End();
+
+        if (shouldClose || !open)
+        {
+            Environment.Exit(0);
+        }
 
         if (showDemoWindow)
         {
@@ -211,34 +223,168 @@ public class MainWindow : ControlBase
         }
     }
 
-    private void RenderMenuBar()
+    private void RenderCustomTitleBar(float windowInset)
     {
-        if (ImGui.BeginMenuBar())
+        var drawList = ImGui.GetWindowDrawList();
+        var io = ImGui.GetIO();
+        Vector2 cursorPos = io.MousePos;
+        Vector2 windowPos = ImGui.GetWindowPos();
+        Vector2 windowSize = ImGui.GetWindowSize();
+        bool isWindowMaximized = WindowInterop.IsMaximized(GetNativeWindowHandle());
+        float titleBarHeight = GetScaledTitleBarHeight();
+        float titleBarButtonWidth = GetScaledTitleBarButtonWidth();
+
+        float rightInset = windowInset;
+        Vector2 titleBarMin = new Vector2(windowPos.X, windowPos.Y);
+        float titleBarWidth = Math.Max(0.0f, windowSize.X);
+        Vector2 titleBarMax = new Vector2(titleBarMin.X + titleBarWidth, titleBarMin.Y + titleBarHeight);
+        drawList.AddRectFilled(titleBarMin, titleBarMax, ColorPalette.TitleBar.ToUint());
+
+        // 右侧固定预留三个系统按钮的宽度，标题文本和拖拽热区都只使用剩余区域。
+        float buttonAreaWidth = titleBarButtonWidth * 3.0f;
+        float dragRegionWidth = Math.Max(0.0f, titleBarWidth - buttonAreaWidth - rightInset);
+
+        Vector2 textSize = ImGui.CalcTextSize("Terrain Editor");
+        Vector2 textPos = new Vector2(
+            titleBarMin.X + Math.Max(0.0f, (dragRegionWidth - textSize.X) * 0.5f),
+            titleBarMin.Y + (titleBarHeight - textSize.Y) * 0.5f
+        );
+        drawList.AddText(textPos, ColorPalette.TextPrimary.ToUint(), "Terrain Editor");
+
+        float buttonY = titleBarMin.Y;
+        float buttonsStartX = titleBarMax.X - buttonAreaWidth - rightInset;
+
+        RenderTitleBarButton(buttonsStartX, buttonY, titleBarButtonWidth, titleBarHeight, Icons.Minimize, "Minimize", MinimizeNativeWindow);
+
+        string maximizeIcon = isWindowMaximized ? Icons.Restore : Icons.Maximize;
+        string maximizeTooltip = isWindowMaximized ? "Restore" : "Maximize";
+        RenderTitleBarButton(buttonsStartX + titleBarButtonWidth, buttonY, titleBarButtonWidth, titleBarHeight, maximizeIcon, maximizeTooltip, ToggleNativeWindowMaximize);
+
+        RenderTitleBarButton(buttonsStartX + titleBarButtonWidth * 2.0f, buttonY, titleBarButtonWidth, titleBarHeight, Icons.Times, "Close", () =>
+        {
+            shouldClose = true;
+        }, isCloseButton: true);
+
+        bool isDragRegionHovered = IsPointInsideRect(cursorPos, titleBarMin, new Vector2(titleBarMin.X + dragRegionWidth, titleBarMin.Y + titleBarHeight));
+        if (isDragRegionHovered)
+        {
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        }
+
+        drawList.AddLine(
+            new Vector2(titleBarMin.X, titleBarMax.Y),
+            new Vector2(titleBarMax.X, titleBarMax.Y),
+            ColorPalette.Border.ToUint(),
+            1.0f
+        );
+    }
+
+    private void RenderTitleBarButton(float x, float y, float width, float height, string icon, string tooltip, Action onClick, bool isCloseButton = false)
+    {
+        var drawList = ImGui.GetWindowDrawList();
+        var io = ImGui.GetIO();
+        Vector2 buttonMin = new Vector2(x, y);
+        Vector2 buttonMax = new Vector2(x + width, y + height);
+        bool isHovered = IsPointInsideRect(io.MousePos, buttonMin, buttonMax);
+        bool isActive = isHovered && io.MouseDown[0];
+
+        uint bgColor = 0;
+        if (isActive && isCloseButton)
+        {
+            bgColor = ColorPalette.Error.ToUint();
+        }
+        else if (isHovered)
+        {
+            bgColor = isCloseButton ? ColorPalette.Error.ToUint() : ColorPalette.Hover.ToUint();
+        }
+
+        if (bgColor != 0)
+        {
+            drawList.AddRectFilled(buttonMin, buttonMax, bgColor);
+        }
+
+        FontManager.PushIcons();
+        Vector2 iconSize = ImGui.CalcTextSize(icon);
+        Vector2 iconPos = new Vector2(
+            x + (width - iconSize.X) * 0.5f,
+            y + (height - iconSize.Y) * 0.5f
+        );
+        drawList.AddText(iconPos, isHovered ? ColorPalette.TextHighlight.ToUint() : ColorPalette.TextPrimary.ToUint(), icon);
+        FontManager.PopFont();
+
+        if (isHovered)
+        {
+            ImGui.SetTooltip(tooltip);
+        }
+
+        // 标题栏按钮改成手动命中测试，避免拖拽结束后还受 ImGui 控件激活状态影响。
+        if (isHovered && io.MouseReleased[0])
+        {
+            onClick();
+        }
+    }
+
+    private static bool IsPointInsideRect(Vector2 point, Vector2 min, Vector2 max)
+    {
+        return
+            point.X >= min.X &&
+            point.X <= max.X &&
+            point.Y >= min.Y &&
+            point.Y <= max.Y;
+    }
+
+    private float RenderMenuBar(float windowInset)
+    {
+        float menuBarHeight = ImGui.GetFrameHeight() + ImGui.GetStyle().FramePadding.Y * 2.0f;
+        Vector2 windowPos = ImGui.GetWindowPos();
+        Vector2 windowSize = ImGui.GetWindowSize();
+        float titleBarOffset = UseSystemTitleBar ? 0.0f : GetScaledTitleBarHeight();
+        Vector2 menuBarPos = new Vector2(windowPos.X, windowPos.Y + titleBarOffset);
+        Vector2 menuBarSize = new Vector2(
+            Math.Max(0.0f, windowSize.X),
+            menuBarHeight
+        );
+
+        // 菜单栏使用独立子区域承载，避免与自绘标题栏共享同一块 ImGui 顶部区域而互相覆盖。
+        ImGui.SetCursorScreenPos(menuBarPos);
+        bool began = ImGui.BeginChild(
+            "##main_menu_bar",
+            menuBarSize,
+            ImGuiChildFlags.None,
+            ImGuiWindowFlags.MenuBar | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse
+        );
+
+        if (began && ImGui.BeginMenuBar())
         {
             if (ImGui.BeginMenu("File"))
             {
                 if (ImGui.MenuItem("New", "Ctrl+N"))
                 {
+                    HandleToolbarAction("New");
                 }
 
                 if (ImGui.MenuItem("Open...", "Ctrl+O"))
                 {
+                    HandleToolbarAction("Open");
                 }
 
                 ImGui.Separator();
 
                 if (ImGui.MenuItem("Save", "Ctrl+S"))
                 {
+                    HandleToolbarAction("Save");
                 }
 
                 if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S"))
                 {
+                    Console.LogInfo("Save As...");
                 }
 
                 ImGui.Separator();
 
                 if (ImGui.MenuItem("Exit"))
                 {
+                    shouldClose = true;
                 }
 
                 ImGui.EndMenu();
@@ -248,24 +394,12 @@ public class MainWindow : ControlBase
             {
                 if (ImGui.MenuItem("Undo", "Ctrl+Z"))
                 {
+                    HandleToolbarAction("Undo");
                 }
 
                 if (ImGui.MenuItem("Redo", "Ctrl+Y"))
                 {
-                }
-
-                ImGui.Separator();
-
-                if (ImGui.MenuItem("Cut", "Ctrl+X"))
-                {
-                }
-
-                if (ImGui.MenuItem("Copy", "Ctrl+C"))
-                {
-                }
-
-                if (ImGui.MenuItem("Paste", "Ctrl+V"))
-                {
+                    HandleToolbarAction("Redo");
                 }
 
                 ImGui.EndMenu();
@@ -273,20 +407,20 @@ public class MainWindow : ControlBase
 
             if (ImGui.BeginMenu("View"))
             {
-                bool showHierarchy = Hierarchy.IsVisible;
-                if (ImGui.MenuItem("Hierarchy", "", ref showHierarchy))
+                bool showTools = Tools.IsVisible;
+                if (ImGui.MenuItem("Tools Panel", "", ref showTools))
                 {
                     LayoutManager.ToggleLeftPanel();
                 }
 
-                bool showInspector = Inspector.IsVisible;
-                if (ImGui.MenuItem("Inspector", "", ref showInspector))
+                bool showRight = RightPanel.IsVisible;
+                if (ImGui.MenuItem("Properties Panel", "", ref showRight))
                 {
                     LayoutManager.ToggleRightPanel();
                 }
 
-                bool showConsole = Console.IsVisible;
-                if (ImGui.MenuItem("Console", "", ref showConsole))
+                bool showBottom = Assets.IsVisible || Console.IsVisible;
+                if (ImGui.MenuItem("Bottom Panel", "", ref showBottom))
                 {
                     LayoutManager.ToggleBottomPanel();
                 }
@@ -301,33 +435,16 @@ public class MainWindow : ControlBase
                 ImGui.EndMenu();
             }
 
-            if (ImGui.BeginMenu("Tools"))
-            {
-                if (ImGui.MenuItem("Terrain Editor"))
-                {
-                }
-
-                if (ImGui.MenuItem("Texture Painter"))
-                {
-                }
-
-                ImGui.Separator();
-
-                if (ImGui.MenuItem("Preferences"))
-                {
-                }
-
-                ImGui.EndMenu();
-            }
-
             if (ImGui.BeginMenu("Help"))
             {
                 if (ImGui.MenuItem("Documentation"))
                 {
+                    Console.LogInfo("Opening documentation...");
                 }
 
                 if (ImGui.MenuItem("About"))
                 {
+                    Console.LogInfo("Terrain Editor v1.0");
                 }
 
                 ImGui.Separator();
@@ -341,32 +458,53 @@ public class MainWindow : ControlBase
 
             ImGui.EndMenuBar();
         }
+
+        ImGui.EndChild();
+
+        return menuBarHeight;
     }
 
+    private float GetWindowContentInset()
+    {
+        return WindowInterop.GetBorderlessMaximizedInset(GetNativeWindowHandle(), BorderlessMaximizedInsetFallback);
+    }
+
+    private void MinimizeNativeWindow()
+    {
+        WindowInterop.Minimize(GetNativeWindowHandle());
+    }
+
+    private void ToggleNativeWindowMaximize()
+    {
+        WindowInterop.ToggleMaximize(GetNativeWindowHandle());
+    }
+
+    private nint GetNativeWindowHandle()
+    {
+        // Stride.GameWindow.NativeWindow 实际包装了平台窗口句柄，这里取出 HWND 交给 Win32 API。
+        return gameWindow?.NativeWindow?.Handle ?? nint.Zero;
+    }
 
     public override void Update(float deltaTime)
     {
         base.Update(deltaTime);
-
         LayoutManager.Update(deltaTime);
     }
-
-
 
     private void HandleToolbarAction(string buttonName)
     {
         switch (buttonName)
         {
             case "New":
-                Console.LogInfo("New project");
+                Console.LogInfo("New terrain project");
                 break;
 
             case "Open":
-                Console.LogInfo("Open project");
+                Console.LogInfo("Open terrain project");
                 break;
 
             case "Save":
-                Console.LogInfo("Save project");
+                Console.LogInfo("Save terrain project");
                 break;
 
             case "Undo":
@@ -376,29 +514,25 @@ public class MainWindow : ControlBase
             case "Redo":
                 Console.LogInfo("Redo");
                 break;
-
-            case "Play":
-                Console.LogInfo("Play");
-                break;
-
-            case "Pause":
-                Console.LogInfo("Pause");
-                break;
-
-            case "Stop":
-                Console.LogInfo("Stop");
-                break;
         }
+    }
+
+    private void HandleModeChange(EditorMode mode)
+    {
+        Tools.SetMode(mode);
+        Assets.SetMode(mode);
+
+        Console.LogInfo($"Mode changed to: {mode}");
     }
 
 }
 
-public class TabPanelContainer : PanelBase
+public class TabPanel : PanelBase
 {
     private readonly List<PanelBase> panels;
-    private int selectedTab = 0;
+    private int selectedTab;
 
-    public TabPanelContainer(params PanelBase[] panels)
+    public TabPanel(params PanelBase[] panels)
     {
         this.panels = panels.ToList();
         ShowTitleBar = false;
@@ -464,4 +598,3 @@ public class TabPanelContainer : PanelBase
         ImGui.EndChild();
     }
 }
-

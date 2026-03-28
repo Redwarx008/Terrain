@@ -74,4 +74,9 @@ public static class ColorPalette
         uint a = (uint)(color.A * 255.0f);
         return (a << 24) | (b << 16) | (g << 8) | r;
     }
+
+    public static Color4 WithAlpha(this Color4 color, float alpha)
+    {
+        return new Color4(color.R, color.G, color.B, alpha);
+    }
 }

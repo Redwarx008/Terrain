@@ -10,6 +10,7 @@ public static class FontManager
     private static bool initialized;
     private static readonly uint[] iconGlyphRangeData = { 0xE700, 0xF8FF, 0 };
     private static readonly GCHandle iconGlyphRangeHandle = GCHandle.Alloc(iconGlyphRangeData, GCHandleType.Pinned);
+    private static float currentScale = 1.0f;
 
     public static ImFontPtr Regular { get; private set; }
     public static ImFontPtr Bold { get; private set; }
@@ -21,6 +22,8 @@ public static class FontManager
     public const float SmallSize = 12.0f;
     public const float LargeSize = 16.0f;
     public const float IconSize = 14.0f;
+    public static float CurrentScale => currentScale;
+    public static float ScaledIconSize => IconSize * currentScale;
 
     public static void Initialize(ImFontPtr defaultFont)
     {
@@ -30,6 +33,11 @@ public static class FontManager
         Monospace = defaultFont;
         Icons = defaultFont;
         initialized = true;
+    }
+
+    public static void UpdateScale(float scale)
+    {
+        currentScale = scale;
     }
 
     public static void SetIconFont(ImFontPtr iconFont)
@@ -96,6 +104,7 @@ public static class Icons
     public const string Compress = "\uE73F";
     public const string Maximize = "\uE922";
     public const string Minimize = "\uE921";
+    public const string Restore = "\uE923";
 
     public const string ArrowLeft = "\uE72B";
     public const string ArrowRight = "\uE72A";
@@ -132,4 +141,19 @@ public static class Icons
     public const string FolderOpen = "\uE838";
     public const string File = "\uE7C3";
     public const string FileImage = "\uEB9F";
+
+    // Additional icons
+    public const string Plus = "\uE710";
+    public const string Trash = "\uE74D";
+    public const string Tree = "\uE8D0";
+    public const string Water = "\uE7C1";
+    public const string Layer = "\uE7F5";
+    public const string Circle = "\uE9EA";
+    public const string Square = "\uE9EB";
+    public const string Noise = "\uE7F6";
+    public const string Tools = "\uE90F";
+    public const string Lock = "\uE72E";
+    public const string Unlock = "\uE785";
+    public const string Eraser = "\uE75C";
+    public const string EyeOff = "\uE890";
 }

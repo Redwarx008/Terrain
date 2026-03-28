@@ -1,43 +1,60 @@
 #nullable enable
 
+using Stride.Core;
+using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Games;
 using Stride.Graphics;
 using Stride.Rendering;
 using Stride.Rendering.Colors;
 using Stride.Rendering.Lights;
-using Stride.Core.Mathematics;
+using System;
+using System.Threading.Tasks;
+using Terrain.Editor.Platform;
 using Terrain.Editor.UI;
 using Terrain.Editor.UI.Styling;
-using System.Threading.Tasks;
-using System;
 
 namespace Terrain.Editor;
 
 /// <summary>
-/// 地形编辑器主游戏类
+/// 地形编辑器主游戏类。
 /// </summary>
 public class EditorGame : Game
 {
     private EditorUIRenderer? uiRenderer;
     private MainWindow? mainWindow;
+    private GraphicsDeviceManager? editorGraphicsDeviceManager;
+    private Int2 lastValidClientSize = new(1920, 1080);
+    private Int2 pendingClientSize = new(1920, 1080);
+    private bool wasMinimized;
+    private int restoreCooldownFrames;
+    private bool isSyncingBackBuffer;
+    private bool hasPendingBackBufferSync;
 
     protected override void BeginRun()
     {
         base.BeginRun();
 
-        // 配置图形设置
-        var graphicsDeviceManager = Services.GetService<IGraphicsDeviceManager>() as GraphicsDeviceManager;
-        if (graphicsDeviceManager != null)
+        // 恢复自绘无边框窗口，标题栏按钮和拖拽由编辑器自己接管。
+        Window.IsBorderLess = true;
+        Window.AllowUserResizing = true;
+        Window.Title = "Terrain Editor";
+        // 最小化时直接停掉 Draw，避免 Stride 在系统回退出来的 1x1 尺寸上继续跑渲染链。
+        DrawWhileMinimized = false;
+
+        editorGraphicsDeviceManager = Services.GetService<IGraphicsDeviceManager>() as GraphicsDeviceManager;
+        if (editorGraphicsDeviceManager != null)
         {
-            graphicsDeviceManager.SynchronizeWithVerticalRetrace = false;
-            graphicsDeviceManager.PreferredBackBufferWidth = 1920;
-            graphicsDeviceManager.PreferredBackBufferHeight = 1080;
-            graphicsDeviceManager.IsFullScreen = false;
-            graphicsDeviceManager.ApplyChanges();
+            editorGraphicsDeviceManager.SynchronizeWithVerticalRetrace = false;
+            editorGraphicsDeviceManager.PreferredBackBufferWidth = 1920;
+            editorGraphicsDeviceManager.PreferredBackBufferHeight = 1080;
+            editorGraphicsDeviceManager.IsFullScreen = false;
+            editorGraphicsDeviceManager.ApplyChanges();
         }
 
-        // 初始化场景
+        Window.ClientSizeChanged += OnWindowClientSizeChanged;
+        Window.Activated += OnWindowActivated;
+
         InitializeScene();
     }
 
@@ -45,57 +62,181 @@ public class EditorGame : Game
     {
         await base.LoadContent();
 
-        // 初始化UI系统（这会自动注册到GameSystems）
         uiRenderer = new EditorUIRenderer(this);
 
-        // 创建主窗口
         mainWindow = new MainWindow();
-        mainWindow.Initialize(GraphicsDevice);
+        mainWindow.Initialize(GraphicsDevice, Window, Services);
 
-        // 设置渲染回调
         uiRenderer.OnRender = () =>
         {
             mainWindow.Render();
         };
 
-        // 应用样式
         EditorStyle.Apply();
     }
 
     protected override void Update(GameTime gameTime)
     {
+        nint hwnd = GetNativeWindowHandle();
+        bool systemMinimized = Window.IsMinimized || WindowInterop.IsMinimized(hwnd);
+
+        if (systemMinimized)
+        {
+            wasMinimized = true;
+            restoreCooldownFrames = 0;
+            uiRenderer?.SuspendFrame();
+            return;
+        }
+
+        CapturePendingClientSize();
+
+        if (wasMinimized)
+        {
+            wasMinimized = false;
+            // 恢复后的前几帧交给系统把交换链和 client rect 稳定下来，再继续正常渲染。
+            restoreCooldownFrames = 3;
+            hasPendingBackBufferSync = true;
+        }
+
+        if (hasPendingBackBufferSync)
+        {
+            hasPendingBackBufferSync = !EnsureValidBackBuffer(pendingClientSize);
+        }
+
+        if (restoreCooldownFrames > 0)
+        {
+            restoreCooldownFrames--;
+            uiRenderer?.SuspendFrame();
+            return;
+        }
+
         base.Update(gameTime);
-        // EditorUIRenderer.Update() 会自动被GameSystems调用
-        // 之后更新我们的UI状态
         mainWindow?.Update((float)gameTime.TimePerFrame.TotalSeconds);
     }
 
     protected override void Draw(GameTime gameTime)
     {
-        // 清除背景
+        nint hwnd = GetNativeWindowHandle();
+        if (Window.IsMinimized || WindowInterop.IsMinimized(hwnd))
+        {
+            uiRenderer?.SuspendFrame();
+            return;
+        }
+
+        if (restoreCooldownFrames > 0 || hasPendingBackBufferSync)
+        {
+            if (restoreCooldownFrames > 0)
+            {
+                uiRenderer?.SuspendFrame();
+                return;
+            }
+
+            // 普通窗口缩放时允许同帧继续尝试同步 backbuffer，而不是整帧跳过导致界面看起来卡在旧尺寸。
+            hasPendingBackBufferSync = !EnsureValidBackBuffer(pendingClientSize);
+        }
+
+        var clientBounds = Window.ClientBounds;
+        if (clientBounds.Width <= 1 || clientBounds.Height <= 1)
+        {
+            uiRenderer?.SuspendFrame();
+            return;
+        }
+
         GraphicsContext.CommandList.Clear(GraphicsDevice.Presenter.BackBuffer, Color4.Black);
         GraphicsContext.CommandList.Clear(GraphicsDevice.Presenter.DepthStencilBuffer, DepthStencilClearOptions.DepthBuffer);
 
-        // 渲染3D场景
         base.Draw(gameTime);
-
-        // 注意：UI渲染在EditorUIRenderer.EndDraw()中自动执行
-        // 它会在base.Draw()结束后被GameSystems调用
     }
 
     protected override void UnloadContent()
     {
+        Window.ClientSizeChanged -= OnWindowClientSizeChanged;
+        Window.Activated -= OnWindowActivated;
         uiRenderer?.Dispose();
         base.UnloadContent();
     }
 
+    private void OnWindowActivated(object? sender, EventArgs e)
+    {
+        if (Window.IsMinimized)
+            return;
+
+        // 从任务栏恢复后，激活事件通常早于第一帧正常渲染，先安排几帧缓冲期。
+        // 任务栏恢复通常会先收到激活事件，再过几帧窗口尺寸才真正稳定。
+        restoreCooldownFrames = Math.Max(restoreCooldownFrames, 3);
+        hasPendingBackBufferSync = true;
+    }
+
+    private void OnWindowClientSizeChanged(object? sender, EventArgs e)
+    {
+        var clientBounds = Window.ClientBounds;
+        if (clientBounds.Width <= 1 || clientBounds.Height <= 1)
+        {
+            wasMinimized = true;
+            return;
+        }
+
+        lastValidClientSize = new Int2(clientBounds.Width, clientBounds.Height);
+        pendingClientSize = lastValidClientSize;
+        hasPendingBackBufferSync = true;
+    }
+
+    private void CapturePendingClientSize()
+    {
+        var clientBounds = Window.ClientBounds;
+        if (clientBounds.Width <= 1 || clientBounds.Height <= 1)
+            return;
+
+        lastValidClientSize = new Int2(clientBounds.Width, clientBounds.Height);
+        pendingClientSize = lastValidClientSize;
+    }
+
+    private bool EnsureValidBackBuffer(Int2 targetSize)
+    {
+        if (editorGraphicsDeviceManager == null || isSyncingBackBuffer)
+            return false;
+
+        int targetWidth = Math.Max(1, targetSize.X);
+        int targetHeight = Math.Max(1, targetSize.Y);
+
+        bool preferredMatches =
+            editorGraphicsDeviceManager.PreferredBackBufferWidth == targetWidth &&
+            editorGraphicsDeviceManager.PreferredBackBufferHeight == targetHeight;
+        bool actualMatches =
+            GraphicsDevice.Presenter.BackBuffer.Width == targetWidth &&
+            GraphicsDevice.Presenter.BackBuffer.Height == targetHeight;
+
+        if (preferredMatches && actualMatches)
+            return true;
+
+        // 用系统窗口当前的有效 client 尺寸回填 backbuffer，避免恢复后继续沿用 1x1 目标。
+        isSyncingBackBuffer = true;
+        try
+        {
+            editorGraphicsDeviceManager.PreferredBackBufferWidth = targetWidth;
+            editorGraphicsDeviceManager.PreferredBackBufferHeight = targetHeight;
+            editorGraphicsDeviceManager.ApplyChanges();
+        }
+        finally
+        {
+            isSyncingBackBuffer = false;
+        }
+
+        return
+            GraphicsDevice.Presenter.BackBuffer.Width == targetWidth &&
+            GraphicsDevice.Presenter.BackBuffer.Height == targetHeight;
+    }
+
+    private nint GetNativeWindowHandle()
+    {
+        return Window.NativeWindow?.Handle ?? nint.Zero;
+    }
+
     private void InitializeScene()
     {
-        // 创建基础场景
         var scene = new Scene();
         SceneSystem.SceneInstance = new SceneInstance(Services, scene);
 
-        // 添加相机实体
         var cameraEntity = new Entity("MainCamera")
         {
             new CameraComponent
@@ -107,7 +248,6 @@ public class EditorGame : Game
         cameraEntity.Transform.Rotation = Quaternion.RotationX((float)Math.PI / 6);
         scene.Entities.Add(cameraEntity);
 
-        // 添加方向光
         var lightEntity = new Entity("DirectionalLight")
         {
             new LightComponent

@@ -25,15 +25,10 @@ Hierarchy:
                     2ba1961aff3ebcce0bb304a3bbc609ea: !TerrainComponent
                         Id: ac8e605b-05c2-4bc6-9829-5ccb824040d0
                         TerrainDataPath: C:\Users\Redwa\Desktop\heightmap.terrain
-                        HeightScale: 42.0
+                        HeightScale: 200.0
                         MaxScreenSpaceErrorPixels: 8.0
                         DefaultDiffuseTexture: 4ecb1370-7ee3-41d3-a06f-17ca7336ae72:Grid Gray 128x128
                         BaseColor: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}
-                    6312068381475222a6ab99a153b549f2: !Terrain.TerrainWireframeModeController,Terrain
-                        Id: 58481503-9da3-4714-8d10-27ca90b00560
-                        ToggleKey: D1
-                        DebugTextPosition: {X: 20, Y: 20}
-                        DebugLabel: Terrain Wireframe
         -   Entity:
                 Id: 5369f368-a858-4c5b-a2ce-287300ee54af
                 Name: Directional light

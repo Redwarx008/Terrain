@@ -104,8 +104,8 @@ public class Toggle : ControlBase
         var io = ImGui.GetIO();
 
         Vector2 switchPos = Position;
-        float width = SwitchWidth;
-        float height = SwitchHeight;
+        float width = EditorStyle.ScaleValue(SwitchWidth);
+        float height = EditorStyle.ScaleValue(SwitchHeight);
         float radius = height * 0.5f;
 
         // 绘制开关背景
@@ -166,7 +166,7 @@ public class Toggle : ControlBase
         if (ShowLabel && !string.IsNullOrEmpty(Label))
         {
             var textPos = new Vector2(
-                switchPos.X + width + 8,
+                switchPos.X + width + EditorStyle.ScaleValue(8.0f),
                 switchPos.Y + (height - ImGui.CalcTextSize(Label).Y) * 0.5f
             );
             drawList.AddText(textPos, ColorPalette.TextPrimary.ToUint(), Label);
@@ -187,19 +187,19 @@ public class Toggle : ControlBase
 
     protected override Vector2 OnMeasure(Vector2 availableSize)
     {
-        float width = SwitchWidth;
-        float height = SwitchHeight;
+        float width = EditorStyle.ScaleValue(SwitchWidth);
+        float height = EditorStyle.ScaleValue(SwitchHeight);
 
         if (Style == ToggleStyle.CheckBox)
         {
-            width = EditorStyle.CheckboxSize;
-            height = EditorStyle.CheckboxSize;
+            width = EditorStyle.CheckboxSizeScaled;
+            height = EditorStyle.CheckboxSizeScaled;
         }
 
         if (ShowLabel && !string.IsNullOrEmpty(Label))
         {
             var textSize = ImGui.CalcTextSize(Label);
-            width += 8 + textSize.X;
+            width += EditorStyle.ScaleValue(8.0f) + textSize.X;
             height = Math.Max(height, textSize.Y);
         }
 

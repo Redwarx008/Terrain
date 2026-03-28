@@ -91,14 +91,14 @@ public class Slider : ControlBase
         {
             // 计算布局
             float labelWidth = 0;
-            float valueWidth = ShowValue ? ValueTextWidth : 0;
+            float valueWidth = ShowValue ? EditorStyle.ScaleValue(ValueTextWidth) : 0;
 
             if (!string.IsNullOrEmpty(Label))
             {
-                labelWidth = ImGui.CalcTextSize(Label).X + 8;
+                labelWidth = ImGui.CalcTextSize(Label).X + EditorStyle.ScaleValue(8.0f);
             }
 
-            float sliderWidth = Size.X - labelWidth - valueWidth - 8;
+            float sliderWidth = Size.X - labelWidth - valueWidth - EditorStyle.ScaleValue(8.0f);
 
             // 绘制标签
             if (!string.IsNullOrEmpty(Label))
@@ -154,7 +154,7 @@ public class Slider : ControlBase
             // 绘制数值文本
             if (ShowValue)
             {
-                Vector2 valuePos = new Vector2(Position.X + labelWidth + sliderWidth + 8, Position.Y);
+                Vector2 valuePos = new Vector2(Position.X + labelWidth + sliderWidth + EditorStyle.ScaleValue(8.0f), Position.Y);
                 ImGui.SetCursorScreenPos(valuePos);
 
                 string valueText = FormatValue(Value);
@@ -175,7 +175,7 @@ public class Slider : ControlBase
 
     protected override Vector2 OnMeasure(Vector2 availableSize)
     {
-        float height = EditorStyle.InputHeight;
+        float height = EditorStyle.InputHeightScaled;
         float width = availableSize.X;
 
         return new Vector2(width, height);
@@ -201,7 +201,7 @@ public class Slider : ControlBase
     private void PushStyle()
     {
         // 推入紧凑样式
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(4, 3));
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(EditorStyle.ScaleValue(4.0f), EditorStyle.ScaleValue(3.0f)));
     }
 
     private void PopStyle()

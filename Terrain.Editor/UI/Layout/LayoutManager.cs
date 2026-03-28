@@ -9,35 +9,18 @@ using Terrain.Editor.UI.Styling;
 
 namespace Terrain.Editor.UI.Layout;
 
-public enum LayoutOrientation
-{
-    Horizontal,
-    Vertical
-}
-
-public enum DockPosition
-{
-    Left,
-    Right,
-    Top,
-    Bottom,
-    Center,
-    Floating
-}
-
 public class LayoutManager : ControlBase
 {
     public Vector2 WindowSize { get; set; }
     public float ToolbarHeight { get; set; } = 36.0f;
     public float TopInset { get; set; } = 0.0f;
-    public float StatusBarHeight { get; set; } = 24.0f;
-    public float LeftPanelRatio { get; set; } = 0.18f;
-    public float RightPanelRatio { get; set; } = 0.22f;
-    public float BottomPanelRatio { get; set; } = 0.25f;
-    public float MinPanelWidth { get; set; } = 200.0f;
-    public float MaxPanelWidth { get; set; } = 450.0f;
-    public float MinPanelHeight { get; set; } = 120.0f;
-    public float MaxPanelHeight { get; set; } = 500.0f;
+    public float LeftPanelRatio { get; set; } = 0.15f;
+    public float RightPanelRatio { get; set; } = 0.18f;
+    public float BottomPanelRatio { get; set; } = 0.22f;
+    public float MinPanelWidth { get; set; } = 180.0f;
+    public float MaxPanelWidth { get; set; } = 400.0f;
+    public float MinPanelHeight { get; set; } = 100.0f;
+    public float MaxPanelHeight { get; set; } = 400.0f;
     public float SplitterThickness { get; set; } = 4.0f;
     public float SplitterHitPadding { get; set; } = 3.0f;
 
@@ -46,7 +29,6 @@ public class LayoutManager : ControlBase
     public PanelBase? CenterPanel { get; set; }
     public PanelBase? BottomPanel { get; set; }
     public PanelBase? TopPanel { get; set; }
-    public PanelBase? StatusBar { get; set; }
 
     private bool isDraggingLeftSplitter;
     private bool isDraggingRightSplitter;
@@ -65,7 +47,7 @@ public class LayoutManager : ControlBase
     {
         float availableWidth = WindowSize.X;
         float topHeight = TopInset + ToolbarHeight;
-        float availableHeight = Math.Max(0.0f, WindowSize.Y - topHeight - StatusBarHeight);
+        float availableHeight = Math.Max(0.0f, WindowSize.Y - topHeight);
 
         LeftPanelRatio = Math.Clamp(LeftPanelRatio, 0.1f, 0.4f);
         RightPanelRatio = Math.Clamp(RightPanelRatio, 0.1f, 0.4f);
@@ -117,11 +99,6 @@ public class LayoutManager : ControlBase
                 new Vector2(availableWidth, bottomHeight)
             );
         }
-
-        StatusBar?.Arrange(
-            new Vector2(0, WindowSize.Y - StatusBarHeight),
-            new Vector2(availableWidth, StatusBarHeight)
-        );
     }
 
     protected override void OnRender()
@@ -137,7 +114,6 @@ public class LayoutManager : ControlBase
         RightPanel?.Render();
         CenterPanel?.Render();
         BottomPanel?.Render();
-        StatusBar?.Render();
 
         RenderSplitters();
         ApplySplitterCursor();
@@ -146,8 +122,6 @@ public class LayoutManager : ControlBase
 
     private void RenderSplitters()
     {
-        // Draw splitters in the host window draw list so they stay above the
-        // panels, but do not cover popups and tooltips rendered later by ImGui.
         var drawList = ImGui.GetWindowDrawList();
 
         if (IsPanelVisible(LeftPanel) && IsPanelVisible(CenterPanel))
@@ -225,7 +199,7 @@ public class LayoutManager : ControlBase
         }
 
         float availableWidth = WindowSize.X;
-        float availableHeight = Math.Max(0.0f, WindowSize.Y - (TopInset + ToolbarHeight) - StatusBarHeight);
+        float availableHeight = Math.Max(0.0f, WindowSize.Y - (TopInset + ToolbarHeight));
 
         if (isDraggingLeftSplitter && LeftPanel != null)
         {
@@ -305,9 +279,9 @@ public class LayoutManager : ControlBase
 
     public void ResetLayout()
     {
-        LeftPanelRatio = 0.18f;
-        RightPanelRatio = 0.22f;
-        BottomPanelRatio = 0.25f;
+        LeftPanelRatio = 0.15f;
+        RightPanelRatio = 0.18f;
+        BottomPanelRatio = 0.22f;
         CalculateLayout();
     }
 

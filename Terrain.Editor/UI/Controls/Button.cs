@@ -129,7 +129,7 @@ public class Button : ControlBase
     private Vector2 CalculateSize()
     {
         var io = ImGui.GetIO();
-        float height = IsCompact ? 22 : EditorStyle.ButtonHeight;
+        float height = IsCompact ? EditorStyle.ScaleValue(22.0f) : EditorStyle.ButtonHeightScaled;
 
         if (string.IsNullOrEmpty(Text) && !string.IsNullOrEmpty(Icon))
         {
@@ -139,12 +139,12 @@ public class Button : ControlBase
 
         // 计算文本宽度
         var textSize = ImGui.CalcTextSize(GetDisplayText());
-        float width = textSize.X + (IsCompact ? 12 : 24);
+        float width = textSize.X + (IsCompact ? EditorStyle.ScaleValue(12.0f) : EditorStyle.ScaleValue(24.0f));
 
         // 考虑图标
         if (!string.IsNullOrEmpty(Icon))
         {
-            width += EditorStyle.IconSize + 4;
+            width += EditorStyle.IconSizeScaled + EditorStyle.ScaleValue(4.0f);
         }
 
         return new Vector2(width, height);
@@ -200,7 +200,7 @@ public class Button : ControlBase
                 break;
 
             case ButtonStyle.Tool:
-                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(4, 4));
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(EditorStyle.ScaleValue(4.0f), EditorStyle.ScaleValue(4.0f)));
                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0, 0, 0, 0));
                 ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColorPalette.Hover.ToVector4());
                 ImGui.PushStyleColor(ImGuiCol.ButtonActive, ColorPalette.Pressed.ToVector4());
@@ -209,7 +209,7 @@ public class Button : ControlBase
 
         if (IsCompact && Style != ButtonStyle.Tool)
         {
-            ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(6, 2));
+            ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(EditorStyle.ScaleValue(6.0f), EditorStyle.ScaleValue(2.0f)));
         }
     }
 
