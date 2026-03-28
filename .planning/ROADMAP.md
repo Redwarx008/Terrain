@@ -33,7 +33,13 @@
 3. User can pan camera to view different terrain areas
 4. User can zoom camera in/out to examine details
 
-**Plans**: TBD
+**Plans**: 4 plans in 3 waves
+
+**Plans List**:
+- [ ] 01-01-PLAN.md - Create HybridCameraController for orbit and free-fly camera modes
+- [ ] 01-02-PLAN.md - Create HeightmapLoader and TerrainManager services
+- [ ] 01-03-PLAN.md - Integrate camera and terrain into SceneViewPanel with RenderTarget
+- [ ] 01-04-PLAN.md - Wire File -> Open menu and complete editor integration
 
 **UI hint**: yes
 
@@ -183,7 +189,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Project Foundation | 0/4 | Not started | - |
+| 1. Project Foundation | 0/4 | Ready for execution | - |
 | 2. Brush System Core | 0/4 | Not started | - |
 | 3. Height Editing | 0/5 | Not started | - |
 | 4. Undo/Redo System | 0/5 | Not started | - |
@@ -240,3 +246,4 @@
 ---
 
 *Roadmap created: 2026-03-29*
+*Last updated: 2026-03-29 - Phase 1 plans created*
