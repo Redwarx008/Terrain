@@ -170,65 +170,35 @@ internal class BrushesPanel
     {
         ImGui.Spacing();
 
-        float itemWidth = EditorStyle.ScaleValue(60.0f);
-        float padding = EditorStyle.ScaleValue(8.0f);
-        float labelHeight = ImGui.GetTextLineHeight() + EditorStyle.ScaleValue(8.0f);
-        float itemHeight = itemWidth + labelHeight;
+        GridTileLayout tileLayout = GridTileRenderer.CreateLayout(60.0f, 8.0f);
         float availableWidth = ImGui.GetContentRegionAvail().X;
-        int itemsPerRow = Math.Max(1, (int)((availableWidth + padding) / (itemWidth + padding)));
+        int itemsPerRow = GridTileRenderer.GetItemsPerRow(availableWidth, tileLayout);
 
         for (int i = 0; i < brushNames.Length; i++)
         {
-            int col = i % itemsPerRow;
-            if (col > 0)
-                ImGui.SameLine(0.0f, padding);
+            GridTileRenderer.AdvanceRowLayout(i, itemsPerRow, tileLayout);
 
-            RenderBrushItem(i, itemWidth, itemHeight, labelHeight);
+            RenderBrushItem(i, tileLayout);
         }
     }
 
-    private void RenderBrushItem(int index, float width, float height, float labelHeight)
+    private void RenderBrushItem(int index, GridTileLayout tileLayout)
     {
         bool isSelected = SelectedBrush == index;
 
-        var drawList = ImGui.GetWindowDrawList();
-        Vector2 cursor = ImGui.GetCursorScreenPos();
-        float inset = EditorStyle.ScaleValue(4.0f);
-
-        // Button area
-        ImGui.InvisibleButton($"##brush_{index}", new Vector2(width, height));
-
-        bool isHovered = ImGui.IsItemHovered();
-
-        // Background
-        uint bgColor = isSelected ? ColorPalette.Selection.ToUint() :
-                       isHovered ? ColorPalette.Hover.ToUint() :
-                       ColorPalette.DarkBackground.ToUint();
-        drawList.AddRectFilled(cursor, new Vector2(cursor.X + width, cursor.Y + height), bgColor, 4.0f);
-
-        // Border
-        if (isSelected)
-        {
-            drawList.AddRect(cursor, new Vector2(cursor.X + width, cursor.Y + height), ColorPalette.Accent.ToUint(), 4.0f);
-        }
+        GridTileContext tile = GridTileRenderer.BeginTile($"##brush_{index}", tileLayout, isSelected);
+        Vector2 iconCenter = GridTileRenderer.GetSquareContentCenter(tile.Cursor, tileLayout);
 
         // Icon
         Vector2 iconPos = new Vector2(
-            cursor.X + (width - FontManager.ScaledIconSize) * 0.5f,
-            cursor.Y + (width - FontManager.ScaledIconSize) * 0.5f
+            iconCenter.X - FontManager.ScaledIconSize * 0.5f,
+            iconCenter.Y - FontManager.ScaledIconSize * 0.5f
         );
 
         uint iconColor = isSelected ? ColorPalette.Accent.ToUint() : ColorPalette.TextPrimary.ToUint();
-        ImGui.AddText(drawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, iconColor, brushIcons[index]);
+        ImGui.AddText(tile.DrawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, iconColor, brushIcons[index]);
 
-        // Name
-        string displayName = TruncateToWidth(brushNames[index], width - inset * 2.0f);
-        Vector2 textSize = ImGui.CalcTextSize(displayName);
-        Vector2 namePos = new Vector2(
-            cursor.X + (width - textSize.X) * 0.5f,
-            cursor.Y + width + MathF.Max(0.0f, (labelHeight - textSize.Y) * 0.5f)
-        );
-        drawList.AddText(namePos, ColorPalette.TextSecondary.ToUint(), displayName);
+        GridTileRenderer.DrawLabel(tile.DrawList, tile.Cursor, tileLayout, brushNames[index], centered: true);
 
         // Handle click
         if (ImGui.IsItemClicked())
@@ -236,26 +206,6 @@ internal class BrushesPanel
             SelectedBrush = index;
             BrushSelected?.Invoke(this, new BrushSelectedEventArgs { BrushIndex = index, BrushName = brushNames[index] });
         }
-    }
-
-    private static string TruncateToWidth(string text, float maxWidth)
-    {
-        if (string.IsNullOrEmpty(text) || ImGui.CalcTextSize(text).X <= maxWidth)
-            return text;
-
-        const string ellipsis = "...";
-        float ellipsisWidth = ImGui.CalcTextSize(ellipsis).X;
-        if (ellipsisWidth >= maxWidth)
-            return ellipsis;
-
-        for (int length = text.Length - 1; length > 0; length--)
-        {
-            string candidate = text[..length] + ellipsis;
-            if (ImGui.CalcTextSize(candidate).X <= maxWidth)
-                return candidate;
-        }
-
-        return ellipsis;
     }
 }
 

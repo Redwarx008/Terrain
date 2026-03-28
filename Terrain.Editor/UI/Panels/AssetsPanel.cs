@@ -214,12 +214,9 @@ public class AssetsPanel : PanelBase
         ImGui.Spacing();
 
         // Texture grid
-        float itemWidth = EditorStyle.ScaleValue(64.0f);
-        float padding = EditorStyle.ScaleValue(4.0f);
-        float labelHeight = ImGui.GetTextLineHeight() + EditorStyle.ScaleValue(8.0f);
-        float itemHeight = itemWidth + labelHeight;
+        GridTileLayout tileLayout = GridTileRenderer.CreateLayout(64.0f, 4.0f);
         float availableWidth = ContentRect.Width - EditorStyle.ScaleValue(8.0f);
-        int itemsPerRow = Math.Max(1, (int)((availableWidth + padding) / (itemWidth + padding)));
+        int itemsPerRow = GridTileRenderer.GetItemsPerRow(availableWidth, tileLayout);
 
         int visibleCount = 0;
         for (int i = 0; i < textureSlots.Count; i++)
@@ -234,11 +231,9 @@ public class AssetsPanel : PanelBase
                 !slot.Name.Contains(searchBuffer, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            int col = visibleCount % itemsPerRow;
-            if (col > 0)
-                ImGui.SameLine(0.0f, padding);
+            GridTileRenderer.AdvanceRowLayout(visibleCount, itemsPerRow, tileLayout);
 
-            RenderTextureSlot(slot, i, itemWidth, itemHeight, labelHeight);
+            RenderTextureSlot(slot, i, tileLayout);
             visibleCount++;
         }
 
@@ -257,58 +252,33 @@ public class AssetsPanel : PanelBase
         ImGui.InputTextWithHint("##texture_search", "Search textures...", ref searchBuffer, 256);
     }
 
-    private void RenderTextureSlot(TextureSlot slot, int index, float width, float height, float labelHeight)
+    private void RenderTextureSlot(TextureSlot slot, int index, GridTileLayout tileLayout)
     {
         bool isSelected = SelectedTextureSlot == index;
 
-        var drawList = ImGui.GetWindowDrawList();
-        Vector2 cursor = ImGui.GetCursorScreenPos();
-        float inset = EditorStyle.ScaleValue(4.0f);
-        float previewHeight = width - inset * 2.0f;
-
-        // Click area
-        ImGui.InvisibleButton($"##tex_slot_{index}", new Vector2(width, height));
-        bool isHovered = ImGui.IsItemHovered();
-
-        // Background
-        uint bgColor = isSelected ? ColorPalette.Selection.ToUint() :
-                       isHovered ? ColorPalette.Hover.ToUint() :
-                       ColorPalette.DarkBackground.ToUint();
-        drawList.AddRectFilled(cursor, new Vector2(cursor.X + width, cursor.Y + height), bgColor, 4.0f);
-
-        // Border
-        if (isSelected)
-        {
-            drawList.AddRect(cursor, new Vector2(cursor.X + width, cursor.Y + height), ColorPalette.Accent.ToUint(), 4.0f, ImDrawFlags.None, 2.0f);
-        }
+        GridTileContext tile = GridTileRenderer.BeginTile($"##tex_slot_{index}", tileLayout, isSelected);
+        Vector2 previewPos = GridTileRenderer.GetSquareContentMin(tile.Cursor, tileLayout);
+        Vector2 previewSize = GridTileRenderer.GetSquareContentSize(tileLayout);
 
         // Texture preview (placeholder)
         if (!slot.IsEmpty)
         {
-            Vector2 previewPos = new Vector2(cursor.X + inset, cursor.Y + inset);
-            Vector2 previewSize = new Vector2(width - inset * 2.0f, previewHeight);
-            drawList.AddRectFilled(previewPos, new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y),
+            tile.DrawList.AddRectFilled(previewPos, new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y),
                 ColorPalette.Background.ToUint());
 
             // Placeholder pattern
-            drawList.AddText(new Vector2(previewPos.X + 4, previewPos.Y + previewSize.Y * 0.4f),
+            tile.DrawList.AddText(new Vector2(previewPos.X + tileLayout.Inset, previewPos.Y + previewSize.Y * 0.4f),
                 ColorPalette.TextSecondary.ToUint(), $"#{index}");
         }
         else
         {
             // Empty slot indicator
-            Vector2 center = new Vector2(cursor.X + width * 0.5f, cursor.Y + inset + previewHeight * 0.5f);
+            Vector2 center = GridTileRenderer.GetSquareContentCenter(tile.Cursor, tileLayout);
             Vector2 iconPos = new Vector2(center.X - FontManager.ScaledIconSize * 0.5f, center.Y - FontManager.ScaledIconSize * 0.5f);
-            ImGui.AddText(drawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, ColorPalette.TextSecondary.ToUint(), Icons.Plus);
+            ImGui.AddText(tile.DrawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, ColorPalette.TextSecondary.ToUint(), Icons.Plus);
         }
 
-        // Name
-        string displayName = TruncateToWidth(slot.Name, width - inset * 2.0f);
-        Vector2 textSize = ImGui.CalcTextSize(displayName);
-        Vector2 namePos = new Vector2(
-            cursor.X + inset,
-            cursor.Y + width + MathF.Max(0.0f, (labelHeight - textSize.Y) * 0.5f));
-        drawList.AddText(namePos, ColorPalette.TextSecondary.ToUint(), displayName);
+        GridTileRenderer.DrawLabel(tile.DrawList, tile.Cursor, tileLayout, slot.Name);
 
         // Handle click
         if (ImGui.IsItemClicked())
@@ -318,7 +288,7 @@ public class AssetsPanel : PanelBase
         }
 
         // Tooltip
-        if (isHovered)
+        if (tile.IsHovered)
         {
             ImGui.SetTooltip($"{slot.Name}\nIndex: {index}");
         }
@@ -351,20 +321,15 @@ public class AssetsPanel : PanelBase
         ImGui.Spacing();
 
         // Foliage list
-        float itemWidth = EditorStyle.ScaleValue(80.0f);
-        float padding = EditorStyle.ScaleValue(4.0f);
-        float labelHeight = ImGui.GetTextLineHeight() + EditorStyle.ScaleValue(8.0f);
-        float itemHeight = itemWidth + labelHeight;
-        int itemsPerRow = Math.Max(1, (int)((ContentRect.Width + padding) / (itemWidth + padding)));
+        GridTileLayout tileLayout = GridTileRenderer.CreateLayout(80.0f, 4.0f);
+        int itemsPerRow = GridTileRenderer.GetItemsPerRow(ContentRect.Width, tileLayout);
         int visibleCount = 0;
 
         for (int i = 0; i < foliageItems.Count; i++)
         {
-            int col = visibleCount % itemsPerRow;
-            if (col > 0)
-                ImGui.SameLine(0.0f, padding);
+            GridTileRenderer.AdvanceRowLayout(visibleCount, itemsPerRow, tileLayout);
 
-            RenderFoliageItem(foliageItems[i], i, itemWidth, itemHeight, labelHeight);
+            RenderFoliageItem(foliageItems[i], i, tileLayout);
             visibleCount++;
         }
     }
@@ -388,41 +353,20 @@ public class AssetsPanel : PanelBase
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Import Prefab");
     }
 
-    private void RenderFoliageItem(FoliageItem item, int index, float width, float height, float labelHeight)
+    private void RenderFoliageItem(FoliageItem item, int index, GridTileLayout tileLayout)
     {
         bool isSelected = SelectedFoliageIndex == index;
 
-        var drawList = ImGui.GetWindowDrawList();
-        Vector2 cursor = ImGui.GetCursorScreenPos();
-        float inset = EditorStyle.ScaleValue(4.0f);
-
-        ImGui.InvisibleButton($"##foliage_{index}", new Vector2(width, height));
-        bool isHovered = ImGui.IsItemHovered();
-
-        // Background
-        uint bgColor = isSelected ? ColorPalette.Selection.ToUint() :
-                       isHovered ? ColorPalette.Hover.ToUint() :
-                       ColorPalette.DarkBackground.ToUint();
-        drawList.AddRectFilled(cursor, new Vector2(cursor.X + width, cursor.Y + height), bgColor, 4.0f);
-
-        // Border
-        if (isSelected)
-        {
-            drawList.AddRect(cursor, new Vector2(cursor.X + width, cursor.Y + height), ColorPalette.Accent.ToUint(), 4.0f);
-        }
+        GridTileContext tile = GridTileRenderer.BeginTile($"##foliage_{index}", tileLayout, isSelected);
 
         // Icon
-        Vector2 iconPos = new Vector2(cursor.X + (width - FontManager.ScaledIconSize) * 0.5f, cursor.Y + EditorStyle.ScaleValue(8.0f));
+        Vector2 iconPos = new Vector2(
+            tile.Cursor.X + (tileLayout.ItemWidth - FontManager.ScaledIconSize) * 0.5f,
+            tile.Cursor.Y + EditorStyle.ScaleValue(8.0f));
         uint iconColor = isSelected ? ColorPalette.Accent.ToUint() : ColorPalette.TextPrimary.ToUint();
-        ImGui.AddText(drawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, iconColor, item.Icon);
+        ImGui.AddText(tile.DrawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, iconColor, item.Icon);
 
-        // Name
-        string displayName = TruncateToWidth(item.Name, width - inset * 2.0f);
-        Vector2 textSize = ImGui.CalcTextSize(displayName);
-        Vector2 namePos = new Vector2(
-            cursor.X + inset,
-            cursor.Y + width + MathF.Max(0.0f, (labelHeight - textSize.Y) * 0.5f));
-        drawList.AddText(namePos, ColorPalette.TextSecondary.ToUint(), displayName);
+        GridTileRenderer.DrawLabel(tile.DrawList, tile.Cursor, tileLayout, item.Name);
 
         // Handle click
         if (ImGui.IsItemClicked())
@@ -437,26 +381,6 @@ public class AssetsPanel : PanelBase
     public void SetMode(EditorMode mode)
     {
         CurrentMode = mode;
-    }
-
-    private static string TruncateToWidth(string text, float maxWidth)
-    {
-        if (string.IsNullOrEmpty(text) || ImGui.CalcTextSize(text).X <= maxWidth)
-            return text;
-
-        const string ellipsis = "...";
-        float ellipsisWidth = ImGui.CalcTextSize(ellipsis).X;
-        if (ellipsisWidth >= maxWidth)
-            return ellipsis;
-
-        for (int length = text.Length - 1; length > 0; length--)
-        {
-            string candidate = text[..length] + ellipsis;
-            if (ImGui.CalcTextSize(candidate).X <= maxWidth)
-                return candidate;
-        }
-
-        return ellipsis;
     }
 }
 
