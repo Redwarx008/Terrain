@@ -1,7 +1,7 @@
 # Requirements: Terrain Slot Editor
 
 **Defined:** 2026-03-29
-**Core Value:** 实时 3D 预览的笔刷式地形编辑 — 所见即所得的高度和材质编辑体验
+**Core Value:** Real-time 3D preview brush-based terrain editing - WYSIWYG height and material editing experience
 
 ## v1 Requirements
 
@@ -103,44 +103,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HEIGHT-01 | Phase 1 | Pending |
-| HEIGHT-02 | Phase 1 | Pending |
-| HEIGHT-03 | Phase 1 | Pending |
-| HEIGHT-04 | Phase 1 | Pending |
-| BRUSH-01 | Phase 1 | Pending |
-| BRUSH-02 | Phase 1 | Pending |
-| BRUSH-03 | Phase 1 | Pending |
-| BRUSH-04 | Phase 1 | Pending |
-| BRUSH-05 | Phase 1 | Pending |
-| BRUSH-06 | Phase 1 | Pending |
-| MAT-01 | Phase 2 | Pending |
-| MAT-02 | Phase 2 | Pending |
-| MAT-03 | Phase 3 | Pending |
-| MAT-04 | Phase 3 | Pending |
-| MGMT-01 | Phase 2 | Pending |
-| MGMT-02 | Phase 2 | Pending |
-| MGMT-03 | Phase 2 | Pending |
-| FILE-01 | Phase 4 | Pending |
-| FILE-02 | Phase 4 | Pending |
-| FILE-03 | Phase 4 | Pending |
-| FILE-04 | Phase 4 | Pending |
-| FILE-05 | Phase 4 | Pending |
-| PREV-01 | Phase 5 | Pending |
-| PREV-02 | Phase 5 | Pending |
-| PREV-03 | Phase 5 | Pending |
-| PREV-04 | Phase 5 | Pending |
-| PREV-05 | Phase 1 | Pending |
-| UNDO-01 | Phase 6 | Pending |
-| UNDO-02 | Phase 6 | Pending |
-| UNDO-03 | Phase 6 | Pending |
-| UNDO-04 | Phase 6 | Pending |
-| UNDO-05 | Phase 6 | Pending |
+| PREV-01 | Phase 1 | Pending |
+| PREV-02 | Phase 1 | Pending |
+| PREV-03 | Phase 1 | Pending |
+| PREV-04 | Phase 1 | Pending |
+| BRUSH-01 | Phase 2 | Pending |
+| BRUSH-02 | Phase 2 | Pending |
+| BRUSH-03 | Phase 2 | Pending |
+| BRUSH-06 | Phase 2 | Pending |
+| HEIGHT-01 | Phase 3 | Pending |
+| HEIGHT-02 | Phase 3 | Pending |
+| HEIGHT-03 | Phase 3 | Pending |
+| HEIGHT-04 | Phase 3 | Pending |
+| PREV-05 | Phase 3 | Pending |
+| UNDO-01 | Phase 4 | Pending |
+| UNDO-02 | Phase 4 | Pending |
+| UNDO-03 | Phase 4 | Pending |
+| UNDO-04 | Phase 4 | Pending |
+| UNDO-05 | Phase 4 | Pending |
+| BRUSH-04 | Phase 5 | Pending |
+| BRUSH-05 | Phase 5 | Pending |
+| MGMT-01 | Phase 6 | Pending |
+| MGMT-02 | Phase 6 | Pending |
+| MGMT-03 | Phase 6 | Pending |
+| MAT-01 | Phase 7 | Pending |
+| MAT-02 | Phase 7 | Pending |
+| MAT-03 | Phase 7 | Pending |
+| MAT-04 | Phase 7 | Pending |
+| FILE-01 | Phase 8 | Pending |
+| FILE-02 | Phase 8 | Pending |
+| FILE-03 | Phase 8 | Pending |
+| FILE-04 | Phase 8 | Pending |
+| FILE-05 | Phase 8 | Pending |
 
 **Coverage:**
 - v1 requirements: 32 total
 - Mapped to phases: 32
-- Unmapped: 0 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-29*
-*Last updated: 2026-03-29 after initial definition*
+*Last updated: 2026-03-29 after roadmap creation*
