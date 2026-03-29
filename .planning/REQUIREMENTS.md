@@ -44,7 +44,7 @@
 
 ### Preview & Navigation
 
-- [ ] **PREV-01**: User can see real-time 3D preview with terrain LOD
+- [x] **PREV-01**: User can see real-time 3D preview with terrain LOD
 - [x] **PREV-02**: User can orbit camera around terrain
 - [x] **PREV-03**: User can pan camera
 - [x] **PREV-04**: User can zoom camera in/out
@@ -103,7 +103,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PREV-01 | Phase 1 | Pending |
+| PREV-01 | Phase 1 | Complete |
 | PREV-02 | Phase 1 | Complete |
 | PREV-03 | Phase 1 | Complete |
 | PREV-04 | Phase 1 | Complete |

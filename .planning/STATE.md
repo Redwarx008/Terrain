@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-29T05:45:21.335Z"
+last_updated: "2026-03-29T05:50:47.430Z"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State: Terrain Slot Editor
@@ -30,7 +30,7 @@ progress:
 ## Current Position
 
 Phase: 01 (project-foundation) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 | Attribute | Value |
 |-----------|-------|
 | **Phase** | 1 - Project Foundation |
@@ -51,6 +51,7 @@ Plan: 2 of 4
 
 ---
 | Phase 01-project-foundation P01 | 15min | 1 tasks | 1 files |
+| Phase 01-project-foundation P02 | 12min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,7 @@ Plan: 2 of 4
 
 - [Phase 01-project-foundation]: Use MathUtil for degree-to-radian conversion and Matrix.RotationQuaternion for direction vectors (Stride pattern)
 - [Phase 01-project-foundation]: Default camera mode is orbit; free-fly mode activated while Shift key is held
+- [Phase 01-project-foundation]: Use TerrainPreProcessor project reference for heightmap conversion (cross-framework .NET 8 -> .NET 10)
 
 ### Active Todos
 

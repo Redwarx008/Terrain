@@ -37,7 +37,7 @@
 
 **Plans List**:
 - [x] 01-01-PLAN.md - Create HybridCameraController for orbit and free-fly camera modes
-- [ ] 01-02-PLAN.md - Create HeightmapLoader and TerrainManager services
+- [x] 01-02-PLAN.md - Create HeightmapLoader and TerrainManager services
 - [ ] 01-03-PLAN.md - Integrate camera and terrain into SceneViewPanel with RenderTarget
 - [ ] 01-04-PLAN.md - Wire File -> Open menu and complete editor integration
 
