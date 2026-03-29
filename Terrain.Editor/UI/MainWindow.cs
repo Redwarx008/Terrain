@@ -1,7 +1,6 @@
 #nullable enable
 
 using Hexa.NET.ImGui;
-using Microsoft.Win32;
 using Stride.Core;
 using Stride.Games;
 using Stride.Graphics;
@@ -532,18 +531,11 @@ public class MainWindow : ControlBase
 
     private void OpenHeightmap()
     {
-        var dialog = new OpenFileDialog
+        nint hwnd = GetNativeWindowHandle();
+        if (FileDialog.ShowOpenDialog(hwnd, "PNG Files (*.png)|*.png", "Open Heightmap", out string? filePath))
         {
-            Filter = "PNG Files (*.png)|*.png|All Files (*.*)|*.*",
-            Title = "Open Heightmap",
-            CheckFileExists = true
-        };
-
-        var result = dialog.ShowDialog();
-        if (result == true)
-        {
-            Console.LogInfo($"Loading heightmap: {dialog.FileName}");
-            Viewport.LoadHeightmap(dialog.FileName);
+            Console.LogInfo($"Loading heightmap: {filePath}");
+            Viewport.LoadHeightmap(filePath);
         }
     }
 
