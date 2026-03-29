@@ -81,7 +81,17 @@ public class EditorGame : Game
         // Initialize terrain support in viewport after scene is created
         if (editorScene != null)
         {
-            mainWindow.Viewport.InitializeTerrainSupport(GraphicsDevice, editorScene, Input);
+            Texture? defaultTerrainTexture = null;
+            try
+            {
+                defaultTerrainTexture = Content.Load<Texture>("Grid Gray 128x128");
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load default terrain texture asset: {exception.Message}");
+            }
+
+            mainWindow.Viewport.InitializeTerrainSupport(GraphicsDevice, editorScene, Input, defaultTerrainTexture);
             mainWindow.Viewport.Camera = FindEditorCamera();
             mainWindow.Viewport.TextureIdProvider = uiRenderer.GetOrCreateTextureId;
             mainWindow.Viewport.HeightmapLoaded += OnViewportHeightmapLoaded;

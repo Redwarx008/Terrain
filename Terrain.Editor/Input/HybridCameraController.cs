@@ -114,10 +114,9 @@ public sealed class HybridCameraController
 
     public void ResetToTerrainBounds(float terrainWidth, float terrainHeight, float maxHeight)
     {
+        float terrainExtent = Math.Max(terrainWidth, terrainHeight);
         orbitCenter = new Vector3(terrainWidth * 0.5f, maxHeight * 0.5f, terrainHeight * 0.5f);
-        orbitDistance = Math.Max(terrainWidth, terrainHeight) * 1.5f;
-        pitch = 30.0f;
-        yaw = 45.0f;
+        orbitDistance = terrainExtent * 0.9f;
 
         if (Camera == null)
         {
@@ -125,15 +124,24 @@ public sealed class HybridCameraController
         }
 
         var cameraEntity = Camera.Entity;
-        var rotation = Quaternion.RotationYawPitchRoll(
-            MathUtil.DegreesToRadians(yaw),
-            MathUtil.DegreesToRadians(pitch),
-            0.0f);
+        float horizontalOffset = terrainExtent * 0.32f;
+        float verticalOffset = Math.Max(maxHeight + terrainExtent * 0.10f, 40.0f);
 
-        var rotationMatrix = Matrix.RotationQuaternion(rotation);
-        var offset = -rotationMatrix.Forward * orbitDistance;
-        cameraEntity.Transform.Position = orbitCenter + offset;
+        // Place the editor camera from an explicit point above the terrain instead of reconstructing
+        // the position from yaw/pitch. That old path could land below the terrain because the local
+        // forward convention here is easy to get wrong and flips the offset sign. Keep the horizontal
+        // offset tied to the terrain extent itself so large terrains do not push the camera into
+        // negative X/Z before the user even starts navigating.
+        var cameraPosition = new Vector3(
+            orbitCenter.X - horizontalOffset,
+            verticalOffset,
+            orbitCenter.Z - horizontalOffset);
+        var forward = Vector3.Normalize(orbitCenter - cameraPosition);
+        var rotation = Quaternion.LookRotation(forward, Vector3.UnitY);
+
+        cameraEntity.Transform.Position = cameraPosition;
         cameraEntity.Transform.Rotation = rotation;
+        SyncAnglesFromForward(forward);
         hasPendingCameraRefresh = true;
     }
 
@@ -189,5 +197,11 @@ public sealed class HybridCameraController
         {
             hasPendingCameraRefresh = true;
         }
+    }
+
+    private void SyncAnglesFromForward(Vector3 forward)
+    {
+        yaw = MathUtil.RadiansToDegrees(MathF.Atan2(-forward.X, forward.Z));
+        pitch = MathUtil.RadiansToDegrees(MathF.Asin(MathUtil.Clamp(forward.Y, -1.0f, 1.0f)));
     }
 }

@@ -71,10 +71,10 @@ public class SceneViewPanel : PanelBase
     /// <summary>
     /// Initializes terrain rendering support with required services.
     /// </summary>
-    public void InitializeTerrainSupport(GraphicsDevice device, Scene scene, InputManager input)
+    public void InitializeTerrainSupport(GraphicsDevice device, Scene scene, InputManager input, Texture? defaultTerrainTexture = null)
     {
         renderTargetManager = new SceneRenderTargetManager();
-        terrainManager = new TerrainManager(device, scene);
+        terrainManager = new TerrainManager(device, scene, defaultTerrainTexture);
 
         // Wire up terrain loaded event
         terrainManager.TerrainLoaded += (s, e) =>
@@ -391,13 +391,14 @@ public class SceneViewPanel : PanelBase
             ColorPalette.Border.ToUint(),
             1.0f);
 
-        // Show camera mode (Orbit/Fly)
         string mode = cameraController.IsFlyModeActive ? "Fly" : "Orbit";
-        string info = $"Mode: {mode} | Yaw/Pitch: {cameraController.YawDegrees:F0}/{cameraController.PitchDegrees:F0} | Center: {cameraController.OrbitCenter.X:F0}, {cameraController.OrbitCenter.Y:F0}, {cameraController.OrbitCenter.Z:F0} | Cam: {cameraController.CameraPosition.X:F0}, {cameraController.CameraPosition.Y:F0}, {cameraController.CameraPosition.Z:F0}";
+        string info = $"Mode: {mode} | Y/P: {cameraController.YawDegrees:F0}/{cameraController.PitchDegrees:F0} | Cam: {cameraController.CameraPosition.X:F0}, {cameraController.CameraPosition.Y:F0}, {cameraController.CameraPosition.Z:F0}";
         var textPos = new NumericsVector2(
             infoPos.X + EditorStyle.ScaleValue(8.0f),
             infoPos.Y + (infoHeight - ImGui.CalcTextSize(info).Y) * 0.5f);
+        drawList.PushClipRect(infoPos, infoEnd, true);
         drawList.AddText(textPos, ColorPalette.TextSecondary.ToUint(), info);
+        drawList.PopClipRect();
     }
 
     private void HandleCameraInput(NumericsVector2 viewPos, NumericsVector2 viewSize)
