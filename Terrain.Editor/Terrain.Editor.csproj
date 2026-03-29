@@ -13,6 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="Stride.Engine" Version="4.3.0.2507" />
     <PackageReference Include="Stride.Video" Version="4.3.0.2507" />
     <PackageReference Include="Stride.Physics" Version="4.3.0.2507" />
