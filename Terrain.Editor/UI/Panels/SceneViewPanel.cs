@@ -1,11 +1,18 @@
 #nullable enable
 
 using Hexa.NET.ImGui;
+using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Graphics;
+using Stride.Input;
 using Stride.Rendering;
 using System;
 using System.Numerics;
+using NumericsVector2 = System.Numerics.Vector2;
+using NumericsVector4 = System.Numerics.Vector4;
+using Terrain.Editor.Input;
+using Terrain.Editor.Rendering;
+using Terrain.Editor.Services;
 using Terrain.Editor.UI.Styling;
 using Color4 = Stride.Core.Mathematics.Color4;
 
@@ -19,23 +26,32 @@ public class SceneViewPanel : PanelBase
     private const float ToolbarBaseHeight = 28.0f;
     private const float InfoBarBaseHeight = 20.0f;
 
+    // Terrain rendering support
+    private readonly HybridCameraController cameraController;
+    private SceneRenderTargetManager? renderTargetManager;
+    private TerrainManager? terrainManager;
+
+    // Render target display (placeholder approach until native pointer integration)
     public Texture? SceneRenderTarget { get; set; }
 
-    public CameraComponent? Camera { get; set; }
+    public CameraComponent? Camera
+    {
+        get => cameraController.Camera;
+        set => cameraController.Camera = value;
+    }
 
     public bool ShowGrid { get; set; } = true;
-
     public bool ShowWireframe { get; set; } = false;
-
     public bool ShowGizmos { get; set; } = true;
-
     public SceneViewMode ViewMode { get; set; } = SceneViewMode.Shaded;
 
-    private bool isDragging;
-    private Vector2 lastMousePos;
-    private float cameraDistance = 100.0f;
-    private float cameraYaw = 45.0f;
-    private float cameraPitch = 30.0f;
+    // Expose camera controller for external access
+    public HybridCameraController CameraController => cameraController;
+    public TerrainManager? TerrainManager => terrainManager;
+
+    // Events for heightmap loading
+    public event EventHandler<string>? HeightmapLoaded;
+    public event EventHandler<string>? HeightmapLoadFailed;
 
     public SceneViewPanel()
     {
@@ -43,6 +59,67 @@ public class SceneViewPanel : PanelBase
         Icon = Icons.Cube;
         ShowTitleBar = true;
         IsCollapsible = true;
+
+        cameraController = new HybridCameraController();
+    }
+
+    /// <summary>
+    /// Initializes terrain rendering support with required services.
+    /// </summary>
+    public void InitializeTerrainSupport(GraphicsDevice device, Scene scene, InputManager input)
+    {
+        renderTargetManager = new SceneRenderTargetManager();
+        terrainManager = new TerrainManager(device, scene);
+
+        // Wire up terrain loaded event
+        terrainManager.TerrainLoaded += (s, e) =>
+        {
+            HeightmapLoaded?.Invoke(this, e.TerrainPath);
+
+            // Reset camera to terrain bounds
+            var bounds = terrainManager.GetTerrainBounds();
+            if (bounds.Maximum.X > 0 && bounds.Maximum.Z > 0)
+            {
+                cameraController.ResetToTerrainBounds(
+                    bounds.Maximum.X,
+                    bounds.Maximum.Z,
+                    bounds.Maximum.Y);
+            }
+        };
+    }
+
+    /// <summary>
+    /// Loads a heightmap file and creates terrain.
+    /// </summary>
+    public async void LoadHeightmap(string path)
+    {
+        if (terrainManager == null)
+        {
+            HeightmapLoadFailed?.Invoke(this, "TerrainManager not initialized");
+            return;
+        }
+
+        var entity = await terrainManager.LoadTerrainAsync(path);
+        if (entity == null)
+        {
+            HeightmapLoadFailed?.Invoke(this, $"Failed to load heightmap: {path}");
+        }
+    }
+
+    /// <summary>
+    /// Updates camera controller. Call this every frame.
+    /// </summary>
+    public void UpdateCamera(float deltaTime, InputManager input)
+    {
+        cameraController.Update(deltaTime, input);
+    }
+
+    /// <summary>
+    /// Updates render target size. Call this when panel size changes.
+    /// </summary>
+    public void UpdateRenderTarget(GraphicsDevice device, Stride.Core.Mathematics.Vector2 size)
+    {
+        renderTargetManager?.GetOrCreate(device, size);
     }
 
     protected override void RenderContent()
@@ -60,11 +137,11 @@ public class SceneViewPanel : PanelBase
         float paddingX = EditorStyle.ScaleValue(8.0f);
         float paddingY = (toolbarHeight - buttonHeight) * 0.5f;
 
-        Vector2 toolbarPos = new Vector2(ContentRect.X, ContentRect.Y);
-        Vector2 toolbarEnd = new Vector2(ContentRect.X + ContentRect.Width, ContentRect.Y + toolbarHeight);
+        NumericsVector2 toolbarPos = new NumericsVector2(ContentRect.X, ContentRect.Y);
+        NumericsVector2 toolbarEnd = new NumericsVector2(ContentRect.X + ContentRect.Width, ContentRect.Y + toolbarHeight);
         drawList.AddRectFilled(toolbarPos, toolbarEnd, ColorPalette.DarkBackground.ToUint());
 
-        ImGui.SetCursorScreenPos(new Vector2(toolbarPos.X + paddingX, toolbarPos.Y + paddingY));
+        ImGui.SetCursorScreenPos(new NumericsVector2(toolbarPos.X + paddingX, toolbarPos.Y + paddingY));
 
         PushToolbarButtonStyle(ViewMode == SceneViewMode.Shaded);
         if (ImGui.Button("Shaded", GetToolbarButtonSize("Shaded", buttonHeight)))
@@ -84,11 +161,11 @@ public class SceneViewPanel : PanelBase
         PopToolbarButtonStyle();
 
         ImGui.SameLine(0.0f, EditorStyle.ScaleValue(8.0f));
-        ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, toolbarPos.Y + (toolbarHeight - ImGui.CalcTextSize("|").Y) * 0.5f));
+        ImGui.SetCursorScreenPos(new NumericsVector2(ImGui.GetCursorScreenPos().X, toolbarPos.Y + (toolbarHeight - ImGui.CalcTextSize("|").Y) * 0.5f));
         ImGui.Text("|");
 
         ImGui.SameLine(0.0f, EditorStyle.ScaleValue(8.0f));
-        ImGui.SetCursorScreenPos(new Vector2(ImGui.GetCursorScreenPos().X, toolbarPos.Y + paddingY));
+        ImGui.SetCursorScreenPos(new NumericsVector2(ImGui.GetCursorScreenPos().X, toolbarPos.Y + paddingY));
 
         bool showGrid = ShowGrid;
         if (ImGui.Checkbox("Grid", ref showGrid))
@@ -100,8 +177,8 @@ public class SceneViewPanel : PanelBase
             ShowGizmos = showGizmos;
 
         drawList.AddLine(
-            new Vector2(ContentRect.X, ContentRect.Y + toolbarHeight),
-            new Vector2(ContentRect.X + ContentRect.Width, ContentRect.Y + toolbarHeight),
+            new NumericsVector2(ContentRect.X, ContentRect.Y + toolbarHeight),
+            new NumericsVector2(ContentRect.X + ContentRect.Width, ContentRect.Y + toolbarHeight),
             ColorPalette.Border.ToUint(),
             1.0f);
     }
@@ -113,40 +190,51 @@ public class SceneViewPanel : PanelBase
         float viewY = ContentRect.Y + toolbarHeight;
         float viewHeight = Math.Max(0.0f, ContentRect.Height - toolbarHeight - infoHeight);
 
-        Vector2 viewPos = new Vector2(ContentRect.X, viewY);
-        Vector2 viewSize = new Vector2(ContentRect.Width, viewHeight);
+        NumericsVector2 viewPos = new NumericsVector2(ContentRect.X, viewY);
+        NumericsVector2 viewSize = new NumericsVector2(ContentRect.Width, viewHeight);
 
         var drawList = ImGui.GetWindowDrawList();
-        drawList.AddRectFilled(viewPos, new Vector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y), ColorPalette.DarkBackground.ToUint());
 
-        if (SceneRenderTarget != null)
+        // Draw background
+        drawList.AddRectFilled(viewPos, new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y), ColorPalette.DarkBackground.ToUint());
+
+        if (terrainManager?.CurrentTerrain == null)
         {
+            // No terrain loaded - show placeholder with hint
             if (ShowGrid)
             {
                 RenderGridPreview(drawList, viewPos, viewSize);
             }
 
-            string hint = "3D Scene View\n(Camera controls will be here)";
+            string hint = "Use File > Open to load a heightmap";
             var textSize = ImGui.CalcTextSize(hint);
-            var textPos = new Vector2(
+            var textPos = new NumericsVector2(
                 viewPos.X + (viewSize.X - textSize.X) * 0.5f,
                 viewPos.Y + (viewSize.Y - textSize.Y) * 0.5f);
             drawList.AddText(textPos, ColorPalette.TextSecondary.ToUint(), hint);
         }
-        else
+        else if (renderTargetManager?.RenderTarget != null)
         {
-            string hint = "No Scene Loaded";
-            var textSize = ImGui.CalcTextSize(hint);
-            var textPos = new Vector2(
+            // Terrain is loaded - show render target preview
+            // Note: Full ImGui.Image integration requires native pointer access
+            // For now, show a placeholder indicating terrain is loaded
+            if (ShowGrid)
+            {
+                RenderGridPreview(drawList, viewPos, viewSize);
+            }
+
+            string status = $"Terrain Loaded ({terrainManager.GetTerrainBounds().Maximum.X:F0} x {terrainManager.GetTerrainBounds().Maximum.Z:F0})";
+            var textSize = ImGui.CalcTextSize(status);
+            var textPos = new NumericsVector2(
                 viewPos.X + (viewSize.X - textSize.X) * 0.5f,
-                viewPos.Y + (viewSize.Y - textSize.Y) * 0.5f);
-            drawList.AddText(textPos, ColorPalette.TextSecondary.ToUint(), hint);
+                viewPos.Y + EditorStyle.ScaleValue(20.0f));
+            drawList.AddText(textPos, ColorPalette.TextPrimary.ToUint(), status);
         }
 
         HandleCameraInput(viewPos, viewSize);
     }
 
-    private void RenderGridPreview(ImDrawListPtr drawList, Vector2 viewPos, Vector2 viewSize)
+    private void RenderGridPreview(ImDrawListPtr drawList, NumericsVector2 viewPos, NumericsVector2 viewSize)
     {
         uint gridColor = new Color4(0.3f, 0.3f, 0.3f, 0.5f).ToUint();
         float gridSpacing = EditorStyle.ScaleValue(50.0f);
@@ -154,8 +242,8 @@ public class SceneViewPanel : PanelBase
         for (float y = viewPos.Y; y < viewPos.Y + viewSize.Y; y += gridSpacing)
         {
             drawList.AddLine(
-                new Vector2(viewPos.X, y),
-                new Vector2(viewPos.X + viewSize.X, y),
+                new NumericsVector2(viewPos.X, y),
+                new NumericsVector2(viewPos.X + viewSize.X, y),
                 gridColor,
                 1.0f);
         }
@@ -163,8 +251,8 @@ public class SceneViewPanel : PanelBase
         for (float x = viewPos.X; x < viewPos.X + viewSize.X; x += gridSpacing)
         {
             drawList.AddLine(
-                new Vector2(x, viewPos.Y),
-                new Vector2(x, viewPos.Y + viewSize.Y),
+                new NumericsVector2(x, viewPos.Y),
+                new NumericsVector2(x, viewPos.Y + viewSize.Y),
                 gridColor,
                 1.0f);
         }
@@ -176,28 +264,30 @@ public class SceneViewPanel : PanelBase
         float infoHeight = GetInfoBarHeight();
         float viewHeight = Math.Max(0.0f, ContentRect.Height - toolbarHeight - infoHeight);
 
-        Vector2 infoPos = new Vector2(ContentRect.X, ContentRect.Y + toolbarHeight + viewHeight);
-        Vector2 infoEnd = new Vector2(ContentRect.X + ContentRect.Width, ContentRect.Y + ContentRect.Height);
+        NumericsVector2 infoPos = new NumericsVector2(ContentRect.X, ContentRect.Y + toolbarHeight + viewHeight);
+        NumericsVector2 infoEnd = new NumericsVector2(ContentRect.X + ContentRect.Width, ContentRect.Y + ContentRect.Height);
 
         var drawList = ImGui.GetWindowDrawList();
         drawList.AddRectFilled(infoPos, infoEnd, ColorPalette.DarkBackground.ToUint());
         drawList.AddLine(
             infoPos,
-            new Vector2(infoEnd.X, infoPos.Y),
+            new NumericsVector2(infoEnd.X, infoPos.Y),
             ColorPalette.Border.ToUint(),
             1.0f);
 
-        string info = $"View: {ViewMode} | Camera: {cameraYaw:F0}°, {cameraPitch:F0}° | Zoom: {cameraDistance:F0}";
-        var textPos = new Vector2(
+        // Show camera mode (Orbit/Fly)
+        string mode = cameraController.IsFlyModeActive ? "Fly" : "Orbit";
+        string info = $"Mode: {mode} | Center: {cameraController.OrbitCenter.X:F0}, {cameraController.OrbitCenter.Y:F0}, {cameraController.OrbitCenter.Z:F0}";
+        var textPos = new NumericsVector2(
             infoPos.X + EditorStyle.ScaleValue(8.0f),
             infoPos.Y + (infoHeight - ImGui.CalcTextSize(info).Y) * 0.5f);
         drawList.AddText(textPos, ColorPalette.TextSecondary.ToUint(), info);
     }
 
-    private void HandleCameraInput(Vector2 viewPos, Vector2 viewSize)
+    private void HandleCameraInput(NumericsVector2 viewPos, NumericsVector2 viewSize)
     {
         var io = ImGui.GetIO();
-        Vector2 mousePos = io.MousePos;
+        NumericsVector2 mousePos = io.MousePos;
 
         bool isOverView =
             mousePos.X >= viewPos.X && mousePos.X <= viewPos.X + viewSize.X &&
@@ -206,28 +296,29 @@ public class SceneViewPanel : PanelBase
         if (!isOverView)
             return;
 
-        if (io.MouseDown[2])
+        // Check for double-click to reset camera
+        if (io.MouseDoubleClicked[0])
         {
-            Vector2 delta = io.MouseDelta;
-            lastMousePos = delta;
-            isDragging = true;
-        }
-        else
-        {
-            isDragging = false;
+            if (terrainManager != null)
+            {
+                var bounds = terrainManager.GetTerrainBounds();
+                if (bounds.Maximum.X > 0 && bounds.Maximum.Z > 0)
+                {
+                    cameraController.ResetToTerrainBounds(
+                        bounds.Maximum.X,
+                        bounds.Maximum.Z,
+                        bounds.Maximum.Y);
+                }
+            }
+            return;
         }
 
-        if (io.MouseDown[1])
-        {
-            Vector2 delta = io.MouseDelta;
-            cameraYaw -= delta.X * 0.5f;
-            cameraPitch = Math.Clamp(cameraPitch - delta.Y * 0.5f, -89, 89);
-        }
+        // Let ImGui capture check happen first
+        if (io.WantCaptureMouse)
+            return;
 
-        if (io.MouseWheel != 0)
-        {
-            cameraDistance = Math.Max(10, cameraDistance - io.MouseWheel * 5);
-        }
+        // Camera input is handled by HybridCameraController via UpdateCamera()
+        // This method is now primarily for detecting double-click and hover state
     }
 
     private void PushToolbarButtonStyle(bool isActive)
@@ -240,7 +331,7 @@ public class SceneViewPanel : PanelBase
         }
         else
         {
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0, 0, 0, 0));
+            ImGui.PushStyleColor(ImGuiCol.Button, new NumericsVector4(0, 0, 0, 0));
             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, ColorPalette.Hover.ToVector4());
             ImGui.PushStyleColor(ImGuiCol.ButtonActive, ColorPalette.Pressed.ToVector4());
         }
@@ -261,10 +352,17 @@ public class SceneViewPanel : PanelBase
         return MathF.Max(EditorStyle.ScaleValue(InfoBarBaseHeight), ImGui.GetTextLineHeight() + EditorStyle.ScaleValue(6.0f));
     }
 
-    private static Vector2 GetToolbarButtonSize(string label, float buttonHeight)
+    private static NumericsVector2 GetToolbarButtonSize(string label, float buttonHeight)
     {
         float width = MathF.Max(EditorStyle.ScaleValue(60.0f), ImGui.CalcTextSize(label).X + EditorStyle.ScaleValue(16.0f));
-        return new Vector2(width, buttonHeight);
+        return new NumericsVector2(width, buttonHeight);
+    }
+
+    public override void Dispose()
+    {
+        renderTargetManager?.Dispose();
+        terrainManager?.Dispose();
+        base.Dispose();
     }
 }
 
