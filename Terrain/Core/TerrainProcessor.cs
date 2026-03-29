@@ -18,6 +18,8 @@ namespace Terrain;
 
 public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, TerrainRenderObject>, IEntityComponentRenderProcessor
 {
+    // Grid Gray 128x128 contains an 8x8 checker pattern, so repeating the texture every 8 world
+    // units makes each visible checker cell represent 1 meter in the editor viewport.
     private const float DiffuseWorldRepeatSize = 8.0f;
     private static readonly Logger Log = GlobalLogger.GetLogger("Quantum");
 

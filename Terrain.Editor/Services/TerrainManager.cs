@@ -26,6 +26,7 @@ public sealed class TerrainManager : IDisposable
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly Scene scene;
+    private readonly Texture? defaultTerrainTexture;
     private Entity? currentTerrainEntity;
     private Texture? defaultDiffuseTexture;
     private HeightmapInfo? currentHeightmapInfo;
@@ -40,10 +41,11 @@ public sealed class TerrainManager : IDisposable
     /// </summary>
     public event EventHandler<TerrainLoadedEventArgs>? TerrainLoaded;
 
-    public TerrainManager(GraphicsDevice graphicsDevice, Scene scene)
+    public TerrainManager(GraphicsDevice graphicsDevice, Scene scene, Texture? defaultTerrainTexture = null)
     {
         this.graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
         this.scene = scene ?? throw new ArgumentNullException(nameof(scene));
+        this.defaultTerrainTexture = defaultTerrainTexture;
     }
 
     /// <summary>
@@ -200,7 +202,15 @@ public sealed class TerrainManager : IDisposable
         if (defaultDiffuseTexture != null)
             return defaultDiffuseTexture;
 
-        // Create a simple gray checkerboard texture
+        if (defaultTerrainTexture != null)
+        {
+            defaultDiffuseTexture = defaultTerrainTexture;
+            return defaultDiffuseTexture;
+        }
+
+        // Fall back to a checkerboard only if the project texture asset is unavailable. The normal
+        // path should use the authored Grid Gray asset, which already comes through Stride's asset
+        // pipeline with mipmaps and avoids the severe moire seen on the raw runtime-generated texture.
         int size = 64;
         var data = new Color[size * size];
         for (int y = 0; y < size; y++)
