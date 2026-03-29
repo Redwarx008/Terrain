@@ -14,12 +14,12 @@
 
 ### Brush System
 
-- [ ] **BRUSH-01**: User can adjust brush size via slider/input
-- [ ] **BRUSH-02**: User can adjust brush strength/opacity via slider/input
+- [x] **BRUSH-01**: User can adjust brush size via slider/input
+- [x] **BRUSH-02**: User can adjust brush strength/opacity via slider/input
 - [ ] **BRUSH-03**: User can select circular brush shape
 - [ ] **BRUSH-04**: User can select square brush shape
 - [ ] **BRUSH-05**: User can select noise-based brush shape
-- [ ] **BRUSH-06**: User can adjust brush falloff/feathering
+- [x] **BRUSH-06**: User can adjust brush falloff/feathering
 
 ### Material Painting
 
@@ -48,7 +48,7 @@
 - [x] **PREV-02**: User can orbit camera around terrain
 - [x] **PREV-03**: User can pan camera
 - [x] **PREV-04**: User can zoom camera in/out
-- [ ] **PREV-05**: User can see brush preview cursor in viewport
+- [x] **PREV-05**: User can see brush preview cursor in viewport
 
 ### Undo/Redo
 
@@ -107,11 +107,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PREV-02 | Phase 1 | Complete |
 | PREV-03 | Phase 1 | Complete |
 | PREV-04 | Phase 1 | Complete |
-| BRUSH-01 | Phase 2 | Pending |
-| BRUSH-02 | Phase 2 | Pending |
+| BRUSH-01 | Phase 2 | Complete |
+| BRUSH-02 | Phase 2 | Complete |
 | BRUSH-03 | Phase 2 | Pending |
-| BRUSH-06 | Phase 2 | Pending |
-| PREV-05 | Phase 2 | Pending |
+| BRUSH-06 | Phase 2 | Complete |
+| PREV-05 | Phase 2 | Complete |
 | HEIGHT-01 | Phase 3 | Pending |
 | HEIGHT-02 | Phase 3 | Pending |
 | HEIGHT-03 | Phase 3 | Pending |

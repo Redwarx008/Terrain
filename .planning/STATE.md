@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-29T16:29:40.189Z"
+last_updated: "2026-03-29T16:47:49.342Z"
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 6
 ---
 
 # Project State: Terrain Slot Editor
@@ -53,6 +53,7 @@ Plan: 2 of 2
 | Phase 01-project-foundation P01 | 15min | 1 tasks | 1 files |
 | Phase 01-project-foundation P02 | 12min | 2 tasks | 3 files |
 | Phase 01 P03 | 12min | 2 tasks | 2 files |
+| Phase 02-brush-system-core P02 | 5min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Plan: 2 of 2
 - [Phase 01-project-foundation]: Use TerrainPreProcessor project reference for heightmap conversion (cross-framework .NET 8 -> .NET 10)
 - [Phase 01]: Deferred ImGui.Image native pointer integration - Stride Texture doesn't expose NativePointer directly
 - [Phase 01]: Used NumericsVector2/NumericsVector4 aliases to resolve System.Numerics vs Stride.Core.Mathematics ambiguity
+- [Phase 02-brush-system-core]: Brush preview renders as two circles: outer for extent, inner filled for 100% strength area
+- [Phase 02-brush-system-core]: Preview hides during camera interaction (right-click drag) to avoid visual clutter
 
 ### Active Todos
 

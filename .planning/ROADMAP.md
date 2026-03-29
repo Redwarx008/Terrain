@@ -64,7 +64,7 @@
 
 **Plans List**:
 - [x] 02-01-PLAN.md - Create BrushParameters service and wire RightPanel with updated defaults
-- [ ] 02-02-PLAN.md - Add brush preview overlay to SceneViewPanel viewport
+- [x] 02-02-PLAN.md - Add brush preview overlay to SceneViewPanel viewport
 
 **UI hint**: yes
 
