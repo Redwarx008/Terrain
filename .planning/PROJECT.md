@@ -15,6 +15,8 @@
 - ✓ Terrain Mesh LOD 系统 — existing (Terrain/Rendering/)
 - ✓ ImGui UI 框架 — existing (Terrain.Editor/UI/)
 - ✓ 分页算法参考 — existing (TerrainPreProcessor/)
+- ✓ Brush 参数系统（Size/Strength/Falloff）— Phase 2: Brush System Core
+- ✓ Brush 预览光标（圆形 + 衰减显示）— Phase 2: Brush System Core
 
 ### Active
 
@@ -81,4 +83,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after initialization*
+*Last updated: 2026-03-30 after Phase 2: Brush System Core*
