@@ -165,7 +165,13 @@ internal class BrushParamsPanel
 /// </summary>
 internal class BrushesPanel
 {
-    public int SelectedBrush { get; set; } = 0;
+    private readonly BrushParameters _brushParams = BrushParameters.Instance;
+
+    public int SelectedBrush
+    {
+        get => _brushParams.SelectedBrushIndex;
+        set => _brushParams.SelectedBrushIndex = value;
+    }
 
     public event EventHandler<BrushSelectedEventArgs>? BrushSelected;
 
@@ -184,15 +190,22 @@ internal class BrushesPanel
         {
             GridTileRenderer.AdvanceRowLayout(i, itemsPerRow, tileLayout);
 
-            RenderBrushItem(i, tileLayout);
+            // Only Circle (index 0) is enabled in Phase 2
+            bool isEnabled = (i == 0);
+            RenderBrushItem(i, tileLayout, isEnabled);
         }
     }
 
-    private void RenderBrushItem(int index, GridTileLayout tileLayout)
+    private void RenderBrushItem(int index, GridTileLayout tileLayout, bool isEnabled = true)
     {
         bool isSelected = SelectedBrush == index;
 
-        GridTileContext tile = GridTileRenderer.BeginTile($"##brush_{index}", tileLayout, isSelected);
+        if (!isEnabled)
+        {
+            EditorStyle.PushDisabled();
+        }
+
+        GridTileContext tile = GridTileRenderer.BeginTile($"##brush_{index}", tileLayout, isSelected && isEnabled);
         Vector2 iconCenter = GridTileRenderer.GetSquareContentCenter(tile.Cursor, tileLayout);
 
         // Icon
@@ -201,16 +214,27 @@ internal class BrushesPanel
             iconCenter.Y - FontManager.ScaledIconSize * 0.5f
         );
 
-        uint iconColor = isSelected ? ColorPalette.Accent.ToUint() : ColorPalette.TextPrimary.ToUint();
+        uint iconColor = isSelected && isEnabled ? ColorPalette.Accent.ToUint() : ColorPalette.TextPrimary.ToUint();
         ImGui.AddText(tile.DrawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, iconColor, brushIcons[index]);
 
         GridTileRenderer.DrawLabel(tile.DrawList, tile.Cursor, tileLayout, brushNames[index], centered: true);
 
-        // Handle click
-        if (ImGui.IsItemClicked())
+        // Handle click only for enabled brushes
+        if (isEnabled && ImGui.IsItemClicked())
         {
             SelectedBrush = index;
             BrushSelected?.Invoke(this, new BrushSelectedEventArgs { BrushIndex = index, BrushName = brushNames[index] });
+        }
+
+        // Add tooltip for disabled brushes
+        if (!isEnabled && ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Coming in Phase 5");
+        }
+
+        if (!isEnabled)
+        {
+            EditorStyle.PopDisabled();
         }
     }
 }
