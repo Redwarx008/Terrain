@@ -111,11 +111,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BRUSH-02 | Phase 2 | Pending |
 | BRUSH-03 | Phase 2 | Pending |
 | BRUSH-06 | Phase 2 | Pending |
+| PREV-05 | Phase 2 | Pending |
 | HEIGHT-01 | Phase 3 | Pending |
 | HEIGHT-02 | Phase 3 | Pending |
 | HEIGHT-03 | Phase 3 | Pending |
 | HEIGHT-04 | Phase 3 | Pending |
-| PREV-05 | Phase 3 | Pending |
 | UNDO-01 | Phase 4 | Pending |
 | UNDO-02 | Phase 4 | Pending |
 | UNDO-03 | Phase 4 | Pending |

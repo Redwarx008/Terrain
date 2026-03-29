@@ -47,19 +47,24 @@
 
 ### Phase 2: Brush System Core
 
-**Goal**: Users can configure brush parameters for terrain editing
+**Goal**: Users can configure brush parameters and see brush preview in viewport
 
 **Depends on**: Phase 1
 
-**Requirements**: BRUSH-01, BRUSH-02, BRUSH-03, BRUSH-06
+**Requirements**: BRUSH-01, BRUSH-02, BRUSH-03, BRUSH-06, PREV-05
 
 **Success Criteria** (what must be TRUE):
 1. User can adjust brush size via UI slider or input field
 2. User can adjust brush strength/opacity via UI slider or input field
 3. User can select circular brush shape for editing
 4. User can adjust brush falloff/feathering for smooth edges
+5. User can see brush preview cursor in viewport before editing
 
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
+
+**Plans List**:
+- [x] 02-01-PLAN.md - Create BrushParameters service and wire RightPanel with updated defaults
+- [ ] 02-02-PLAN.md - Add brush preview overlay to SceneViewPanel viewport
 
 **UI hint**: yes
 
@@ -71,14 +76,13 @@
 
 **Depends on**: Phase 2
 
-**Requirements**: HEIGHT-01, HEIGHT-02, HEIGHT-03, HEIGHT-04, PREV-05
+**Requirements**: HEIGHT-01, HEIGHT-02, HEIGHT-03, HEIGHT-04
 
 **Success Criteria** (what must be TRUE):
 1. User can raise terrain height by painting with brush
 2. User can lower terrain height by painting with brush
 3. User can smooth terrain heights to average neighbors
 4. User can flatten terrain to a target height
-5. User can see brush preview cursor in viewport before applying
 
 **Plans**: TBD
 
@@ -189,8 +193,8 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Project Foundation | 0/4 | Ready for execution | - |
-| 2. Brush System Core | 0/4 | Not started | - |
+| 1. Project Foundation | 3/4 | Executing | - |
+| 2. Brush System Core | 1/2 | Executing | - |
 | 3. Height Editing | 0/5 | Not started | - |
 | 4. Undo/Redo System | 0/5 | Not started | - |
 | 5. Enhanced Brushes | 0/2 | Not started | - |
@@ -218,11 +222,11 @@
 | BRUSH-02 | Phase 2 |
 | BRUSH-03 | Phase 2 |
 | BRUSH-06 | Phase 2 |
+| PREV-05 | Phase 2 |
 | HEIGHT-01 | Phase 3 |
 | HEIGHT-02 | Phase 3 |
 | HEIGHT-03 | Phase 3 |
 | HEIGHT-04 | Phase 3 |
-| PREV-05 | Phase 3 |
 | UNDO-01 | Phase 4 |
 | UNDO-02 | Phase 4 |
 | UNDO-03 | Phase 4 |
@@ -246,4 +250,4 @@
 ---
 
 *Roadmap created: 2026-03-29*
-*Last updated: 2026-03-29 - Phase 1 plans created*
+*Last updated: 2026-03-30 - Phase 2 plans created*
