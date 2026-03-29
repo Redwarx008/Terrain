@@ -45,9 +45,9 @@
 ### Preview & Navigation
 
 - [ ] **PREV-01**: User can see real-time 3D preview with terrain LOD
-- [ ] **PREV-02**: User can orbit camera around terrain
-- [ ] **PREV-03**: User can pan camera
-- [ ] **PREV-04**: User can zoom camera in/out
+- [x] **PREV-02**: User can orbit camera around terrain
+- [x] **PREV-03**: User can pan camera
+- [x] **PREV-04**: User can zoom camera in/out
 - [ ] **PREV-05**: User can see brush preview cursor in viewport
 
 ### Undo/Redo
@@ -104,9 +104,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PREV-01 | Phase 1 | Pending |
-| PREV-02 | Phase 1 | Pending |
-| PREV-03 | Phase 1 | Pending |
-| PREV-04 | Phase 1 | Pending |
+| PREV-02 | Phase 1 | Complete |
+| PREV-03 | Phase 1 | Complete |
+| PREV-04 | Phase 1 | Complete |
 | BRUSH-01 | Phase 2 | Pending |
 | BRUSH-02 | Phase 2 | Pending |
 | BRUSH-03 | Phase 2 | Pending |
