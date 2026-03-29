@@ -3,6 +3,7 @@
 using Hexa.NET.ImGui;
 using System;
 using System.Numerics;
+using Terrain.Editor.Services;
 using Terrain.Editor.UI.Styling;
 
 namespace Terrain.Editor.UI.Panels;
@@ -73,9 +74,11 @@ public class RightPanel : PanelBase
 /// </summary>
 internal class BrushParamsPanel
 {
-    public float BrushSize { get; set; } = 50.0f;
-    public float BrushStrength { get; set; } = 0.5f;
-    public float BrushFalloff { get; set; } = 0.3f;
+    private readonly BrushParameters _brushParams = BrushParameters.Instance;
+
+    public float BrushSize { get => _brushParams.Size; set => _brushParams.Size = value; }
+    public float BrushStrength { get => _brushParams.Strength; set => _brushParams.Strength = value; }
+    public float BrushFalloff { get => _brushParams.Falloff; set => _brushParams.Falloff = value; }
 
     public event EventHandler<BrushParamsChangedEventArgs>? ParamsChanged;
 
@@ -87,7 +90,7 @@ internal class BrushParamsPanel
         ImGui.Text("Size");
         ImGui.SetNextItemWidth(-1);
         float size = BrushSize;
-        if (ImGui.SliderFloat("##brush_size", ref size, 1.0f, 500.0f, "%.0f"))
+        if (ImGui.SliderFloat("##brush_size", ref size, 1.0f, 200.0f, "%.0f"))
         {
             BrushSize = size;
             ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "Size", Value = BrushSize });
@@ -117,6 +120,9 @@ internal class BrushParamsPanel
             ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "Falloff", Value = BrushFalloff });
         }
 
+        // Per D-11: Show Hard/Soft labels for inverted falloff semantics
+        ImGui.TextColored(ColorPalette.TextSecondary.ToVector4(), "Soft <---> Hard");
+
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -138,13 +144,13 @@ internal class BrushParamsPanel
 
         // Brush circle with falloff visualization
         Vector2 center = new Vector2(cursor.X + previewSize * 0.5f, cursor.Y + previewSize * 0.5f);
-        float radius = previewSize * 0.4f * (BrushSize / 500.0f + 0.1f);
+        float radius = previewSize * 0.4f * (BrushSize / 200.0f + 0.1f);
 
         // Outer circle (full strength area)
         drawList.AddCircleFilled(center, radius, ColorPalette.Accent.WithAlpha(0.3f).ToUint());
 
-        // Inner circle (falloff area)
-        float innerRadius = radius * (1.0f - BrushFalloff);
+        // Inner circle (falloff area) - use EffectiveFalloff for correct inverted semantics
+        float innerRadius = radius * _brushParams.EffectiveFalloff;
         drawList.AddCircleFilled(center, innerRadius, ColorPalette.Accent.WithAlpha(0.6f).ToUint());
 
         // Border
