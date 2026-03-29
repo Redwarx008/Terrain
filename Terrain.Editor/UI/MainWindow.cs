@@ -1,6 +1,7 @@
 #nullable enable
 
 using Hexa.NET.ImGui;
+using Microsoft.Win32;
 using Stride.Core;
 using Stride.Games;
 using Stride.Graphics;
@@ -9,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Terrain.Editor.Platform;
+using Terrain.Editor.Services;
 using Terrain.Editor.UI.Controls;
 using Terrain.Editor.UI.Layout;
 using Terrain.Editor.UI.Panels;
@@ -146,6 +148,17 @@ public class MainWindow : ControlBase
         Assets.TextureSlotSelected += (s, e) => Console.LogInfo($"Texture slot selected: {e.SlotIndex}");
         Assets.FoliageSelected += (s, e) => Console.LogInfo($"Foliage selected: {e.Item.Name}");
         Assets.LayerSelected += (s, e) => Console.LogInfo($"Layer selected: {e.Layer.Name}");
+
+        // Subscribe to terrain events
+        Viewport.HeightmapLoaded += (s, path) =>
+        {
+            Console.LogInfo($"Heightmap loaded successfully: {path}");
+        };
+
+        Viewport.HeightmapLoadFailed += (s, error) =>
+        {
+            Console.LogError($"Failed to load heightmap: {error}");
+        };
     }
 
     protected override void OnRender()
@@ -500,7 +513,7 @@ public class MainWindow : ControlBase
                 break;
 
             case "Open":
-                Console.LogInfo("Open terrain project");
+                OpenHeightmap();
                 break;
 
             case "Save":
@@ -514,6 +527,23 @@ public class MainWindow : ControlBase
             case "Redo":
                 Console.LogInfo("Redo");
                 break;
+        }
+    }
+
+    private void OpenHeightmap()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "PNG Files (*.png)|*.png|All Files (*.*)|*.*",
+            Title = "Open Heightmap",
+            CheckFileExists = true
+        };
+
+        var result = dialog.ShowDialog();
+        if (result == true)
+        {
+            Console.LogInfo($"Loading heightmap: {dialog.FileName}");
+            Viewport.LoadHeightmap(dialog.FileName);
         }
     }
 
