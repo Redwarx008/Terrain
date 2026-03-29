@@ -32,6 +32,9 @@ public class SceneViewPanel : PanelBase
     private SceneRenderTargetManager? renderTargetManager;
     private TerrainManager? terrainManager;
 
+    // Brush preview support
+    private readonly BrushParameters _brushParams = BrushParameters.Instance;
+
     // Render target display (placeholder approach until native pointer integration)
     public Texture? SceneRenderTarget { get; set; }
     public Func<Texture, ImTextureID>? TextureIdProvider { get; set; }
@@ -320,6 +323,46 @@ public class SceneViewPanel : PanelBase
         }
 
         HandleCameraInput(viewPos, viewSize);
+
+        // Render brush preview overlay (Phase 2)
+        RenderBrushPreview(viewPos, viewSize);
+    }
+
+    private void RenderBrushPreview(NumericsVector2 viewPos, NumericsVector2 viewSize)
+    {
+        // Per D-09: Only show preview when viewport is hovered and not interacting
+        if (!IsViewportHovered || IsViewportInteracting)
+            return;
+
+        var io = ImGui.GetIO();
+        NumericsVector2 mousePos = io.MousePos;
+
+        // Check if mouse is within the viewport bounds
+        if (mousePos.X < viewPos.X || mousePos.X > viewPos.X + viewSize.X ||
+            mousePos.Y < viewPos.Y || mousePos.Y > viewPos.Y + viewSize.Y)
+            return;
+
+        var drawList = ImGui.GetWindowDrawList();
+
+        // Convert brush size to screen pixels
+        // Using a simple scaling: larger brush = larger preview
+        // Size range is 1-200, map to reasonable screen pixels (5-100)
+        float screenRadius = Math.Max(1.0f, _brushParams.Size * 0.5f);
+
+        // Per UI-SPEC: Outer circle - falloff boundary
+        // Accent color with 50% alpha
+        uint outerColor = ColorPalette.Accent.WithAlpha(0.5f).ToUint();
+        drawList.AddCircle(mousePos, screenRadius, outerColor, 0, 2.0f);
+
+        // Per UI-SPEC: Inner circle - 100% strength area
+        // Uses EffectiveFalloff for inverted semantics (1=hard, 0=soft)
+        float innerRadius = screenRadius * _brushParams.EffectiveFalloff;
+        if (innerRadius > 1.0f)
+        {
+            // Accent color with 60% alpha for inner circle
+            uint innerColor = ColorPalette.Accent.WithAlpha(0.6f).ToUint();
+            drawList.AddCircleFilled(mousePos, innerRadius, innerColor, 0);
+        }
     }
 
     private float? GetViewportAspectRatio()

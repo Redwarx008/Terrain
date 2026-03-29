@@ -3,6 +3,7 @@
 using Hexa.NET.ImGui;
 using System;
 using System.Numerics;
+using Terrain.Editor.Services;
 using Terrain.Editor.UI.Styling;
 
 namespace Terrain.Editor.UI.Panels;
@@ -73,9 +74,11 @@ public class RightPanel : PanelBase
 /// </summary>
 internal class BrushParamsPanel
 {
-    public float BrushSize { get; set; } = 50.0f;
-    public float BrushStrength { get; set; } = 0.5f;
-    public float BrushFalloff { get; set; } = 0.3f;
+    private readonly BrushParameters _brushParams = BrushParameters.Instance;
+
+    public float BrushSize { get => _brushParams.Size; set => _brushParams.Size = value; }
+    public float BrushStrength { get => _brushParams.Strength; set => _brushParams.Strength = value; }
+    public float BrushFalloff { get => _brushParams.Falloff; set => _brushParams.Falloff = value; }
 
     public event EventHandler<BrushParamsChangedEventArgs>? ParamsChanged;
 
@@ -87,7 +90,7 @@ internal class BrushParamsPanel
         ImGui.Text("Size");
         ImGui.SetNextItemWidth(-1);
         float size = BrushSize;
-        if (ImGui.SliderFloat("##brush_size", ref size, 1.0f, 500.0f, "%.0f"))
+        if (ImGui.SliderFloat("##brush_size", ref size, 1.0f, 200.0f, "%.0f"))
         {
             BrushSize = size;
             ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "Size", Value = BrushSize });
@@ -117,6 +120,9 @@ internal class BrushParamsPanel
             ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "Falloff", Value = BrushFalloff });
         }
 
+        // Per D-11: Show Hard/Soft labels for inverted falloff semantics
+        ImGui.TextColored(ColorPalette.TextSecondary.ToVector4(), "Soft <---> Hard");
+
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
@@ -138,13 +144,13 @@ internal class BrushParamsPanel
 
         // Brush circle with falloff visualization
         Vector2 center = new Vector2(cursor.X + previewSize * 0.5f, cursor.Y + previewSize * 0.5f);
-        float radius = previewSize * 0.4f * (BrushSize / 500.0f + 0.1f);
+        float radius = previewSize * 0.4f * (BrushSize / 200.0f + 0.1f);
 
         // Outer circle (full strength area)
         drawList.AddCircleFilled(center, radius, ColorPalette.Accent.WithAlpha(0.3f).ToUint());
 
-        // Inner circle (falloff area)
-        float innerRadius = radius * (1.0f - BrushFalloff);
+        // Inner circle (falloff area) - use EffectiveFalloff for correct inverted semantics
+        float innerRadius = radius * _brushParams.EffectiveFalloff;
         drawList.AddCircleFilled(center, innerRadius, ColorPalette.Accent.WithAlpha(0.6f).ToUint());
 
         // Border
@@ -159,7 +165,13 @@ internal class BrushParamsPanel
 /// </summary>
 internal class BrushesPanel
 {
-    public int SelectedBrush { get; set; } = 0;
+    private readonly BrushParameters _brushParams = BrushParameters.Instance;
+
+    public int SelectedBrush
+    {
+        get => _brushParams.SelectedBrushIndex;
+        set => _brushParams.SelectedBrushIndex = value;
+    }
 
     public event EventHandler<BrushSelectedEventArgs>? BrushSelected;
 
@@ -178,15 +190,22 @@ internal class BrushesPanel
         {
             GridTileRenderer.AdvanceRowLayout(i, itemsPerRow, tileLayout);
 
-            RenderBrushItem(i, tileLayout);
+            // Only Circle (index 0) is enabled in Phase 2
+            bool isEnabled = (i == 0);
+            RenderBrushItem(i, tileLayout, isEnabled);
         }
     }
 
-    private void RenderBrushItem(int index, GridTileLayout tileLayout)
+    private void RenderBrushItem(int index, GridTileLayout tileLayout, bool isEnabled = true)
     {
         bool isSelected = SelectedBrush == index;
 
-        GridTileContext tile = GridTileRenderer.BeginTile($"##brush_{index}", tileLayout, isSelected);
+        if (!isEnabled)
+        {
+            EditorStyle.PushDisabled();
+        }
+
+        GridTileContext tile = GridTileRenderer.BeginTile($"##brush_{index}", tileLayout, isSelected && isEnabled);
         Vector2 iconCenter = GridTileRenderer.GetSquareContentCenter(tile.Cursor, tileLayout);
 
         // Icon
@@ -195,16 +214,27 @@ internal class BrushesPanel
             iconCenter.Y - FontManager.ScaledIconSize * 0.5f
         );
 
-        uint iconColor = isSelected ? ColorPalette.Accent.ToUint() : ColorPalette.TextPrimary.ToUint();
+        uint iconColor = isSelected && isEnabled ? ColorPalette.Accent.ToUint() : ColorPalette.TextPrimary.ToUint();
         ImGui.AddText(tile.DrawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, iconColor, brushIcons[index]);
 
         GridTileRenderer.DrawLabel(tile.DrawList, tile.Cursor, tileLayout, brushNames[index], centered: true);
 
-        // Handle click
-        if (ImGui.IsItemClicked())
+        // Handle click only for enabled brushes
+        if (isEnabled && ImGui.IsItemClicked())
         {
             SelectedBrush = index;
             BrushSelected?.Invoke(this, new BrushSelectedEventArgs { BrushIndex = index, BrushName = brushNames[index] });
+        }
+
+        // Add tooltip for disabled brushes
+        if (!isEnabled && ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Coming in Phase 5");
+        }
+
+        if (!isEnabled)
+        {
+            EditorStyle.PopDisabled();
         }
     }
 }
