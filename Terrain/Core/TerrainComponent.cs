@@ -90,6 +90,18 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal bool IsInitialized;
 
     [DataMemberIgnore]
+    public bool IsInitializedForRendering { get; internal set; }
+
+    [DataMemberIgnore]
+    public int LastSelectedRenderCount { get; internal set; }
+
+    [DataMemberIgnore]
+    public int LastSelectedNodeCount { get; internal set; }
+
+    [DataMemberIgnore]
+    public string DebugStatus { get; internal set; } = "Not initialized";
+
+    [DataMemberIgnore]
     internal TerrainConfig LoadedConfig;
 
     [DataMemberIgnore]

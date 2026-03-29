@@ -161,6 +161,10 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
 
         pipelineState.InputElements = PrepareInputElements(pipelineState, drawData);
         pipelineState.PrimitiveType = drawData.PrimitiveType;
+        // The editor viewport currently renders custom terrain patches without any authoring-time
+        // guarantee that the generated index winding matches Stride's front-face convention.
+        // Disable culling here so terrain remains visible while we validate the dedicated viewport path.
+        pipelineState.RasterizerState = new RasterizerStateDescription(CullMode.None);
 
         foreach (var renderFeature in RenderFeatures)
         {
@@ -634,6 +638,11 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         var commandList = drawContext.CommandList;
         if (renderObject.Source is not TerrainComponent component || !component.IsInitialized)
         {
+            if (renderObject.Source is TerrainComponent terrainComponent)
+            {
+                terrainComponent.LastSelectedRenderCount = 0;
+                terrainComponent.LastSelectedNodeCount = 0;
+            }
             renderObject.InstanceCount = 0;
             return;
         }
@@ -649,17 +658,22 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             renderObject.World.TranslationVector,
             renderView,
             component.ChunkNodeData);
+        component.LastSelectedRenderCount = renderCount;
+        component.LastSelectedNodeCount = nodeCount;
         if (nodeCount <= 0)
         {
+            component.DebugStatus = "Renderer: frustum selected 0 nodes";
             return;
         }
 
         renderObject.UpdateChunkNodeData(commandList, component.ChunkNodeData, renderCount, nodeCount);
         if (renderCount <= 0)
         {
+            component.DebugStatus = $"Renderer: selected {nodeCount} nodes, but 0 renderable chunks are resident";
             return;
         }
 
+        component.DebugStatus = $"Renderer: drawing {renderCount} chunks ({nodeCount} nodes)";
         computeDispatcher.Dispatch(drawContext, renderObject, renderCount, nodeCount, component.MaxLod);
     }
 

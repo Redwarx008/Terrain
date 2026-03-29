@@ -14,6 +14,7 @@ using Terrain.Editor.Input;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Services;
 using Terrain.Editor.UI.Styling;
+using Terrain;
 using Color4 = Stride.Core.Mathematics.Color4;
 
 namespace Terrain.Editor.UI.Panels;
@@ -33,6 +34,11 @@ public class SceneViewPanel : PanelBase
 
     // Render target display (placeholder approach until native pointer integration)
     public Texture? SceneRenderTarget { get; set; }
+    public Func<Texture, ImTextureID>? TextureIdProvider { get; set; }
+    public string? SceneDebugLine1 { get; set; }
+    public string? SceneDebugLine2 { get; set; }
+    public bool IsViewportHovered { get; private set; }
+    public bool IsViewportInteracting { get; private set; }
 
     public CameraComponent? Camera
     {
@@ -48,6 +54,7 @@ public class SceneViewPanel : PanelBase
     // Expose camera controller for external access
     public HybridCameraController CameraController => cameraController;
     public TerrainManager? TerrainManager => terrainManager;
+    public bool HasPendingCameraRefresh => cameraController.HasPendingCameraRefresh;
 
     // Events for heightmap loading
     public event EventHandler<string>? HeightmapLoaded;
@@ -111,7 +118,42 @@ public class SceneViewPanel : PanelBase
     /// </summary>
     public void UpdateCamera(float deltaTime, InputManager input)
     {
-        cameraController.Update(deltaTime, input);
+        var absoluteMousePosition = new NumericsVector2(input.AbsoluteMousePosition.X, input.AbsoluteMousePosition.Y);
+        bool isMouseOverViewport = IsMouseInsideViewportRect(absoluteMousePosition);
+        bool isRightMouseDown = input.IsMouseButtonDown(MouseButton.Right);
+        bool isMiddleMouseDown = input.IsMouseButtonDown(MouseButton.Middle);
+
+        // Track interaction state from viewport-local hit testing here instead of depending on the
+        // later ImGui InvisibleButton pass. Camera input runs before that render step, so using the
+        // previous frame's active state made mouse look feel dead or one frame late.
+        IsViewportHovered = isMouseOverViewport;
+        IsViewportInteracting = isMouseOverViewport && (isRightMouseDown || isMiddleMouseDown);
+
+        if (!isMouseOverViewport && !IsViewportInteracting)
+        {
+            return;
+        }
+
+        // Use Stride's raw mouse state here. The ImGui IO snapshot was not reliable at this update point,
+        // which left yaw/pitch frozen even though the viewport had focus and the camera position changed.
+        cameraController.UpdateFromViewportInput(
+            deltaTime,
+            new NumericsVector2(input.AbsoluteMouseDelta.X, input.AbsoluteMouseDelta.Y),
+            input.MouseWheelDelta,
+            isRightMouseDown,
+            isMiddleMouseDown,
+            input.IsKeyDown(Keys.W),
+            input.IsKeyDown(Keys.S),
+            input.IsKeyDown(Keys.A),
+            input.IsKeyDown(Keys.D),
+            input.IsKeyDown(Keys.Q),
+            input.IsKeyDown(Keys.E),
+            input.IsKeyDown(Keys.LeftShift) || input.IsKeyDown(Keys.RightShift));
+    }
+
+    public void RefreshCameraForRendering()
+    {
+        cameraController.RefreshCameraMatrices(GetViewportAspectRatio());
     }
 
     /// <summary>
@@ -119,7 +161,7 @@ public class SceneViewPanel : PanelBase
     /// </summary>
     public void UpdateRenderTarget(GraphicsDevice device, Stride.Core.Mathematics.Vector2 size)
     {
-        renderTargetManager?.GetOrCreate(device, size);
+        SceneRenderTarget = renderTargetManager?.GetOrCreate(device, size);
     }
 
     protected override void RenderContent()
@@ -127,6 +169,27 @@ public class SceneViewPanel : PanelBase
         RenderToolbar();
         Render3DView();
         RenderViewInfo();
+    }
+
+    protected override void RenderBackground()
+    {
+        if (SceneRenderTarget == null)
+        {
+            base.RenderBackground();
+            return;
+        }
+
+        // As soon as a live scene render target exists, never paint the default panel background over it.
+        // The viewport must stay transparent whether or not a terrain is currently loaded, otherwise the
+        // authored skybox falls back to a flat gray panel and it looks like scene rendering regressed.
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.AddRect(
+            Position,
+            new NumericsVector2(Position.X + Size.X, Position.Y + Size.Y),
+            ColorPalette.Border.ToUint(),
+            0,
+            ImDrawFlags.None,
+            1.0f);
     }
 
     private void RenderToolbar()
@@ -195,13 +258,22 @@ public class SceneViewPanel : PanelBase
 
         var drawList = ImGui.GetWindowDrawList();
 
-        // Draw background
-        drawList.AddRectFilled(viewPos, new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y), ColorPalette.DarkBackground.ToUint());
+        if (SceneRenderTarget != null && TextureIdProvider != null)
+        {
+            // Always show the live scene render target. Even before a terrain is loaded, the authored
+            // scene skybox and lights are useful camera references; replacing the viewport with a flat
+            // placeholder makes it look like camera movement is broken when the scene is actually rendering.
+            ImGui.SetCursorScreenPos(viewPos);
+            ImGui.Image(TextureIdProvider(SceneRenderTarget), viewSize);
+        }
+        else
+        {
+            drawList.AddRectFilled(viewPos, new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y), ColorPalette.DarkBackground.ToUint());
+        }
 
         if (terrainManager?.CurrentTerrain == null)
         {
-            // No terrain loaded - show placeholder with hint
-            if (ShowGrid)
+            if (SceneRenderTarget == null && ShowGrid)
             {
                 RenderGridPreview(drawList, viewPos, viewSize);
             }
@@ -213,25 +285,87 @@ public class SceneViewPanel : PanelBase
                 viewPos.Y + (viewSize.Y - textSize.Y) * 0.5f);
             drawList.AddText(textPos, ColorPalette.TextSecondary.ToUint(), hint);
         }
-        else if (renderTargetManager?.RenderTarget != null)
+        else
         {
-            // Terrain is loaded - show render target preview
-            // Note: Full ImGui.Image integration requires native pointer access
-            // For now, show a placeholder indicating terrain is loaded
-            if (ShowGrid)
-            {
-                RenderGridPreview(drawList, viewPos, viewSize);
-            }
-
+            // Keep only a lightweight status overlay here so the scene remains visible underneath.
+            var terrainComponent = terrainManager.CurrentTerrain?.Get<TerrainComponent>();
             string status = $"Terrain Loaded ({terrainManager.GetTerrainBounds().Maximum.X:F0} x {terrainManager.GetTerrainBounds().Maximum.Z:F0})";
-            var textSize = ImGui.CalcTextSize(status);
+            string rendererStatus = terrainComponent?.DebugStatus ?? "Renderer: terrain component unavailable";
+            string chunkStatus = terrainComponent != null
+                ? $"Chunks: {terrainComponent.LastSelectedRenderCount}/{terrainComponent.LastSelectedNodeCount} | Initialized: {terrainComponent.IsInitializedForRendering}"
+                : "Chunks: n/a";
+            string sceneDebugLine1 = SceneDebugLine1 ?? "Scene: unavailable";
+            string sceneDebugLine2 = SceneDebugLine2 ?? "Scene stats: unavailable";
+            var statusPadding = EditorStyle.ScaleValue(10.0f);
             var textPos = new NumericsVector2(
-                viewPos.X + (viewSize.X - textSize.X) * 0.5f,
-                viewPos.Y + EditorStyle.ScaleValue(20.0f));
+                viewPos.X + statusPadding,
+                viewPos.Y + statusPadding);
+            var textSize = ImGui.CalcTextSize(status);
+            var rendererTextPos = new NumericsVector2(textPos.X, textPos.Y + textSize.Y + EditorStyle.ScaleValue(6.0f));
+            var rendererTextSize = ImGui.CalcTextSize(rendererStatus);
+            var chunkTextPos = new NumericsVector2(rendererTextPos.X, rendererTextPos.Y + rendererTextSize.Y + EditorStyle.ScaleValue(4.0f));
+            var chunkTextSize = ImGui.CalcTextSize(chunkStatus);
+            var sceneDebugLine1Pos = new NumericsVector2(chunkTextPos.X, chunkTextPos.Y + chunkTextSize.Y + EditorStyle.ScaleValue(4.0f));
+            var sceneDebugLine1Size = ImGui.CalcTextSize(sceneDebugLine1);
+            var sceneDebugLine2Pos = new NumericsVector2(sceneDebugLine1Pos.X, sceneDebugLine1Pos.Y + sceneDebugLine1Size.Y + EditorStyle.ScaleValue(4.0f));
+            var sceneDebugLine2Size = ImGui.CalcTextSize(sceneDebugLine2);
+            float maxTextWidth = MathF.Max(
+                MathF.Max(textSize.X, rendererTextSize.X),
+                MathF.Max(chunkTextSize.X, MathF.Max(sceneDebugLine1Size.X, sceneDebugLine2Size.X)));
+            var bgMin = new NumericsVector2(textPos.X - statusPadding * 0.6f, textPos.Y - statusPadding * 0.4f);
+            var bgMax = new NumericsVector2(textPos.X + maxTextWidth + statusPadding * 0.6f, sceneDebugLine2Pos.Y + sceneDebugLine2Size.Y + statusPadding * 0.4f);
+            drawList.AddRectFilled(bgMin, bgMax, new Color4(0.04f, 0.04f, 0.04f, 0.7f).ToUint(), EditorStyle.ScaleValue(4.0f));
             drawList.AddText(textPos, ColorPalette.TextPrimary.ToUint(), status);
+            drawList.AddText(rendererTextPos, ColorPalette.TextSecondary.ToUint(), rendererStatus);
+            drawList.AddText(chunkTextPos, ColorPalette.TextSecondary.ToUint(), chunkStatus);
+            drawList.AddText(sceneDebugLine1Pos, ColorPalette.TextSecondary.ToUint(), sceneDebugLine1);
+            drawList.AddText(sceneDebugLine2Pos, ColorPalette.TextSecondary.ToUint(), sceneDebugLine2);
+        }
+
+        // Register an explicit interactive item over the rendered image so the viewport can own mouse
+        // hover/active state like a real control instead of relying on the surrounding window to infer it.
+        ImGui.SetCursorScreenPos(viewPos);
+        ImGui.InvisibleButton($"##viewport_input_{Id}", viewSize);
+        IsViewportHovered = ImGui.IsItemHovered();
+        var io = ImGui.GetIO();
+        IsViewportInteracting = ImGui.IsItemActive() || (IsViewportHovered && io.MouseDown[(int)ImGuiMouseButton.Right]);
+
+        if (IsViewportInteracting)
+        {
+            // Tell ImGui to stop claiming the mouse on the next frame while the user is looking around
+            // in the viewport, otherwise right-drag can get stuck in UI capture and never reach the camera.
+            ImGui.SetNextFrameWantCaptureMouse(false);
         }
 
         HandleCameraInput(viewPos, viewSize);
+    }
+
+    private float? GetViewportAspectRatio()
+    {
+        if (SceneRenderTarget != null && SceneRenderTarget.ViewWidth > 0 && SceneRenderTarget.ViewHeight > 0)
+        {
+            return SceneRenderTarget.ViewWidth / (float)SceneRenderTarget.ViewHeight;
+        }
+
+        float toolbarHeight = GetToolbarHeight();
+        float infoHeight = GetInfoBarHeight();
+        float fallbackHeight = Math.Max(1.0f, ContentRect.Height - toolbarHeight - infoHeight);
+        float fallbackWidth = Math.Max(1.0f, ContentRect.Width);
+        return fallbackWidth / fallbackHeight;
+    }
+
+    private bool IsMouseInsideViewportRect(NumericsVector2 mousePos)
+    {
+        float toolbarHeight = GetToolbarHeight();
+        float infoHeight = GetInfoBarHeight();
+        float viewY = ContentRect.Y + toolbarHeight;
+        float viewHeight = Math.Max(0.0f, ContentRect.Height - toolbarHeight - infoHeight);
+
+        return
+            mousePos.X >= ContentRect.X &&
+            mousePos.X <= ContentRect.X + ContentRect.Width &&
+            mousePos.Y >= viewY &&
+            mousePos.Y <= viewY + viewHeight;
     }
 
     private void RenderGridPreview(ImDrawListPtr drawList, NumericsVector2 viewPos, NumericsVector2 viewSize)
@@ -277,7 +411,7 @@ public class SceneViewPanel : PanelBase
 
         // Show camera mode (Orbit/Fly)
         string mode = cameraController.IsFlyModeActive ? "Fly" : "Orbit";
-        string info = $"Mode: {mode} | Center: {cameraController.OrbitCenter.X:F0}, {cameraController.OrbitCenter.Y:F0}, {cameraController.OrbitCenter.Z:F0}";
+        string info = $"Mode: {mode} | Yaw/Pitch: {cameraController.YawDegrees:F0}/{cameraController.PitchDegrees:F0} | Center: {cameraController.OrbitCenter.X:F0}, {cameraController.OrbitCenter.Y:F0}, {cameraController.OrbitCenter.Z:F0} | Cam: {cameraController.CameraPosition.X:F0}, {cameraController.CameraPosition.Y:F0}, {cameraController.CameraPosition.Z:F0}";
         var textPos = new NumericsVector2(
             infoPos.X + EditorStyle.ScaleValue(8.0f),
             infoPos.Y + (infoHeight - ImGui.CalcTextSize(info).Y) * 0.5f);

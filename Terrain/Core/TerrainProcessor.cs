@@ -76,6 +76,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         {
             Log.Warning("Terrain component is missing TerrainDataPath.");
             component.IsInitialized = false;
+            component.IsInitializedForRendering = false;
+            component.DebugStatus = "Renderer: missing TerrainDataPath";
             renderObject.Enabled = false;
             return false;
         }
@@ -88,6 +90,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         if (!TryLoadTerrainData(component, out var loadedData))
         {
             component.IsInitialized = false;
+            component.IsInitializedForRendering = false;
             renderObject.Enabled = false;
             return false;
         }
@@ -129,6 +132,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             {
                 fileReader.Dispose();
                 Log.Warning($"Terrain data '{terrainDataPath}' does not contain any MinMaxErrorMaps.");
+                component.DebugStatus = "Renderer: terrain file has no MinMaxErrorMaps";
                 return false;
             }
 
@@ -154,6 +158,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         catch (Exception exception)
         {
             Log.Warning($"Terrain data could not be read: {exception.Message}");
+            component.DebugStatus = $"Renderer: terrain data read failed ({exception.Message})";
             return false;
         }
     }
@@ -219,6 +224,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
         component.LoadedConfig = TerrainConfig.Capture(component);
         component.IsInitialized = true;
+        component.IsInitializedForRendering = true;
+        component.DebugStatus = "Renderer: terrain data initialized";
     }
 
     private void UpdateRenderObject(Entity entity, TerrainComponent component, TerrainRenderObject renderObject, GraphicsDevice graphicsDevice)
@@ -229,6 +236,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
         if (!EnsureMaterial(graphicsDevice, component, renderObject))
         {
+            component.DebugStatus = "Renderer: material setup failed";
             renderObject.Enabled = false;
             return;
         }
@@ -240,6 +248,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         renderObject.World = terrainWorldMatrix;
         renderObject.IsScalingNegative = false;
         renderObject.IsShadowCaster = component.CastShadows;
+        component.DebugStatus = "Renderer: ready for chunk selection";
 
         UpdateBounds(terrainWorldMatrix, component, renderObject);
         UpdateMaterialParameters(component, renderObject, graphicsDevice);
@@ -250,6 +259,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         if (component.DefaultDiffuseTexture == null)
         {
             Log.Warning("Terrain component is missing DefaultDiffuseTexture.");
+            component.IsInitializedForRendering = false;
             return false;
         }
 

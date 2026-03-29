@@ -38,7 +38,8 @@ public class EditorUIRenderer : GameSystemBase
     CommandList commandList = null!;
 
     // 设备资源
-    PipelineState? pipeline;
+    PipelineState? alphaPipeline;
+    PipelineState? opaquePipeline;
     VertexDeclaration? vertexLayout;
     VertexBufferBinding vertexBinding;
     IndexBufferBinding indexBinding;
@@ -47,8 +48,23 @@ public class EditorUIRenderer : GameSystemBase
     bool frameBegun;
 
     private Dictionary<Keys, ImGuiKey> keyMap = new();
+    private readonly Dictionary<Texture, nint> textureToId = new();
+    private readonly Dictionary<nint, Texture> idToTexture = new();
+    private nint nextTextureId = 1;
 
     public Action? OnRender { get; set; }
+
+    public ImTextureID GetOrCreateTextureId(Texture texture)
+    {
+        if (!textureToId.TryGetValue(texture, out nint textureId))
+        {
+            textureId = nextTextureId++;
+            textureToId[texture] = textureId;
+            idToTexture[textureId] = texture;
+        }
+
+        return Unsafe.BitCast<nint, ImTextureID>(textureId);
+    }
 
     public float Scale
     {
@@ -165,7 +181,10 @@ public class EditorUIRenderer : GameSystemBase
             Output = new RenderOutputDescription(PixelFormat.R8G8B8A8_UNorm)
         };
 
-        pipeline = PipelineState.New(device, ref pipelineDesc);
+        alphaPipeline = PipelineState.New(device, ref pipelineDesc);
+
+        pipelineDesc.BlendState = BlendStates.Opaque;
+        opaquePipeline = PipelineState.New(device, ref pipelineDesc);
 
         // 创建缓冲区
         const int initialVertexCount = 128;
@@ -387,10 +406,10 @@ public class EditorUIRenderer : GameSystemBase
         UpdateBuffers(drawData);
 
         // 设置管线
-        commandList.SetPipelineState(pipeline);
         commandList.SetVertexBuffer(0, vertexBinding.Buffer, 0, Unsafe.SizeOf<ImDrawVert>());
         commandList.SetIndexBuffer(indexBinding.Buffer, 0, false);
-        shader!.Parameters.Set(ImGuiShaderKeys.tex, fontTexture);
+        Texture? currentTexture = null;
+        bool? currentTextureOpaque = null;
 
         int vtxOffset = 0;
         int idxOffset = 0;
@@ -412,6 +431,24 @@ public class EditorUIRenderer : GameSystemBase
                 ));
 
                 // 设置投影矩阵
+                Texture? texture = ResolveTexture(cmd.TextureId);
+                if (!ReferenceEquals(currentTexture, texture))
+                {
+                    shader!.Parameters.Set(ImGuiShaderKeys.tex, texture);
+                    currentTexture = texture;
+                }
+
+                bool isOpaqueTexture = texture != null && (texture.Flags & TextureFlags.RenderTarget) != 0;
+                if (currentTextureOpaque != isOpaqueTexture)
+                {
+                    // Scene render targets should be composited as fully opaque images. If we render them
+                    // through the normal ImGui alpha pipeline, any zero/undefined alpha coming out of the
+                    // offscreen scene path gets blended with the black editor background and the horizon
+                    // turns unnaturally black compared to Terrain.exe.
+                    commandList.SetPipelineState(isOpaqueTexture ? opaquePipeline : alphaPipeline);
+                    currentTextureOpaque = isOpaqueTexture;
+                }
+
                 shader.Parameters.Set(ImGuiShaderKeys.proj, ref projMatrix);
                 shader.Apply(context);
 
@@ -424,12 +461,26 @@ public class EditorUIRenderer : GameSystemBase
         }
     }
 
+    private Texture? ResolveTexture(ImTextureID textureId)
+    {
+        nint handle = Unsafe.BitCast<ImTextureID, nint>(textureId);
+        if (handle == 0)
+        {
+            return fontTexture;
+        }
+
+        return idToTexture.TryGetValue(handle, out Texture? texture)
+            ? texture
+            : fontTexture;
+    }
+
     protected override void Destroy()
     {
         fontTexture?.Dispose();
         vertexBinding.Buffer?.Dispose();
         indexBinding.Buffer?.Dispose();
-        pipeline?.Dispose();
+        alphaPipeline?.Dispose();
+        opaquePipeline?.Dispose();
         shader?.Dispose();
 
         if (!ImGuiContext.IsNull)
