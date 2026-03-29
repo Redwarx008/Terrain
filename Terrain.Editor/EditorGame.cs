@@ -9,8 +9,11 @@ using Stride.Rendering;
 using Stride.Rendering.Colors;
 using Stride.Rendering.Lights;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Terrain.Editor.Input;
 using Terrain.Editor.Platform;
+using Terrain.Editor.Services;
 using Terrain.Editor.UI;
 using Terrain.Editor.UI.Styling;
 
@@ -24,6 +27,7 @@ public class EditorGame : Game
     private EditorUIRenderer? uiRenderer;
     private MainWindow? mainWindow;
     private GraphicsDeviceManager? editorGraphicsDeviceManager;
+    private Scene? editorScene;
     private Int2 lastValidClientSize = new(1920, 1080);
     private Int2 pendingClientSize = new(1920, 1080);
     private bool wasMinimized;
@@ -66,6 +70,13 @@ public class EditorGame : Game
 
         mainWindow = new MainWindow();
         mainWindow.Initialize(GraphicsDevice, Window, Services);
+
+        // Initialize terrain support in viewport after scene is created
+        if (editorScene != null)
+        {
+            mainWindow.Viewport.InitializeTerrainSupport(GraphicsDevice, editorScene, Input);
+            mainWindow.Viewport.Camera = SceneSystem.SceneInstance.RootScene.Entities.FirstOrDefault(e => e.Name == "MainCamera")?.Get<CameraComponent>();
+        }
 
         uiRenderer.OnRender = () =>
         {
@@ -111,6 +122,10 @@ public class EditorGame : Game
         }
 
         base.Update(gameTime);
+
+        // Update camera controller
+        mainWindow?.Viewport.UpdateCamera((float)gameTime.TimePerFrame.TotalSeconds, Input);
+
         mainWindow?.Update((float)gameTime.TimePerFrame.TotalSeconds);
     }
 
@@ -140,6 +155,16 @@ public class EditorGame : Game
         {
             uiRenderer?.SuspendFrame();
             return;
+        }
+
+        // Update viewport render target size
+        if (mainWindow != null)
+        {
+            var viewportSize = mainWindow.Viewport.ContentRect.Size;
+            if (viewportSize.X > 0 && viewportSize.Y > 0)
+            {
+                mainWindow.Viewport.UpdateRenderTarget(GraphicsDevice, new Vector2(viewportSize.X, viewportSize.Y));
+            }
         }
 
         GraphicsContext.CommandList.Clear(GraphicsDevice.Presenter.BackBuffer, Color4.Black);
@@ -234,8 +259,8 @@ public class EditorGame : Game
 
     private void InitializeScene()
     {
-        var scene = new Scene();
-        SceneSystem.SceneInstance = new SceneInstance(Services, scene);
+        editorScene = new Scene();
+        SceneSystem.SceneInstance = new SceneInstance(Services, editorScene);
 
         var cameraEntity = new Entity("MainCamera")
         {
@@ -246,7 +271,7 @@ public class EditorGame : Game
         };
         cameraEntity.Transform.Position = new Vector3(0, 50, -100);
         cameraEntity.Transform.Rotation = Quaternion.RotationX((float)Math.PI / 6);
-        scene.Entities.Add(cameraEntity);
+        editorScene.Entities.Add(cameraEntity);
 
         var lightEntity = new Entity("DirectionalLight")
         {
@@ -260,6 +285,6 @@ public class EditorGame : Game
             }
         };
         lightEntity.Transform.Rotation = Quaternion.RotationX((float)Math.PI / 3);
-        scene.Entities.Add(lightEntity);
+        editorScene.Entities.Add(lightEntity);
     }
 }
