@@ -556,30 +556,8 @@ public class EditorGame : Game
 
     private void UpdateViewportDiagnostics()
     {
-        if (mainWindow == null)
-        {
-            return;
-        }
-
-        var rootScene = SceneSystem.SceneInstance?.RootScene;
-        if (rootScene == null)
-        {
-            mainWindow.Viewport.SceneDebugLine1 = $"{sceneSourceStatus} | {compositorSourceStatus}";
-            mainWindow.Viewport.SceneDebugLine2 = "Scene stats: root scene unavailable";
-            return;
-        }
-
-        var rootEntities = rootScene.Entities.ToList();
-        var cameraEntity = rootEntities.FirstOrDefault(entity => entity.Get<CameraComponent>() != null);
-        int lightCount = rootEntities.Count(entity => entity.Get<LightComponent>() != null);
-        int modelCount = rootEntities.Count(entity => entity.Get<ModelComponent>() != null);
-        int backgroundCount = rootEntities.Count(entity => entity.Get<BackgroundComponent>() != null);
-        long viewportDrawCount = viewportSceneRenderer?.DrawCount ?? 0;
-
-        // The terrain manager adds editor terrains straight into the live SceneInstance root scene.
-        // Showing the active root-entity counts here lets us verify the viewport is rendering that same scene graph.
-        mainWindow.Viewport.SceneDebugLine1 = $"{sceneSourceStatus} | {compositorSourceStatus} | RT draws: {viewportDrawCount}";
-        mainWindow.Viewport.SceneDebugLine2 =
-            $"Roots: {rootEntities.Count} | Camera: {cameraEntity?.Name ?? "none"} | Lights: {lightCount} | Models: {modelCount} | Sky: {backgroundCount}";
+        // Viewport diagnostics were reduced to the terrain-local overlay inside SceneViewPanel.
+        // Keep this method as a no-op so the existing update calls stay harmless while the
+        // renderer/input work continues to evolve.
     }
 }

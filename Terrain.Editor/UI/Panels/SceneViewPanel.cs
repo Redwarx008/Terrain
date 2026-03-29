@@ -35,8 +35,6 @@ public class SceneViewPanel : PanelBase
     // Render target display (placeholder approach until native pointer integration)
     public Texture? SceneRenderTarget { get; set; }
     public Func<Texture, ImTextureID>? TextureIdProvider { get; set; }
-    public string? SceneDebugLine1 { get; set; }
-    public string? SceneDebugLine2 { get; set; }
     public bool IsViewportHovered { get; private set; }
     public bool IsViewportInteracting { get; private set; }
 
@@ -287,39 +285,23 @@ public class SceneViewPanel : PanelBase
         }
         else
         {
-            // Keep only a lightweight status overlay here so the scene remains visible underneath.
-            var terrainComponent = terrainManager.CurrentTerrain?.Get<TerrainComponent>();
+            // Keep the overlay intentionally short so it never grows wider than the viewport and
+            // starts covering the scene.
             string status = $"Terrain Loaded ({terrainManager.GetTerrainBounds().Maximum.X:F0} x {terrainManager.GetTerrainBounds().Maximum.Z:F0})";
-            string rendererStatus = terrainComponent?.DebugStatus ?? "Renderer: terrain component unavailable";
-            string chunkStatus = terrainComponent != null
-                ? $"Chunks: {terrainComponent.LastSelectedRenderCount}/{terrainComponent.LastSelectedNodeCount} | Initialized: {terrainComponent.IsInitializedForRendering}"
-                : "Chunks: n/a";
-            string sceneDebugLine1 = SceneDebugLine1 ?? "Scene: unavailable";
-            string sceneDebugLine2 = SceneDebugLine2 ?? "Scene stats: unavailable";
             var statusPadding = EditorStyle.ScaleValue(10.0f);
             var textPos = new NumericsVector2(
                 viewPos.X + statusPadding,
                 viewPos.Y + statusPadding);
             var textSize = ImGui.CalcTextSize(status);
-            var rendererTextPos = new NumericsVector2(textPos.X, textPos.Y + textSize.Y + EditorStyle.ScaleValue(6.0f));
-            var rendererTextSize = ImGui.CalcTextSize(rendererStatus);
-            var chunkTextPos = new NumericsVector2(rendererTextPos.X, rendererTextPos.Y + rendererTextSize.Y + EditorStyle.ScaleValue(4.0f));
-            var chunkTextSize = ImGui.CalcTextSize(chunkStatus);
-            var sceneDebugLine1Pos = new NumericsVector2(chunkTextPos.X, chunkTextPos.Y + chunkTextSize.Y + EditorStyle.ScaleValue(4.0f));
-            var sceneDebugLine1Size = ImGui.CalcTextSize(sceneDebugLine1);
-            var sceneDebugLine2Pos = new NumericsVector2(sceneDebugLine1Pos.X, sceneDebugLine1Pos.Y + sceneDebugLine1Size.Y + EditorStyle.ScaleValue(4.0f));
-            var sceneDebugLine2Size = ImGui.CalcTextSize(sceneDebugLine2);
-            float maxTextWidth = MathF.Max(
-                MathF.Max(textSize.X, rendererTextSize.X),
-                MathF.Max(chunkTextSize.X, MathF.Max(sceneDebugLine1Size.X, sceneDebugLine2Size.X)));
+            float maxTextWidth = textSize.X;
             var bgMin = new NumericsVector2(textPos.X - statusPadding * 0.6f, textPos.Y - statusPadding * 0.4f);
-            var bgMax = new NumericsVector2(textPos.X + maxTextWidth + statusPadding * 0.6f, sceneDebugLine2Pos.Y + sceneDebugLine2Size.Y + statusPadding * 0.4f);
+            float maxOverlayWidth = MathF.Max(EditorStyle.ScaleValue(160.0f), viewSize.X - statusPadding * 2.0f);
+            float overlayWidth = MathF.Min(maxTextWidth + statusPadding * 1.2f, maxOverlayWidth);
+            var bgMax = new NumericsVector2(
+                bgMin.X + overlayWidth,
+                textPos.Y + textSize.Y + statusPadding * 0.4f);
             drawList.AddRectFilled(bgMin, bgMax, new Color4(0.04f, 0.04f, 0.04f, 0.7f).ToUint(), EditorStyle.ScaleValue(4.0f));
             drawList.AddText(textPos, ColorPalette.TextPrimary.ToUint(), status);
-            drawList.AddText(rendererTextPos, ColorPalette.TextSecondary.ToUint(), rendererStatus);
-            drawList.AddText(chunkTextPos, ColorPalette.TextSecondary.ToUint(), chunkStatus);
-            drawList.AddText(sceneDebugLine1Pos, ColorPalette.TextSecondary.ToUint(), sceneDebugLine1);
-            drawList.AddText(sceneDebugLine2Pos, ColorPalette.TextSecondary.ToUint(), sceneDebugLine2);
         }
 
         // Register an explicit interactive item over the rendered image so the viewport can own mouse

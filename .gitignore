@@ -12,3 +12,5 @@ _ReSharper*
 [Bb]in/
 obj/
 Cache/
+.claude/settings.local.json
+.planning/config.json

@@ -638,11 +638,6 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         var commandList = drawContext.CommandList;
         if (renderObject.Source is not TerrainComponent component || !component.IsInitialized)
         {
-            if (renderObject.Source is TerrainComponent terrainComponent)
-            {
-                terrainComponent.LastSelectedRenderCount = 0;
-                terrainComponent.LastSelectedNodeCount = 0;
-            }
             renderObject.InstanceCount = 0;
             return;
         }
@@ -658,22 +653,17 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             renderObject.World.TranslationVector,
             renderView,
             component.ChunkNodeData);
-        component.LastSelectedRenderCount = renderCount;
-        component.LastSelectedNodeCount = nodeCount;
         if (nodeCount <= 0)
         {
-            component.DebugStatus = "Renderer: frustum selected 0 nodes";
             return;
         }
 
         renderObject.UpdateChunkNodeData(commandList, component.ChunkNodeData, renderCount, nodeCount);
         if (renderCount <= 0)
         {
-            component.DebugStatus = $"Renderer: selected {nodeCount} nodes, but 0 renderable chunks are resident";
             return;
         }
 
-        component.DebugStatus = $"Renderer: drawing {renderCount} chunks ({nodeCount} nodes)";
         computeDispatcher.Dispatch(drawContext, renderObject, renderCount, nodeCount, component.MaxLod);
     }
 
