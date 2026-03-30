@@ -1,4 +1,6 @@
 #nullable enable
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
 using Stride.Engine;
@@ -9,6 +11,10 @@ using System.Threading.Tasks;
 using Terrain;
 using TerrainPreProcessor.Models;
 using TerrainPreProcessorTerrainProcessor = TerrainPreProcessor.Services.TerrainProcessor;
+
+// Disambiguate types that exist in both Stride and ImageSharp
+using HeightmapImage = SixLabors.ImageSharp.Image;
+using StrideColor = Stride.Core.Mathematics.Color;
 
 namespace Terrain.Editor.Services;
 
@@ -30,6 +36,11 @@ public sealed class TerrainManager : IDisposable
     private Entity? currentTerrainEntity;
     private Texture? defaultDiffuseTexture;
     private HeightmapInfo? currentHeightmapInfo;
+
+    // CPU-side height data cache for brush preview and terrain queries
+    private ushort[]? heightDataCache;
+    private int heightDataWidth;
+    private int heightDataHeight;
 
     /// <summary>
     /// The currently loaded terrain entity, if any.
@@ -72,6 +83,9 @@ public sealed class TerrainManager : IDisposable
             Log.Error($"Failed to load heightmap info: {heightmapPath}");
             return null;
         }
+
+        // Load height data cache for raycasting
+        LoadHeightDataCache(heightmapPath);
 
         // Remove existing terrain
         if (currentTerrainEntity != null)
@@ -129,6 +143,7 @@ public sealed class TerrainManager : IDisposable
             scene.Entities.Remove(currentTerrainEntity);
             currentTerrainEntity = null;
             currentHeightmapInfo = null;
+            heightDataCache = null;  // Clear height cache
         }
     }
 
@@ -150,6 +165,80 @@ public sealed class TerrainManager : IDisposable
                 info.Width - 1,
                 maxHeight,
                 info.Height - 1));
+    }
+
+    /// <summary>
+    /// Gets the terrain height at a world position using nearest-neighbor sampling.
+    /// Matches the shader's SampleHeightAtLocalPos behavior (no interpolation).
+    /// </summary>
+    /// <param name="worldX">World X coordinate</param>
+    /// <param name="worldZ">World Z coordinate</param>
+    /// <returns>Height in world units, or null if position is outside terrain</returns>
+    public float? GetHeightAtPosition(float worldX, float worldZ)
+    {
+        if (heightDataCache == null || currentHeightmapInfo == null)
+            return null;
+
+        // Nearest-neighbor sampling (matches shader behavior)
+        int x = (int)MathF.Round(worldX);
+        int z = (int)MathF.Round(worldZ);
+
+        // Check bounds
+        if (x < 0 || x >= heightDataWidth || z < 0 || z >= heightDataHeight)
+            return null;
+
+        // Direct lookup - no interpolation
+        ushort height = heightDataCache[z * heightDataWidth + x];
+
+        // Convert to world height
+        return height * HeightSampleNormalization * DefaultHeightScale;
+    }
+
+    /// <summary>
+    /// Checks if a world position is within the terrain bounds.
+    /// </summary>
+    public bool IsPositionOnTerrain(float worldX, float worldZ)
+    {
+        if (heightDataCache == null || currentHeightmapInfo == null)
+            return false;
+
+        // Use same bounds check as GetHeightAtPosition
+        int x = (int)MathF.Round(worldX);
+        int z = (int)MathF.Round(worldZ);
+
+        return x >= 0 && x < heightDataWidth && z >= 0 && z < heightDataHeight;
+    }
+
+    private void LoadHeightDataCache(string heightmapPath)
+    {
+        try
+        {
+            using var image = HeightmapImage.Load<L16>(heightmapPath);
+            heightDataWidth = image.Width;
+            heightDataHeight = image.Height;
+            heightDataCache = new ushort[heightDataWidth * heightDataHeight];
+
+            // Copy pixel data using ProcessPixelRows API (ImageSharp 3.x)
+            image.ProcessPixelRows(accessor =>
+            {
+                for (int y = 0; y < accessor.Height; y++)
+                {
+                    var pixelRow = accessor.GetRowSpan(y);
+                    int rowOffset = y * heightDataWidth;
+                    for (int x = 0; x < pixelRow.Length; x++)
+                    {
+                        heightDataCache[rowOffset + x] = pixelRow[x].PackedValue;
+                    }
+                }
+            });
+
+            Log.Info($"Loaded height data cache: {heightDataWidth}x{heightDataHeight}");
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Failed to load height data cache: {ex.Message}");
+            heightDataCache = null;
+        }
     }
 
     private string ProcessHeightmapToTerrain(
@@ -212,13 +301,13 @@ public sealed class TerrainManager : IDisposable
         // path should use the authored Grid Gray asset, which already comes through Stride's asset
         // pipeline with mipmaps and avoids the severe moire seen on the raw runtime-generated texture.
         int size = 64;
-        var data = new Color[size * size];
+        var data = new StrideColor[size * size];
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
             {
                 bool isLight = ((x / 8) + (y / 8)) % 2 == 0;
-                data[y * size + x] = isLight ? new Color(180, 180, 180, 255) : new Color(120, 120, 120, 255);
+                data[y * size + x] = isLight ? new StrideColor(180, 180, 180, 255) : new StrideColor(120, 120, 120, 255);
             }
         }
 
@@ -236,6 +325,7 @@ public sealed class TerrainManager : IDisposable
     {
         RemoveCurrentTerrain();
         defaultDiffuseTexture?.Dispose();
+        heightDataCache = null;  // Clear height cache
     }
 }
 
