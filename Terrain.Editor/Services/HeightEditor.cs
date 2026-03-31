@@ -134,7 +134,9 @@ public sealed class HeightEditor
 /// <summary>
 /// Raises terrain height.
 /// Per D-07: deltaHeight = Strength * FrameTime * Direction (+1 for Raise).
+/// Per D-08: Strength linear mapping to height change speed.
 /// Per D-09: Falloff controls strength decay from center to edge.
+/// Per D-16, D-17: Boundary clipping (silent, ignore out-of-bounds).
 /// </summary>
 internal sealed class RaiseTool : IHeightTool
 {
@@ -142,14 +144,47 @@ internal sealed class RaiseTool : IHeightTool
 
     public void Apply(ref HeightEditContext context)
     {
-        throw new NotImplementedException("Implemented in Plan 02");
+        // D-07: deltaHeight = Strength * FrameTime * Direction (+1 for Raise)
+        // Scale to ushort range (0-65535) - assuming HeightScale=100 world units
+        float deltaHeight = context.Strength * context.FrameTime * 1000f;
+
+        int radius = (int)MathF.Ceiling(context.BrushRadius);
+
+        for (int dz = -radius; dz <= radius; dz++)
+        {
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                int x = context.CenterX + dx;
+                int z = context.CenterZ + dz;
+
+                // D-16, D-17: Boundary clipping
+                if (x < 0 || x >= context.DataWidth || z < 0 || z >= context.DataHeight)
+                    continue;
+
+                float distance = MathF.Sqrt(dx * dx + dz * dz);
+                if (distance > context.BrushRadius)
+                    continue;
+
+                // D-09: Falloff controls strength decay
+                float falloff = HeightEditor.ComputeLinearFalloff(distance, context.BrushRadius, context.BrushInnerRadius);
+
+                int index = z * context.DataWidth + x;
+                float currentHeight = context.HeightData[index];
+                float newHeight = currentHeight + deltaHeight * falloff;
+
+                // Clamp to ushort range
+                context.HeightData[index] = (ushort)Math.Clamp(newHeight, 0, 65535);
+            }
+        }
     }
 }
 
 /// <summary>
 /// Lowers terrain height.
 /// Per D-07: deltaHeight = Strength * FrameTime * Direction (-1 for Lower).
+/// Per D-08: Strength linear mapping to height change speed.
 /// Per D-09: Falloff controls strength decay from center to edge.
+/// Per D-16, D-17: Boundary clipping (silent, ignore out-of-bounds).
 /// </summary>
 internal sealed class LowerTool : IHeightTool
 {
@@ -157,15 +192,46 @@ internal sealed class LowerTool : IHeightTool
 
     public void Apply(ref HeightEditContext context)
     {
-        throw new NotImplementedException("Implemented in Plan 02");
+        // D-07: deltaHeight = Strength * FrameTime * Direction (-1 for Lower)
+        float deltaHeight = -context.Strength * context.FrameTime * 1000f;
+
+        int radius = (int)MathF.Ceiling(context.BrushRadius);
+
+        for (int dz = -radius; dz <= radius; dz++)
+        {
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                int x = context.CenterX + dx;
+                int z = context.CenterZ + dz;
+
+                // D-16, D-17: Boundary clipping
+                if (x < 0 || x >= context.DataWidth || z < 0 || z >= context.DataHeight)
+                    continue;
+
+                float distance = MathF.Sqrt(dx * dx + dz * dz);
+                if (distance > context.BrushRadius)
+                    continue;
+
+                // D-09: Falloff controls strength decay
+                float falloff = HeightEditor.ComputeLinearFalloff(distance, context.BrushRadius, context.BrushInnerRadius);
+
+                int index = z * context.DataWidth + x;
+                float currentHeight = context.HeightData[index];
+                float newHeight = currentHeight + deltaHeight * falloff;
+
+                // Clamp to ushort range
+                context.HeightData[index] = (ushort)Math.Clamp(newHeight, 0, 65535);
+            }
+        }
     }
 }
 
 /// <summary>
 /// Smooths terrain heights using Box Blur.
-/// Per D-10: Box Blur algorithm - average of neighbors.
-/// Per D-11: Strength controls blend toward average.
-/// Per D-12: Partial smooth per frame.
+/// Per D-10: Box Blur algorithm - 3x3 kernel for neighbor averaging.
+/// Per D-11: Smooth strength controls blend toward average.
+/// Per D-12: Partial smooth per frame (not instant).
+/// Per D-16, D-17: Boundary clipping (silent, ignore out-of-bounds).
 /// </summary>
 internal sealed class SmoothTool : IHeightTool
 {
@@ -173,15 +239,72 @@ internal sealed class SmoothTool : IHeightTool
 
     public void Apply(ref HeightEditContext context)
     {
-        throw new NotImplementedException("Implemented in Plan 02");
+        // D-10: Box Blur algorithm with 3x3 kernel
+        int radius = (int)MathF.Ceiling(context.BrushRadius);
+
+        // Sample radius for blur (3x3 is sufficient for smooth)
+        const int blurRadius = 1;
+
+        for (int dz = -radius; dz <= radius; dz++)
+        {
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                int x = context.CenterX + dx;
+                int z = context.CenterZ + dz;
+
+                // D-16, D-17: Boundary clipping
+                if (x < 0 || x >= context.DataWidth || z < 0 || z >= context.DataHeight)
+                    continue;
+
+                float distance = MathF.Sqrt(dx * dx + dz * dz);
+                if (distance > context.BrushRadius)
+                    continue;
+
+                // D-10: Compute average of neighbors (Box Blur - 3x3 kernel)
+                float sum = 0;
+                int count = 0;
+
+                for (int bz = -blurRadius; bz <= blurRadius; bz++)
+                {
+                    for (int bx = -blurRadius; bx <= blurRadius; bx++)
+                    {
+                        int nx = x + bx;
+                        int nz = z + bz;
+
+                        if (nx >= 0 && nx < context.DataWidth && nz >= 0 && nz < context.DataHeight)
+                        {
+                            sum += context.HeightData[nz * context.DataWidth + nx];
+                            count++;
+                        }
+                    }
+                }
+
+                if (count == 0)
+                    continue;
+
+                float average = sum / count;
+
+                // D-11: Blend toward average based on Strength
+                // D-12: Partial smooth per frame
+                float falloff = HeightEditor.ComputeLinearFalloff(distance, context.BrushRadius, context.BrushInnerRadius);
+                float blendFactor = context.Strength * context.FrameTime * 5f * falloff;
+
+                int index = z * context.DataWidth + x;
+                float currentHeight = context.HeightData[index];
+                float newHeight = currentHeight + (average - currentHeight) * blendFactor;
+
+                context.HeightData[index] = (ushort)Math.Clamp(newHeight, 0, 65535);
+            }
+        }
     }
 }
 
 /// <summary>
 /// Flattens terrain to a target height.
-/// Per D-13: Target = height at click position.
-/// Per D-14: Target held constant during drag.
+/// Per D-13: Target = height at click position (passed via constructor).
+/// Per D-14: Target height held constant during drag.
 /// Per D-15: Blend toward target based on Strength.
+/// Per D-16, D-17: Boundary clipping (silent, ignore out-of-bounds).
 /// </summary>
 internal sealed class FlattenTool : IHeightTool
 {
@@ -196,6 +319,36 @@ internal sealed class FlattenTool : IHeightTool
 
     public void Apply(ref HeightEditContext context)
     {
-        throw new NotImplementedException("Implemented in Plan 02");
+        // D-13: Target height = sampled at click (passed via constructor)
+        // D-14: Target height held constant during drag
+        // D-15: Blend toward target based on Strength
+
+        int radius = (int)MathF.Ceiling(context.BrushRadius);
+
+        for (int dz = -radius; dz <= radius; dz++)
+        {
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                int x = context.CenterX + dx;
+                int z = context.CenterZ + dz;
+
+                // D-16, D-17: Boundary clipping
+                if (x < 0 || x >= context.DataWidth || z < 0 || z >= context.DataHeight)
+                    continue;
+
+                float distance = MathF.Sqrt(dx * dx + dz * dz);
+                if (distance > context.BrushRadius)
+                    continue;
+
+                float falloff = HeightEditor.ComputeLinearFalloff(distance, context.BrushRadius, context.BrushInnerRadius);
+                float blendFactor = context.Strength * context.FrameTime * 5f * falloff;
+
+                int index = z * context.DataWidth + x;
+                float currentHeight = context.HeightData[index];
+                float newHeight = currentHeight + (targetHeight - currentHeight) * blendFactor;
+
+                context.HeightData[index] = (ushort)Math.Clamp(newHeight, 0, 65535);
+            }
+        }
     }
 }
