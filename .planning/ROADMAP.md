@@ -6,8 +6,8 @@
 
 ## Phases
 
-- [ ] **Phase 1: Project Foundation** - Real-time 3D preview with camera navigation
-- [ ] **Phase 2: Brush System Core** - Circular brush with size, strength, and falloff
+- [x] **Phase 1: Project Foundation** - Real-time 3D preview with camera navigation
+- [x] **Phase 2: Brush System Core** - Circular brush with size, strength, and falloff
 - [ ] **Phase 3: Height Editing** - Sculpt terrain with raise/lower/smooth/flatten tools
 - [ ] **Phase 4: Undo/Redo System** - Configurable history for all editing operations
 - [ ] **Phase 5: Enhanced Brushes** - Square and noise brush shapes
@@ -60,11 +60,12 @@
 4. User can adjust brush falloff/feathering for smooth edges
 5. User can see brush preview cursor in viewport before editing
 
-**Plans**: 2 plans in 2 waves
+**Plans**: 3 plans in 3 waves
 
 **Plans List**:
 - [x] 02-01-PLAN.md - Create BrushParameters service and wire RightPanel with updated defaults
 - [x] 02-02-PLAN.md - Add brush preview overlay to SceneViewPanel viewport
+- [x] 02-03-PLAN.md - Add terrain-projected brush preview with ray-terrain intersection
 
 **UI hint**: yes
 
@@ -193,8 +194,8 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Project Foundation | 3/4 | Executing | - |
-| 2. Brush System Core | 1/2 | Executing | - |
+| 1. Project Foundation | 3/4 | Complete | 2026-03-29 |
+| 2. Brush System Core | 3/3 | Complete | 2026-03-31 |
 | 3. Height Editing | 0/5 | Not started | - |
 | 4. Undo/Redo System | 0/5 | Not started | - |
 | 5. Enhanced Brushes | 0/2 | Not started | - |
@@ -250,4 +251,4 @@
 ---
 
 *Roadmap created: 2026-03-29*
-*Last updated: 2026-03-30 - Phase 2 plans created*
+*Last updated: 2026-03-31 - Phase 2 complete with terrain-projected brush preview*

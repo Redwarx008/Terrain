@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-29T16:55:31.716Z"
+status: executing
+last_updated: "2026-03-31T00:00:00.000Z"
 progress:
   total_phases: 8
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 9
+  completed_plans: 9
 ---
 
 # Project State: Terrain Slot Editor
 
-**Last updated:** 2026-03-29
+**Last updated:** 2026-03-31
 
 ---
 
@@ -21,7 +21,7 @@ progress:
 
 **Core Value:** Real-time 3D preview brush-based terrain editing - WYSIWYG height and material editing experience
 
-**Current Focus:** Phase 02 — brush-system-core
+**Current Focus:** Phase 02 — brush-system-core (Complete)
 
 **Milestone:** Terrain Slot Editor v1
 
@@ -30,13 +30,13 @@ progress:
 ## Current Position
 
 Phase: 3
-Plan: Not started
+Plan: Complete
 | Attribute | Value |
 |-----------|-------|
 | **Phase** | 2 - Brush System Core |
-| **Plan** | 02-01 completed |
-| **Status** | Executing |
-| **Progress** | `[████████░░] 75%` |
+| **Plan** | 02-03 completed |
+| **Status** | Complete |
+| **Progress** | `[██████████] 100%` |
 
 ---
 
@@ -44,16 +44,18 @@ Plan: Not started
 
 | Metric | Value |
 |--------|-------|
-| Phases Completed | 0/8 |
-| Plans Executed | 0 |
-| Blockers Resolved | 0 |
-| Requirements Delivered | 0/32 |
+| Phases Completed | 2/8 |
+| Plans Executed | 9 |
+| Blockers Resolved | 5 |
+| Requirements Delivered | PREV-05 |
 
 ---
 | Phase 01-project-foundation P01 | 15min | 1 tasks | 1 files |
 | Phase 01-project-foundation P02 | 12min | 2 tasks | 3 files |
 | Phase 01 P03 | 12min | 2 tasks | 2 files |
+| Phase 02-brush-system-core P01 | - | - | - |
 | Phase 02-brush-system-core P02 | 5min | 1 tasks | 1 files |
+| Phase 02-brush-system-core P03 | 15min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -64,6 +66,9 @@ Plan: Not started
 | R8 SplatMap format | Support 256 materials with bilinear blending | 2026-03-29 |
 | Command pattern for edits | Enable undo/redo with region snapshots | 2026-03-29 |
 | CPU-side source of truth | Avoid GPU-CPU sync stalls during editing | 2026-03-29 |
+| Nearest-neighbor height sampling | Match shader's SampleHeightAtLocalPos behavior | 2026-03-31 |
+| CPU height cache from PNG | Avoid GPU-CPU sync stalls during editing | 2026-03-31 |
+| Iterative ray-terrain intersection | 20 iterations max with height feedback | 2026-03-31 |
 
 - [Phase 01-project-foundation]: Use MathUtil for degree-to-radian conversion and Matrix.RotationQuaternion for direction vectors (Stride pattern)
 - [Phase 01-project-foundation]: Default camera mode is orbit; free-fly mode activated while Shift key is held
@@ -72,10 +77,14 @@ Plan: Not started
 - [Phase 01]: Used NumericsVector2/NumericsVector4 aliases to resolve System.Numerics vs Stride.Core.Mathematics ambiguity
 - [Phase 02-brush-system-core]: Brush preview renders as two circles: outer for extent, inner filled for 100% strength area
 - [Phase 02-brush-system-core]: Preview hides during camera interaction (right-click drag) to avoid visual clutter
+- [Phase 02-brush-system-core]: Brush preview projected onto terrain surface using ray-terrain intersection
+- [Phase 02-brush-system-core]: StrideVector3/StrideVector4 aliases added for Stride.Core.Mathematics types
 
 ### Active Todos
 
-- [ ] Begin Phase 1: Project Foundation
+- [x] Phase 02 Plan 01: Brush parameters panel
+- [x] Phase 02 Plan 02: Brush preview overlay
+- [x] Phase 02 Plan 03: Terrain projected brush preview
 
 ### Blockers
 
@@ -87,14 +96,14 @@ None currently.
 
 ### Last Session
 
-**Date:** 2026-03-29
-**Activity:** Roadmap created with 8 phases
-**Outcome:** Ready to begin Phase 1 planning
+**Date:** 2026-03-31
+**Activity:** Completed Phase 02 Plan 03 - Terrain Projected Brush Preview
+**Outcome:** Brush preview now projects onto terrain surface following height contours
 
 ### Next Steps
 
-1. Run `/gsd:plan-phase 1` to create plans for Project Foundation
-2. Execute plans to deliver real-time 3D preview and camera navigation
+1. Run `/gsd:execute-phase` to continue with Phase 03
+2. Or run `/gsd:transition` to transition to next phase
 
 ---
 
@@ -102,7 +111,8 @@ None currently.
 
 | Phase | Started | Completed | Notes |
 |-------|---------|-----------|-------|
-| 1. Project Foundation | - | - | Not started |
+| 1. Project Foundation | 2026-03-29 | 2026-03-29 | Complete |
+| 2. Brush System Core | 2026-03-29 | 2026-03-31 | Complete |
 
 ---
 
