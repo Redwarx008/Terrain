@@ -476,12 +476,17 @@ public class SceneViewPanel : PanelBase
         if (screenPoints.Count < 3)
             return;
 
+        // Push clipping rect to constrain drawing to viewport
+        drawList.PushClipRect(viewPos, new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y));
+
         // Draw as polygon outline
         for (int i = 0; i < screenPoints.Count; i++)
         {
             int next = (i + 1) % screenPoints.Count;
             drawList.AddLine(screenPoints[i], screenPoints[next], color, thickness);
         }
+
+        drawList.PopClipRect();
     }
 
     private void DrawProjectedCircleFilled(
@@ -506,9 +511,14 @@ public class SceneViewPanel : PanelBase
         if (screenPoints.Count < 3)
             return;
 
+        // Push clipping rect to constrain drawing to viewport
+        drawList.PushClipRect(viewPos, new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y));
+
         // Draw as filled polygon - convert to array for ref access
         var screenPointsArray = screenPoints.ToArray();
         drawList.AddConvexPolyFilled(ref screenPointsArray[0], screenPoints.Count, color);
+
+        drawList.PopClipRect();
     }
 
     private float? GetViewportAspectRatio()

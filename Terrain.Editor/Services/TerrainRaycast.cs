@@ -1,6 +1,7 @@
 #nullable enable
 using Stride.Core.Mathematics;
 using Stride.Engine;
+using Stride.Graphics;
 using System;
 
 namespace Terrain.Editor.Services;
@@ -12,7 +13,7 @@ namespace Terrain.Editor.Services;
 public static class TerrainRaycast
 {
     /// <summary>
-    /// Converts screen coordinates to a world-space ray.
+    /// Converts screen coordinates to a world-space ray using Stride's Viewport.Unproject.
     /// </summary>
     /// <param name="screenX">Mouse X in screen pixels</param>
     /// <param name="screenY">Mouse Y in screen pixels</param>
@@ -31,34 +32,27 @@ public static class TerrainRaycast
         float viewportHeight,
         CameraComponent camera)
     {
-        // Convert to viewport-relative coordinates
-        float x = screenX - viewportX;
-        float y = screenY - viewportY;
+        // Create a Stride Viewport - this handles all the NDC conversion correctly
+        var viewport = new Viewport(viewportX, viewportY, viewportWidth, viewportHeight);
 
-        // Convert to NDC (-1 to 1)
-        float ndcX = (2.0f * x / viewportWidth) - 1.0f;
-        float ndcY = 1.0f - (2.0f * y / viewportHeight);
+        // Use Stride's Unproject to get near and far points
+        // Z=0 for near plane, Z=1 for far plane
+        var nearPoint = viewport.Unproject(
+            new Vector3(screenX, screenY, 0.0f),
+            camera.ProjectionMatrix,
+            camera.ViewMatrix,
+            Matrix.Identity);
 
-        // Get inverse view-projection matrix
-        var viewProj = Matrix.Multiply(camera.ViewMatrix, camera.ProjectionMatrix);
-        Matrix.Invert(ref viewProj, out var inverseViewProj);
+        var farPoint = viewport.Unproject(
+            new Vector3(screenX, screenY, 1.0f),
+            camera.ProjectionMatrix,
+            camera.ViewMatrix,
+            Matrix.Identity);
 
-        // Near point (z = 0 in NDC)
-        var nearPoint = Vector4.Transform(new Vector4(ndcX, ndcY, 0.0f, 1.0f), inverseViewProj);
-        nearPoint /= nearPoint.W;
+        // Calculate ray direction
+        var direction = Vector3.Normalize(farPoint - nearPoint);
 
-        // Far point (z = 1 in NDC)
-        var farPoint = Vector4.Transform(new Vector4(ndcX, ndcY, 1.0f, 1.0f), inverseViewProj);
-        farPoint /= farPoint.W;
-
-        // Calculate ray
-        var origin = new Vector3(nearPoint.X, nearPoint.Y, nearPoint.Z);
-        var direction = Vector3.Normalize(new Vector3(
-            farPoint.X - nearPoint.X,
-            farPoint.Y - nearPoint.Y,
-            farPoint.Z - nearPoint.Z));
-
-        return (origin, direction);
+        return (nearPoint, direction);
     }
 
     /// <summary>
@@ -94,23 +88,29 @@ public static class TerrainRaycast
         TerrainManager terrainManager,
         int maxIterations = 20)
     {
-        // First, do a quick plane intersection at average terrain height
-        var bounds = terrainManager.GetTerrainBounds();
-        float avgHeight = (bounds.Minimum.Y + bounds.Maximum.Y) * 0.5f;
-
-        float? tPlane = RayPlaneIntersection(
-            rayOrigin,
-            rayDirection,
-            new Vector3(0, avgHeight, 0),
-            Vector3.UnitY);
-
-        if (tPlane == null)
+        // If ray direction Y is near zero or positive, we can't reliably intersect terrain from above
+        if (rayDirection.Y >= 0)
             return null;
 
-        // Start from plane intersection and refine
-        float t = tPlane.Value;
+        // Simple approach: walk along the ray and find where it crosses terrain surface
+        // Start from ray origin and move forward
+
+        float t = 0;
         float step = 1.0f;
 
+        // First, find a point that is inside terrain bounds
+        for (int i = 0; i < 100; i++)
+        {
+            var testPoint = rayOrigin + rayDirection * t;
+            if (terrainManager.IsPositionOnTerrain(testPoint.X, testPoint.Z))
+                break;
+            t += step;
+            step *= 2f;
+            if (t > 10000f)
+                return null;
+        }
+
+        // Now refine to find terrain surface
         for (int i = 0; i < maxIterations; i++)
         {
             var point = rayOrigin + rayDirection * t;
@@ -118,47 +118,32 @@ public static class TerrainRaycast
             // Check if point is within terrain bounds
             if (!terrainManager.IsPositionOnTerrain(point.X, point.Z))
             {
-                // Move along ray to try to find terrain
-                t += step;
-                step *= 2.0f;
-
-                // If we've gone too far, give up
-                if (t > 10000f)
-                    return null;
-
-                continue;
+                return null;
             }
 
             // Get terrain height at this position
             float? terrainHeight = terrainManager.GetHeightAtPosition(point.X, point.Z);
             if (terrainHeight == null)
             {
-                t += step;
-                step *= 2.0f;
-                continue;
+                return null;
             }
 
             float heightDiff = point.Y - terrainHeight.Value;
 
             // Converged to surface
-            if (MathF.Abs(heightDiff) < 0.01f)
+            if (MathF.Abs(heightDiff) < 0.1f)
             {
                 return new Vector3(point.X, terrainHeight.Value, point.Z);
             }
 
-            // Adjust t based on height difference
-            if (heightDiff > 0)
-            {
-                // We're above terrain, move forward
-                t += heightDiff / MathF.Max(rayDirection.Y, 0.001f) * 0.5f;
-            }
-            else
-            {
-                // We're below terrain, move backward
-                t += heightDiff / MathF.Max(rayDirection.Y, 0.001f) * 0.5f;
-            }
-
-            step *= 0.8f;
+            // Adjust t: since rayDirection.Y < 0 (pointing down)
+            // If heightDiff > 0 (point above terrain), we need to go forward (increase t)
+            // If heightDiff < 0 (point below terrain), we need to go backward (decrease t)
+            // The adjustment is: t -= heightDiff / rayDirection.Y
+            // Since rayDirection.Y < 0:
+            //   - heightDiff > 0 => adjustment is positive => t increases => go forward
+            //   - heightDiff < 0 => adjustment is negative => t decreases => go backward
+            t -= heightDiff / rayDirection.Y;
         }
 
         // Return best approximation
@@ -166,7 +151,11 @@ public static class TerrainRaycast
         float? finalHeight = terrainManager.GetHeightAtPosition(finalPoint.X, finalPoint.Z);
         if (finalHeight != null && terrainManager.IsPositionOnTerrain(finalPoint.X, finalPoint.Z))
         {
-            return new Vector3(finalPoint.X, finalHeight.Value, finalPoint.Z);
+            float finalHeightDiff = MathF.Abs(finalPoint.Y - finalHeight.Value);
+            if (finalHeightDiff < 1.0f) // Accept if within 1 meter
+            {
+                return new Vector3(finalPoint.X, finalHeight.Value, finalPoint.Z);
+            }
         }
 
         return null;

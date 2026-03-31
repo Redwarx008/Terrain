@@ -48,6 +48,21 @@ public sealed class TerrainManager : IDisposable
     public Entity? CurrentTerrain => currentTerrainEntity;
 
     /// <summary>
+    /// Whether the height data cache is loaded and ready for queries.
+    /// </summary>
+    public bool HasHeightCache => heightDataCache != null;
+
+    /// <summary>
+    /// Width of the height data cache (0 if not loaded).
+    /// </summary>
+    public int HeightCacheWidth => heightDataWidth;
+
+    /// <summary>
+    /// Height of the height data cache (0 if not loaded).
+    /// </summary>
+    public int HeightCacheHeight => heightDataHeight;
+
+    /// <summary>
     /// Raised when a new terrain is loaded.
     /// </summary>
     public event EventHandler<TerrainLoadedEventArgs>? TerrainLoaded;
@@ -84,14 +99,14 @@ public sealed class TerrainManager : IDisposable
             return null;
         }
 
-        // Load height data cache for raycasting
-        LoadHeightDataCache(heightmapPath);
-
-        // Remove existing terrain
+        // Remove existing terrain (before loading new height cache)
         if (currentTerrainEntity != null)
         {
             RemoveCurrentTerrain();
         }
+
+        // Load height data cache for raycasting (after removing old terrain)
+        LoadHeightDataCache(heightmapPath);
 
         try
         {
