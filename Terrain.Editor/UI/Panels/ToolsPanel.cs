@@ -4,6 +4,7 @@ using Hexa.NET.ImGui;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using Terrain.Editor.Services;
 using Terrain.Editor.UI.Styling;
 
 namespace Terrain.Editor.UI.Panels;
@@ -37,6 +38,10 @@ public class ToolsPanel : PanelBase
         TitleBarHeight = 26.0f;
 
         InitializeTools();
+
+        // D-18, D-19: Wire to EditorState for tool selection
+        EditorState.Instance.ToolChanged += OnEditorToolChanged;
+        SelectedTool = EditorState.Instance.CurrentTool.ToString();
     }
 
     private void InitializeTools()
@@ -130,6 +135,11 @@ public class ToolsPanel : PanelBase
         if (ImGui.IsItemClicked())
         {
             SelectedTool = tool.Name;
+            // D-18: Update EditorState when tool is selected
+            if (Enum.TryParse<HeightTool>(tool.Name, out var heightTool))
+            {
+                EditorState.Instance.CurrentTool = heightTool;
+            }
             ToolSelected?.Invoke(this, new ToolSelectedEventArgs { Tool = tool });
         }
     }
@@ -143,6 +153,21 @@ public class ToolsPanel : PanelBase
         {
             SelectedTool = firstTool.Name;
         }
+    }
+
+    /// <summary>
+    /// Handles tool change events from EditorState.
+    /// Per D-19: Current tool state stored in EditorState service.
+    /// </summary>
+    private void OnEditorToolChanged(object? sender, EventArgs e)
+    {
+        SelectedTool = EditorState.Instance.CurrentTool.ToString();
+    }
+
+    public override void Dispose()
+    {
+        EditorState.Instance.ToolChanged -= OnEditorToolChanged;
+        base.Dispose();
     }
 }
 

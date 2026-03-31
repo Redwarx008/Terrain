@@ -38,6 +38,10 @@ public class SceneViewPanel : PanelBase
     // Brush preview support
     private readonly BrushParameters _brushParams = BrushParameters.Instance;
 
+    // Height editing state
+    private bool isEditing;
+    private StrideVector3? currentHitPoint;
+
     // Render target display (placeholder approach until native pointer integration)
     public Texture? SceneRenderTarget { get; set; }
     public Func<Texture, ImTextureID>? TextureIdProvider { get; set; }
@@ -329,10 +333,16 @@ public class SceneViewPanel : PanelBase
 
         // Render brush preview overlay (Phase 2)
         RenderBrushPreview(viewPos, viewSize);
+
+        // Process height editing (Phase 3)
+        UpdateEditing(viewPos, viewSize);
     }
 
     private void RenderBrushPreview(NumericsVector2 viewPos, NumericsVector2 viewSize)
     {
+        // Reset currentHitPoint at start of each frame
+        currentHitPoint = null;
+
         // Per D-09: Only show preview when viewport is hovered and not interacting
         if (!IsViewportHovered || IsViewportInteracting)
             return;
@@ -373,14 +383,20 @@ public class SceneViewPanel : PanelBase
         if (hitPoint == null)
             return;
 
+        // Store hit point for editing loop
+        currentHitPoint = hitPoint;
+
         // Generate world-space circle points that follow terrain
         float worldRadius = _brushParams.Size * 0.5f;
         var circlePoints = GenerateWorldSpaceCircle(hitPoint.Value, worldRadius, 32);
 
         // Project world points to screen and draw
         var drawList = ImGui.GetWindowDrawList();
-        uint outerColor = ColorPalette.Accent.WithAlpha(0.5f).ToUint();
-        uint innerColor = ColorPalette.Accent.WithAlpha(0.3f).ToUint();
+
+        // D-20: Tool color coding - get color from EditorState
+        var toolColor = EditorState.Instance.GetToolColor();
+        uint outerColor = toolColor.WithAlpha(0.5f).ToUint();
+        uint innerColor = toolColor.WithAlpha(0.3f).ToUint();
 
         // Draw outer circle (falloff boundary)
         DrawProjectedCircle(drawList, circlePoints, camera, viewPos, viewSize, outerColor, 2.0f);
@@ -397,7 +413,52 @@ public class SceneViewPanel : PanelBase
         var centerScreen = WorldToScreen(hitPoint.Value, camera, viewPos, viewSize);
         if (centerScreen != null)
         {
-            drawList.AddCircleFilled(centerScreen.Value, 3.0f, ColorPalette.Accent.WithAlpha(0.8f).ToUint());
+            drawList.AddCircleFilled(centerScreen.Value, 3.0f, toolColor.WithAlpha(0.8f).ToUint());
+        }
+    }
+
+    /// <summary>
+    /// Processes height editing input when viewport is hovered.
+    /// Per D-01: Real-time editing mode.
+    /// Per D-02: Left mouse down to edit, release to end stroke.
+    /// Per D-03: Per-frame update of affected pixels.
+    /// </summary>
+    public void UpdateEditing(NumericsVector2 viewPos, NumericsVector2 viewSize)
+    {
+        if (!IsViewportHovered || IsViewportInteracting)
+            return;
+
+        if (terrainManager?.CurrentTerrain == null)
+            return;
+
+        var io = ImGui.GetIO();
+        var editorState = EditorState.Instance;
+        var heightEditor = HeightEditor.Instance;
+
+        // Use currentHitPoint from RenderBrushPreview
+        if (currentHitPoint == null)
+            return;
+
+        // Check for edit start (D-02: left mouse down)
+        if (io.MouseDown[0] && !isEditing)
+        {
+            isEditing = true;
+            heightEditor.BeginStroke(editorState.CurrentTool.ToString(), currentHitPoint.Value, terrainManager);
+        }
+
+        // Apply edit during drag (D-01, D-03)
+        if (isEditing && io.MouseDown[0])
+        {
+            // Get delta time for frame-rate independent editing
+            float deltaTime = (float)io.DeltaTime;
+            heightEditor.ApplyStroke(currentHitPoint.Value, terrainManager, deltaTime);
+        }
+
+        // End edit on release (D-02)
+        if (!io.MouseDown[0] && isEditing)
+        {
+            isEditing = false;
+            heightEditor.EndStroke();
         }
     }
 
