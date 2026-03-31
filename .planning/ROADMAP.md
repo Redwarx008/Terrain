@@ -89,7 +89,7 @@
 
 Plans:
 - [ ] 03-01-PLAN.md - Create EditorState, IHeightTool interface, and HeightEditor service skeleton
-- [ ] 03-02-PLAN.md - Implement Raise/Lower/Smooth/Flatten tools with GPU sync
+- [x] 03-02-PLAN.md - Implement Raise/Lower/Smooth/Flatten tools with GPU sync
 - [ ] 03-03-PLAN.md - Wire ToolsPanel and SceneViewPanel for editing integration
 
 **UI hint**: yes

@@ -7,10 +7,10 @@
 
 ### Height Editing
 
-- [ ] **HEIGHT-01**: User can raise terrain height with circular brush
-- [ ] **HEIGHT-02**: User can lower terrain height with circular brush
-- [ ] **HEIGHT-03**: User can smooth terrain heights (averaging neighbors)
-- [ ] **HEIGHT-04**: User can flatten terrain to target height
+- [x] **HEIGHT-01**: User can raise terrain height with circular brush
+- [x] **HEIGHT-02**: User can lower terrain height with circular brush
+- [x] **HEIGHT-03**: User can smooth terrain heights (averaging neighbors)
+- [x] **HEIGHT-04**: User can flatten terrain to target height
 
 ### Brush System
 
@@ -112,10 +112,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BRUSH-03 | Phase 2 | Pending |
 | BRUSH-06 | Phase 2 | Complete |
 | PREV-05 | Phase 2 | Complete |
-| HEIGHT-01 | Phase 3 | Pending |
-| HEIGHT-02 | Phase 3 | Pending |
-| HEIGHT-03 | Phase 3 | Pending |
-| HEIGHT-04 | Phase 3 | Pending |
+| HEIGHT-01 | Phase 3 | Complete |
+| HEIGHT-02 | Phase 3 | Complete |
+| HEIGHT-03 | Phase 3 | Complete |
+| HEIGHT-04 | Phase 3 | Complete |
 | UNDO-01 | Phase 4 | Pending |
 | UNDO-02 | Phase 4 | Pending |
 | UNDO-03 | Phase 4 | Pending |
