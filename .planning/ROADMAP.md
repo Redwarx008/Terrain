@@ -85,7 +85,12 @@
 3. User can smooth terrain heights to average neighbors
 4. User can flatten terrain to a target height
 
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves
+
+Plans:
+- [ ] 03-01-PLAN.md - Create EditorState, IHeightTool interface, and HeightEditor service skeleton
+- [ ] 03-02-PLAN.md - Implement Raise/Lower/Smooth/Flatten tools with GPU sync
+- [ ] 03-03-PLAN.md - Wire ToolsPanel and SceneViewPanel for editing integration
 
 **UI hint**: yes
 
@@ -196,7 +201,7 @@
 |-------|----------------|--------|-----------|
 | 1. Project Foundation | 3/4 | Complete | 2026-03-29 |
 | 2. Brush System Core | 3/3 | Complete | 2026-03-31 |
-| 3. Height Editing | 0/5 | Not started | - |
+| 3. Height Editing | 0/3 | Not started | - |
 | 4. Undo/Redo System | 0/5 | Not started | - |
 | 5. Enhanced Brushes | 0/2 | Not started | - |
 | 6. Material Management | 0/3 | Not started | - |
@@ -251,4 +256,4 @@
 ---
 
 *Roadmap created: 2026-03-29*
-*Last updated: 2026-03-31 - Phase 2 complete with terrain-projected brush preview*
+*Last updated: 2026-03-31 - Phase 3 planned with 3 plans in 3 waves*
