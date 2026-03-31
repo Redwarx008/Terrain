@@ -7,9 +7,12 @@ using Stride.Graphics;
 using Stride.Input;
 using Stride.Rendering;
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using NumericsVector2 = System.Numerics.Vector2;
 using NumericsVector4 = System.Numerics.Vector4;
+using StrideVector3 = Stride.Core.Mathematics.Vector3;
+using StrideVector4 = Stride.Core.Mathematics.Vector4;
 using Terrain.Editor.Input;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Services;
@@ -334,6 +337,10 @@ public class SceneViewPanel : PanelBase
         if (!IsViewportHovered || IsViewportInteracting)
             return;
 
+        // Check if we have terrain loaded
+        if (terrainManager?.CurrentTerrain == null)
+            return;
+
         var io = ImGui.GetIO();
         NumericsVector2 mousePos = io.MousePos;
 
@@ -342,27 +349,166 @@ public class SceneViewPanel : PanelBase
             mousePos.Y < viewPos.Y || mousePos.Y > viewPos.Y + viewSize.Y)
             return;
 
+        // Get camera - need to access the camera component
+        var camera = GetActiveCamera();
+        if (camera == null)
+            return;
+
+        // Convert screen coordinates to world ray
+        var (rayOrigin, rayDirection) = TerrainRaycast.ScreenToWorldRay(
+            mousePos.X,
+            mousePos.Y,
+            viewPos.X,
+            viewPos.Y,
+            viewSize.X,
+            viewSize.Y,
+            camera);
+
+        // Find intersection with terrain
+        var hitPoint = TerrainRaycast.RayTerrainIntersection(
+            rayOrigin,
+            rayDirection,
+            terrainManager);
+
+        if (hitPoint == null)
+            return;
+
+        // Generate world-space circle points that follow terrain
+        float worldRadius = _brushParams.Size * 0.5f;
+        var circlePoints = GenerateWorldSpaceCircle(hitPoint.Value, worldRadius, 32);
+
+        // Project world points to screen and draw
         var drawList = ImGui.GetWindowDrawList();
-
-        // Convert brush size to screen pixels
-        // Using a simple scaling: larger brush = larger preview
-        // Size range is 1-200, map to reasonable screen pixels (5-100)
-        float screenRadius = Math.Max(1.0f, _brushParams.Size * 0.5f);
-
-        // Per UI-SPEC: Outer circle - falloff boundary
-        // Accent color with 50% alpha
         uint outerColor = ColorPalette.Accent.WithAlpha(0.5f).ToUint();
-        drawList.AddCircle(mousePos, screenRadius, outerColor, 0, 2.0f);
+        uint innerColor = ColorPalette.Accent.WithAlpha(0.3f).ToUint();
 
-        // Per UI-SPEC: Inner circle - 100% strength area
-        // Uses EffectiveFalloff for inverted semantics (1=hard, 0=soft)
-        float innerRadius = screenRadius * _brushParams.EffectiveFalloff;
-        if (innerRadius > 1.0f)
+        // Draw outer circle (falloff boundary)
+        DrawProjectedCircle(drawList, circlePoints, camera, viewPos, viewSize, outerColor, 2.0f);
+
+        // Draw inner circle (100% strength area) using EffectiveFalloff
+        float innerRadius = worldRadius * _brushParams.EffectiveFalloff;
+        if (innerRadius > 0.5f)
         {
-            // Accent color with 60% alpha for inner circle
-            uint innerColor = ColorPalette.Accent.WithAlpha(0.6f).ToUint();
-            drawList.AddCircleFilled(mousePos, innerRadius, innerColor, 0);
+            var innerCirclePoints = GenerateWorldSpaceCircle(hitPoint.Value, innerRadius, 24);
+            DrawProjectedCircleFilled(drawList, innerCirclePoints, camera, viewPos, viewSize, innerColor);
         }
+
+        // Draw center point
+        var centerScreen = WorldToScreen(hitPoint.Value, camera, viewPos, viewSize);
+        if (centerScreen != null)
+        {
+            drawList.AddCircleFilled(centerScreen.Value, 3.0f, ColorPalette.Accent.WithAlpha(0.8f).ToUint());
+        }
+    }
+
+    private CameraComponent? GetActiveCamera()
+    {
+        // Return the camera used for rendering the scene
+        return cameraController?.Camera;
+    }
+
+    private List<StrideVector3> GenerateWorldSpaceCircle(StrideVector3 center, float radius, int segments)
+    {
+        var points = new List<StrideVector3>();
+
+        for (int i = 0; i < segments; i++)
+        {
+            float angle = (float)(2.0 * Math.PI * i / segments);
+            float x = center.X + radius * MathF.Cos(angle);
+            float z = center.Z + radius * MathF.Sin(angle);
+
+            // Get terrain height at this position
+            float? height = terrainManager?.GetHeightAtPosition(x, z);
+            if (height != null)
+            {
+                points.Add(new StrideVector3(x, height.Value + 0.1f, z)); // Slight offset to avoid z-fighting
+            }
+            else
+            {
+                // Outside terrain, use center height
+                points.Add(new StrideVector3(x, center.Y + 0.1f, z));
+            }
+        }
+
+        return points;
+    }
+
+    private NumericsVector2? WorldToScreen(StrideVector3 worldPos, CameraComponent camera, NumericsVector2 viewPos, NumericsVector2 viewSize)
+    {
+        var viewProj = Matrix.Multiply(camera.ViewMatrix, camera.ProjectionMatrix);
+        var clipPos = StrideVector4.Transform(new StrideVector4(worldPos, 1.0f), viewProj);
+
+        // Behind camera
+        if (clipPos.W <= 0)
+            return null;
+
+        // Perspective divide
+        float ndcX = clipPos.X / clipPos.W;
+        float ndcY = clipPos.Y / clipPos.W;
+
+        // NDC to screen (Y is inverted in screen space)
+        float screenX = (ndcX + 1.0f) * 0.5f * viewSize.X + viewPos.X;
+        float screenY = (1.0f - ndcY) * 0.5f * viewSize.Y + viewPos.Y;
+
+        return new NumericsVector2(screenX, screenY);
+    }
+
+    private void DrawProjectedCircle(
+        ImDrawListPtr drawList,
+        List<StrideVector3> worldPoints,
+        CameraComponent camera,
+        NumericsVector2 viewPos,
+        NumericsVector2 viewSize,
+        uint color,
+        float thickness)
+    {
+        var screenPoints = new List<NumericsVector2>();
+
+        foreach (var worldPoint in worldPoints)
+        {
+            var screenPoint = WorldToScreen(worldPoint, camera, viewPos, viewSize);
+            if (screenPoint != null)
+            {
+                screenPoints.Add(screenPoint.Value);
+            }
+        }
+
+        if (screenPoints.Count < 3)
+            return;
+
+        // Draw as polygon outline
+        for (int i = 0; i < screenPoints.Count; i++)
+        {
+            int next = (i + 1) % screenPoints.Count;
+            drawList.AddLine(screenPoints[i], screenPoints[next], color, thickness);
+        }
+    }
+
+    private void DrawProjectedCircleFilled(
+        ImDrawListPtr drawList,
+        List<StrideVector3> worldPoints,
+        CameraComponent camera,
+        NumericsVector2 viewPos,
+        NumericsVector2 viewSize,
+        uint color)
+    {
+        var screenPoints = new List<NumericsVector2>();
+
+        foreach (var worldPoint in worldPoints)
+        {
+            var screenPoint = WorldToScreen(worldPoint, camera, viewPos, viewSize);
+            if (screenPoint != null)
+            {
+                screenPoints.Add(screenPoint.Value);
+            }
+        }
+
+        if (screenPoints.Count < 3)
+            return;
+
+        // Draw as filled polygon - convert to array for ref access
+        var screenPointsArray = screenPoints.ToArray();
+        drawList.AddConvexPolyFilled(ref screenPointsArray[0], screenPoints.Count, color);
     }
 
     private float? GetViewportAspectRatio()
