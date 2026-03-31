@@ -42,6 +42,12 @@ public sealed class TerrainManager : IDisposable
     private int heightDataWidth;
     private int heightDataHeight;
 
+    // GPU sync support
+    private TerrainRenderObject? terrainRenderObject;
+    private CommandList? commandList;
+    private int heightmapTileSize;
+    private int heightmapTilePadding;
+
     /// <summary>
     /// The currently loaded terrain entity, if any.
     /// </summary>
@@ -61,6 +67,12 @@ public sealed class TerrainManager : IDisposable
     /// Height of the height data cache (0 if not loaded).
     /// </summary>
     public int HeightCacheHeight => heightDataHeight;
+
+    /// <summary>
+    /// Gets the height data cache for direct modification.
+    /// Returns null if no terrain is loaded.
+    /// </summary>
+    public ushort[]? HeightDataCache => heightDataCache;
 
     /// <summary>
     /// Raised when a new terrain is loaded.
@@ -222,6 +234,45 @@ public sealed class TerrainManager : IDisposable
         int z = (int)MathF.Round(worldZ);
 
         return x >= 0 && x < heightDataWidth && z >= 0 && z < heightDataHeight;
+    }
+
+    /// <summary>
+    /// Sets the GPU sync context for uploading height modifications.
+    /// Must be called after terrain is loaded with the render object from TerrainProcessor.
+    /// </summary>
+    public void SetGpuSyncContext(TerrainRenderObject renderObject, CommandList cmdList, int tileSize, int tilePadding)
+    {
+        terrainRenderObject = renderObject;
+        commandList = cmdList;
+        heightmapTileSize = tileSize;
+        heightmapTilePadding = tilePadding;
+    }
+
+    /// <summary>
+    /// Immediately syncs modified height data to GPU.
+    /// Per D-04: Immediate sync after CPU cache modification.
+    /// Per D-06: Uses Texture.SetData for upload.
+    /// </summary>
+    /// <param name="sliceIndex">The texture array slice to update (default 0 for first slice)</param>
+    /// <remarks>
+    /// This uploads the entire heightmap cache to GPU. For Phase 3, this is acceptable
+    /// since typical heightmaps are under 4K resolution. Future optimization could
+    /// implement region-based dirty tracking.
+    /// </remarks>
+    public void UpdateHeightData(int sliceIndex = 0)
+    {
+        if (heightDataCache == null || terrainRenderObject == null || commandList == null)
+            return;
+
+        // D-04, D-06: Immediate sync using Texture.SetData
+        terrainRenderObject.UploadHeightmapSlice(
+            commandList,
+            heightDataCache,
+            sliceIndex,
+            heightDataWidth,
+            heightDataHeight,
+            heightmapTileSize,
+            heightmapTilePadding);
     }
 
     private void LoadHeightDataCache(string heightmapPath)

@@ -171,6 +171,62 @@ public sealed class TerrainRenderObject : RenderMesh
         LodLookupBuffer!.SetData(commandList, new TerrainLodLookupEntry[entryCount]);
     }
 
+    /// <summary>
+    /// Uploads heightmap data to the GPU texture array.
+    /// Per D-04: Called immediately after CPU cache modification.
+    /// Per D-06: Uses Texture.SetData for upload.
+    /// </summary>
+    /// <param name="commandList">The command list for GPU operations</param>
+    /// <param name="heightData">The full heightmap data (width * height ushort values)</param>
+    /// <param name="sliceIndex">The texture array slice to upload to (0-based)</param>
+    /// <param name="width">Width of the heightmap</param>
+    /// <param name="height">Height of the heightmap</param>
+    /// <param name="tileSize">The tile size the texture was created with</param>
+    /// <param name="padding">The padding around each tile</param>
+    /// <remarks>
+    /// This method assumes the heightmap fits within a single tile.
+    /// For large heightmaps that span multiple tiles, use the streaming system instead.
+    /// </remarks>
+    public void UploadHeightmapSlice(
+        CommandList commandList,
+        ushort[] heightData,
+        int sliceIndex,
+        int width,
+        int height,
+        int tileSize,
+        int padding)
+    {
+        if (HeightmapArray == null)
+            return;
+
+        // For a single tile that contains the entire heightmap, we need to
+        // copy the height data into a buffer matching the tile size
+        int fullTileSize = tileSize + padding * 2;
+
+        // If heightmap matches the tile exactly, upload directly
+        if (width == fullTileSize && height == fullTileSize)
+        {
+            HeightmapArray.SetData(commandList, heightData, sliceIndex, 0, null);
+            return;
+        }
+
+        // Otherwise, copy into a properly sized buffer
+        var tileData = new ushort[fullTileSize * fullTileSize];
+
+        // Copy heightmap data into the tile, accounting for padding offset
+        for (int y = 0; y < height && y < tileSize; y++)
+        {
+            int srcRowStart = y * width;
+            int dstRowStart = (y + padding) * fullTileSize + padding;
+            for (int x = 0; x < width && x < tileSize; x++)
+            {
+                tileData[dstRowStart + x] = heightData[srcRowStart + x];
+            }
+        }
+
+        HeightmapArray.SetData(commandList, tileData, sliceIndex, 0, null);
+    }
+
     public void ReleaseGpuResources()
     {
         HeightmapArray?.Dispose();
