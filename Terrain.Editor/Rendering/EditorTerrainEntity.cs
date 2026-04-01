@@ -78,6 +78,43 @@ public sealed class EditorTerrainEntity : IDisposable
         if (heightData == null || heightData.Length == 0)
             return null;
 
+        return CreateFromHeightmapData(
+            graphicsDevice,
+            heightData,
+            width,
+            height,
+            chunkX,
+            chunkZ,
+            worldOffset,
+            baseChunkSize,
+            heightScale,
+            maxScreenSpaceErrorPixels);
+    }
+
+    /// <summary>
+    /// Creates an EditorTerrainEntity from in-memory height data.
+    /// Used by TerrainSplitter for chunk creation.
+    /// </summary>
+    public static EditorTerrainEntity? CreateFromHeightmapData(
+        GraphicsDevice graphicsDevice,
+        ushort[] heightData,
+        int width,
+        int height,
+        int chunkX = 0,
+        int chunkZ = 0,
+        Vector3? worldOffset = null,
+        int baseChunkSize = 32,
+        float heightScale = 100.0f,
+        float maxScreenSpaceErrorPixels = 8.0f,
+        EditorMinMaxErrorMap[]? precomputedMaps = null,
+        Texture? precomputedTexture = null)
+    {
+        if (graphicsDevice == null)
+            throw new ArgumentNullException(nameof(graphicsDevice));
+
+        if (heightData == null || heightData.Length == 0)
+            return null;
+
         var entity = new EditorTerrainEntity
         {
             ChunkX = chunkX,
@@ -91,12 +128,26 @@ public sealed class EditorTerrainEntity : IDisposable
             MaxScreenSpaceErrorPixels = maxScreenSpaceErrorPixels,
         };
 
-        // Generate MinMaxErrorMaps
-        entity.MinMaxErrorMaps = HeightmapLoader.GenerateMinMaxErrorMaps(heightData, width, height, baseChunkSize);
+        // Use precomputed maps/texture or generate new ones
+        if (precomputedMaps != null)
+        {
+            entity.MinMaxErrorMaps = precomputedMaps;
+        }
+        else
+        {
+            entity.MinMaxErrorMaps = HeightmapLoader.GenerateMinMaxErrorMaps(heightData, width, height, baseChunkSize);
+        }
         entity.MaxLod = entity.MinMaxErrorMaps.Length - 1;
 
-        // Create GPU texture
-        entity.HeightmapTexture = HeightmapLoader.CreateHeightmapTexture(graphicsDevice, heightData, width, height);
+        // Use precomputed texture or create new one
+        if (precomputedTexture != null)
+        {
+            entity.HeightmapTexture = precomputedTexture;
+        }
+        else
+        {
+            entity.HeightmapTexture = HeightmapLoader.CreateHeightmapTexture(graphicsDevice, heightData, width, height);
+        }
 
         // Initialize GPU resources
         entity.InitializeGpuResources(graphicsDevice);
