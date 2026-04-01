@@ -89,7 +89,7 @@ public class SceneViewPanel : PanelBase
         // Wire up terrain loaded event
         terrainManager.TerrainLoaded += (s, e) =>
         {
-            HeightmapLoaded?.Invoke(this, e.TerrainPath);
+            HeightmapLoaded?.Invoke(this, e.SourcePath);
 
             // Reset camera to terrain bounds
             var bounds = terrainManager.GetTerrainBounds();
@@ -100,6 +100,9 @@ public class SceneViewPanel : PanelBase
                     bounds.Maximum.Z,
                     bounds.Maximum.Y);
             }
+
+            // Note: GPU sync context setup for EditorTerrainEntity is handled internally
+            // The old TerrainComponent-based sync is no longer needed for editor terrain
         };
     }
 
@@ -114,8 +117,8 @@ public class SceneViewPanel : PanelBase
             return;
         }
 
-        var entity = await terrainManager.LoadTerrainAsync(path);
-        if (entity == null)
+        var entities = await terrainManager.LoadTerrainAsync(path);
+        if (entities == null || entities.Count == 0)
         {
             HeightmapLoadFailed?.Invoke(this, $"Failed to load heightmap: {path}");
         }
@@ -279,7 +282,7 @@ public class SceneViewPanel : PanelBase
             drawList.AddRectFilled(viewPos, new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y), ColorPalette.DarkBackground.ToUint());
         }
 
-        if (terrainManager?.CurrentTerrain == null)
+        if (!terrainManager.HasTerrainLoaded)
         {
             if (SceneRenderTarget == null && ShowGrid)
             {
@@ -320,7 +323,11 @@ public class SceneViewPanel : PanelBase
         ImGui.InvisibleButton($"##viewport_input_{Id}", viewSize);
         IsViewportHovered = ImGui.IsItemHovered();
         var io = ImGui.GetIO();
-        IsViewportInteracting = ImGui.IsItemActive() || (IsViewportHovered && io.MouseDown[(int)ImGuiMouseButton.Right]);
+
+        // D-02: Separate camera interaction (right/middle button) from editing interaction (left button).
+        // IsViewportInteracting is for camera control only - it should NOT block left-button editing.
+        bool isRightOrMiddleDown = io.MouseDown[(int)ImGuiMouseButton.Right] || io.MouseDown[(int)ImGuiMouseButton.Middle];
+        IsViewportInteracting = IsViewportHovered && isRightOrMiddleDown;
 
         if (IsViewportInteracting)
         {
@@ -343,15 +350,17 @@ public class SceneViewPanel : PanelBase
         // Reset currentHitPoint at start of each frame
         currentHitPoint = null;
 
-        // Per D-09: Only show preview when viewport is hovered and not interacting
-        if (!IsViewportHovered || IsViewportInteracting)
+        // Per D-09: Show preview when viewport is hovered and not in camera control mode.
+        // D-02: Left button editing should still show brush preview.
+        var io = ImGui.GetIO();
+        bool isCameraInteracting = io.MouseDown[(int)ImGuiMouseButton.Right] || io.MouseDown[(int)ImGuiMouseButton.Middle];
+        if (!IsViewportHovered || isCameraInteracting)
             return;
 
         // Check if we have terrain loaded
-        if (terrainManager?.CurrentTerrain == null)
+        if (!terrainManager.HasTerrainLoaded)
             return;
 
-        var io = ImGui.GetIO();
         NumericsVector2 mousePos = io.MousePos;
 
         // Check if mouse is within the viewport bounds
@@ -425,13 +434,20 @@ public class SceneViewPanel : PanelBase
     /// </summary>
     public void UpdateEditing(NumericsVector2 viewPos, NumericsVector2 viewSize)
     {
-        if (!IsViewportHovered || IsViewportInteracting)
+        // D-02: Only block editing during camera interaction (right/middle button), not left button editing.
+        // IsViewportInteracting now specifically means camera control, so we don't block on it here.
+        if (!IsViewportHovered)
             return;
 
-        if (terrainManager?.CurrentTerrain == null)
-            return;
-
+        // Still block if camera is being controlled (right/middle mouse held)
         var io = ImGui.GetIO();
+        bool isCameraInteracting = io.MouseDown[(int)ImGuiMouseButton.Right] || io.MouseDown[(int)ImGuiMouseButton.Middle];
+        if (isCameraInteracting)
+            return;
+
+        if (!terrainManager.HasTerrainLoaded)
+            return;
+
         var editorState = EditorState.Instance;
         var heightEditor = HeightEditor.Instance;
 
