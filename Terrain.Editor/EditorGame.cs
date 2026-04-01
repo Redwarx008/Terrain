@@ -532,11 +532,11 @@ public class EditorGame : Game
             return;
         }
 
-        // The editor scene is assembled in code instead of loading the project's asset compositor,
-        // so we need to explicitly attach the terrain render feature or TerrainComponent will never draw.
-        if (!graphicsCompositor.RenderFeatures.OfType<TerrainRenderFeature>().Any())
+        // Editor uses its own simplified terrain render feature
+        // Per CONTEXT.md: Do NOT modify Terrain/ core library
+        if (!graphicsCompositor.RenderFeatures.OfType<EditorTerrainRenderFeature>().Any())
         {
-            graphicsCompositor.RenderFeatures.Add(new TerrainRenderFeature());
+            graphicsCompositor.RenderFeatures.Add(new EditorTerrainRenderFeature());
         }
     }
 

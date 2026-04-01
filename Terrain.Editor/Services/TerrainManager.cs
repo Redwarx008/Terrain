@@ -40,6 +40,7 @@ public sealed class TerrainManager : IDisposable
 
     // Multi-entity terrain support
     private readonly List<EditorTerrainEntity> terrainEntities = new();
+    private readonly List<Entity> sceneEntities = new();
     private SplitTerrainConfig? currentSplitConfig;
 
     // CPU-side height data cache for brush preview and terrain queries
@@ -150,6 +151,17 @@ public sealed class TerrainManager : IDisposable
             currentHeightmapInfo = info;
             currentSplitConfig = TerrainSplitter.ComputeSplitConfig(heightmapPath);
 
+            // Create scene entities with EditorTerrainComponent for rendering
+            foreach (var terrainEntity in entities)
+            {
+                var sceneEntity = new Entity($"TerrainChunk_{terrainEntity.ChunkX}_{terrainEntity.ChunkZ}")
+                {
+                    new EditorTerrainComponent { TerrainEntity = terrainEntity }
+                };
+                scene.Entities.Add(sceneEntity);
+                sceneEntities.Add(sceneEntity);
+            }
+
             progress?.Report((95, 100, "Terrain loaded successfully."));
 
             TerrainLoaded?.Invoke(this, new TerrainLoadedEventArgs
@@ -175,6 +187,13 @@ public sealed class TerrainManager : IDisposable
     /// </summary>
     public void RemoveCurrentTerrain()
     {
+        // Remove scene entities
+        foreach (var sceneEntity in sceneEntities)
+        {
+            scene.Entities.Remove(sceneEntity);
+        }
+        sceneEntities.Clear();
+
         // Dispose all terrain entities
         foreach (var entity in terrainEntities)
         {
@@ -364,6 +383,7 @@ public sealed class TerrainManager : IDisposable
 
     /// <summary>
     /// Synchronizes height data between adjacent chunks at their overlap region.
+    /// Per CONTEXT.md: 1-sample overlap on shared edges.
     /// </summary>
     private void SyncOverlapWithAdjacentChunk(
         EditorTerrainEntity sourceEntity,
@@ -387,9 +407,89 @@ public sealed class TerrainManager : IDisposable
         if (targetEntity == null || sourceEntity.HeightDataCache == null || targetEntity.HeightDataCache == null)
             return;
 
-        // The overlap is just 1 sample wide
-        // Copy the overlapping sample from source to target
-        // This is a simplified sync - in practice, you'd want to copy all affected samples
+        // Determine the overlap region based on chunk relationship
+        int sourceWidth = sourceEntity.HeightmapWidth;
+        int sourceHeight = sourceEntity.HeightmapHeight;
+        int targetWidth = targetEntity.HeightmapWidth;
+        int targetHeight = targetEntity.HeightmapHeight;
+
+        // Calculate world-space boundaries
+        int sourceMinX = (int)sourceEntity.WorldOffset.X;
+        int sourceMinZ = (int)sourceEntity.WorldOffset.Z;
+        int targetMinX = (int)targetEntity.WorldOffset.X;
+        int targetMinZ = (int)targetEntity.WorldOffset.Z;
+
+        // Determine which edge overlaps
+        bool isHorizontalNeighbor = sourceEntity.ChunkX != targetChunkX;
+        bool isVerticalNeighbor = sourceEntity.ChunkZ != targetChunkZ;
+
+        if (isHorizontalNeighbor)
+        {
+            // Source is to the left of target (source shares right edge, target shares left edge)
+            if (sourceEntity.ChunkX < targetChunkX)
+            {
+                // Copy the rightmost column of source to the leftmost column of target
+                int sourceX = sourceWidth - 1;
+                int targetX = 0;
+                int copyHeight = Math.Min(sourceHeight, targetHeight);
+
+                for (int z = 0; z < copyHeight; z++)
+                {
+                    int sourceIndex = z * sourceWidth + sourceX;
+                    int targetIndex = z * targetWidth + targetX;
+                    targetEntity.HeightDataCache[targetIndex] = sourceEntity.HeightDataCache[sourceIndex];
+                }
+            }
+            // Source is to the right of target (source shares left edge, target shares right edge)
+            else
+            {
+                // Copy the leftmost column of source to the rightmost column of target
+                int sourceX = 0;
+                int targetX = targetWidth - 1;
+                int copyHeight = Math.Min(sourceHeight, targetHeight);
+
+                for (int z = 0; z < copyHeight; z++)
+                {
+                    int sourceIndex = z * sourceWidth + sourceX;
+                    int targetIndex = z * targetWidth + targetX;
+                    targetEntity.HeightDataCache[targetIndex] = sourceEntity.HeightDataCache[sourceIndex];
+                }
+            }
+        }
+
+        if (isVerticalNeighbor)
+        {
+            // Source is above target (source shares bottom edge, target shares top edge)
+            if (sourceEntity.ChunkZ < targetChunkZ)
+            {
+                // Copy the bottom row of source to the top row of target
+                int sourceZ = sourceHeight - 1;
+                int targetZ = 0;
+                int copyWidth = Math.Min(sourceWidth, targetWidth);
+
+                for (int x = 0; x < copyWidth; x++)
+                {
+                    int sourceIndex = sourceZ * sourceWidth + x;
+                    int targetIndex = targetZ * targetWidth + x;
+                    targetEntity.HeightDataCache[targetIndex] = sourceEntity.HeightDataCache[sourceIndex];
+                }
+            }
+            // Source is below target (source shares top edge, target shares bottom edge)
+            else
+            {
+                // Copy the top row of source to the bottom row of target
+                int sourceZ = 0;
+                int targetZ = targetHeight - 1;
+                int copyWidth = Math.Min(sourceWidth, targetWidth);
+
+                for (int x = 0; x < copyWidth; x++)
+                {
+                    int sourceIndex = sourceZ * sourceWidth + x;
+                    int targetIndex = targetZ * targetWidth + x;
+                    targetEntity.HeightDataCache[targetIndex] = sourceEntity.HeightDataCache[sourceIndex];
+                }
+            }
+        }
     }
 
     /// <summary>
