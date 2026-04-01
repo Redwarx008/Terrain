@@ -91,7 +91,7 @@
 **Plans**: 3 plans in 3 waves
 
 **Plans List**:
-- [ ] 02.5-01-PLAN.md - Editor terrain rendering foundation (EditorTerrainEntity, HeightmapLoader, EditorTerrainQuadTree)
+- [x] 02.5-01-PLAN.md - Editor terrain rendering foundation (EditorTerrainEntity, HeightmapLoader, EditorTerrainQuadTree)
 - [ ] 02.5-02-PLAN.md - Multi-terrain splitting support (TerrainSplitter, SplitTerrainConfig)
 - [ ] 02.5-03-PLAN.md - Integration and polish (EditorGame, SceneViewPanel, HeightEditor)
 

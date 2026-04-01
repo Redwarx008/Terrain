@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-31T13:09:40.813Z"
+last_updated: "2026-04-01T00:11:56.564Z"
 progress:
-  total_phases: 8
-  completed_phases: 2
-  total_plans: 10
-  completed_plans: 8
+  total_phases: 9
+  completed_phases: 3
+  total_plans: 13
+  completed_plans: 11
 ---
 
 # Project State: Terrain Slot Editor
@@ -21,7 +21,7 @@ progress:
 
 **Core Value:** Real-time 3D preview brush-based terrain editing - WYSIWYG height and material editing experience
 
-**Current Focus:** Phase 03 — height-editing
+**Current Focus:** Phase 02.5 — editor-terrain-rendering
 
 **Milestone:** Terrain Slot Editor v1
 
@@ -29,7 +29,7 @@ progress:
 
 ## Current Position
 
-Phase: 03 (height-editing) — EXECUTING
+Phase: 02.5 (editor-terrain-rendering) — EXECUTING
 Plan: 2 of 3
 | Attribute | Value |
 |-----------|-------|
@@ -57,6 +57,7 @@ Plan: 2 of 3
 | Phase 02-brush-system-core P02 | 5min | 1 tasks | 1 files |
 | Phase 02-brush-system-core P03 | 15min | 3 tasks | 3 files |
 | Phase 03-height-editing P02 | 12min | 3 tasks | 5 files |
+| Phase 02.5 P01 | 25min | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,7 @@ Plan: 2 of 3
 - [Phase 03-height-editing]: Height tools use Strategy pattern (IHeightTool interface) with frame-rate independent editing
 - [Phase 03-height-editing]: Box Blur with 3x3 kernel (blurRadius=1) for Smooth tool - standard for terrain smoothing
 - [Phase 03-height-editing]: Flatten tool samples target height at click position, held constant during drag operation
+- [Phase 02.5]: Single Texture2D per terrain entity (no Texture2DArray, no streaming) for editor terrain
 
 ### Active Todos
 
