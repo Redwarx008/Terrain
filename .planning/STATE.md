@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-04-01T00:11:56.564Z"
+last_updated: "2026-04-01T00:27:26.713Z"
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State: Terrain Slot Editor
@@ -30,7 +30,7 @@ progress:
 ## Current Position
 
 Phase: 02.5 (editor-terrain-rendering) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 | Attribute | Value |
 |-----------|-------|
 | **Phase** | 2 - Brush System Core |
@@ -58,6 +58,7 @@ Plan: 2 of 3
 | Phase 02-brush-system-core P03 | 15min | 3 tasks | 3 files |
 | Phase 03-height-editing P02 | 12min | 3 tasks | 5 files |
 | Phase 02.5 P01 | 25min | 4 tasks | 4 files |
+| Phase 02.5 P02 | 20min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,8 @@ Plan: 2 of 3
 - [Phase 03-height-editing]: Box Blur with 3x3 kernel (blurRadius=1) for Smooth tool - standard for terrain smoothing
 - [Phase 03-height-editing]: Flatten tool samples target height at click position, held constant during drag operation
 - [Phase 02.5]: Single Texture2D per terrain entity (no Texture2DArray, no streaming) for editor terrain
+- [Phase 02.5]: MaxChunkSize 16384 samples limits GPU memory to ~512MB per terrain chunk
+- [Phase 02.5]: 1 sample overlap on shared edges for seamless cross-chunk editing
 
 ### Active Todos
 
