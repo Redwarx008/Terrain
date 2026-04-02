@@ -1,0 +1,47 @@
+namespace Terrain.Editor
+{
+    shader EditorTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturing, NormalStream, Transformation, EditorTerrainHeightStream, EditorTerrainHeightParameters
+    {
+        rgroup PerMaterial
+        {
+            stage Texture2D DefaultDiffuseTexture;
+            stage SamplerState TerrainDiffuseRepeatSampler;
+        }
+
+        cbuffer PerMaterial
+        {
+            stage float DiffuseWorldRepeatSize;
+            [Color]
+            stage float4 BaseColor;
+            stage float2 HeightmapDimensionsInSamples;
+        }
+
+        float3 CalculateNormal(float2 localPos)
+        {
+            int width = (int)HeightmapDimensionsInSamples.x + 1;
+            int height = (int)HeightmapDimensionsInSamples.y + 1;
+            float left = SampleHeightLinear(localPos + float2(-1.0f, 0.0f), width, height);
+            float right = SampleHeightLinear(localPos + float2(1.0f, 0.0f), width, height);
+            float up = SampleHeightLinear(localPos + float2(0.0f, -1.0f), width, height);
+            float down = SampleHeightLinear(localPos + float2(0.0f, 1.0f), width, height);
+            // Editor terrain always samples the original heightmap texture directly, so the normal
+            // neighborhood is always +/- 1 source texel even when the chunk itself renders at a coarser LOD.
+            return normalize(float3(left - right, 2.0f, up - down));
+        }
+
+        override void Compute()
+        {
+            float2 localPos = streams.TerrainLocalPos;
+            float3 localNormal = CalculateNormal(localPos);
+            float3 worldNormal = normalize(mul(localNormal, (float3x3)WorldInverseTranspose));
+            streams.meshNormal = localNormal;
+            streams.meshNormalWS = worldNormal;
+            streams.normalWS = worldNormal;
+
+            float2 uv = streams.PositionWS.xz / DiffuseWorldRepeatSize;
+            float4 baseColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv) * BaseColor;
+            streams.matDiffuse = baseColor;
+            streams.matColorBase = baseColor;
+        }
+    };
+}

@@ -1,0 +1,9 @@
+namespace Terrain.Editor
+{
+    // Simple stream for editor terrain - no slice index needed since we use Texture2D
+    shader EditorTerrainHeightStream
+    {
+        stage stream float2 TerrainLocalPos;
+        stage stream float TerrainSampleSpacing;
+    };
+}

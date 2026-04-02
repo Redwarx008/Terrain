@@ -320,7 +320,6 @@ public class EditorGame : Game
         editorScene = TryLoadProjectScene() ?? CreateViewportScene();
         PrepareSceneForEditor(editorScene);
         SceneSystem.SceneInstance = new SceneInstance(Services, editorScene);
-        EnsureTerrainRenderFeature();
         EnsureViewportSceneRenderer();
     }
 
@@ -332,6 +331,7 @@ public class EditorGame : Game
             // terrain render feature and the exact render-stage wiring it expects. Reuse it in the editor
             // so the viewport doesn't drift away from the proven runtime pipeline.
             var graphicsCompositor = Content.Load<GraphicsCompositor>("GraphicsCompositor");
+            EnsureTerrainRenderFeature(graphicsCompositor);
             SceneSystem.GraphicsCompositor = graphicsCompositor;
             compositorSourceStatus = "Compositor: project GraphicsCompositor";
         }
@@ -429,6 +429,14 @@ public class EditorGame : Game
                 continue;
             }
 
+            if (entity.Name == "Sphere" && entity.Get<ModelComponent>() != null)
+            {
+                // The runtime sample scene includes a demo sphere prop. In the editor viewport it can
+                // cast/receive lighting that reads like terrain artifacts, so keep the terrain view clean.
+                scene.Entities.Remove(entity);
+                continue;
+            }
+
             if (entity.Get<CameraComponent>() != null)
             {
                 hasEditorCamera = true;
@@ -449,8 +457,6 @@ public class EditorGame : Game
         {
             scene.Entities.Add(CreateEditorCameraEntity());
         }
-
-        TryAddDebugMarker(scene);
     }
 
     private Entity CreateEditorCameraEntity()
@@ -524,14 +530,8 @@ public class EditorGame : Game
             .FirstOrDefault(camera => camera != null);
     }
 
-    private void EnsureTerrainRenderFeature()
+    private static void EnsureTerrainRenderFeature(GraphicsCompositor graphicsCompositor)
     {
-        var graphicsCompositor = SceneSystem.GraphicsCompositor;
-        if (graphicsCompositor == null)
-        {
-            return;
-        }
-
         // Editor uses its own simplified terrain render feature
         // Per CONTEXT.md: Do NOT modify Terrain/ core library
         if (!graphicsCompositor.RenderFeatures.OfType<EditorTerrainRenderFeature>().Any())

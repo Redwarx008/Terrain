@@ -20,6 +20,7 @@ using Stride.Rendering.LightProbes;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Shadows;
 using Stride.Rendering.ComputeEffect;
+using Terrain.Editor.Services;
 using Buffer = Stride.Graphics.Buffer;
 
 namespace Terrain.Editor.Rendering;
@@ -48,7 +49,7 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
     private static readonly FieldInfo? RootRenderFeatureField = typeof(SubRenderFeature).GetField("RootRenderFeature", BindingFlags.Instance | BindingFlags.NonPublic);
     private static readonly PropertyInfo? RenderSystemProperty = typeof(RenderFeature).GetProperty("RenderSystem", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-    public const string EffectName = "TerrainForwardShadingEffect";
+    public const string EffectName = "EditorTerrainForwardShadingEffect";
     public const string ShadowCasterEffectName = $"{EffectName}.ShadowMapCaster";
     public const string ShadowCasterParaboloidEffectName = $"{EffectName}.ShadowMapCasterParaboloid";
     public const string ShadowCasterCubeMapEffectName = $"{EffectName}.ShadowMapCasterCubeMap";
@@ -632,11 +633,12 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
     private void PrepareEditorTerrainDraw(RenderDrawContext drawContext, EditorTerrainRenderObject renderObject, RenderView renderView)
     {
         var commandList = drawContext.CommandList;
-        if (renderObject.Source is not EditorTerrainEntity entity)
+        if (renderObject.TerrainEntity == null)
         {
             renderObject.InstanceCount = 0;
             return;
         }
+        var entity = renderObject.TerrainEntity;
 
         Debug.Assert(entity.ChunkNodeData != null);
         Debug.Assert(renderObject.ChunkNodeBuffer != null);
@@ -654,6 +656,10 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
                 entity.HeightmapHeight,
                 entity.HeightScale,
                 entity.MaxScreenSpaceErrorPixels);
+
+            int lodLookupEntryCount = ComputeLodLookupEntryCount(entity.MinMaxErrorMaps!);
+            renderObject.InitializeLodLookupData(commandList, lodLookupEntryCount);
+            renderObject.UpdateLodLookupLayoutData(commandList, CreateLodLookupLayouts(entity.MinMaxErrorMaps!));
         }
 
         var (renderCount, nodeCount) = renderObject.QuadTree.Select(
@@ -666,6 +672,7 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
         }
 
         entity.UpdateChunkNodeData(commandList, entity.ChunkNodeData, renderCount, nodeCount);
+        renderObject.InstanceCount = renderCount;  // Must set InstanceCount for DrawIndexedInstanced
         if (renderCount <= 0)
         {
             return;
@@ -714,6 +721,35 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
 
         return foundDescIndex;
     }
+
+    private static int ComputeLodLookupEntryCount(EditorMinMaxErrorMap[] minMaxErrorMaps)
+    {
+        int totalNodeCount = 0;
+        foreach (var map in minMaxErrorMaps)
+        {
+            totalNodeCount += map.Width * map.Height;
+        }
+
+        return totalNodeCount;
+    }
+
+    private static TerrainLodLookupLayout[] CreateLodLookupLayouts(EditorMinMaxErrorMap[] minMaxErrorMaps)
+    {
+        var layouts = new TerrainLodLookupLayout[minMaxErrorMaps.Length];
+        int offset = 0;
+        for (int lodLevel = 0; lodLevel < minMaxErrorMaps.Length; lodLevel++)
+        {
+            var map = minMaxErrorMaps[lodLevel];
+            layouts[lodLevel] = new TerrainLodLookupLayout
+            {
+                LayoutInfo = new Int4(offset, map.Width, map.Height, 0),
+            };
+
+            offset += map.Width * map.Height;
+        }
+
+        return layouts;
+    }
 }
 
 /// <summary>
@@ -724,7 +760,7 @@ public sealed class EditorTerrainRenderObject : RenderMesh, IDisposable
 {
     private const int DefaultChunkNodeCapacity = 65536;
 
-    public EditorTerrainEntity? Source;
+    public EditorTerrainEntity? TerrainEntity;
 
     // GPU resources (mirroring EditorTerrainEntity's)
     public Texture? HeightmapTexture;
@@ -740,7 +776,7 @@ public sealed class EditorTerrainRenderObject : RenderMesh, IDisposable
 
     public void InitializeFromEntity(GraphicsDevice graphicsDevice, EditorTerrainEntity entity)
     {
-        Source = entity;
+        TerrainEntity = entity;
 
         // Copy GPU resource references from entity
         HeightmapTexture = entity.HeightmapTexture;
@@ -793,6 +829,20 @@ public sealed class EditorTerrainRenderObject : RenderMesh, IDisposable
         InstanceCount = renderCount;
     }
 
+    public void UpdateLodLookupLayoutData(CommandList commandList, TerrainLodLookupLayout[] data)
+    {
+        Debug.Assert(LodLookupLayoutBuffer != null);
+        Debug.Assert(data.Length > 0);
+        LodLookupLayoutBuffer!.SetData(commandList, data);
+    }
+
+    public void InitializeLodLookupData(CommandList commandList, int entryCount)
+    {
+        Debug.Assert(LodLookupBuffer != null);
+        Debug.Assert(entryCount > 0);
+        LodLookupBuffer!.SetData(commandList, new TerrainLodLookupEntry[entryCount]);
+    }
+
     public void ResetRenderState()
     {
         MaterialPass = null!;
@@ -802,6 +852,8 @@ public sealed class EditorTerrainRenderObject : RenderMesh, IDisposable
     public void Dispose()
     {
         // Note: We don't own the GPU resources - EditorTerrainEntity does
+        TerrainEntity = null;
+        Source = null;
         ResetRenderState();
     }
 }

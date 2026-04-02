@@ -51,6 +51,7 @@ public sealed class TerrainManager : IDisposable
     // GPU sync support - using file write + cache invalidation
     private TerrainComponent? terrainComponent;
     private string? currentTerrainPath;
+    private string? lastLoadError;
 
     /// <summary>
     /// The currently loaded terrain entities (may be multiple for split terrains).
@@ -88,6 +89,7 @@ public sealed class TerrainManager : IDisposable
     /// Returns null if no terrain is loaded or terrain is not split.
     /// </summary>
     public SplitTerrainConfig? SplitConfig => currentSplitConfig;
+    public string? LastLoadError => lastLoadError;
 
     /// <summary>
     /// Raised when a new terrain is loaded.
@@ -112,10 +114,13 @@ public sealed class TerrainManager : IDisposable
         string heightmapPath,
         IProgress<(int current, int total, string message)>? progress = null)
     {
+        lastLoadError = null;
+
         // Validate input
         if (!HeightmapLoader.IsValidHeightmap(heightmapPath))
         {
-            Log.Error($"Invalid heightmap file: {heightmapPath}");
+            lastLoadError = $"Invalid heightmap file: {heightmapPath}";
+            Log.Error(lastLoadError);
             return new List<EditorTerrainEntity>();
         }
 
@@ -123,7 +128,8 @@ public sealed class TerrainManager : IDisposable
         var info = HeightmapLoader.LoadHeightmapInfo(heightmapPath);
         if (info == null)
         {
-            Log.Error($"Failed to load heightmap info: {heightmapPath}");
+            lastLoadError = $"Failed to load heightmap info: {heightmapPath}";
+            Log.Error(lastLoadError);
             return new List<EditorTerrainEntity>();
         }
 
@@ -135,14 +141,16 @@ public sealed class TerrainManager : IDisposable
 
         try
         {
-            // Use TerrainSplitter to create entities (handles splitting automatically)
+            // GPU resources must be created on the main thread with the active GraphicsDevice.
+            // Running the whole entity creation path inside Task.Run caused terrain loading to fail
+            // silently on some systems because Texture/Buffer creation happened off the render thread.
             progress?.Report((10, 100, "Loading terrain..."));
-            var entities = await Task.Run(() =>
-                TerrainSplitter.SplitAndCreateEntities(graphicsDevice, heightmapPath, progress));
+            var entities = TerrainSplitter.SplitAndCreateEntities(graphicsDevice, heightmapPath, progress);
 
             if (entities.Count == 0)
             {
-                Log.Error("Failed to create terrain entities.");
+                lastLoadError = "Failed to create terrain entities.";
+                Log.Error(lastLoadError);
                 return new List<EditorTerrainEntity>();
             }
 
@@ -156,7 +164,11 @@ public sealed class TerrainManager : IDisposable
             {
                 var sceneEntity = new Entity($"TerrainChunk_{terrainEntity.ChunkX}_{terrainEntity.ChunkZ}")
                 {
-                    new EditorTerrainComponent { TerrainEntity = terrainEntity }
+                    new EditorTerrainComponent
+                    {
+                        TerrainEntity = terrainEntity,
+                        DefaultDiffuseTexture = GetOrCreateDefaultDiffuseTexture(),
+                    }
                 };
                 scene.Entities.Add(sceneEntity);
                 sceneEntities.Add(sceneEntity);
@@ -177,7 +189,8 @@ public sealed class TerrainManager : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Error($"Failed to load terrain: {ex.Message}");
+            lastLoadError = $"Failed to load terrain: {ex.Message}";
+            Log.Error(lastLoadError);
             return new List<EditorTerrainEntity>();
         }
     }

@@ -1,0 +1,7 @@
+namespace Terrain.Editor
+{
+    effect EditorTerrainForwardShadingEffect
+    {
+        mixin StrideForwardShadingEffect;
+    };
+}

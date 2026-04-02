@@ -33,4 +33,50 @@
     <Compile Include="..\Shared\VirtualTextureLayout.cs" Link="Shared\VirtualTextureLayout.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Update="Effects\EditorTerrainDiffuse.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\EditorTerrainDisplacement.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\EditorTerrainForwardShadingEffect.sdfx.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\EditorTerrainHeightParameters.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\EditorTerrainHeightStream.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Effects\EditorTerrainDiffuse.sdsl">
+      <LastGenOutput>EditorTerrainDiffuse.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainDisplacement.sdsl">
+      <LastGenOutput>EditorTerrainDisplacement.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainForwardShadingEffect.sdfx">
+      <LastGenOutput>EditorTerrainForwardShadingEffect.sdfx.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainHeightParameters.sdsl">
+      <LastGenOutput>EditorTerrainHeightParameters.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainHeightStream.sdsl">
+      <LastGenOutput>EditorTerrainHeightStream.sdsl.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+
 </Project>

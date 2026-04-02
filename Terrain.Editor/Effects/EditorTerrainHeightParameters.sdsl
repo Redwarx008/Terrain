@@ -1,0 +1,50 @@
+namespace Terrain.Editor
+{
+    // Simplified height parameters for editor - uses single Texture2D instead of Texture2DArray
+    shader EditorTerrainHeightParameters : Texturing
+    {
+        rgroup PerMaterial
+        {
+            stage Texture2D<float> HeightmapTexture;
+        }
+
+        cbuffer PerMaterial
+        {
+            stage float HeightScale;
+            stage int BaseChunkSize;
+        }
+
+        float2 ComputeHeightmapUv(float2 worldPos, int width, int height)
+        {
+            float2 dimensions = float2(width, height);
+            float2 clampedWorldPos = clamp(worldPos, 0.0f, dimensions - 1.0f);
+            return (clampedWorldPos + 0.5f) / dimensions;
+        }
+
+        int2 ComputeHeightmapTexelCoord(float2 worldPos, int width, int height)
+        {
+            float2 dimensions = float2(width, height);
+            float2 clampedWorldPos = clamp(worldPos, 0.0f, dimensions - 1.0f);
+            return int2(clampedWorldPos + 0.5f);
+        }
+
+        // Sample height at integer texel coordinates
+        float SampleHeightAt(int2 texelCoord, int width, int height)
+        {
+            return HeightmapTexture.Load(int3(clamp(texelCoord, 0, int2(width - 1, height - 1)), 0)).x * HeightScale;
+        }
+
+        // Sample height at world/sample coordinates using nearest-neighbor lookup
+        float SampleHeight(float2 worldPos, int width, int height)
+        {
+            return SampleHeightAt(ComputeHeightmapTexelCoord(worldPos, width, height), width, height);
+        }
+
+        // Sample height with bilinear filtering
+        float SampleHeightLinear(float2 worldPos, int width, int height)
+        {
+            float2 uv = ComputeHeightmapUv(worldPos, width, height);
+            return HeightmapTexture.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale;
+        }
+    };
+}

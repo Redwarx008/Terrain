@@ -278,7 +278,7 @@ public class TerrainProcessor
         {
 #if DEBUG
             // 调试输出：保存当前 mipmap 层级
-            MipmapDebugOutput.SaveMipmapLevel(currentMip, debugDir, "HeightMap", mip);
+            //MipmapDebugOutput.SaveMipmapLevel(currentMip, debugDir, "HeightMap", mip);
 #endif
 
             WriteMipLevelTiles(writer, currentMip, tileSize, HeightMapPadding, progress);
