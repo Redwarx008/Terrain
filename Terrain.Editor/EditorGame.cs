@@ -41,6 +41,7 @@ public class EditorGame : Game
     private string compositorSourceStatus = "Compositor: pending";
     private Entity? debugMarkerEntity;
     private Int2 lastViewportRenderTargetSize;
+    private readonly EditorTerrainModeController terrainModeController = new();
 
     protected override void BeginRun()
     {
@@ -145,6 +146,11 @@ public class EditorGame : Game
         base.Update(gameTime);
 
         mainWindow?.Update((float)gameTime.TimePerFrame.TotalSeconds);
+
+        if (mainWindow != null && SceneSystem.GraphicsCompositor != null)
+        {
+            terrainModeController.Apply(mainWindow.Viewport.ViewMode, SceneSystem.GraphicsCompositor);
+        }
 
         // Read viewport input after Stride and the ImGui bridge have updated their per-frame state.
         // Doing this before base.Update() left the editor camera one frame behind, and mouse look

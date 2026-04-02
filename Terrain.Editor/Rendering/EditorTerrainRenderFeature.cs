@@ -537,7 +537,9 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
     {
         var opaqueStage = FindStage(OpaqueStageName);
         var selector = RenderStageSelectors.OfType<SimpleGroupToRenderStageSelector>()
-            .FirstOrDefault(item => string.Equals(item.EffectName, EffectName, StringComparison.Ordinal));
+            .FirstOrDefault(item =>
+                item.GetType() == typeof(SimpleGroupToRenderStageSelector)
+                && string.Equals(item.EffectName, EffectName, StringComparison.Ordinal));
 
         if (opaqueStage == null)
         {
