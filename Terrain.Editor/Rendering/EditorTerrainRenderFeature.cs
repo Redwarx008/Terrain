@@ -657,7 +657,8 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
                 entity.HeightmapWidth,
                 entity.HeightmapHeight,
                 entity.HeightScale,
-                entity.MaxScreenSpaceErrorPixels);
+                entity.MaxScreenSpaceErrorPixels,
+                entity);
 
             int lodLookupEntryCount = ComputeLodLookupEntryCount(entity.MinMaxErrorMaps!);
             renderObject.InitializeLodLookupData(commandList, lodLookupEntryCount);
@@ -765,7 +766,7 @@ public sealed class EditorTerrainRenderObject : RenderMesh, IDisposable
     public EditorTerrainEntity? TerrainEntity;
 
     // GPU resources (mirroring EditorTerrainEntity's)
-    public Texture? HeightmapTexture;
+    public Texture?[] HeightmapSliceTextures = new Texture?[EditorTerrainEntity.MaxBoundHeightSlices];
     public Buffer? ChunkNodeBuffer;
     public Buffer? LodLookupBuffer;
     public Buffer? LodLookupLayoutBuffer;
@@ -781,7 +782,11 @@ public sealed class EditorTerrainRenderObject : RenderMesh, IDisposable
         TerrainEntity = entity;
 
         // Copy GPU resource references from entity
-        HeightmapTexture = entity.HeightmapTexture;
+        Array.Clear(HeightmapSliceTextures, 0, HeightmapSliceTextures.Length);
+        for (int i = 0; i < entity.Slices.Count && i < HeightmapSliceTextures.Length; i++)
+        {
+            HeightmapSliceTextures[i] = entity.Slices[i].Texture;
+        }
         ChunkNodeBuffer = entity.ChunkNodeBuffer;
         LodLookupBuffer = entity.LodLookupBuffer;
         LodLookupLayoutBuffer = entity.LodLookupLayoutBuffer;
@@ -855,6 +860,7 @@ public sealed class EditorTerrainRenderObject : RenderMesh, IDisposable
     {
         // Note: We don't own the GPU resources - EditorTerrainEntity does
         TerrainEntity = null;
+        Array.Clear(HeightmapSliceTextures, 0, HeightmapSliceTextures.Length);
         Source = null;
         ResetRenderState();
     }

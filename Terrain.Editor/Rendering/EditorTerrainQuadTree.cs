@@ -38,6 +38,7 @@ internal sealed class EditorTerrainQuadTree
     private readonly int topLevelChunkCountY;
     private readonly float heightScale;
     private readonly float maxScreenSpaceErrorPixels;
+    private readonly EditorTerrainEntity terrainEntity;
 
     public EditorTerrainQuadTree(
         EditorMinMaxErrorMap[] minMaxErrorMaps,
@@ -45,7 +46,8 @@ internal sealed class EditorTerrainQuadTree
         int heightmapWidth,
         int heightmapHeight,
         float heightScale,
-        float maxScreenSpaceErrorPixels)
+        float maxScreenSpaceErrorPixels,
+        EditorTerrainEntity terrainEntity)
     {
         Debug.Assert(minMaxErrorMaps.Length > 0);
         Debug.Assert(leafChunkSize > 0);
@@ -61,6 +63,7 @@ internal sealed class EditorTerrainQuadTree
         topLevelChunkCountY = minMaxErrorMaps[maxLod].Height;
         this.heightScale = heightScale;
         this.maxScreenSpaceErrorPixels = maxScreenSpaceErrorPixels;
+        this.terrainEntity = terrainEntity;
     }
 
     /// <summary>
@@ -162,14 +165,18 @@ internal sealed class EditorTerrainQuadTree
             : float.MaxValue;
         if (lodLevel == 0 || sse <= maxScreenSpaceErrorPixels)
         {
-            SelectRenderNode(ref state, chunkX, chunkY, lodLevel);
+            SelectRenderNode(ref state, chunkX, chunkY, lodLevel, originSampleX, originSampleY);
             return;
         }
 
+        SubdivideNode(ref state, chunkX, chunkY, lodLevel);
+    }
+
+    private void SubdivideNode(ref SelectionState state, int chunkX, int chunkY, int lodLevel)
+    {
         var childMap = minMaxErrorMaps[lodLevel - 1];
         childMap.GetSubNodesExist(chunkX, chunkY, out var subTLExist, out var subTRExist, out var subBLExist, out var subBRExist);
 
-        // All data is resident (no streaming), so we can always subdivide
         WriteSubdividedNode(ref state, chunkX, chunkY, lodLevel, TerrainLodLookupNodeState.Subdivided);
 
         int childChunkX = chunkX * 2;
@@ -196,18 +203,16 @@ internal sealed class EditorTerrainQuadTree
         }
     }
 
-    private void SelectRenderNode(ref SelectionState state, int chunkX, int chunkY, int lodLevel)
+    private void SelectRenderNode(ref SelectionState state, int chunkX, int chunkY, int lodLevel, int originSampleX, int originSampleY)
     {
-        // Per CONTEXT.md: sliceIndex is always 0 (single texture, not array)
-        // pageOffsetX and pageOffsetY are directly computed from chunk position
-        int pageOffsetX = chunkX * leafChunkSize;
-        int pageOffsetY = chunkY * leafChunkSize;
+        int sliceIndex = terrainEntity.TryResolveSampleSlice(originSampleX, originSampleY, out var slice)
+            ? slice.Index
+            : 0;
 
-        // Render nodes are written from the front
         state.Data[state.RenderCount++] = new TerrainChunkNode
         {
             NodeInfo = new Int4(chunkX, chunkY, lodLevel, (int)TerrainLodLookupNodeState.Stop),
-            StreamInfo = new Int4(0, pageOffsetX, pageOffsetY, 1),  // sliceIndex=0, stride=1
+            StreamInfo = new Int4(sliceIndex, 0, 0, 0),
         };
     }
 

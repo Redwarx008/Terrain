@@ -142,14 +142,15 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
             return;
         }
 
-        Debug.Assert(renderObject.HeightmapTexture != null);
         Debug.Assert(renderObject.ChunkNodeBuffer != null);
+        Debug.Assert(renderObject.HeightmapSliceTextures[0] != null);
 
         var parameters = materialPass.Parameters;
         var dimensionsInSamples = new Vector2(entity.HeightmapWidth - 1, entity.HeightmapHeight - 1);
 
-        // Set heightmap parameters (EditorTerrainHeightParameters)
-        parameters.Set(EditorTerrainHeightParametersKeys.HeightmapTexture, renderObject.HeightmapTexture!);
+        SetSliceTextures(parameters, entity, renderObject);
+        SetSliceBounds(parameters, entity);
+        parameters.Set(EditorTerrainHeightParametersKeys.SliceCount, entity.Slices.Count);
         parameters.Set(EditorTerrainHeightParametersKeys.HeightScale, entity.HeightScale);
         parameters.Set(EditorTerrainHeightParametersKeys.BaseChunkSize, entity.BaseChunkSize);
 
@@ -172,6 +173,70 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         parameters.Set(EditorTerrainDiffuseKeys.TerrainDiffuseRepeatSampler, graphicsDevice.SamplerStates.LinearWrap);
         parameters.Set(EditorTerrainDiffuseKeys.DiffuseWorldRepeatSize, DiffuseWorldRepeatSize);
         parameters.Set(EditorTerrainDiffuseKeys.BaseColor, new Color4(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+
+    private static void SetSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity, EditorTerrainRenderObject renderObject)
+    {
+        var fallback = renderObject.HeightmapSliceTextures[0] ?? entity.Slices[0].Texture;
+        SetSliceTexture(parameters, 0, renderObject.HeightmapSliceTextures[0] ?? fallback);
+        SetSliceTexture(parameters, 1, renderObject.HeightmapSliceTextures[1] ?? fallback);
+        SetSliceTexture(parameters, 2, renderObject.HeightmapSliceTextures[2] ?? fallback);
+        SetSliceTexture(parameters, 3, renderObject.HeightmapSliceTextures[3] ?? fallback);
+        SetSliceTexture(parameters, 4, renderObject.HeightmapSliceTextures[4] ?? fallback);
+        SetSliceTexture(parameters, 5, renderObject.HeightmapSliceTextures[5] ?? fallback);
+        SetSliceTexture(parameters, 6, renderObject.HeightmapSliceTextures[6] ?? fallback);
+        SetSliceTexture(parameters, 7, renderObject.HeightmapSliceTextures[7] ?? fallback);
+    }
+
+    private static void SetSliceTexture(ParameterCollection parameters, int sliceIndex, Texture texture)
+    {
+        switch (sliceIndex)
+        {
+            case 0: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSlice0, texture); break;
+            case 1: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSlice1, texture); break;
+            case 2: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSlice2, texture); break;
+            case 3: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSlice3, texture); break;
+            case 4: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSlice4, texture); break;
+            case 5: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSlice5, texture); break;
+            case 6: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSlice6, texture); break;
+            case 7: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSlice7, texture); break;
+        }
+    }
+
+    private static void SetSliceBounds(ParameterCollection parameters, EditorTerrainEntity entity)
+    {
+        SetSliceBounds(parameters, 0, GetSliceBounds(entity, 0));
+        SetSliceBounds(parameters, 1, GetSliceBounds(entity, 1));
+        SetSliceBounds(parameters, 2, GetSliceBounds(entity, 2));
+        SetSliceBounds(parameters, 3, GetSliceBounds(entity, 3));
+        SetSliceBounds(parameters, 4, GetSliceBounds(entity, 4));
+        SetSliceBounds(parameters, 5, GetSliceBounds(entity, 5));
+        SetSliceBounds(parameters, 6, GetSliceBounds(entity, 6));
+        SetSliceBounds(parameters, 7, GetSliceBounds(entity, 7));
+    }
+
+    private static Int4 GetSliceBounds(EditorTerrainEntity entity, int sliceIndex)
+    {
+        if (sliceIndex >= entity.Slices.Count)
+            return new Int4(0, 0, 1, 1);
+
+        var slice = entity.Slices[sliceIndex];
+        return new Int4(slice.StartSampleX, slice.StartSampleZ, slice.Width, slice.Height);
+    }
+
+    private static void SetSliceBounds(ParameterCollection parameters, int sliceIndex, Int4 bounds)
+    {
+        switch (sliceIndex)
+        {
+            case 0: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds0, bounds); break;
+            case 1: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds1, bounds); break;
+            case 2: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds2, bounds); break;
+            case 3: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds3, bounds); break;
+            case 4: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds4, bounds); break;
+            case 5: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds5, bounds); break;
+            case 6: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds6, bounds); break;
+            case 7: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds7, bounds); break;
+        }
     }
 }
 

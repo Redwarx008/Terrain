@@ -96,8 +96,7 @@ public sealed class HeightEditor
         // Apply the tool
         currentTool.Apply(ref context);
 
-        // Sync to GPU - TODO: implemented in Plan 02
-        terrainManager.UpdateHeightData();
+        terrainManager.UpdateHeightData(pixelX, pixelZ, brushRadius);
     }
 
     /// <summary>

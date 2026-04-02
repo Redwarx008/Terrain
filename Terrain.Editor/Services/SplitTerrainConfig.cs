@@ -1,103 +1,145 @@
 #nullable enable
 using Stride.Core.Mathematics;
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace Terrain.Editor.Services;
 
 /// <summary>
-/// Configuration for split terrain chunks.
-/// Per CONTEXT.md: Split heightmaps > 16k into grid with 1 sample overlap.
+/// Configuration for editor terrain heightmap slicing.
+/// Large terrains stay logically single, but their height textures are split into slices that respect
+/// the GPU maximum texture size and stay aligned to BaseChunkSize cell boundaries.
 /// </summary>
 public sealed class SplitTerrainConfig
 {
-    /// <summary>
-    /// Maximum chunk size before splitting is required (16k x 16k).
-    /// </summary>
-    public const int MaxChunkSize = 16384;
+    public const int MaxTextureSize = 16384;
+    public const int DefaultBaseChunkSize = 32;
 
-    /// <summary>
-    /// Source heightmap dimensions.
-    /// </summary>
     public int SourceWidth { get; init; }
     public int SourceHeight { get; init; }
+    public int BaseChunkSize { get; init; }
+    public int SliceCountX { get; init; }
+    public int SliceCountZ { get; init; }
+    public ReadOnlyCollection<SplitTerrainSliceInfo> Slices { get; init; } = Array.Empty<SplitTerrainSliceInfo>().AsReadOnly();
 
-    /// <summary>
-    /// Number of chunks in X and Z directions.
-    /// </summary>
-    public int ChunkCountX { get; init; }
-    public int ChunkCountZ { get; init; }
+    public int TotalSliceCount => Slices.Count;
+    public bool IsSliced => Slices.Count > 1;
+    public int MaxSliceCount => Math.Max(SliceCountX, SliceCountZ);
 
-    /// <summary>
-    /// Size of each chunk in samples (may vary for edge chunks).
-    /// </summary>
-    public int ChunkSize { get; init; }
-
-    /// <summary>
-    /// Total number of chunks.
-    /// </summary>
-    public int TotalChunkCount => ChunkCountX * ChunkCountZ;
-
-    /// <summary>
-    /// Computes the split configuration for a given heightmap size.
-    /// </summary>
-    public static SplitTerrainConfig Compute(int sourceWidth, int sourceHeight)
+    public static SplitTerrainConfig Compute(int sourceWidth, int sourceHeight, int baseChunkSize = DefaultBaseChunkSize)
     {
-        int chunkCountX = (sourceWidth + MaxChunkSize - 1) / MaxChunkSize;
-        int chunkCountZ = (sourceHeight + MaxChunkSize - 1) / MaxChunkSize;
+        if (sourceWidth <= 1)
+            throw new ArgumentOutOfRangeException(nameof(sourceWidth));
+        if (sourceHeight <= 1)
+            throw new ArgumentOutOfRangeException(nameof(sourceHeight));
+        if (baseChunkSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(baseChunkSize));
 
-        // At least 1 chunk in each dimension
-        chunkCountX = Math.Max(1, chunkCountX);
-        chunkCountZ = Math.Max(1, chunkCountZ);
+        var xSegments = ComputeAxisSegments(sourceWidth, baseChunkSize);
+        var zSegments = ComputeAxisSegments(sourceHeight, baseChunkSize);
+        var slices = new List<SplitTerrainSliceInfo>(xSegments.Count * zSegments.Count);
 
-        // Calculate actual chunk size (distribute evenly)
-        int chunkSize = Math.Max(
-            (sourceWidth + chunkCountX - 1) / chunkCountX,
-            (sourceHeight + chunkCountZ - 1) / chunkCountZ);
-
-        // Cap at MaxChunkSize
-        chunkSize = Math.Min(chunkSize, MaxChunkSize);
+        int index = 0;
+        for (int sliceZ = 0; sliceZ < zSegments.Count; sliceZ++)
+        {
+            var z = zSegments[sliceZ];
+            for (int sliceX = 0; sliceX < xSegments.Count; sliceX++)
+            {
+                var x = xSegments[sliceX];
+                slices.Add(new SplitTerrainSliceInfo(
+                    Index: index++,
+                    SliceX: sliceX,
+                    SliceZ: sliceZ,
+                    StartSampleX: x.StartSample,
+                    StartSampleZ: z.StartSample,
+                    Width: x.SampleCount,
+                    Height: z.SampleCount));
+            }
+        }
 
         return new SplitTerrainConfig
         {
             SourceWidth = sourceWidth,
             SourceHeight = sourceHeight,
-            ChunkCountX = chunkCountX,
-            ChunkCountZ = chunkCountZ,
-            ChunkSize = chunkSize
+            BaseChunkSize = baseChunkSize,
+            SliceCountX = xSegments.Count,
+            SliceCountZ = zSegments.Count,
+            Slices = new ReadOnlyCollection<SplitTerrainSliceInfo>(slices),
         };
     }
 
-    /// <summary>
-    /// Gets the sample range for a specific chunk.
-    /// Per CONTEXT.md: 1 sample overlap on shared edges.
-    /// </summary>
-    public (int StartX, int StartZ, int Width, int Height, Vector3 WorldOffset) GetChunkBounds(int chunkX, int chunkZ)
+    public bool TryGetOwningSliceForNode(int originSampleX, int originSampleZ, int sizeInSamples, out SplitTerrainSliceInfo slice)
     {
-        // Calculate start position with overlap
-        // First chunk starts at 0, subsequent chunks start 1 sample earlier to overlap
-        int startX = chunkX == 0 ? 0 : chunkX * ChunkSize - 1;
-        int startZ = chunkZ == 0 ? 0 : chunkZ * ChunkSize - 1;
+        int endSampleX = originSampleX + sizeInSamples;
+        int endSampleZ = originSampleZ + sizeInSamples;
 
-        // Calculate dimensions (accounting for overlap and source bounds)
-        int endX = Math.Min((chunkX + 1) * ChunkSize, SourceWidth);
-        int endZ = Math.Min((chunkZ + 1) * ChunkSize, SourceHeight);
+        foreach (var candidate in Slices)
+        {
+            if (originSampleX < candidate.StartSampleX || originSampleZ < candidate.StartSampleZ)
+                continue;
 
-        int width = endX - startX;
-        int height = endZ - startZ;
+            if (endSampleX > candidate.EndSampleX || endSampleZ > candidate.EndSampleZ)
+                continue;
 
-        // World offset: chunk position in world space
-        // Non-first chunks offset by (chunkIndex * ChunkSize - 1) to account for overlap
-        float worldOffsetX = chunkX == 0 ? 0 : chunkX * ChunkSize - 1;
-        float worldOffsetZ = chunkZ == 0 ? 0 : chunkZ * ChunkSize - 1;
+            slice = candidate;
+            return true;
+        }
 
-        return (startX, startZ, width, height, new Vector3(worldOffsetX, 0, worldOffsetZ));
+        slice = default;
+        return false;
     }
 
-    /// <summary>
-    /// Checks if splitting is required for the given dimensions.
-    /// </summary>
     public static bool RequiresSplit(int width, int height)
     {
-        return width > MaxChunkSize || height > MaxChunkSize;
+        return width > MaxTextureSize || height > MaxTextureSize;
     }
+
+    private static List<AxisSegment> ComputeAxisSegments(int sampleCount, int baseChunkSize)
+    {
+        int totalCells = sampleCount - 1;
+        int maxCellsPerSlice = Math.Max(baseChunkSize, ((MaxTextureSize - 1) / baseChunkSize) * baseChunkSize);
+        var segments = new List<AxisSegment>();
+
+        int startCell = 0;
+        while (startCell < totalCells)
+        {
+            int remainingCells = totalCells - startCell;
+            int cellCount = Math.Min(maxCellsPerSlice, remainingCells);
+
+            // Non-terminal slices must end on a BaseChunk boundary so that leaf chunks never straddle slices.
+            if (remainingCells > maxCellsPerSlice)
+            {
+                cellCount = maxCellsPerSlice;
+            }
+
+            segments.Add(new AxisSegment(startCell, cellCount + 1));
+            startCell += cellCount;
+        }
+
+        if (segments.Count == 0)
+        {
+            segments.Add(new AxisSegment(0, sampleCount));
+        }
+
+        return segments;
+    }
+
+    private readonly record struct AxisSegment(int StartSample, int SampleCount);
+}
+
+public readonly record struct SplitTerrainSliceInfo(
+    int Index,
+    int SliceX,
+    int SliceZ,
+    int StartSampleX,
+    int StartSampleZ,
+    int Width,
+    int Height)
+{
+    public int EndSampleX => StartSampleX + Width - 1;
+    public int EndSampleZ => StartSampleZ + Height - 1;
+    public int CellWidth => Width - 1;
+    public int CellHeight => Height - 1;
+    public Vector3 WorldOffset => new(StartSampleX, 0.0f, StartSampleZ);
 }

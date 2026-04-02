@@ -1,6 +1,8 @@
 #nullable enable
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Stride.Core.Mathematics;
@@ -12,30 +14,29 @@ using Buffer = Stride.Graphics.Buffer;
 namespace Terrain.Editor.Rendering;
 
 /// <summary>
-/// Represents a single terrain entity for editor rendering.
-/// Per CONTEXT.md: Single Texture2D per entity (no Texture2DArray, no streaming).
+/// Represents one logical editor terrain. Large heightmaps are internally split into heightmap slices,
+/// but all LOD selection and rendering still operate as a single terrain.
 /// </summary>
 public sealed class EditorTerrainEntity : IDisposable
 {
     private const float HeightSampleNormalization = 1.0f / ushort.MaxValue;
+    public const int MaxBoundHeightSlices = 8;
 
-    // Identity
     public int ChunkX { get; init; }
     public int ChunkZ { get; init; }
     public Vector3 WorldOffset { get; init; }
 
-    // Heightmap data
-    public Texture? HeightmapTexture { get; private set; }
     public int HeightmapWidth { get; private set; }
     public int HeightmapHeight { get; private set; }
     public ushort[]? HeightDataCache { get; private set; }
 
-    // LOD data (generated at load time)
+    public SplitTerrainConfig SplitConfig { get; private set; } = null!;
+    public IReadOnlyList<EditorTerrainSlice> Slices => slices;
+
     public EditorMinMaxErrorMap[]? MinMaxErrorMaps { get; private set; }
     public int MaxLod { get; private set; }
     public int BaseChunkSize { get; private set; }
 
-    // GPU resources (owned by this entity)
     public Buffer? ChunkNodeBuffer { get; private set; }
     public Buffer? LodLookupBuffer { get; private set; }
     public Buffer? LodLookupLayoutBuffer { get; private set; }
@@ -43,119 +44,185 @@ public sealed class EditorTerrainEntity : IDisposable
     public Buffer? PatchVertexBuffer { get; private set; }
     public Buffer? PatchIndexBuffer { get; private set; }
 
-    // Runtime state
     public TerrainChunkNode[]? ChunkNodeData { get; private set; }
     public int RenderCount { get; set; }
     public BoundingBox Bounds { get; private set; }
 
-    // Configuration
     public float HeightScale { get; private set; } = 100.0f;
     public float MaxScreenSpaceErrorPixels { get; private set; } = 8.0f;
 
+    private readonly List<EditorTerrainSlice> slices = new();
+
     private EditorTerrainEntity() { }
 
-    /// <summary>
-    /// Creates an EditorTerrainEntity from a heightmap PNG file.
-    /// </summary>
-    public static EditorTerrainEntity? CreateFromHeightmap(
-        GraphicsDevice graphicsDevice,
-        string pngPath,
-        int chunkX = 0,
-        int chunkZ = 0,
-        Vector3? worldOffset = null,
-        int baseChunkSize = 32,
-        float heightScale = 100.0f,
-        float maxScreenSpaceErrorPixels = 8.0f)
-    {
-        if (graphicsDevice == null)
-            throw new ArgumentNullException(nameof(graphicsDevice));
-
-        if (string.IsNullOrEmpty(pngPath))
-            throw new ArgumentNullException(nameof(pngPath));
-
-        // Load height data using HeightmapLoader
-        var heightData = HeightmapLoader.LoadHeightData(pngPath, out int width, out int height);
-        if (heightData == null || heightData.Length == 0)
-            return null;
-
-        return CreateFromHeightmapData(
-            graphicsDevice,
-            heightData,
-            width,
-            height,
-            chunkX,
-            chunkZ,
-            worldOffset,
-            baseChunkSize,
-            heightScale,
-            maxScreenSpaceErrorPixels);
-    }
-
-    /// <summary>
-    /// Creates an EditorTerrainEntity from in-memory height data.
-    /// Used by TerrainSplitter for chunk creation.
-    /// </summary>
     public static EditorTerrainEntity? CreateFromHeightmapData(
         GraphicsDevice graphicsDevice,
         ushort[] heightData,
         int width,
         int height,
-        int chunkX = 0,
-        int chunkZ = 0,
-        Vector3? worldOffset = null,
+        SplitTerrainConfig splitConfig,
         int baseChunkSize = 32,
         float heightScale = 100.0f,
         float maxScreenSpaceErrorPixels = 8.0f,
-        EditorMinMaxErrorMap[]? precomputedMaps = null,
-        Texture? precomputedTexture = null)
+        EditorMinMaxErrorMap[]? precomputedMaps = null)
     {
-        if (graphicsDevice == null)
-            throw new ArgumentNullException(nameof(graphicsDevice));
+        ArgumentNullException.ThrowIfNull(graphicsDevice);
+        ArgumentNullException.ThrowIfNull(heightData);
+        ArgumentNullException.ThrowIfNull(splitConfig);
 
-        if (heightData == null || heightData.Length == 0)
-            return null;
+        if (heightData.Length != width * height)
+            throw new ArgumentException("Height data size mismatch.", nameof(heightData));
+        if (splitConfig.TotalSliceCount > MaxBoundHeightSlices)
+            throw new InvalidOperationException($"Editor terrain currently supports up to {MaxBoundHeightSlices} bound heightmap slices, but {splitConfig.TotalSliceCount} were requested.");
 
         var entity = new EditorTerrainEntity
         {
-            ChunkX = chunkX,
-            ChunkZ = chunkZ,
-            WorldOffset = worldOffset ?? Vector3.Zero,
+            ChunkX = 0,
+            ChunkZ = 0,
+            WorldOffset = Vector3.Zero,
             HeightmapWidth = width,
             HeightmapHeight = height,
             HeightDataCache = heightData,
+            SplitConfig = splitConfig,
             BaseChunkSize = baseChunkSize,
             HeightScale = heightScale,
             MaxScreenSpaceErrorPixels = maxScreenSpaceErrorPixels,
         };
 
-        // Use precomputed maps/texture or generate new ones
-        if (precomputedMaps != null)
-        {
-            entity.MinMaxErrorMaps = precomputedMaps;
-        }
-        else
-        {
-            entity.MinMaxErrorMaps = HeightmapLoader.GenerateMinMaxErrorMaps(heightData, width, height, baseChunkSize);
-        }
+        entity.MinMaxErrorMaps = precomputedMaps ?? HeightmapLoader.GenerateMinMaxErrorMaps(heightData, width, height, baseChunkSize);
         entity.MaxLod = entity.MinMaxErrorMaps.Length - 1;
 
-        // Use precomputed texture or create new one
-        if (precomputedTexture != null)
-        {
-            entity.HeightmapTexture = precomputedTexture;
-        }
-        else
-        {
-            entity.HeightmapTexture = HeightmapLoader.CreateHeightmapTexture(graphicsDevice, heightData, width, height);
-        }
-
-        // Initialize GPU resources
+        entity.CreateSliceTextures(graphicsDevice);
         entity.InitializeGpuResources(graphicsDevice);
-
-        // Calculate bounds
         entity.CalculateBounds();
-
         return entity;
+    }
+
+    public bool TryResolveNodeSlice(int originSampleX, int originSampleZ, int sizeInSamples, out EditorTerrainSlice slice, out int localOriginX, out int localOriginZ)
+    {
+        if (SplitConfig.TryGetOwningSliceForNode(originSampleX, originSampleZ, sizeInSamples, out var sliceInfo))
+        {
+            slice = slices[sliceInfo.Index];
+            localOriginX = originSampleX - slice.StartSampleX;
+            localOriginZ = originSampleZ - slice.StartSampleZ;
+            return true;
+        }
+
+        slice = null!;
+        localOriginX = 0;
+        localOriginZ = 0;
+        return false;
+    }
+
+    public bool TryResolveSampleSlice(int sampleX, int sampleZ, out EditorTerrainSlice slice)
+    {
+        foreach (var candidate in slices)
+        {
+            if (sampleX < candidate.StartSampleX || sampleX > candidate.EndSampleX)
+                continue;
+
+            if (sampleZ < candidate.StartSampleZ || sampleZ > candidate.EndSampleZ)
+                continue;
+
+            slice = candidate;
+            return true;
+        }
+
+        slice = null!;
+        return false;
+    }
+
+    public void MarkHeightRegionDirty(int modifiedX, int modifiedZ, float radius)
+    {
+        if (HeightDataCache == null)
+            return;
+
+        int minX = Math.Max(0, (int)MathF.Floor(modifiedX - radius));
+        int minZ = Math.Max(0, (int)MathF.Floor(modifiedZ - radius));
+        int maxX = Math.Min(HeightmapWidth - 1, (int)MathF.Ceiling(modifiedX + radius));
+        int maxZ = Math.Min(HeightmapHeight - 1, (int)MathF.Ceiling(modifiedZ + radius));
+
+        foreach (var slice in slices)
+        {
+            if (slice.Intersects(minX, minZ, maxX, maxZ))
+            {
+                slice.IsDirty = true;
+            }
+        }
+
+        CalculateBounds();
+    }
+
+    public void UpdateChunkNodeData(CommandList commandList, TerrainChunkNode[] data, int renderCount, int nodeCount)
+    {
+        Debug.Assert(ChunkNodeBuffer != null);
+        if (nodeCount <= 0)
+        {
+            RenderCount = 0;
+            return;
+        }
+
+        ChunkNodeBuffer!.SetData(commandList, new ReadOnlySpan<TerrainChunkNode>(data, 0, nodeCount));
+        RenderCount = renderCount;
+    }
+
+    public void SyncToGpu(CommandList commandList)
+    {
+        if (HeightDataCache == null)
+            return;
+
+        foreach (var slice in slices)
+        {
+            if (!slice.IsDirty || slice.Texture == null)
+                continue;
+
+            int sampleCount = slice.Width * slice.Height;
+            ushort[] uploadBuffer = ArrayPool<ushort>.Shared.Rent(sampleCount);
+            try
+            {
+                CopySliceData(slice, uploadBuffer);
+                slice.Texture.SetData(commandList, new ReadOnlySpan<ushort>(uploadBuffer, 0, sampleCount));
+                slice.IsDirty = false;
+            }
+            finally
+            {
+                ArrayPool<ushort>.Shared.Return(uploadBuffer);
+            }
+        }
+
+        CalculateBounds();
+    }
+
+    private void CreateSliceTextures(GraphicsDevice graphicsDevice)
+    {
+        Debug.Assert(HeightDataCache != null);
+        slices.Clear();
+
+        foreach (var sliceInfo in SplitConfig.Slices)
+        {
+            var sliceData = new ushort[sliceInfo.Width * sliceInfo.Height];
+            CopySliceData(sliceInfo, sliceData);
+            var texture = HeightmapLoader.CreateHeightmapTexture(graphicsDevice, sliceData, sliceInfo.Width, sliceInfo.Height);
+            slices.Add(new EditorTerrainSlice(sliceInfo, texture));
+        }
+    }
+
+    private void CopySliceData(SplitTerrainSliceInfo sliceInfo, ushort[] destination)
+    {
+        Debug.Assert(HeightDataCache != null);
+        Debug.Assert(destination.Length >= sliceInfo.Width * sliceInfo.Height);
+
+        for (int row = 0; row < sliceInfo.Height; row++)
+        {
+            int srcOffset = (sliceInfo.StartSampleZ + row) * HeightmapWidth + sliceInfo.StartSampleX;
+            int dstOffset = row * sliceInfo.Width;
+            Array.Copy(HeightDataCache!, srcOffset, destination, dstOffset, sliceInfo.Width);
+        }
+    }
+
+    private void CopySliceData(EditorTerrainSlice slice, ushort[] destination)
+    {
+        CopySliceData(slice.Info, destination);
     }
 
     private void InitializeGpuResources(GraphicsDevice graphicsDevice)
@@ -164,14 +231,10 @@ public sealed class EditorTerrainEntity : IDisposable
         int lodLookupLevelCount = MaxLod + 1;
         int lodLookupEntryCount = maxChunkNodeCount;
 
-        // Create chunk node buffer
         ChunkNodeBuffer = Buffer.Structured.New<TerrainChunkNode>(graphicsDevice, maxChunkNodeCount, true);
-
-        // Create LOD lookup buffers
         LodLookupBuffer = Buffer.Structured.New<TerrainLodLookupEntry>(graphicsDevice, lodLookupEntryCount, true);
         LodLookupLayoutBuffer = Buffer.Structured.New<TerrainLodLookupLayout>(graphicsDevice, lodLookupLevelCount);
 
-        // Create LOD map texture
         int lodMapWidth = Math.Max(1, (HeightmapWidth - 1 + BaseChunkSize - 1) / BaseChunkSize);
         int lodMapHeight = Math.Max(1, (HeightmapHeight - 1 + BaseChunkSize - 1) / BaseChunkSize);
         LodMapTexture = Texture.New2D(
@@ -182,10 +245,7 @@ public sealed class EditorTerrainEntity : IDisposable
             PixelFormat.R8_UInt,
             TextureFlags.ShaderResource | TextureFlags.UnorderedAccess);
 
-        // Create patch geometry
         CreatePatchGeometry(graphicsDevice);
-
-        // Allocate chunk node data array
         ChunkNodeData = new TerrainChunkNode[maxChunkNodeCount];
     }
 
@@ -286,7 +346,6 @@ public sealed class EditorTerrainEntity : IDisposable
 
         float minHeight = float.MaxValue;
         float maxHeight = float.MinValue;
-
         foreach (ushort height in HeightDataCache)
         {
             float h = height * HeightSampleNormalization * HeightScale;
@@ -295,56 +354,20 @@ public sealed class EditorTerrainEntity : IDisposable
         }
 
         if (minHeight == float.MaxValue)
-            minHeight = 0;
+            minHeight = 0.0f;
 
         Bounds = new BoundingBox(
             new Vector3(WorldOffset.X, WorldOffset.Y + minHeight, WorldOffset.Z),
             new Vector3(WorldOffset.X + HeightmapWidth - 1, WorldOffset.Y + maxHeight, WorldOffset.Z + HeightmapHeight - 1));
     }
 
-    /// <summary>
-    /// Updates chunk node data on the GPU.
-    /// </summary>
-    public void UpdateChunkNodeData(CommandList commandList, TerrainChunkNode[] data, int renderCount, int nodeCount)
-    {
-        Debug.Assert(ChunkNodeBuffer != null);
-        if (nodeCount <= 0)
-        {
-            RenderCount = 0;
-            return;
-        }
-
-        ChunkNodeBuffer!.SetData(commandList, new ReadOnlySpan<TerrainChunkNode>(data, 0, nodeCount));
-        RenderCount = renderCount;
-    }
-
-    /// <summary>
-    /// Updates height data (for editing).
-    /// </summary>
-    public void UpdateHeightData(ushort[] newData)
-    {
-        if (newData == null || newData.Length != HeightDataCache?.Length)
-            throw new ArgumentException("Height data size mismatch");
-
-        Array.Copy(newData, HeightDataCache, newData.Length);
-    }
-
-    /// <summary>
-    /// Syncs modified height data to GPU.
-    /// </summary>
-    public void SyncToGpu(CommandList commandList)
-    {
-        if (HeightmapTexture == null || HeightDataCache == null)
-            return;
-
-        HeightmapTexture.SetData(commandList, HeightDataCache);
-        CalculateBounds(); // Recalculate bounds after height data change
-    }
-
     public void Dispose()
     {
-        HeightmapTexture?.Dispose();
-        HeightmapTexture = null;
+        foreach (var slice in slices)
+        {
+            slice.Texture?.Dispose();
+        }
+        slices.Clear();
 
         ChunkNodeBuffer?.Dispose();
         ChunkNodeBuffer = null;
@@ -370,9 +393,32 @@ public sealed class EditorTerrainEntity : IDisposable
     }
 }
 
-/// <summary>
-/// Patch vertex for editor terrain rendering.
-/// </summary>
+public sealed class EditorTerrainSlice
+{
+    public EditorTerrainSlice(SplitTerrainSliceInfo info, Texture texture)
+    {
+        Info = info;
+        Texture = texture;
+    }
+
+    public SplitTerrainSliceInfo Info { get; }
+    public Texture Texture { get; }
+    public bool IsDirty { get; set; }
+
+    public int Index => Info.Index;
+    public int StartSampleX => Info.StartSampleX;
+    public int StartSampleZ => Info.StartSampleZ;
+    public int Width => Info.Width;
+    public int Height => Info.Height;
+    public int EndSampleX => Info.EndSampleX;
+    public int EndSampleZ => Info.EndSampleZ;
+
+    public bool Intersects(int minX, int minZ, int maxX, int maxZ)
+    {
+        return minX <= EndSampleX && maxX >= StartSampleX && minZ <= EndSampleZ && maxZ >= StartSampleZ;
+    }
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal struct EditorPatchVertex
 {
@@ -382,37 +428,25 @@ internal struct EditorPatchVertex
         VertexElement.Position<Vector3>());
 }
 
-/// <summary>
-/// Unified terrain chunk node structure for both rendering and LOD lookup.
-/// </summary>
 [StructLayout(LayoutKind.Sequential)]
 public struct TerrainChunkNode
 {
-    public Int4 NodeInfo;    // chunkX, chunkY, lodLevel, state (Stop=0, Subdivided=1)
-    public Int4 StreamInfo;  // sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride
+    public Int4 NodeInfo;
+    public Int4 StreamInfo;
 }
 
-/// <summary>
-/// LOD lookup node state.
-/// </summary>
 public enum TerrainLodLookupNodeState : uint
 {
     Stop = 0,
     Subdivided = 1,
 }
 
-/// <summary>
-/// LOD lookup layout entry.
-/// </summary>
 [StructLayout(LayoutKind.Sequential)]
 public struct TerrainLodLookupLayout
 {
     public Int4 LayoutInfo;
 }
 
-/// <summary>
-/// LOD lookup entry.
-/// </summary>
 [StructLayout(LayoutKind.Sequential)]
 public struct TerrainLodLookupEntry
 {

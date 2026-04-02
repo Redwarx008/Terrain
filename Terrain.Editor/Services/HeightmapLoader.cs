@@ -144,13 +144,6 @@ public static class HeightmapLoader
         if (width <= 1 || height <= 1)
             throw new ArgumentException("Invalid dimensions");
 
-        // Convert to float array for processing
-        float[] rawHeights = new float[width * height];
-        for (int i = 0; i < heightData.Length; i++)
-        {
-            rawHeights[i] = (float)heightData[i];
-        }
-
         // Calculate LOD levels
         int lodLevelCount = CalculateLodLevels(Math.Max(width, height), baseChunkSize);
 
@@ -177,8 +170,8 @@ public static class HeightmapLoader
             int sizeX = Math.Min(chunkVertices, width - x);
             int sizeY = Math.Min(chunkVertices, height - y);
 
-            GetAreaMinMaxHeight(rawHeights, width, height, x, y, sizeX, sizeY, out float minHeight, out float maxHeight);
-            float error = CalculateGeometricError(rawHeights, width, height, x, y, sizeX, sizeY, 0);
+            GetAreaMinMaxHeight(heightData, width, height, x, y, sizeX, sizeY, out float minHeight, out float maxHeight);
+            float error = CalculateGeometricError(heightData, width, height, x, y, sizeX, sizeY, 0);
 
             maps[0].Set(xChunkIndex, yChunkIndex, minHeight, maxHeight, error);
         });
@@ -186,7 +179,7 @@ public static class HeightmapLoader
         // Generate higher LOD levels
         for (int i = 1; i < lodLevelCount; i++)
         {
-            maps[i] = CreateFromHigherDetail(rawHeights, width, height, maps[i - 1], i, baseChunkSize);
+            maps[i] = CreateFromHigherDetail(heightData, width, height, maps[i - 1], i, baseChunkSize);
         }
 
         Log.Info($"Generated {lodLevelCount} MinMaxErrorMap levels");
@@ -194,7 +187,7 @@ public static class HeightmapLoader
     }
 
     private static EditorMinMaxErrorMap CreateFromHigherDetail(
-        float[] rawHeights,
+        ushort[] heightData,
         int mapWidth,
         int mapHeight,
         EditorMinMaxErrorMap higherDetail,
@@ -251,7 +244,7 @@ public static class HeightmapLoader
             int sizeX = Math.Max(1, Math.Min(chunkSize + 1, mapWidth - startX));
             int sizeY = Math.Max(1, Math.Min(chunkSize + 1, mapHeight - startY));
 
-            float error = CalculateGeometricError(rawHeights, mapWidth, mapHeight, startX, startY, sizeX, sizeY, lodLevel);
+            float error = CalculateGeometricError(heightData, mapWidth, mapHeight, startX, startY, sizeX, sizeY, lodLevel);
             dst.Get(x, y, out float min, out float max, out _);
             dst.Set(x, y, min, max, error);
         });
@@ -260,7 +253,7 @@ public static class HeightmapLoader
     }
 
     private static void GetAreaMinMaxHeight(
-        float[] rawHeights,
+        ushort[] heightData,
         int mapW,
         int mapH,
         int startX,
@@ -283,7 +276,7 @@ public static class HeightmapLoader
             for (int x = startX; x <= endX; x++)
             {
                 int clampedX = Math.Clamp(x, 0, mapW - 1);
-                float height = rawHeights[clampedX + rowBase];
+                float height = heightData[clampedX + rowBase];
                 if (height < min) min = height;
                 if (height > max) max = height;
             }
@@ -297,7 +290,7 @@ public static class HeightmapLoader
     }
 
     private static float CalculateGeometricError(
-        float[] rawHeights,
+        ushort[] heightData,
         int mapW,
         int mapH,
         int startX,
@@ -314,7 +307,7 @@ public static class HeightmapLoader
         {
             int cx = Math.Clamp(x, 0, mapW - 1);
             int cy = Math.Clamp(y, 0, mapH - 1);
-            return rawHeights[cx + cy * mapW];
+            return heightData[cx + cy * mapW];
         }
 
         // Horizontal direction error

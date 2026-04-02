@@ -4,8 +4,8 @@ namespace Terrain.Editor
     {
         struct EditorTerrainChunkNode
         {
-            int4 NodeInfo;    // chunkX, chunkY, lodLevel, neighborMask
-            int4 StreamInfo;  // unused for editor (no streaming)
+            int4 NodeInfo;
+            int4 StreamInfo;  // sliceIndex, sliceLocalOriginX, sliceLocalOriginY, reserved
         };
 
         rgroup PerMaterial
@@ -68,23 +68,22 @@ namespace Terrain.Editor
         {
             EditorTerrainChunkNode instance = InstanceBuffer[streams.InstanceID];
             int4 nodeInfo = instance.NodeInfo;
+            int4 streamInfo = instance.StreamInfo;
             float lodLevel = nodeInfo.z;
             int neighborMask = nodeInfo.w;
+            int sliceIndex = streamInfo.x;
             float lodScale = exp2(lodLevel);
             float chunkWorldSize = BaseChunkSize * lodScale;
             float2 worldOrigin = float2(nodeInfo.x, nodeInfo.y) * chunkWorldSize;
-            float2 localPos = streams.Position.xz;
-            localPos = ApplyCrackSnap(localPos, neighborMask);
+            float2 localPos = ApplyCrackSnap(streams.Position.xz, neighborMask);
 
             float2 sampleCoord = worldOrigin + localPos * lodScale;
             sampleCoord = clamp(sampleCoord, 0.0f, HeightmapDimensionsInSamples);
-
-            int width = (int)HeightmapDimensionsInSamples.x + 1;
-            int height = (int)HeightmapDimensionsInSamples.y + 1;
-            float heightValue = SampleHeight(sampleCoord, width, height);
+            float heightValue = SampleHeight(sampleCoord, sliceIndex);
 
             streams.TerrainLocalPos = sampleCoord;
             streams.TerrainSampleSpacing = max(1.0f, lodScale);
+            streams.TerrainSliceIndex = sliceIndex;
             streams.Position = float4(sampleCoord.x, heightValue, sampleCoord.y, 1.0f);
         }
     };

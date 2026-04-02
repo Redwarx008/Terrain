@@ -1,50 +1,165 @@
 namespace Terrain.Editor
 {
-    // Simplified height parameters for editor - uses single Texture2D instead of Texture2DArray
     shader EditorTerrainHeightParameters : Texturing
     {
         rgroup PerMaterial
         {
-            stage Texture2D<float> HeightmapTexture;
+            stage Texture2D<float> HeightmapSlice0;
+            stage Texture2D<float> HeightmapSlice1;
+            stage Texture2D<float> HeightmapSlice2;
+            stage Texture2D<float> HeightmapSlice3;
+            stage Texture2D<float> HeightmapSlice4;
+            stage Texture2D<float> HeightmapSlice5;
+            stage Texture2D<float> HeightmapSlice6;
+            stage Texture2D<float> HeightmapSlice7;
         }
 
         cbuffer PerMaterial
         {
             stage float HeightScale;
             stage int BaseChunkSize;
+            stage int SliceCount;
+            stage int HeightmapSlicePadding;
+            stage int4 HeightmapSliceBounds0;
+            stage int4 HeightmapSliceBounds1;
+            stage int4 HeightmapSliceBounds2;
+            stage int4 HeightmapSliceBounds3;
+            stage int4 HeightmapSliceBounds4;
+            stage int4 HeightmapSliceBounds5;
+            stage int4 HeightmapSliceBounds6;
+            stage int4 HeightmapSliceBounds7;
         }
 
-        float2 ComputeHeightmapUv(float2 worldPos, int width, int height)
+        int4 GetSliceBounds(int sliceIndex)
         {
-            float2 dimensions = float2(width, height);
-            float2 clampedWorldPos = clamp(worldPos, 0.0f, dimensions - 1.0f);
-            return (clampedWorldPos + 0.5f) / dimensions;
+            int4 bounds = HeightmapSliceBounds0;
+            switch (sliceIndex)
+            {
+                case 1: bounds = HeightmapSliceBounds1; break;
+                case 2: bounds = HeightmapSliceBounds2; break;
+                case 3: bounds = HeightmapSliceBounds3; break;
+                case 4: bounds = HeightmapSliceBounds4; break;
+                case 5: bounds = HeightmapSliceBounds5; break;
+                case 6: bounds = HeightmapSliceBounds6; break;
+                case 7: bounds = HeightmapSliceBounds7; break;
+            }
+
+            return bounds;
         }
 
-        int2 ComputeHeightmapTexelCoord(float2 worldPos, int width, int height)
+        bool IsInsideSlice(float2 sampleCoord, int4 bounds)
         {
-            float2 dimensions = float2(width, height);
-            float2 clampedWorldPos = clamp(worldPos, 0.0f, dimensions - 1.0f);
-            return int2(clampedWorldPos + 0.5f);
+            return sampleCoord.x >= (float)bounds.x
+                && sampleCoord.x <= (float)(bounds.x + bounds.z - 1)
+                && sampleCoord.y >= (float)bounds.y
+                && sampleCoord.y <= (float)(bounds.y + bounds.w - 1);
         }
 
-        // Sample height at integer texel coordinates
-        float SampleHeightAt(int2 texelCoord, int width, int height)
+        int ResolveSliceIndex(float2 sampleCoord, int preferredSliceIndex)
         {
-            return HeightmapTexture.Load(int3(clamp(texelCoord, 0, int2(width - 1, height - 1)), 0)).x * HeightScale;
+            int clampedPreferred = clamp(preferredSliceIndex, 0, max(0, SliceCount - 1));
+            int4 preferredBounds = GetSliceBounds(clampedPreferred);
+            if (IsInsideSlice(sampleCoord, preferredBounds))
+            {
+                return clampedPreferred;
+            }
+
+            if (SliceCount >= 1 && IsInsideSlice(sampleCoord, HeightmapSliceBounds0)) return 0;
+            if (SliceCount >= 2 && IsInsideSlice(sampleCoord, HeightmapSliceBounds1)) return 1;
+            if (SliceCount >= 3 && IsInsideSlice(sampleCoord, HeightmapSliceBounds2)) return 2;
+            if (SliceCount >= 4 && IsInsideSlice(sampleCoord, HeightmapSliceBounds3)) return 3;
+            if (SliceCount >= 5 && IsInsideSlice(sampleCoord, HeightmapSliceBounds4)) return 4;
+            if (SliceCount >= 6 && IsInsideSlice(sampleCoord, HeightmapSliceBounds5)) return 5;
+            if (SliceCount >= 7 && IsInsideSlice(sampleCoord, HeightmapSliceBounds6)) return 6;
+            if (SliceCount >= 8 && IsInsideSlice(sampleCoord, HeightmapSliceBounds7)) return 7;
+
+            return clampedPreferred;
         }
 
-        // Sample height at world/sample coordinates using nearest-neighbor lookup
-        float SampleHeight(float2 worldPos, int width, int height)
+        float2 ComputeSliceLocalCoord(float2 sampleCoord, int4 bounds)
         {
-            return SampleHeightAt(ComputeHeightmapTexelCoord(worldPos, width, height), width, height);
+            float2 localCoord = sampleCoord - float2((float)bounds.x, (float)bounds.y);
+            return clamp(localCoord, 0.0f, float2((float)(bounds.z - 1), (float)(bounds.w - 1)));
         }
 
-        // Sample height with bilinear filtering
-        float SampleHeightLinear(float2 worldPos, int width, int height)
+        float2 ComputeSliceUvFromLocal(float2 localCoord, int4 bounds)
         {
-            float2 uv = ComputeHeightmapUv(worldPos, width, height);
-            return HeightmapTexture.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale;
+            return (localCoord + 0.5f) / float2((float)bounds.z, (float)bounds.w);
+        }
+
+        int2 ComputeSliceTexelCoord(float2 sampleCoord, int4 bounds)
+        {
+            float2 localCoord = ComputeSliceLocalCoord(sampleCoord, bounds);
+            return int2(localCoord + 0.5f);
+        }
+
+        float SampleSliceHeightAt(int sliceIndex, int2 texelCoord)
+        {
+            int4 bounds = GetSliceBounds(sliceIndex);
+            int2 clampedTexel = clamp(texelCoord, 0, int2(bounds.z - 1, bounds.w - 1));
+            float height = HeightmapSlice0.Load(int3(clampedTexel, 0)).x * HeightScale;
+
+            switch (sliceIndex)
+            {
+                case 1: height = HeightmapSlice1.Load(int3(clampedTexel, 0)).x * HeightScale; break;
+                case 2: height = HeightmapSlice2.Load(int3(clampedTexel, 0)).x * HeightScale; break;
+                case 3: height = HeightmapSlice3.Load(int3(clampedTexel, 0)).x * HeightScale; break;
+                case 4: height = HeightmapSlice4.Load(int3(clampedTexel, 0)).x * HeightScale; break;
+                case 5: height = HeightmapSlice5.Load(int3(clampedTexel, 0)).x * HeightScale; break;
+                case 6: height = HeightmapSlice6.Load(int3(clampedTexel, 0)).x * HeightScale; break;
+                case 7: height = HeightmapSlice7.Load(int3(clampedTexel, 0)).x * HeightScale; break;
+            }
+
+            return height;
+        }
+
+        float SampleSliceHeight(float2 localSliceCoord, int sliceIndex)
+        {
+            int4 bounds = GetSliceBounds(sliceIndex);
+            int2 texelCoord = int2(clamp(localSliceCoord, 0.0f, float2((float)(bounds.z - 1), (float)(bounds.w - 1))) + 0.5f);
+            return SampleSliceHeightAt(sliceIndex, texelCoord);
+        }
+
+        float SampleSliceHeightLinear(float2 localSliceCoord, int sliceIndex)
+        {
+            int4 bounds = GetSliceBounds(sliceIndex);
+            float2 clampedLocalCoord = clamp(localSliceCoord, 0.0f, float2((float)(bounds.z - 1), (float)(bounds.w - 1)));
+            float2 uv = ComputeSliceUvFromLocal(clampedLocalCoord, bounds);
+            float height = HeightmapSlice0.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale;
+
+            switch (sliceIndex)
+            {
+                case 1: height = HeightmapSlice1.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale; break;
+                case 2: height = HeightmapSlice2.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale; break;
+                case 3: height = HeightmapSlice3.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale; break;
+                case 4: height = HeightmapSlice4.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale; break;
+                case 5: height = HeightmapSlice5.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale; break;
+                case 6: height = HeightmapSlice6.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale; break;
+                case 7: height = HeightmapSlice7.SampleLevel(LinearSampler, uv, 0.0f).x * HeightScale; break;
+            }
+
+            return height;
+        }
+
+        float SampleHeightAt(int2 texelCoord, int preferredSliceIndex)
+        {
+            float2 sampleCoord = float2((float)texelCoord.x, (float)texelCoord.y);
+            int sliceIndex = ResolveSliceIndex(sampleCoord, preferredSliceIndex);
+            int4 bounds = GetSliceBounds(sliceIndex);
+            return SampleSliceHeightAt(sliceIndex, ComputeSliceTexelCoord(sampleCoord, bounds));
+        }
+
+        float SampleHeight(float2 sampleCoord, int preferredSliceIndex)
+        {
+            return SampleHeightAt(int2(sampleCoord + 0.5f), preferredSliceIndex);
+        }
+
+        float SampleHeightLinear(float2 sampleCoord, int preferredSliceIndex)
+        {
+            int sliceIndex = ResolveSliceIndex(sampleCoord, preferredSliceIndex);
+            int4 bounds = GetSliceBounds(sliceIndex);
+            float2 localCoord = ComputeSliceLocalCoord(sampleCoord, bounds);
+            return SampleSliceHeightLinear(localCoord, sliceIndex);
         }
     };
 }

@@ -181,10 +181,10 @@ public class EditorUIRenderer : GameSystemBase
             Output = new RenderOutputDescription(PixelFormat.R8G8B8A8_UNorm)
         };
 
-        alphaPipeline = PipelineState.New(device, ref pipelineDesc);
+        alphaPipeline = PipelineState.New(device, pipelineDesc);
 
         pipelineDesc.BlendState = BlendStates.Opaque;
-        opaquePipeline = PipelineState.New(device, ref pipelineDesc);
+        opaquePipeline = PipelineState.New(device, pipelineDesc);
 
         // 创建缓冲区
         const int initialVertexCount = 128;
