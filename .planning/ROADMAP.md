@@ -8,8 +8,9 @@
 
 - [x] **Phase 1: Project Foundation** - Real-time 3D preview with camera navigation
 - [x] **Phase 2: Brush System Core** - Circular brush with size, strength, and falloff
-- [ ] **Phase 2.5: Editor Terrain Rendering** - Simplified terrain rendering with direct PNG loading and automatic splitting
-- [ ] **Phase 3: Height Editing** - Sculpt terrain with raise/lower/smooth/flatten tools
+- [x] **Phase 2.5: Editor Terrain Rendering** - Simplified terrain rendering with direct PNG loading and automatic splitting
+- [x] **Phase 3: Height Editing** - Sculpt terrain with raise/lower/smooth/flatten tools
+- [ ] **Phase 3.5: GPU Height Editing** - Replace CPU editing with GPU compute shaders for better performance
 - [ ] **Phase 4: Undo/Redo System** - Configurable history for all editing operations
 - [ ] **Phase 5: Enhanced Brushes** - Square and noise brush shapes
 - [ ] **Phase 6: Material Management** - Material slots with thumbnails and import
@@ -82,7 +83,7 @@
 
 **Success Criteria** (what must be TRUE):
 1. Heightmaps load directly from PNG files without preprocessing
-2. Terrains up to 16k×16k load as single entity
+2. Terrains up to 16k x 16k load as single entity
 3. Heightmaps over 16k automatically split into grid
 4. LOD system works correctly with shared global LOD map
 5. GPU memory usage matches expectations (512MB per 16k terrain)
@@ -93,7 +94,7 @@
 **Plans List**:
 - [x] 02.5-01-PLAN.md - Editor terrain rendering foundation (EditorTerrainEntity, HeightmapLoader, EditorTerrainQuadTree)
 - [x] 02.5-02-PLAN.md - Multi-terrain splitting support (TerrainSplitter, SplitTerrainConfig)
-- [ ] 02.5-03-PLAN.md - Integration and polish (EditorGame, SceneViewPanel, HeightEditor)
+- [x] 02.5-03-PLAN.md - Integration and polish (EditorGame, SceneViewPanel, HeightEditor)
 
 **UI hint**: no
 
@@ -118,11 +119,39 @@
 **Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 03-01-PLAN.md - Create EditorState, IHeightTool interface, and HeightEditor service skeleton
+- [x] 03-01-PLAN.md - Create EditorState, IHeightTool interface, and HeightEditor service skeleton
 - [x] 03-02-PLAN.md - Implement Raise/Lower/Smooth/Flatten tools with GPU sync
-- [ ] 03-03-PLAN.md - Wire ToolsPanel and SceneViewPanel for editing integration
+- [x] 03-03-PLAN.md - Wire ToolsPanel and SceneViewPanel for editing integration
 
 **UI hint**: yes
+
+---
+
+### Phase 3.5: GPU Height Editing
+
+**Goal**: Replace CPU-based height editing with GPU compute shaders for better performance on large brushes
+
+**Depends on**: Phase 3
+
+**Requirements**: HEIGHT-01, HEIGHT-02, HEIGHT-03, HEIGHT-04 (performance optimization)
+
+**Success Criteria** (what must be TRUE):
+1. Compute shader compiles and dispatches for height editing
+2. All four edit modes (Raise, Lower, Smooth, Flatten) produce correct GPU results
+3. GPU height editing modifies terrain height in real-time
+4. CPU height cache stays synchronized with GPU texture
+5. Multi-slice terrain editing dispatches to correct slices
+
+**Plans**: 3 plans in 3 waves
+
+Plans:
+- [ ] 03.5-01-PLAN.md - Compute shader and dispatcher foundation (TerrainHeightEdit.sdsl, HeightEditComputeDispatcher)
+- [ ] 03.5-02-PLAN.md - GpuHeightEditor service and UAV texture support
+- [ ] 03.5-03-PLAN.md - SceneViewPanel integration and end-to-end testing
+
+**UI hint**: no
+
+**Key Constraint**: GPU editing is a performance optimization, not a feature change - user experience remains identical
 
 ---
 
@@ -130,7 +159,7 @@ Plans:
 
 **Goal**: Users can undo and redo all editing operations with configurable history
 
-**Depends on**: Phase 3
+**Depends on**: Phase 3.5
 
 **Requirements**: UNDO-01, UNDO-02, UNDO-03, UNDO-04, UNDO-05
 
@@ -231,8 +260,9 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Project Foundation | 3/4 | Complete | 2026-03-29 |
 | 2. Brush System Core | 3/3 | Complete | 2026-03-31 |
-| 2.5. Editor Terrain Rendering | 0/3 | Not started | - |
-| 3. Height Editing | 0/3 | Not started | - |
+| 2.5. Editor Terrain Rendering | 3/3 | Complete | 2026-04-01 |
+| 3. Height Editing | 3/3 | Complete | 2026-03-31 |
+| 3.5. GPU Height Editing | 0/3 | Planning | - |
 | 4. Undo/Redo System | 0/5 | Not started | - |
 | 5. Enhanced Brushes | 0/2 | Not started | - |
 | 6. Material Management | 0/3 | Not started | - |
@@ -244,7 +274,7 @@ Plans:
 ## Coverage Summary
 
 - **Total v1 Requirements:** 32
-- **Total Phases:** 9
+- **Total Phases:** 10
 - **Coverage:** 32/32 (100%)
 
 ### Requirement-to-Phase Mapping
@@ -260,10 +290,10 @@ Plans:
 | BRUSH-03 | Phase 2 |
 | BRUSH-06 | Phase 2 |
 | PREV-05 | Phase 2 |
-| HEIGHT-01 | Phase 3 |
-| HEIGHT-02 | Phase 3 |
-| HEIGHT-03 | Phase 3 |
-| HEIGHT-04 | Phase 3 |
+| HEIGHT-01 | Phase 3, Phase 3.5 |
+| HEIGHT-02 | Phase 3, Phase 3.5 |
+| HEIGHT-03 | Phase 3, Phase 3.5 |
+| HEIGHT-04 | Phase 3, Phase 3.5 |
 | UNDO-01 | Phase 4 |
 | UNDO-02 | Phase 4 |
 | UNDO-03 | Phase 4 |
@@ -287,4 +317,4 @@ Plans:
 ---
 
 *Roadmap created: 2026-03-29*
-*Last updated: 2026-03-31 - Phase 3 planned with 3 plans in 3 waves*
+*Last updated: 2026-04-03 - Phase 3.5 planned with 3 plans in 3 waves*
