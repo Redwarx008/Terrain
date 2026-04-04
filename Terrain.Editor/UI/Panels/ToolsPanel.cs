@@ -106,24 +106,21 @@ public class ToolsPanel : PanelBase
 
         drawList.AddRectFilled(new Vector2(x, y), new Vector2(x + width, y + height), bgColor);
 
-        // Icon
+        // Icon - use drawList.AddText to avoid blocking InvisibleButton interaction
         float iconSize = EditorStyle.ScaleValue(20.0f);
         float iconX = x + EditorStyle.ScaleValue(8.0f);
         float iconY = y + (height - iconSize) * 0.5f;
 
+        uint iconColor = isSelected ? ColorPalette.Accent.ToUint() : ColorPalette.TextPrimary.ToUint();
         FontManager.PushIcons();
-        Vector2 textSize = ImGui.CalcTextSize(tool.Icon);
-        FontManager.PopFont();
-
-        ImGui.SetCursorScreenPos(new Vector2(iconX, iconY));
-        FontManager.PushIcons();
-        ImGui.TextColored(isSelected ? ColorPalette.Accent.ToVector4() : ColorPalette.TextPrimary.ToVector4(), tool.Icon);
+        drawList.AddText(new Vector2(iconX, iconY), iconColor, tool.Icon);
         FontManager.PopFont();
 
         // Name
-        ImGui.SameLine();
-        ImGui.SetCursorScreenPos(new Vector2(iconX + iconSize + EditorStyle.ScaleValue(8.0f), y + (height - ImGui.CalcTextSize(tool.Name).Y) * 0.5f));
-        ImGui.TextColored(isSelected ? ColorPalette.TextPrimary.ToVector4() : ColorPalette.TextSecondary.ToVector4(), tool.Name);
+        float nameX = iconX + iconSize + EditorStyle.ScaleValue(8.0f);
+        float nameY = y + (height - ImGui.CalcTextSize(tool.Name).Y) * 0.5f;
+        uint nameColor = isSelected ? ColorPalette.TextPrimary.ToUint() : ColorPalette.TextSecondary.ToUint();
+        drawList.AddText(new Vector2(nameX, nameY), nameColor, tool.Name);
 
         // Tooltip
         if (isHovered && !string.IsNullOrEmpty(tool.Description))
