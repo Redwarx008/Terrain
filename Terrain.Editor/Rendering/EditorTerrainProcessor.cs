@@ -61,15 +61,16 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         // Get CommandList for GPU data upload
         var graphicsContext = Services.GetService<GraphicsContext>();
         var commandList = graphicsContext?.CommandList;
+        Debug.Assert(commandList != null, "CommandList should be available during Draw");
 
         foreach (var pair in ComponentDatas)
         {
             var entity = pair.Key.TerrainEntity;
 
-            // Sync dirty height data to GPU
-            if (entity != null && commandList != null)
+            // Sync dirty height data to GPU only when there are actual changes
+            if (entity != null && entity.HasAnyDirtySlice)
             {
-                entity.SyncToGpu(commandList);
+                entity.SyncToGpu(commandList!);
             }
 
             UpdateRenderObject(pair.Key, pair.Value, graphicsDevice);

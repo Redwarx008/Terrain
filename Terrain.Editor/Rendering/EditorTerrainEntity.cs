@@ -33,6 +33,11 @@ public sealed class EditorTerrainEntity : IDisposable
     public SplitTerrainConfig SplitConfig { get; private set; } = null!;
     public IReadOnlyList<EditorTerrainSlice> Slices => slices;
 
+    /// <summary>
+    /// Returns true if any slice has dirty data that needs to be synced to GPU.
+    /// </summary>
+    public bool HasAnyDirtySlice => slices.Exists(s => s.IsDirty);
+
     public EditorMinMaxErrorMap[]? MinMaxErrorMaps { get; private set; }
     public int MaxLod { get; private set; }
     public int BaseChunkSize { get; private set; }
@@ -52,6 +57,10 @@ public sealed class EditorTerrainEntity : IDisposable
     public float MaxScreenSpaceErrorPixels { get; private set; } = 8.0f;
 
     private readonly List<EditorTerrainSlice> slices = new();
+
+    // Cached bounds values for incremental updates
+    private float currentMinHeight = float.MaxValue;
+    private float currentMaxHeight = float.MinValue;
 
     private EditorTerrainEntity() { }
 
@@ -156,7 +165,41 @@ public sealed class EditorTerrainEntity : IDisposable
             }
         }
 
-        CalculateBounds();
+        // Incremental bounds update - only check the modified region
+        UpdateBoundsForRegion(minX, minZ, maxX, maxZ);
+    }
+
+    /// <summary>
+    /// Updates bounds incrementally by only checking the modified region.
+    /// This is O(region area) instead of O(total heightmap area).
+    /// </summary>
+    private void UpdateBoundsForRegion(int minX, int minZ, int maxX, int maxZ)
+    {
+        Debug.Assert(HeightDataCache != null);
+
+        // Find min/max heights in the modified region only
+        float regionMin = float.MaxValue;
+        float regionMax = float.MinValue;
+
+        for (int z = minZ; z <= maxZ; z++)
+        {
+            int rowOffset = z * HeightmapWidth;
+            for (int x = minX; x <= maxX; x++)
+            {
+                float h = HeightDataCache![rowOffset + x] * HeightSampleNormalization * HeightScale;
+                regionMin = MathF.Min(regionMin, h);
+                regionMax = MathF.Max(regionMax, h);
+            }
+        }
+
+        // Update cached bounds
+        currentMinHeight = MathF.Min(currentMinHeight, regionMin);
+        currentMaxHeight = MathF.Max(currentMaxHeight, regionMax);
+
+        // Update Bounds structure
+        Bounds = new BoundingBox(
+            new Vector3(WorldOffset.X, WorldOffset.Y + currentMinHeight, WorldOffset.Z),
+            new Vector3(WorldOffset.X + HeightmapWidth - 1, WorldOffset.Y + currentMaxHeight, WorldOffset.Z + HeightmapHeight - 1));
     }
 
     public void UpdateChunkNodeData(CommandList commandList, TerrainChunkNode[] data, int renderCount, int nodeCount)
@@ -233,7 +276,7 @@ public sealed class EditorTerrainEntity : IDisposable
             }
         }
 
-        CalculateBounds();
+        // Note: Bounds are updated incrementally in MarkHeightRegionDirty, no need to recalculate here
     }
 
     private void CopySliceRegionData(EditorTerrainSlice slice,
@@ -399,6 +442,8 @@ public sealed class EditorTerrainEntity : IDisposable
         if (HeightDataCache == null || HeightDataCache.Length == 0)
         {
             Bounds = new BoundingBox(WorldOffset, WorldOffset);
+            currentMinHeight = 0.0f;
+            currentMaxHeight = 0.0f;
             return;
         }
 
@@ -413,6 +458,10 @@ public sealed class EditorTerrainEntity : IDisposable
 
         if (minHeight == float.MaxValue)
             minHeight = 0.0f;
+
+        // Cache the min/max heights for incremental updates
+        currentMinHeight = minHeight;
+        currentMaxHeight = maxHeight;
 
         Bounds = new BoundingBox(
             new Vector3(WorldOffset.X, WorldOffset.Y + minHeight, WorldOffset.Z),
