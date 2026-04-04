@@ -146,7 +146,13 @@ public sealed class EditorTerrainEntity : IDisposable
         {
             if (slice.Intersects(minX, minZ, maxX, maxZ))
             {
-                slice.IsDirty = true;
+                // Convert global coordinates to slice-local coordinates
+                int localMinX = Math.Max(0, minX - slice.StartSampleX);
+                int localMinZ = Math.Max(0, minZ - slice.StartSampleZ);
+                int localMaxX = Math.Min(slice.Width - 1, maxX - slice.StartSampleX);
+                int localMaxZ = Math.Min(slice.Height - 1, maxZ - slice.StartSampleZ);
+
+                slice.MarkDirtyRegion(localMinX, localMinZ, localMaxX, localMaxZ);
             }
         }
 
@@ -176,21 +182,73 @@ public sealed class EditorTerrainEntity : IDisposable
             if (!slice.IsDirty || slice.Texture == null)
                 continue;
 
-            int sampleCount = slice.Width * slice.Height;
-            ushort[] uploadBuffer = ArrayPool<ushort>.Shared.Rent(sampleCount);
-            try
+            if (slice.HasDirtyRegion)
             {
-                CopySliceData(slice, uploadBuffer);
-                slice.Texture.SetData(commandList, new ReadOnlySpan<ushort>(uploadBuffer, 0, sampleCount));
-                slice.IsDirty = false;
+                // Partial region upload for efficiency
+                int regionWidth = slice.DirtyMaxX - slice.DirtyMinX + 1;
+                int regionHeight = slice.DirtyMaxZ - slice.DirtyMinZ + 1;
+                int sampleCount = regionWidth * regionHeight;
+
+                ushort[] uploadBuffer = ArrayPool<ushort>.Shared.Rent(sampleCount);
+                try
+                {
+                    CopySliceRegionData(slice, slice.DirtyMinX, slice.DirtyMinZ,
+                        regionWidth, regionHeight, uploadBuffer);
+
+                    // ResourceRegion uses exclusive bounds for Right/Bottom (pixel + 1)
+                    var region = new ResourceRegion(
+                        left: slice.DirtyMinX,
+                        top: slice.DirtyMinZ,
+                        front: 0,
+                        right: slice.DirtyMinX + regionWidth,
+                        bottom: slice.DirtyMinZ + regionHeight,
+                        back: 1);
+
+                    slice.Texture.SetData(commandList,
+                        new ReadOnlySpan<ushort>(uploadBuffer, 0, sampleCount),
+                        arrayIndex: 0, mipLevel: 0, region);
+
+                    slice.ClearDirtyRegion();
+                }
+                finally
+                {
+                    ArrayPool<ushort>.Shared.Return(uploadBuffer);
+                }
             }
-            finally
+            else
             {
-                ArrayPool<ushort>.Shared.Return(uploadBuffer);
+                // Fallback to full slice upload
+                int sampleCount = slice.Width * slice.Height;
+                ushort[] uploadBuffer = ArrayPool<ushort>.Shared.Rent(sampleCount);
+                try
+                {
+                    CopySliceData(slice, uploadBuffer);
+                    slice.Texture.SetData(commandList, new ReadOnlySpan<ushort>(uploadBuffer, 0, sampleCount));
+                    slice.IsDirty = false;
+                }
+                finally
+                {
+                    ArrayPool<ushort>.Shared.Return(uploadBuffer);
+                }
             }
         }
 
         CalculateBounds();
+    }
+
+    private void CopySliceRegionData(EditorTerrainSlice slice,
+        int localStartX, int localStartZ, int regionWidth, int regionHeight, ushort[] destination)
+    {
+        Debug.Assert(HeightDataCache != null);
+        Debug.Assert(destination.Length >= regionWidth * regionHeight);
+
+        for (int row = 0; row < regionHeight; row++)
+        {
+            int globalZ = slice.StartSampleZ + localStartZ + row;
+            int srcOffset = globalZ * HeightmapWidth + slice.StartSampleX + localStartX;
+            int dstOffset = row * regionWidth;
+            Array.Copy(HeightDataCache!, srcOffset, destination, dstOffset, regionWidth);
+        }
     }
 
     private void CreateSliceTextures(GraphicsDevice graphicsDevice)
@@ -405,6 +463,14 @@ public sealed class EditorTerrainSlice
     public Texture Texture { get; }
     public bool IsDirty { get; set; }
 
+    /// <summary>
+    /// Dirty region tracking for partial GPU uploads (slice-local coordinates).
+    /// </summary>
+    public int DirtyMinX { get; set; } = int.MaxValue;
+    public int DirtyMinZ { get; set; } = int.MaxValue;
+    public int DirtyMaxX { get; set; } = int.MinValue;
+    public int DirtyMaxZ { get; set; } = int.MinValue;
+
     public int Index => Info.Index;
     public int StartSampleX => Info.StartSampleX;
     public int StartSampleZ => Info.StartSampleZ;
@@ -417,6 +483,35 @@ public sealed class EditorTerrainSlice
     {
         return minX <= EndSampleX && maxX >= StartSampleX && minZ <= EndSampleZ && maxZ >= StartSampleZ;
     }
+
+    /// <summary>
+    /// Marks a region as dirty, merging with any existing dirty region.
+    /// </summary>
+    public void MarkDirtyRegion(int localMinX, int localMinZ, int localMaxX, int localMaxZ)
+    {
+        IsDirty = true;
+        DirtyMinX = Math.Min(DirtyMinX, localMinX);
+        DirtyMinZ = Math.Min(DirtyMinZ, localMinZ);
+        DirtyMaxX = Math.Max(DirtyMaxX, localMaxX);
+        DirtyMaxZ = Math.Max(DirtyMaxZ, localMaxZ);
+    }
+
+    /// <summary>
+    /// Clears the dirty region tracking after GPU upload.
+    /// </summary>
+    public void ClearDirtyRegion()
+    {
+        IsDirty = false;
+        DirtyMinX = int.MaxValue;
+        DirtyMinZ = int.MaxValue;
+        DirtyMaxX = int.MinValue;
+        DirtyMaxZ = int.MinValue;
+    }
+
+    /// <summary>
+    /// Returns true if a dirty region has been tracked.
+    /// </summary>
+    public bool HasDirtyRegion => DirtyMinX <= DirtyMaxX && DirtyMinZ <= DirtyMaxZ;
 }
 
 [StructLayout(LayoutKind.Sequential)]

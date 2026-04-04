@@ -370,13 +370,15 @@ public static class HeightmapLoader
         if (heightData == null || heightData.Length == 0)
             throw new ArgumentNullException(nameof(heightData));
 
-        // Create texture with initial data (Stride will handle upload)
+        // Create texture with Default usage to allow partial region updates via SetData
         var texture = Texture.New2D(
             graphicsDevice,
             width,
             height,
             PixelFormat.R16_UNorm,
-            heightData);
+            heightData,
+            TextureFlags.ShaderResource,
+            GraphicsResourceUsage.Default);
 
         Log.Info($"Created heightmap texture: {width}x{height}");
         return texture;

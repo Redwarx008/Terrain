@@ -58,8 +58,20 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
             return;
         }
 
+        // Get CommandList for GPU data upload
+        var graphicsContext = Services.GetService<GraphicsContext>();
+        var commandList = graphicsContext?.CommandList;
+
         foreach (var pair in ComponentDatas)
         {
+            var entity = pair.Key.TerrainEntity;
+
+            // Sync dirty height data to GPU
+            if (entity != null && commandList != null)
+            {
+                entity.SyncToGpu(commandList);
+            }
+
             UpdateRenderObject(pair.Key, pair.Value, graphicsDevice);
         }
     }
