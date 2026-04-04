@@ -44,7 +44,7 @@ public class SceneViewPanel : PanelBase
 
     // Render target display (placeholder approach until native pointer integration)
     public Texture? SceneRenderTarget { get; set; }
-    public Func<Texture, ImTextureRef>? TextureIdProvider { get; set; }
+    public Func<Texture, ImTextureRef>? TextureIdProvider { get; set; } = ImGuiExtension.GetTextureKey;
     public bool IsViewportHovered { get; private set; }
     public bool IsViewportInteracting { get; private set; }
 

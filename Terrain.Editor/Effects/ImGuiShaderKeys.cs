@@ -7,7 +7,8 @@ namespace Terrain.Editor
 {
     public static class ImGuiShaderKeys
     {
-        public static readonly ObjectParameterKey<Texture> tex = ParameterKeys.NewObject<Texture>();
         public static readonly ValueParameterKey<Matrix> proj = ParameterKeys.NewValue<Matrix>();
+        public static readonly ObjectParameterKey<Texture> tex = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> TexSampler = ParameterKeys.NewObject<SamplerState>();
     }
 }

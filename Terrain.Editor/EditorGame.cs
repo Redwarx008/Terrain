@@ -94,7 +94,7 @@ public class EditorGame : Game
 
             mainWindow.Viewport.InitializeTerrainSupport(GraphicsDevice, editorScene, Input, defaultTerrainTexture);
             mainWindow.Viewport.Camera = FindEditorCamera();
-            mainWindow.Viewport.TextureIdProvider = uiRenderer.GetOrCreateTextureId;
+            mainWindow.Viewport.TextureIdProvider = ImGuiExtension.GetTextureKey;
             mainWindow.Viewport.HeightmapLoaded += OnViewportHeightmapLoaded;
             mainWindow.Viewport.RefreshCameraForRendering();
             UpdateViewportDiagnostics();

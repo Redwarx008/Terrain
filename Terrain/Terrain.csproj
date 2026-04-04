@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\VirtualTextureLayout.cs" Link="Shared\VirtualTextureLayout.cs" />
-    <Compile Update="Effects\Build\TerrainBuildLodLookup.sdsl.cs">
+    <!--<Compile Update="Effects\Build\TerrainBuildLodLookup.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
@@ -30,6 +30,6 @@
     </None>
     <None Update="Resources\Grid_Gray_128x128.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    </None>-->
   </ItemGroup>
 </Project>

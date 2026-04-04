@@ -167,14 +167,6 @@ public class MainWindow : ControlBase
 
         var io = ImGui.GetIO();
         Vector2 hostWindowSize = io.DisplaySize;
-        if (gameWindow != null)
-        {
-            var clientBounds = gameWindow.ClientBounds;
-            if (clientBounds.Width > 0 && clientBounds.Height > 0)
-            {
-                hostWindowSize = new Vector2(clientBounds.Width, clientBounds.Height);
-            }
-        }
 
         UpdateLayoutMetrics();
         UpdateChromeMetrics();
