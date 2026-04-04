@@ -27,7 +27,9 @@ public class EditorUIRenderer : GameSystemBase
     public readonly ImGuiContextPtr ImGuiContext;
 
     private ImGuiIOPtr io;
+    private ImGuiPlatformIOPtr platform;
     private float scale = 1.0f;
+    private bool isFirstFrame = true;
 
     // 依赖项
     readonly InputManager? input;
@@ -44,28 +46,15 @@ public class EditorUIRenderer : GameSystemBase
     VertexBufferBinding vertexBinding;
     IndexBufferBinding indexBinding;
     EffectInstance? shader;
-    Texture? fontTexture;
     bool frameBegun;
 
+    // ImGui 管理的纹理 (字体图集等)
+    private readonly Dictionary<ImTextureID, Texture> managedTextures = new();
+
+    // 输入映射
     private Dictionary<Keys, ImGuiKey> keyMap = new();
-    private readonly Dictionary<Texture, nint> textureToId = new();
-    private readonly Dictionary<nint, Texture> idToTexture = new();
-    private nint nextTextureId = 1;
 
     public Action? OnRender { get; set; }
-
-    public ImTextureRef GetOrCreateTextureId(Texture texture)
-    {
-        if (!textureToId.TryGetValue(texture, out nint textureId))
-        {
-            textureId = nextTextureId++;
-            textureToId[texture] = textureId;
-            idToTexture[textureId] = texture;
-        }
-
-        // 创建 ImTextureRef 并设置 TexID
-        return new ImTextureRef { TexID = Unsafe.BitCast<nint, ImTextureID>(textureId) };
-    }
 
     public float Scale
     {
@@ -78,7 +67,7 @@ public class EditorUIRenderer : GameSystemBase
             scale = value;
             FontManager.UpdateScale(scale);
             EditorStyle.Apply(scale);
-            CreateFontTexture();
+            RebuildFonts();
         }
     }
 
@@ -99,6 +88,7 @@ public class EditorUIRenderer : GameSystemBase
         ImGui.SetCurrentContext(ImGuiContext);
 
         io = ImGui.GetIO();
+        platform = ImGui.GetPlatformIO();
 
         // 设置输入
         SetupInput();
@@ -106,8 +96,8 @@ public class EditorUIRenderer : GameSystemBase
         // 创建设备资源
         CreateDeviceObjects();
 
-        // 创建字体纹理
-        CreateFontTexture();
+        // 设置字体
+        SetupFonts();
 
         // 强制启用更新和绘制
         Enabled = true;
@@ -122,6 +112,11 @@ public class EditorUIRenderer : GameSystemBase
     {
         io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
+
+        // 告诉 ImGui 渲染器支持动态纹理创建
+        io.BackendFlags |= ImGuiBackendFlags.RendererHasTextures;
+        platform.RendererTextureMaxWidth = 4096;
+        platform.RendererTextureMaxHeight = 4096;
 
         // 键盘映射
         keyMap[Keys.Tab] = ImGuiKey.Tab;
@@ -146,6 +141,57 @@ public class EditorUIRenderer : GameSystemBase
         keyMap[Keys.Z] = ImGuiKey.Z;
     }
 
+    private unsafe void SetupFonts()
+    {
+        ImGui.SetCurrentContext(ImGuiContext);
+
+        // 添加默认字体（使用系统字体，带缩放）
+        float scaledFontSize = FontManager.RegularSize * scale;
+        string fontsDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
+
+        // 尝试加载 Segoe UI 作为默认字体
+        string defaultFontPath = Path.Combine(fontsDirectory, "segoeui.ttf");
+        ImFontPtr defaultFont;
+        if (File.Exists(defaultFontPath))
+        {
+            defaultFont = io.Fonts.AddFontFromFileTTF(defaultFontPath, scaledFontSize);
+        }
+        else
+        {
+            // 回退到 ImGui 默认字体
+            defaultFont = io.Fonts.AddFontDefault();
+        }
+        FontManager.Initialize(defaultFont);
+
+        // 添加图标字体
+        string iconFontPath = Path.Combine(fontsDirectory, "segmdl2.ttf");
+        if (!File.Exists(iconFontPath))
+        {
+            iconFontPath = Path.Combine(fontsDirectory, "SegoeIcons.ttf");
+        }
+        if (File.Exists(iconFontPath))
+        {
+            var iconFont = io.Fonts.AddFontFromFileTTF(
+                iconFontPath,
+                FontManager.IconSize * scale,
+                FontManager.GetIconGlyphRanges());
+            FontManager.SetIconFont(iconFont);
+        }
+    }
+
+    private unsafe void RebuildFonts()
+    {
+        ImGui.SetCurrentContext(ImGuiContext);
+        io.Fonts.Clear();
+
+        SetupFonts();
+
+        // 清理旧的托管纹理
+        foreach (var texture in managedTextures.Values)
+            texture.Dispose();
+        managedTextures.Clear();
+    }
+
     private void CreateDeviceObjects()
     {
         commandList = context.CommandList;
@@ -154,7 +200,7 @@ public class EditorUIRenderer : GameSystemBase
         shader = new EffectInstance(effectSystem.LoadEffect("ImGuiShader").WaitForResult());
         shader.UpdateEffect(device);
 
-        // 顶点布局 - 使用Stride的Vector2类型
+        // 顶点布局
         vertexLayout = new VertexDeclaration(
             VertexElement.Position<Vector2>(),
             VertexElement.TextureCoordinate<Vector2>(),
@@ -198,57 +244,21 @@ public class EditorUIRenderer : GameSystemBase
         vertexBinding = new VertexBufferBinding(vertexBuffer, vertexLayout, 0);
     }
 
-    private unsafe void CreateFontTexture()
-    {
-        ImGui.SetCurrentContext(ImGuiContext);
-        fontTexture?.Dispose();
-
-        // 只有第一次才添加字体
-        // Rebuild the atlas whenever the UI scale changes.
-        io.Fonts.Clear();
-
-        // Keep the default font for regular text and labels.
-        var defaultFont = io.Fonts.AddFontDefault();
-        FontManager.Initialize(defaultFont);
-
-        string fontsDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
-        string iconFontPath = Path.Combine(fontsDirectory, "segmdl2.ttf");
-        if (!File.Exists(iconFontPath))
-        {
-            iconFontPath = Path.Combine(fontsDirectory, "SegoeIcons.ttf");
-        }
-        if (File.Exists(iconFontPath))
-        {
-            // Load the icon font as a separate face. Merging via ImFontConfig was
-            // causing a native startup assertion with this ImGui binding.
-            var iconFont = io.Fonts.AddFontFromFileTTF(
-                iconFontPath,
-                FontManager.IconSize * scale,
-                FontManager.GetIconGlyphRanges());
-            FontManager.SetIconFont(iconFont);
-
-            // 初始化字体管理器
-        }
-
-        // 获取字体图集纹理数据
-        var texData = io.Fonts.TexData;
-        int width = texData.Width;
-        int height = texData.Height;
-        byte* pixelData = (byte*)texData.Pixels;
-
-        fontTexture = Texture.New2D(device, width, height, PixelFormat.R8G8B8A8_UNorm, TextureFlags.ShaderResource);
-        fontTexture.SetData(commandList, new DataPointer(pixelData, width * height * 4));
-    }
-
     public override void Update(GameTime gameTime)
     {
         ImGui.SetCurrentContext(ImGuiContext);
+
+        var deltaTime = (float)gameTime.Elapsed.TotalSeconds;
+        if (isFirstFrame)
+        {
+            isFirstFrame = false;
+            deltaTime = 1f / 60f;
+        }
 
         // 更新显示尺寸
         var surfaceSize = Game.Window.ClientBounds;
         if (Game.Window.IsMinimized || surfaceSize.Width <= 1 || surfaceSize.Height <= 1)
         {
-            // 最小化时窗口可能退化到 1x1，直接跳过 ImGui 帧，避免后续渲染链使用非法尺寸。
             io.DisplaySize = Vector2.Zero;
             frameBegun = false;
             input?.TextInput.DisableTextInput();
@@ -257,26 +267,18 @@ public class EditorUIRenderer : GameSystemBase
 
         Scale = GetUiScale();
         io.DisplaySize = new System.Numerics.Vector2(surfaceSize.Width, surfaceSize.Height);
-
-        // 确保DeltaTime为正数
-        var deltaTime = (float)gameTime.TimePerFrame.TotalSeconds;
-        io.DeltaTime = deltaTime > 0 ? deltaTime : 1f / 60f;
+        io.DeltaTime = deltaTime;
 
         // 处理输入
         if (input != null && input.HasMouse && !input.IsMousePositionLocked)
         {
             var mousePos = input.AbsoluteMousePosition;
-            io.MousePos = new System.Numerics.Vector2(mousePos.X, mousePos.Y);
+            io.AddMousePosEvent(mousePos.X, mousePos.Y);
 
-            // 文本输入
             if (io.WantTextInput)
-            {
                 input.TextInput.EnabledTextInput();
-            }
             else
-            {
                 input.TextInput.DisableTextInput();
-            }
 
             // 处理输入事件
             foreach (var ev in input.Events)
@@ -292,28 +294,26 @@ public class EditorUIRenderer : GameSystemBase
                             io.AddKeyEvent(imGuiKey, input.IsKeyDown(kev.Key));
                         break;
                     case MouseWheelEvent mw:
-                        io.MouseWheel += mw.WheelDelta;
+                        io.AddMouseWheelEvent(0, mw.WheelDelta);
                         break;
                 }
             }
 
-            // 鼠标按钮
-            io.MouseDown[0] = input.IsMouseButtonDown(MouseButton.Left);
-            io.MouseDown[1] = input.IsMouseButtonDown(MouseButton.Right);
-            io.MouseDown[2] = input.IsMouseButtonDown(MouseButton.Middle);
+            io.AddMouseButtonEvent(0, input.IsMouseButtonDown(MouseButton.Left));
+            io.AddMouseButtonEvent(1, input.IsMouseButtonDown(MouseButton.Right));
+            io.AddMouseButtonEvent(2, input.IsMouseButtonDown(MouseButton.Middle));
 
-            // 修饰键
-            io.KeyAlt = input.IsKeyDown(Keys.LeftAlt) || input.IsKeyDown(Keys.RightAlt);
-            io.KeyShift = input.IsKeyDown(Keys.LeftShift) || input.IsKeyDown(Keys.RightShift);
-            io.KeyCtrl = input.IsKeyDown(Keys.LeftCtrl) || input.IsKeyDown(Keys.RightCtrl);
-            io.KeySuper = input.IsKeyDown(Keys.LeftWin) || input.IsKeyDown(Keys.RightWin);
+            io.AddKeyEvent(ImGuiKey.ModAlt, input.IsKeyDown(Keys.LeftAlt) || input.IsKeyDown(Keys.RightAlt));
+            io.AddKeyEvent(ImGuiKey.ModShift, input.IsKeyDown(Keys.LeftShift) || input.IsKeyDown(Keys.RightShift));
+            io.AddKeyEvent(ImGuiKey.ModCtrl, input.IsKeyDown(Keys.LeftCtrl) || input.IsKeyDown(Keys.RightCtrl));
+            io.AddKeyEvent(ImGuiKey.ModSuper, input.IsKeyDown(Keys.LeftWin) || input.IsKeyDown(Keys.RightWin));
         }
 
         // 开始新帧
         ImGui.NewFrame();
         frameBegun = true;
 
-        // 调用自定义渲染回调（在NewFrame之后，Render之前）
+        // 调用自定义渲染回调
         OnRender?.Invoke();
     }
 
@@ -321,8 +321,6 @@ public class EditorUIRenderer : GameSystemBase
     {
         nint hwnd = Game.Window.NativeWindow?.Handle ?? nint.Zero;
         float dpiScale = WindowInterop.GetWindowScaleFactor(hwnd);
-
-        // 量化到 0.05，避免连续拖动窗口或跨屏时频繁重建字体纹理。
         return MathF.Round(dpiScale * 20.0f) / 20.0f;
     }
 
@@ -333,12 +331,96 @@ public class EditorUIRenderer : GameSystemBase
 
         ImGui.SetCurrentContext(ImGuiContext);
         ImGui.Render();
-        RenderDrawData(ImGui.GetDrawData());
+        var drawData = ImGui.GetDrawData();
+
+        // 处理纹理更新
+        ProcessTextureUpdates(drawData);
+
+        RenderDrawData(drawData);
         frameBegun = false;
+
+        // 清理用户纹理缓存
+        ImGuiExtension.ClearTextures();
     }
 
     /// <summary>
-    /// 在窗口最小化或恢复冷却期内主动终止当前 ImGui 帧，避免出现“本帧已开始但不会进入 EndDraw”的悬空状态。
+    /// 处理 ImGui 纹理更新请求
+    /// </summary>
+    private unsafe void ProcessTextureUpdates(ImDrawDataPtr drawData)
+    {
+        if (drawData.Handle->Textures == null) return;
+
+        var textures = drawData.Textures;
+        for (int i = 0; i < textures.Size; i++)
+        {
+            ImTextureDataPtr textureData = textures.Data[i];
+            switch (textureData.Status)
+            {
+                case ImTextureStatus.WantCreate:
+                    CreateManagedTexture(textureData);
+                    break;
+                case ImTextureStatus.WantUpdates:
+                    UpdateManagedTexture(textureData);
+                    break;
+                case ImTextureStatus.WantDestroy:
+                    DestroyManagedTexture(textureData);
+                    break;
+            }
+        }
+    }
+
+    private unsafe void CreateManagedTexture(ImTextureDataPtr textureData)
+    {
+        var pixelFormat = textureData.Format == ImTextureFormat.Rgba32
+            ? PixelFormat.R8G8B8A8_UNorm
+            : PixelFormat.R8_UNorm;
+
+        var newTexture = Texture.New2D(device, textureData.Width, textureData.Height, pixelFormat, TextureFlags.ShaderResource);
+        newTexture.SetData(commandList, new DataPointer((nint)textureData.Pixels, textureData.GetSizeInBytes()));
+
+        var managedId = textureData.GetTexID();
+        textureData.SetTexID(managedId);
+        managedTextures[managedId] = newTexture;
+        textureData.SetStatus(ImTextureStatus.Ok);
+    }
+
+    private unsafe void UpdateManagedTexture(ImTextureDataPtr textureData)
+    {
+        var texId = textureData.GetTexID();
+        if (managedTextures.TryGetValue(texId, out var existing))
+        {
+            var pixelFormat = textureData.Format == ImTextureFormat.Rgba32
+                ? PixelFormat.R8G8B8A8_UNorm
+                : PixelFormat.R8_UNorm;
+
+            if (existing.Width != textureData.Width || existing.Height != textureData.Height)
+            {
+                existing.Dispose();
+                var newTexture = Texture.New2D(device, textureData.Width, textureData.Height, pixelFormat, TextureFlags.ShaderResource);
+                newTexture.SetData(commandList, new DataPointer((nint)textureData.Pixels, textureData.GetSizeInBytes()));
+                managedTextures[texId] = newTexture;
+            }
+            else
+            {
+                existing.SetData(commandList, new DataPointer((nint)textureData.Pixels, textureData.GetSizeInBytes()));
+            }
+        }
+        textureData.SetStatus(ImTextureStatus.Ok);
+    }
+
+    private void DestroyManagedTexture(ImTextureDataPtr textureData)
+    {
+        var texId = textureData.GetTexID();
+        if (managedTextures.TryGetValue(texId, out var texture))
+        {
+            texture.Dispose();
+            managedTextures.Remove(texId);
+        }
+        textureData.SetStatus(ImTextureStatus.Ok);
+    }
+
+    /// <summary>
+    /// 在窗口最小化或恢复冷却期内主动终止当前 ImGui 帧
     /// </summary>
     public void SuspendFrame()
     {
@@ -396,21 +478,24 @@ public class EditorUIRenderer : GameSystemBase
     {
         if (drawData.CmdListsCount == 0) return;
 
-        // 视图投影矩阵
         var surfaceSize = Game.Window.ClientBounds;
         if (surfaceSize.Width <= 1 || surfaceSize.Height <= 1)
             return;
 
         var projMatrix = Matrix.OrthoRH(surfaceSize.Width, -surfaceSize.Height, -1, 1);
 
-        // 检查并更新缓冲区
         CheckBuffers(drawData);
         UpdateBuffers(drawData);
 
-        // 设置管线
         commandList.SetVertexBuffer(0, vertexBinding.Buffer, 0, Unsafe.SizeOf<ImDrawVert>());
         commandList.SetIndexBuffer(indexBinding.Buffer, 0, false);
+
+        // 获取第一个托管纹理作为初始绑定
         Texture? currentTexture = null;
+        foreach (var t in managedTextures.Values) { currentTexture = t; break; }
+        if (currentTexture != null)
+            shader!.Parameters.Set(ImGuiShaderKeys.tex, currentTexture);
+
         bool? currentTextureOpaque = null;
 
         int vtxOffset = 0;
@@ -424,7 +509,6 @@ public class EditorUIRenderer : GameSystemBase
             {
                 var cmd = cmdList.CmdBuffer[i];
 
-                // 设置裁剪区域
                 commandList.SetScissorRectangle(new Rectangle(
                     (int)cmd.ClipRect.X,
                     (int)cmd.ClipRect.Y,
@@ -432,31 +516,29 @@ public class EditorUIRenderer : GameSystemBase
                     (int)(cmd.ClipRect.W - cmd.ClipRect.Y)
                 ));
 
-                // 设置投影矩阵
-                // TexRef 是 ImTextureRef 类型，需要获取其 TexID
-                ImTextureRef texRef = cmd.TexRef;
-                Texture? texture = ResolveTextureFromRef(texRef);
-                if (!ReferenceEquals(currentTexture, texture))
+                // 解析纹理
+                var texId = cmd.TexRef.GetTexID();
+                if (managedTextures.TryGetValue(texId, out var managedTexture))
                 {
-                    shader!.Parameters.Set(ImGuiShaderKeys.tex, texture);
-                    currentTexture = texture;
+                    shader!.Parameters.Set(ImGuiShaderKeys.tex, managedTexture);
+                    currentTexture = managedTexture;
+                }
+                else if (ImGuiExtension.TryGetTexture((ulong)(nint)texId, out var userTexture) && userTexture != null)
+                {
+                    shader!.Parameters.Set(ImGuiShaderKeys.tex, userTexture);
+                    currentTexture = userTexture;
                 }
 
-                bool isOpaqueTexture = texture != null && (texture.Flags & TextureFlags.RenderTarget) != 0;
+                bool isOpaqueTexture = currentTexture != null && (currentTexture.Flags & TextureFlags.RenderTarget) != 0;
                 if (currentTextureOpaque != isOpaqueTexture)
                 {
-                    // Scene render targets should be composited as fully opaque images. If we render them
-                    // through the normal ImGui alpha pipeline, any zero/undefined alpha coming out of the
-                    // offscreen scene path gets blended with the black editor background and the horizon
-                    // turns unnaturally black compared to Terrain.exe.
                     commandList.SetPipelineState(isOpaqueTexture ? opaquePipeline : alphaPipeline);
                     currentTextureOpaque = isOpaqueTexture;
                 }
 
-                shader.Parameters.Set(ImGuiShaderKeys.proj, ref projMatrix);
+                shader!.Parameters.Set(ImGuiShaderKeys.proj, ref projMatrix);
                 shader.Apply(context);
 
-                // 绘制
                 commandList.DrawIndexed((int)cmd.ElemCount, idxOffset, vtxOffset);
                 idxOffset += (int)cmd.ElemCount;
             }
@@ -465,37 +547,12 @@ public class EditorUIRenderer : GameSystemBase
         }
     }
 
-    private Texture? ResolveTextureFromRef(ImTextureRef texRef)
-    {
-        // ImTextureRef 的 TexID 为 0 表示使用字体纹理
-        var texId = texRef.TexID;
-        nint handle = Unsafe.BitCast<ImTextureID, nint>(texId);
-        if (handle == 0)
-        {
-            return fontTexture;
-        }
-
-        return idToTexture.TryGetValue(handle, out Texture? texture)
-            ? texture
-            : fontTexture;
-    }
-
-    private Texture? ResolveTexture(ImTextureID textureId)
-    {
-        nint handle = Unsafe.BitCast<ImTextureID, nint>(textureId);
-        if (handle == 0)
-        {
-            return fontTexture;
-        }
-
-        return idToTexture.TryGetValue(handle, out Texture? texture)
-            ? texture
-            : fontTexture;
-    }
-
     protected override void Destroy()
     {
-        fontTexture?.Dispose();
+        foreach (var texture in managedTextures.Values)
+            texture.Dispose();
+        managedTextures.Clear();
+
         vertexBinding.Buffer?.Dispose();
         indexBinding.Buffer?.Dispose();
         alphaPipeline?.Dispose();
