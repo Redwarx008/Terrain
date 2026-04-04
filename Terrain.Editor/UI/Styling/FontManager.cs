@@ -57,17 +57,17 @@ public static class FontManager
 
     public static void PushBold()
     {
-        ImGui.PushFont(Bold);
+        ImGui.PushFont(Bold, RegularSize * currentScale);
     }
 
     public static void PushItalic()
     {
-        ImGui.PushFont(Italic);
+        ImGui.PushFont(Italic, RegularSize * currentScale);
     }
 
     public static void PushIcons()
     {
-        ImGui.PushFont(Icons);
+        ImGui.PushFont(Icons, IconSize * currentScale);
     }
 
     public static void PopFont()

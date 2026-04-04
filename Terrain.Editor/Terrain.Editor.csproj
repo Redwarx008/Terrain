@@ -13,15 +13,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
-    <PackageReference Include="Stride.Engine" Version="4.3.0.2507" />
-    <PackageReference Include="Stride.Video" Version="4.3.0.2507" />
-    <PackageReference Include="Stride.Physics" Version="4.3.0.2507" />
-    <PackageReference Include="Stride.Navigation" Version="4.3.0.2507" />
-    <PackageReference Include="Stride.Particles" Version="4.3.0.2507" />
-    <PackageReference Include="Stride.UI" Version="4.3.0.2507" />
-    <PackageReference Include="Stride.Core.Assets.CompilerApp" Version="4.3.0.2507" IncludeAssets="build;buildTransitive" />
-    <PackageReference Include="Stride.CommunityToolkit.ImGui" Version="1.0.0-preview.62" />
+    <PackageReference Include="SixLabors.ImageSharp" />
+    <PackageReference Include="Stride.Engine" />
+    <PackageReference Include="Stride.Video" />
+    <PackageReference Include="Stride.Physics" />
+    <PackageReference Include="Stride.Navigation" />
+    <PackageReference Include="Stride.Particles" />
+    <PackageReference Include="Stride.UI" />
+    <PackageReference Include="Stride.Core.Assets.CompilerApp" IncludeAssets="build;buildTransitive" />
+    <PackageReference Include="Hexa.NET.ImGui" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,7 +33,7 @@
     <Compile Include="..\Shared\VirtualTextureLayout.cs" Link="Shared\VirtualTextureLayout.cs" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!--<ItemGroup>
     <Compile Update="Effects\EditorTerrainDiffuse.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
@@ -59,9 +59,9 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
-  </ItemGroup>
+  </ItemGroup>-->
 
-  <ItemGroup>
+  <!--<ItemGroup>
     <None Update="Effects\EditorTerrainDiffuse.sdsl">
       <LastGenOutput>EditorTerrainDiffuse.sdsl.cs</LastGenOutput>
     </None>
@@ -77,6 +77,6 @@
     <None Update="Effects\EditorTerrainHeightStream.sdsl">
       <LastGenOutput>EditorTerrainHeightStream.sdsl.cs</LastGenOutput>
     </None>
-  </ItemGroup>
+  </ItemGroup>-->
 
 </Project>

@@ -289,7 +289,7 @@ public class ConsolePanel : PanelBase
         }
 
         // 双击显示详情
-        if (ImGui.IsItemHovered() && ImGuiP.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
         {
             LogEntryDoubleClicked?.Invoke(this, new LogEntryEventArgs { Entry = entry });
         }

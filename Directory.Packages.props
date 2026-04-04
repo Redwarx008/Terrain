@@ -1,0 +1,23 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Stride 核心包 - 本地版本 -->
+    <PackageVersion Include="Stride.Engine" Version="4.3.0.1" />
+    <PackageVersion Include="Stride.Video" Version="4.3.0.1" />
+    <PackageVersion Include="Stride.Physics" Version="4.3.0.1" />
+    <PackageVersion Include="Stride.Navigation" Version="4.3.0.1" />
+    <PackageVersion Include="Stride.Particles" Version="4.3.0.1" />
+    <PackageVersion Include="Stride.UI" Version="4.3.0.1" />
+    <PackageVersion Include="Stride.Core.Assets.CompilerApp" Version="4.3.0.1" />
+    <!-- 第三方包 - NuGet 版本 -->
+    <PackageVersion Include="Hexa.NET.ImGui" Version="2.2.9" />
+    <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageVersion Include="Avalonia" Version="11.3.9" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.3.9" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.9" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.9" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+</Project>

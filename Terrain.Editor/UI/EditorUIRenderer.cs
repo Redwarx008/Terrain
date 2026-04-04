@@ -5,7 +5,6 @@ using Stride.Engine;
 using Stride.Graphics;
 using Stride.Games;
 using Stride.Rendering;
-using Stride.CommunityToolkit.ImGui;
 using System;
 using Terrain.Editor.UI.Styling;
 using Stride.Core;
@@ -16,6 +15,7 @@ using System.IO;
 using Stride.Core.Mathematics;
 using StrideBuffer = Stride.Graphics.Buffer;
 using Terrain.Editor.Platform;
+using Terrain.Editor;
 
 namespace Terrain.Editor.UI;
 
@@ -54,7 +54,7 @@ public class EditorUIRenderer : GameSystemBase
 
     public Action? OnRender { get; set; }
 
-    public ImTextureID GetOrCreateTextureId(Texture texture)
+    public ImTextureRef GetOrCreateTextureId(Texture texture)
     {
         if (!textureToId.TryGetValue(texture, out nint textureId))
         {
@@ -63,7 +63,8 @@ public class EditorUIRenderer : GameSystemBase
             idToTexture[textureId] = texture;
         }
 
-        return Unsafe.BitCast<nint, ImTextureID>(textureId);
+        // 创建 ImTextureRef 并设置 TexID
+        return new ImTextureRef { TexID = Unsafe.BitCast<nint, ImTextureID>(textureId) };
     }
 
     public float Scale
@@ -208,7 +209,6 @@ public class EditorUIRenderer : GameSystemBase
 
         // Keep the default font for regular text and labels.
         var defaultFont = io.Fonts.AddFontDefault();
-        defaultFont.Scale = scale;
         FontManager.Initialize(defaultFont);
 
         string fontsDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
@@ -230,12 +230,14 @@ public class EditorUIRenderer : GameSystemBase
             // 初始化字体管理器
         }
 
-        byte* pixelData;
-        int width, height, bytesPerPixel;
-        io.Fonts.GetTexDataAsRGBA32(&pixelData, &width, &height, &bytesPerPixel);
+        // 获取字体图集纹理数据
+        var texData = io.Fonts.TexData;
+        int width = texData.Width;
+        int height = texData.Height;
+        byte* pixelData = (byte*)texData.Pixels;
 
         fontTexture = Texture.New2D(device, width, height, PixelFormat.R8G8B8A8_UNorm, TextureFlags.ShaderResource);
-        fontTexture.SetData(commandList, new DataPointer(pixelData, width * height * bytesPerPixel));
+        fontTexture.SetData(commandList, new DataPointer(pixelData, width * height * 4));
     }
 
     public override void Update(GameTime gameTime)
@@ -431,7 +433,9 @@ public class EditorUIRenderer : GameSystemBase
                 ));
 
                 // 设置投影矩阵
-                Texture? texture = ResolveTexture(cmd.TextureId);
+                // TexRef 是 ImTextureRef 类型，需要获取其 TexID
+                ImTextureRef texRef = cmd.TexRef;
+                Texture? texture = ResolveTextureFromRef(texRef);
                 if (!ReferenceEquals(currentTexture, texture))
                 {
                     shader!.Parameters.Set(ImGuiShaderKeys.tex, texture);
@@ -459,6 +463,21 @@ public class EditorUIRenderer : GameSystemBase
 
             vtxOffset += cmdList.VtxBuffer.Size;
         }
+    }
+
+    private Texture? ResolveTextureFromRef(ImTextureRef texRef)
+    {
+        // ImTextureRef 的 TexID 为 0 表示使用字体纹理
+        var texId = texRef.TexID;
+        nint handle = Unsafe.BitCast<ImTextureID, nint>(texId);
+        if (handle == 0)
+        {
+            return fontTexture;
+        }
+
+        return idToTexture.TryGetValue(handle, out Texture? texture)
+            ? texture
+            : fontTexture;
     }
 
     private Texture? ResolveTexture(ImTextureID textureId)

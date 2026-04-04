@@ -1,0 +1,33 @@
+// ImGui shader for rendering UI
+shader ImGuiShader : ShaderBase, Texturing
+{
+    // -------------------------------------
+    // streams
+    // -------------------------------------
+    stage stream float4 Position : POSITION;
+    stage stream float2 TexCoord : TEXCOORD;
+    stage stream float4 Color : COLOR;
+
+    cbuffer PerDraw
+    {
+        stage float4x4 proj;
+    }
+
+    // -------------------------------------
+    // VertexShader
+    // -------------------------------------
+    stage override void VSMain()
+    {
+        streams.ShadingPosition = mul(streams.Position, proj);
+        streams.TexCoord = TexCoord;
+    }
+
+    // -------------------------------------
+    // PixelShader
+    // -------------------------------------
+    stage override void PSMain()
+    {
+        float4 texColor = tex.Sample(Sampler, streams.TexCoord);
+        streams.ColorTarget = texColor * streams.Color;
+    }
+};
