@@ -145,6 +145,8 @@ public class MainWindow : ControlBase
         RightPanel.BrushSelected += (s, e) => Console.LogInfo($"Brush selected: {e.BrushName}");
         RightPanel.BrushParamsChanged += (s, e) => Console.LogInfo($"Brush {e.Param} changed to {e.Value:F2}");
         Assets.TextureSlotSelected += (s, e) => Console.LogInfo($"Texture slot selected: {e.SlotIndex}");
+        Assets.TextureImportRequested += OnTextureImportRequested;
+        Assets.TextureClearRequested += OnTextureClearRequested;
         Assets.FoliageSelected += (s, e) => Console.LogInfo($"Foliage selected: {e.Item.Name}");
         Assets.LayerSelected += (s, e) => Console.LogInfo($"Layer selected: {e.Layer.Name}");
 
@@ -537,6 +539,44 @@ public class MainWindow : ControlBase
         Assets.SetMode(mode);
 
         Console.LogInfo($"Mode changed to: {mode}");
+    }
+
+    private void OnTextureImportRequested(object? sender, TextureImportEventArgs e)
+    {
+        nint hwnd = GetNativeWindowHandle();
+        string filter = "Image Files (*.png;*.jpg;*.tga;*.bmp)|*.png;*.jpg;*.jpeg;*.tga;*.bmp";
+        string title = e.TextureType == TextureType.Albedo ? "Import Albedo Texture" : "Import Normal Texture";
+
+        if (FileDialog.ShowOpenDialog(hwnd, filter, title, out string? filePath))
+        {
+            var texture = TextureImporter.ImportFromFile(filePath, graphicsDevice!, TextureSize.Size512);
+            if (texture != null)
+            {
+                if (e.TextureType == TextureType.Albedo)
+                    MaterialSlotManager.Instance.SetAlbedoTexture(e.SlotIndex, texture, filePath, TextureSize.Size512);
+                else
+                    MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath);
+
+                Console.LogInfo($"Imported {e.TextureType} to slot {e.SlotIndex}: {filePath}");
+            }
+            else
+            {
+                Console.LogError($"Failed to import texture: {filePath}");
+            }
+        }
+    }
+
+    private void OnTextureClearRequested(object? sender, TextureSlotEventArgs e)
+    {
+        if (e.SlotIndex >= 0 && e.SlotIndex < 256)
+        {
+            MaterialSlotManager.Instance.ClearSlot(e.SlotIndex);
+            Console.LogInfo($"Cleared slot {e.SlotIndex}");
+        }
+        else
+        {
+            Console.LogError($"Invalid slot index: {e.SlotIndex}");
+        }
     }
 
 }

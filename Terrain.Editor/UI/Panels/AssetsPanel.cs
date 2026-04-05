@@ -3,7 +3,9 @@
 using Hexa.NET.ImGui;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
+using Terrain.Editor.Services;
 using Terrain.Editor.UI.Styling;
 
 namespace Terrain.Editor.UI.Panels;
@@ -40,6 +42,8 @@ public class AssetsPanel : PanelBase
     #region 事件
 
     public event EventHandler<TextureSlotSelectedEventArgs>? TextureSlotSelected;
+    public event EventHandler<TextureImportEventArgs>? TextureImportRequested;
+    public event EventHandler<TextureSlotEventArgs>? TextureClearRequested;
     public event EventHandler<FoliageSelectedEventArgs>? FoliageSelected;
     public event EventHandler<LayerSelectedEventArgs>? LayerSelected;
 
@@ -47,7 +51,6 @@ public class AssetsPanel : PanelBase
 
     #region 私有字段
 
-    private List<TextureSlot> textureSlots = new();
     private List<FoliageItem> foliageItems = new();
     private List<HeightLayer> heightLayers = new();
 
@@ -59,22 +62,8 @@ public class AssetsPanel : PanelBase
         Icon = Icons.Folder;
         ShowTitleBar = true;
 
-        InitializeTextureSlots();
         InitializeFoliageItems();
         InitializeHeightLayers();
-    }
-
-    private void InitializeTextureSlots()
-    {
-        for (int i = 0; i < 256; i++)
-        {
-            textureSlots.Add(new TextureSlot
-            {
-                Index = i,
-                Name = i == 0 ? "Grass" : i == 1 ? "Dirt" : i == 2 ? "Rock" : i == 3 ? "Snow" : $"Texture {i}",
-                IsEmpty = i >= 4
-            });
-        }
     }
 
     private void InitializeFoliageItems()
@@ -208,103 +197,134 @@ public class AssetsPanel : PanelBase
 
     private void RenderTextureSlots()
     {
-        // Search bar
-        RenderTextureSearch();
-
-        ImGui.Spacing();
-
-        // Texture grid
         GridTileLayout tileLayout = GridTileRenderer.CreateLayout(64.0f, 4.0f);
         float availableWidth = ContentRect.Width - EditorStyle.ScaleValue(8.0f);
         int itemsPerRow = GridTileRenderer.GetItemsPerRow(availableWidth, tileLayout);
 
         int visibleCount = 0;
-        for (int i = 0; i < textureSlots.Count; i++)
+        var activeSlots = MaterialSlotManager.Instance.GetActiveSlots().ToList();
+
+        // 渲染已导入纹理的槽位
+        foreach (var slot in activeSlots)
         {
-            var slot = textureSlots[i];
-
-            // Only show first 16 slots by default, or if searching
-            if (i >= 16 && string.IsNullOrEmpty(searchBuffer))
-                continue;
-
-            if (!string.IsNullOrEmpty(searchBuffer) &&
-                !slot.Name.Contains(searchBuffer, StringComparison.OrdinalIgnoreCase))
-                continue;
-
             GridTileRenderer.AdvanceRowLayout(visibleCount, itemsPerRow, tileLayout);
-
-            RenderTextureSlot(slot, i, tileLayout);
+            RenderMaterialSlot(slot, tileLayout);
             visibleCount++;
         }
 
-        // Show more button
-        ImGui.Spacing();
-        ImGui.SetCursorScreenPos(new Vector2(ContentRect.X + 8, ImGui.GetCursorScreenPos().Y));
-        ImGui.TextDisabled($"Showing {Math.Min(16, textureSlots.Count)} of {textureSlots.Count} slots");
+        // 渲染 "+" 导入入口（始终显示）
+        GridTileRenderer.AdvanceRowLayout(visibleCount, itemsPerRow, tileLayout);
+        RenderAddTextureTile(tileLayout);
     }
 
-    private string searchBuffer = "";
-
-    private void RenderTextureSearch()
+    private void RenderMaterialSlot(MaterialSlot slot, GridTileLayout tileLayout)
     {
-        ImGui.SetCursorScreenPos(new Vector2(ContentRect.X + 4, ContentRect.Y + 4));
-        ImGui.SetNextItemWidth(ContentRect.Width - 8);
-        ImGui.InputTextWithHint("##texture_search", "Search textures...", ref searchBuffer, 256);
-    }
+        bool isSelected = SelectedTextureSlot == slot.Index;
 
-    private void RenderTextureSlot(TextureSlot slot, int index, GridTileLayout tileLayout)
-    {
-        bool isSelected = SelectedTextureSlot == index;
-
-        GridTileContext tile = GridTileRenderer.BeginTile($"##tex_slot_{index}", tileLayout, isSelected);
+        GridTileContext tile = GridTileRenderer.BeginTile($"##tex_slot_{slot.Index}", tileLayout, isSelected);
         Vector2 previewPos = GridTileRenderer.GetSquareContentMin(tile.Cursor, tileLayout);
         Vector2 previewSize = GridTileRenderer.GetSquareContentSize(tileLayout);
 
-        // Texture preview (placeholder)
-        if (!slot.IsEmpty)
+        // 纹理预览 - 使用 DrawList 绘制，避免干扰 ImGui 布局
+        if (slot.AlbedoTexture != null)
         {
-            tile.DrawList.AddRectFilled(previewPos, new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y),
-                ColorPalette.Background.ToUint());
-
-            // Placeholder pattern
-            tile.DrawList.AddText(new Vector2(previewPos.X + tileLayout.Inset, previewPos.Y + previewSize.Y * 0.4f),
-                ColorPalette.TextSecondary.ToUint(), $"#{index}");
+            // 使用 DrawList 的 AddImage 方法绘制纹理
+            var texRef = ImGuiExtension.GetTextureKey(slot.AlbedoTexture);
+            tile.DrawList.AddImage(texRef, previewPos, new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y));
         }
         else
         {
-            // Empty slot indicator
-            Vector2 center = GridTileRenderer.GetSquareContentCenter(tile.Cursor, tileLayout);
-            Vector2 iconPos = new Vector2(center.X - FontManager.ScaledIconSize * 0.5f, center.Y - FontManager.ScaledIconSize * 0.5f);
-            ImGui.AddText(tile.DrawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos, ColorPalette.TextSecondary.ToUint(), Icons.Plus);
+            // 有路径但无 GPU 纹理 - 显示占位
+            tile.DrawList.AddRectFilled(previewPos,
+                new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y),
+                ColorPalette.Background.ToUint());
+            tile.DrawList.AddText(
+                new Vector2(previewPos.X + tileLayout.Inset, previewPos.Y + previewSize.Y * 0.4f),
+                ColorPalette.TextSecondary.ToUint(),
+                $"#{slot.Index}");
         }
 
         GridTileRenderer.DrawLabel(tile.DrawList, tile.Cursor, tileLayout, slot.Name);
 
-        // Handle click
+        // 点击选中
         if (ImGui.IsItemClicked())
         {
-            SelectedTextureSlot = index;
-            TextureSlotSelected?.Invoke(this, new TextureSlotSelectedEventArgs { SlotIndex = index, Slot = slot });
+            SelectedTextureSlot = slot.Index;
+            TextureSlotSelected?.Invoke(this, new TextureSlotSelectedEventArgs { SlotIndex = slot.Index });
         }
 
         // Tooltip
         if (tile.IsHovered)
         {
-            ImGui.SetTooltip($"{slot.Name}\nIndex: {index}");
+            ImGui.SetTooltip($"{slot.Name}\nIndex: {slot.Index}");
         }
 
-        // Right click menu
-        if (ImGui.BeginPopupContextItem($"##tex_context_{index}"))
+        // 右键菜单
+        if (ImGui.BeginPopupContextItem($"##tex_context_{slot.Index}"))
         {
-            if (ImGui.MenuItem("Import Texture"))
+            if (ImGui.BeginMenu("Import Texture"))
             {
-                // TODO: Import texture
+                if (ImGui.MenuItem("Albedo"))
+                    TextureImportRequested?.Invoke(this, new TextureImportEventArgs { SlotIndex = slot.Index, TextureType = TextureType.Albedo });
+                if (ImGui.MenuItem("Normal"))
+                    TextureImportRequested?.Invoke(this, new TextureImportEventArgs { SlotIndex = slot.Index, TextureType = TextureType.Normal });
+                ImGui.EndMenu();
             }
-            if (ImGui.MenuItem("Clear"))
+            ImGui.Separator();
+            if (ImGui.MenuItem("Delete"))
+                TextureClearRequested?.Invoke(this, new TextureSlotEventArgs { SlotIndex = slot.Index });
+            ImGui.EndPopup();
+        }
+    }
+
+    private void RenderAddTextureTile(GridTileLayout tileLayout)
+    {
+        GridTileContext tile = GridTileRenderer.BeginTile("##add_texture", tileLayout, false);
+        Vector2 previewPos = GridTileRenderer.GetSquareContentMin(tile.Cursor, tileLayout);
+        Vector2 previewSize = GridTileRenderer.GetSquareContentSize(tileLayout);
+
+        // 背景
+        tile.DrawList.AddRectFilled(previewPos,
+            new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y),
+            ColorPalette.Background.ToUint());
+
+        // 边框
+        tile.DrawList.AddRect(previewPos,
+            new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y),
+            ColorPalette.Border.ToUint());
+
+        // + 图标居中
+        Vector2 center = GridTileRenderer.GetSquareContentCenter(tile.Cursor, tileLayout);
+        Vector2 iconPos = new Vector2(
+            center.X - FontManager.ScaledIconSize * 0.5f,
+            center.Y - FontManager.ScaledIconSize * 0.5f);
+        ImGui.AddText(tile.DrawList, FontManager.Icons, FontManager.ScaledIconSize, iconPos,
+            ColorPalette.TextSecondary.ToUint(), Icons.Plus);
+
+        GridTileRenderer.DrawLabel(tile.DrawList, tile.Cursor, tileLayout, "Add Texture");
+
+        // 点击触发导入
+        if (ImGui.IsItemClicked())
+        {
+            int nextSlot = MaterialSlotManager.Instance.NextAvailableSlotIndex;
+            if (nextSlot >= 0)
             {
-                slot.IsEmpty = true;
-                slot.Name = $"Texture {index}";
+                TextureImportRequested?.Invoke(this, new TextureImportEventArgs { SlotIndex = nextSlot, TextureType = TextureType.Albedo });
             }
+            else
+            {
+                ImGui.OpenPopup("##no_slots_available");
+            }
+        }
+
+        if (tile.IsHovered)
+            ImGui.SetTooltip("Import new texture");
+
+        // 槽位已满提示
+        if (ImGui.BeginPopup("##no_slots_available"))
+        {
+            ImGui.Text("All 256 texture slots are in use.");
+            ImGui.Text("Please delete unused textures.");
             ImGui.EndPopup();
         }
     }
@@ -386,14 +406,6 @@ public class AssetsPanel : PanelBase
 
 #region 数据类
 
-public class TextureSlot
-{
-    public int Index { get; set; }
-    public string Name { get; set; } = "";
-    public bool IsEmpty { get; set; } = true;
-    public string? TexturePath { get; set; }
-}
-
 public class FoliageItem
 {
     public string Name { get; set; } = "";
@@ -412,10 +424,29 @@ public class HeightLayer
 
 #region 事件参数
 
+/// <summary>
+/// 纹理类型。
+/// </summary>
+public enum TextureType
+{
+    Albedo,
+    Normal
+}
+
 public class TextureSlotSelectedEventArgs : EventArgs
 {
     public int SlotIndex { get; set; }
-    public TextureSlot Slot { get; set; } = null!;
+}
+
+public class TextureImportEventArgs : EventArgs
+{
+    public int SlotIndex { get; set; }
+    public TextureType TextureType { get; set; }
+}
+
+public class TextureSlotEventArgs : EventArgs
+{
+    public int SlotIndex { get; set; }
 }
 
 public class FoliageSelectedEventArgs : EventArgs
