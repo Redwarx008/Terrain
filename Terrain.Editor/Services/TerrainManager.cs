@@ -194,6 +194,23 @@ public sealed class TerrainManager : IDisposable
         return height * HeightSampleNormalization * DefaultHeightScale;
     }
 
+    /// <summary>
+    /// 获取指定位置的原始高度值 (ushort 0-65535)。
+    /// 用于 Flatten 等需要与 HeightData 数组直接比较的工具。
+    /// </summary>
+    public float? GetRawHeightAtPosition(float worldX, float worldZ)
+    {
+        if (heightDataCache == null || currentHeightmapInfo == null)
+            return null;
+
+        int x = (int)MathF.Round(worldX);
+        int z = (int)MathF.Round(worldZ);
+        if (x < 0 || x >= heightDataWidth || z < 0 || z >= heightDataHeight)
+            return null;
+
+        return heightDataCache[z * heightDataWidth + x];
+    }
+
     public bool IsPositionOnTerrain(float worldX, float worldZ)
     {
         if (heightDataCache == null || currentHeightmapInfo == null)

@@ -14,6 +14,10 @@ namespace Terrain.Editor.Services;
 /// </summary>
 public sealed class HeightEditor
 {
+    // Height conversion constants (must match TerrainManager)
+    public const float DefaultHeightScale = 100.0f;
+    public const float WorldToUshort = ushort.MaxValue / DefaultHeightScale; // 655.35
+
     private static readonly Lazy<HeightEditor> _instance = new(() => new());
 
     /// <summary>
@@ -39,7 +43,7 @@ public sealed class HeightEditor
         // D-13: For Flatten tool, sample target height at click position
         if (toolName == "Flatten")
         {
-            flattenTargetHeight = terrainManager.GetHeightAtPosition(worldPosition.X, worldPosition.Z);
+            flattenTargetHeight = terrainManager.GetRawHeightAtPosition(worldPosition.X, worldPosition.Z);
         }
 
         // Create appropriate tool instance
@@ -144,8 +148,8 @@ internal sealed class RaiseTool : IHeightTool
     public void Apply(ref HeightEditContext context)
     {
         // D-07: deltaHeight = Strength * FrameTime * Direction (+1 for Raise)
-        // Scale to ushort range (0-65535) - assuming HeightScale=100 world units
-        float deltaHeight = context.Strength * context.FrameTime * 1000f;
+        // Convert world units to ushort: Strength=1 → 50 world units/sec
+        float deltaHeight = context.Strength * 50f * HeightEditor.WorldToUshort * context.FrameTime;
 
         int radius = (int)MathF.Ceiling(context.BrushRadius);
 
@@ -192,7 +196,8 @@ internal sealed class LowerTool : IHeightTool
     public void Apply(ref HeightEditContext context)
     {
         // D-07: deltaHeight = Strength * FrameTime * Direction (-1 for Lower)
-        float deltaHeight = -context.Strength * context.FrameTime * 1000f;
+        // Convert world units to ushort: Strength=1 → 50 world units/sec
+        float deltaHeight = -context.Strength * 50f * HeightEditor.WorldToUshort * context.FrameTime;
 
         int radius = (int)MathF.Ceiling(context.BrushRadius);
 
