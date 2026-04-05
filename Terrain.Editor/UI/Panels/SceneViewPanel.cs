@@ -23,6 +23,16 @@ using Color4 = Stride.Core.Mathematics.Color4;
 namespace Terrain.Editor.UI.Panels;
 
 /// <summary>
+/// 编辑模式
+/// </summary>
+public enum EditorMode
+{
+    Sculpt,
+    Paint,
+    Foliage
+}
+
+/// <summary>
 /// 场景视图面板 - 3D地形渲染视图
 /// </summary>
 public class SceneViewPanel : PanelBase
@@ -41,6 +51,9 @@ public class SceneViewPanel : PanelBase
     // Height editing state
     private bool isEditing;
     private StrideVector3? currentHitPoint;
+
+    // Current editing mode
+    private EditorMode currentEditMode = EditorMode.Sculpt;
 
     // Render target display (placeholder approach until native pointer integration)
     public Texture? SceneRenderTarget { get; set; }
@@ -402,8 +415,10 @@ public class SceneViewPanel : PanelBase
         // Project world points to screen and draw
         var drawList = ImGui.GetWindowDrawList();
 
-        // D-20: Tool color coding - get color from EditorState
-        var toolColor = EditorState.Instance.GetToolColor();
+        // D-20: Tool color coding - get color from EditorState based on mode
+        var toolColor = currentEditMode == EditorMode.Paint
+            ? EditorState.Instance.GetPaintToolColor()
+            : EditorState.Instance.GetToolColor();
         uint outerColor = toolColor.WithAlpha(0.5f).ToUint();
         uint innerColor = toolColor.WithAlpha(0.3f).ToUint();
 
@@ -448,18 +463,32 @@ public class SceneViewPanel : PanelBase
         if (!terrainManager.HasTerrainLoaded)
             return;
 
-        var editorState = EditorState.Instance;
-        var heightEditor = HeightEditor.Instance;
-
         // Use currentHitPoint from RenderBrushPreview
         if (currentHitPoint == null)
             return;
+
+        // Route to appropriate editor based on mode
+        switch (currentEditMode)
+        {
+            case EditorMode.Sculpt:
+                UpdateHeightEditing(io);
+                break;
+            case EditorMode.Paint:
+                UpdatePaintEditing(io);
+                break;
+        }
+    }
+
+    private void UpdateHeightEditing(ImGuiIOPtr io)
+    {
+        var editorState = EditorState.Instance;
+        var heightEditor = HeightEditor.Instance;
 
         // Check for edit start (D-02: left mouse down)
         if (io.MouseDown[0] && !isEditing)
         {
             isEditing = true;
-            heightEditor.BeginStroke(editorState.CurrentTool.ToString(), currentHitPoint.Value, terrainManager);
+            heightEditor.BeginStroke(editorState.CurrentHeightTool.ToString(), currentHitPoint!.Value, terrainManager);
         }
 
         // Apply edit during drag (D-01, D-03)
@@ -467,7 +496,7 @@ public class SceneViewPanel : PanelBase
         {
             // Get delta time for frame-rate independent editing
             float deltaTime = (float)io.DeltaTime;
-            heightEditor.ApplyStroke(currentHitPoint.Value, terrainManager, deltaTime);
+            heightEditor.ApplyStroke(currentHitPoint!.Value, terrainManager, deltaTime);
         }
 
         // End edit on release (D-02)
@@ -476,6 +505,48 @@ public class SceneViewPanel : PanelBase
             isEditing = false;
             heightEditor.EndStroke();
         }
+    }
+
+    private void UpdatePaintEditing(ImGuiIOPtr io)
+    {
+        var editorState = EditorState.Instance;
+        var paintEditor = PaintEditor.Instance;
+        var materialIndices = terrainManager.MaterialIndices;
+
+        if (materialIndices == null)
+            return;
+
+        // Check for edit start
+        if (io.MouseDown[0] && !isEditing)
+        {
+            isEditing = true;
+            paintEditor.BeginStroke(editorState.CurrentPaintTool.ToString());
+        }
+
+        // Apply edit during drag
+        if (isEditing && io.MouseDown[0] && currentHitPoint != null)
+        {
+            paintEditor.ApplyStroke(
+                currentHitPoint.Value,
+                materialIndices,
+                terrainManager.HeightCacheWidth,
+                terrainManager.HeightCacheHeight);
+        }
+
+        // End edit on release
+        if (!io.MouseDown[0] && isEditing)
+        {
+            isEditing = false;
+            paintEditor.EndStroke();
+        }
+    }
+
+    /// <summary>
+    /// Sets the current editing mode.
+    /// </summary>
+    public void SetEditMode(EditorMode mode)
+    {
+        currentEditMode = mode;
     }
 
     private CameraComponent? GetActiveCamera()

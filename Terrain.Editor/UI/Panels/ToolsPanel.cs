@@ -132,10 +132,14 @@ public class ToolsPanel : PanelBase
         if (ImGui.IsItemClicked())
         {
             SelectedTool = tool.Name;
-            // D-18: Update EditorState when tool is selected
+            // Update EditorState when tool is selected
             if (Enum.TryParse<HeightTool>(tool.Name, out var heightTool))
             {
-                EditorState.Instance.CurrentTool = heightTool;
+                EditorState.Instance.CurrentHeightTool = heightTool;
+            }
+            else if (Enum.TryParse<PaintTool>(tool.Name, out var paintTool))
+            {
+                EditorState.Instance.CurrentPaintTool = paintTool;
             }
             ToolSelected?.Invoke(this, new ToolSelectedEventArgs { Tool = tool });
         }
@@ -158,7 +162,10 @@ public class ToolsPanel : PanelBase
     /// </summary>
     private void OnEditorToolChanged(object? sender, EventArgs e)
     {
-        SelectedTool = EditorState.Instance.CurrentTool.ToString();
+        // Update selected tool based on current mode
+        SelectedTool = CurrentMode == EditorMode.Paint
+            ? EditorState.Instance.CurrentPaintTool.ToString()
+            : EditorState.Instance.CurrentHeightTool.ToString();
     }
 
     public override void Dispose()

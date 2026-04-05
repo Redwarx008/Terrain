@@ -7,16 +7,6 @@ using Terrain.Editor.UI.Styling;
 
 namespace Terrain.Editor.UI.Panels;
 
-/// <summary>
-/// 编辑器模式
-/// </summary>
-public enum EditorMode
-{
-    Sculpt,
-    Paint,
-    Foliage
-}
-
 public class ToolbarPanel : PanelBase
 {
     public EditorMode CurrentMode { get; set; } = EditorMode.Sculpt;

@@ -1,4 +1,5 @@
 #nullable enable
+using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
@@ -39,6 +40,11 @@ public sealed class TerrainManager : IDisposable
     private ushort[]? heightDataCache;
     private int heightDataWidth;
     private int heightDataHeight;
+
+    /// <summary>
+    /// 材质索引图，存储每个像素的材质槽位索引。
+    /// </summary>
+    public MaterialIndexMap? MaterialIndices { get; private set; }
 
     private TerrainComponent? terrainComponent;
     private string? currentTerrainPath;
@@ -116,6 +122,9 @@ public sealed class TerrainManager : IDisposable
             currentHeightmapInfo = info;
             currentTerrainPath = heightmapPath;
 
+            // 初始化材质索引图
+            MaterialIndices = new MaterialIndexMap(heightDataWidth, heightDataHeight);
+
             var sceneEntity = new Entity("EditorTerrain")
             {
                 new EditorTerrainComponent
@@ -170,6 +179,7 @@ public sealed class TerrainManager : IDisposable
         heightDataCache = null;
         heightDataWidth = 0;
         heightDataHeight = 0;
+        MaterialIndices = null;
     }
 
     public BoundingBox GetTerrainBounds()
@@ -239,6 +249,12 @@ public sealed class TerrainManager : IDisposable
         foreach (var entity in terrainEntities)
         {
             entity.SyncToGpu(commandList);
+        }
+
+        // 同步材质索引图
+        if (MaterialIndices != null && terrainEntities.Count > 0)
+        {
+            terrainEntities[0].SyncMaterialIndexMapToGpu(commandList, MaterialIndices.GetRawData());
         }
     }
 
@@ -313,6 +329,121 @@ public sealed class TerrainManager : IDisposable
         defaultDiffuseTexture?.Dispose();
         heightDataCache = null;
     }
+
+    #region 项目持久化
+
+    /// <summary>
+    /// 保存项目。
+    /// </summary>
+    public void SaveProject()
+    {
+        var projectManager = ProjectManager.Instance;
+        if (!projectManager.IsProjectOpen)
+            return;
+
+        var config = new ProjectConfig
+        {
+            HeightmapPath = currentTerrainPath,
+            MaterialSlots = SaveMaterialSlotConfigs(),
+            DefaultTextureSize = TextureSize.Size512
+        };
+
+        // 保存材质索引图
+        if (MaterialIndices != null)
+        {
+            string indexPath = projectManager.GetMaterialIndexPath("terrain");
+            SaveMaterialIndexMap(MaterialIndices, indexPath);
+        }
+
+        projectManager.SaveConfig(config);
+    }
+
+    private List<MaterialSlotConfig> SaveMaterialSlotConfigs()
+    {
+        var configs = new List<MaterialSlotConfig>();
+        foreach (var slot in MaterialSlotManager.Instance.GetActiveSlots())
+        {
+            configs.Add(new MaterialSlotConfig
+            {
+                Index = slot.Index,
+                Name = slot.Name,
+                AlbedoTexturePath = slot.AlbedoTexturePath,
+                NormalTexturePath = slot.NormalTexturePath,
+                TilingScale = slot.TilingScale,
+                TextureSize = TextureSize.Size512
+            });
+        }
+        return configs;
+    }
+
+    private void SaveMaterialIndexMap(MaterialIndexMap map, string path)
+    {
+        using var image = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.L8>(map.Width, map.Height);
+        for (int y = 0; y < map.Height; y++)
+        {
+            for (int x = 0; x < map.Width; x++)
+            {
+                byte index = map.GetIndex(x, y);
+                image[x, y] = new SixLabors.ImageSharp.PixelFormats.L8(index);
+            }
+        }
+        image.SaveAsPng(path);
+    }
+
+    /// <summary>
+    /// 加载项目。
+    /// </summary>
+    public void LoadProject(string projectPath)
+    {
+        var projectManager = ProjectManager.Instance;
+        if (!projectManager.OpenProject(projectPath))
+            return;
+
+        var config = projectManager.LoadConfig();
+        if (config == null)
+            return;
+
+        // 恢复材质槽位
+        foreach (var slotConfig in config.MaterialSlots)
+        {
+            var slot = MaterialSlotManager.Instance[slotConfig.Index];
+            slot.Name = slotConfig.Name;
+            slot.TilingScale = slotConfig.TilingScale;
+
+            if (!string.IsNullOrEmpty(slotConfig.AlbedoTexturePath))
+            {
+                string fullPath = Path.IsPathRooted(slotConfig.AlbedoTexturePath)
+                    ? slotConfig.AlbedoTexturePath
+                    : Path.Combine(projectManager.MaterialsPath, slotConfig.AlbedoTexturePath);
+                slot.AlbedoTexturePath = fullPath;
+            }
+        }
+
+        // 加载高度图
+        if (!string.IsNullOrEmpty(config.HeightmapPath))
+        {
+            _ = LoadTerrainAsync(config.HeightmapPath);
+        }
+    }
+
+    private MaterialIndexMap? LoadMaterialIndexMap(string path)
+    {
+        if (!File.Exists(path))
+            return null;
+
+        using var image = HeightmapImage.Load<L8>(path);
+        var map = new MaterialIndexMap(image.Width, image.Height);
+        for (int y = 0; y < image.Height; y++)
+        {
+            for (int x = 0; x < image.Width; x++)
+            {
+                map.SetIndex(x, y, image[x, y].PackedValue);
+            }
+        }
+        return map;
+    }
+
+    #endregion
 }
 
 public sealed class TerrainLoadedEventArgs : EventArgs

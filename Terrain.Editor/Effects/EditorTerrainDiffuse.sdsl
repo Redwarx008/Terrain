@@ -6,6 +6,14 @@ namespace Terrain.Editor
         {
             stage Texture2D DefaultDiffuseTexture;
             stage SamplerState TerrainDiffuseRepeatSampler;
+
+            // 材质索引图 (R8_UInt)
+            stage Texture2D<uint> MaterialIndexMap;
+            stage SamplerState MaterialIndexSampler;
+
+            // 材质纹理数组
+            stage Texture2DArray MaterialAlbedoArray;
+            stage SamplerState MaterialAlbedoSampler;
         }
 
         cbuffer PerMaterial
@@ -14,6 +22,10 @@ namespace Terrain.Editor
             [Color]
             stage float4 BaseColor;
             stage float2 HeightmapDimensionsInSamples;
+
+            // 材质参数
+            stage int MaterialArraySize;
+            stage float MaterialTilingScale;
         }
 
         float3 CalculateNormal(float2 sampleCoord, int preferredSliceIndex)
@@ -23,6 +35,45 @@ namespace Terrain.Editor
             float up = SampleHeightLinear(sampleCoord + float2(0.0f, -1.0f), preferredSliceIndex);
             float down = SampleHeightLinear(sampleCoord + float2(0.0f, 1.0f), preferredSliceIndex);
             return normalize(float3(left - right, 2.0f, up - down));
+        }
+
+        // 手动双线性采样获取 4 个相邻索引
+        uint4 GetBilinearMaterialIndices(float2 uv)
+        {
+            float2 pixelPos = uv * HeightmapDimensionsInSamples - 0.5;
+            int2 basePos = int2(floor(pixelPos));
+
+            uint i0 = MaterialIndexMap.Load(int3(basePos + int2(0, 0), 0)).r;
+            uint i1 = MaterialIndexMap.Load(int3(basePos + int2(1, 0), 0)).r;
+            uint i2 = MaterialIndexMap.Load(int3(basePos + int2(0, 1), 0)).r;
+            uint i3 = MaterialIndexMap.Load(int3(basePos + int2(1, 1), 0)).r;
+
+            return uint4(i0, i1, i2, i3);
+        }
+
+        // 计算双线性权重
+        float4 GetBilinearWeights(float2 uv)
+        {
+            float2 pixelPos = uv * HeightmapDimensionsInSamples - 0.5;
+            float2 f = frac(pixelPos);
+            return float4(
+                (1-f.x) * (1-f.y),
+                f.x * (1-f.y),
+                (1-f.x) * f.y,
+                f.x * f.y
+            );
+        }
+
+        // 从纹理数组采样指定索引的材质
+        float4 SampleMaterialFromArray(uint materialIndex, float2 worldUV)
+        {
+            if (materialIndex >= (uint)MaterialArraySize || MaterialArraySize == 0)
+                return DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, worldUV);
+
+            float2 tiledUV = worldUV * MaterialTilingScale;
+
+            // Texture2DArray 采样：float3(uv, sliceIndex)
+            return MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)materialIndex));
         }
 
         override void Compute()
@@ -35,9 +86,37 @@ namespace Terrain.Editor
             streams.normalWS = worldNormal;
 
             float2 uv = streams.PositionWS.xz / DiffuseWorldRepeatSize;
-            float4 baseColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv) * BaseColor;
-            streams.matDiffuse = baseColor;
-            streams.matColorBase = baseColor;
+
+            // 如果没有材质数组，使用默认纹理
+            if (MaterialArraySize == 0)
+            {
+                float4 baseColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv) * BaseColor;
+                streams.matDiffuse = baseColor;
+                streams.matColorBase = baseColor;
+                return;
+            }
+
+            // 获取材质索引图 UV
+            float2 splatUV = sampleCoord / HeightmapDimensionsInSamples;
+
+            // 获取 4 个相邻材质索引
+            uint4 indices = GetBilinearMaterialIndices(splatUV);
+            float4 weights = GetBilinearWeights(splatUV);
+
+            // 采样并混合 4 种材质
+            float4 color0 = SampleMaterialFromArray(indices.x, uv);
+            float4 color1 = SampleMaterialFromArray(indices.y, uv);
+            float4 color2 = SampleMaterialFromArray(indices.z, uv);
+            float4 color3 = SampleMaterialFromArray(indices.w, uv);
+
+            float4 finalColor =
+                color0 * weights.x +
+                color1 * weights.y +
+                color2 * weights.z +
+                color3 * weights.w;
+
+            streams.matDiffuse = finalColor * BaseColor;
+            streams.matColorBase = finalColor * BaseColor;
         }
     };
 }

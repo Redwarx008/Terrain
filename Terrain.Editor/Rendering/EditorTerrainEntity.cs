@@ -49,6 +49,16 @@ public sealed class EditorTerrainEntity : IDisposable
     public Buffer? PatchVertexBuffer { get; private set; }
     public Buffer? PatchIndexBuffer { get; private set; }
 
+    /// <summary>
+    /// 材质索引图纹理 (R8_UInt)，存储每个像素的材质槽位索引。
+    /// </summary>
+    public Texture? MaterialIndexMapTexture { get; private set; }
+
+    /// <summary>
+    /// 材质纹理数组，包含所有活动材质的 Albedo 纹理。
+    /// </summary>
+    public Texture? MaterialAlbedoArray { get; private set; }
+
     public TerrainChunkNode[]? ChunkNodeData { get; private set; }
     public int RenderCount { get; set; }
     public BoundingBox Bounds { get; private set; }
@@ -103,8 +113,36 @@ public sealed class EditorTerrainEntity : IDisposable
 
         entity.CreateSliceTextures(graphicsDevice);
         entity.InitializeGpuResources(graphicsDevice);
+        entity.InitializeMaterialResources(graphicsDevice);
         entity.CalculateBounds();
         return entity;
+    }
+
+    /// <summary>
+    /// 初始化材质相关 GPU 资源。
+    /// </summary>
+    public void InitializeMaterialResources(GraphicsDevice graphicsDevice)
+    {
+        // R8_UInt 索引图 - 初始化为 0（默认材质）
+        var initialData = new byte[HeightmapWidth * HeightmapHeight];
+        MaterialIndexMapTexture = Texture.New2D(
+            graphicsDevice,
+            HeightmapWidth,
+            HeightmapHeight,
+            PixelFormat.R8_UInt,
+            initialData,
+            TextureFlags.ShaderResource);
+    }
+
+    /// <summary>
+    /// 同步材质索引图到 GPU。
+    /// </summary>
+    public void SyncMaterialIndexMapToGpu(CommandList commandList, byte[] indexData)
+    {
+        if (MaterialIndexMapTexture == null || indexData.Length != HeightmapWidth * HeightmapHeight)
+            return;
+
+        MaterialIndexMapTexture.SetData(commandList, indexData);
     }
 
     public bool TryResolveNodeSlice(int originSampleX, int originSampleZ, int sizeInSamples, out EditorTerrainSlice slice, out int localOriginX, out int localOriginZ)
@@ -493,6 +531,12 @@ public sealed class EditorTerrainEntity : IDisposable
 
         PatchIndexBuffer?.Dispose();
         PatchIndexBuffer = null;
+
+        MaterialIndexMapTexture?.Dispose();
+        MaterialIndexMapTexture = null;
+
+        MaterialAlbedoArray?.Dispose();
+        MaterialAlbedoArray = null;
 
         HeightDataCache = null;
         MinMaxErrorMaps = null;
