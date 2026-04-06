@@ -31,6 +31,7 @@ namespace Terrain
                 return;
             }
 
+            [loop]
             for (int lodLevel = MaxLod; lodLevel >= 0; lodLevel--)
             {
                 int nodeX = (int)texelX >> lodLevel;
