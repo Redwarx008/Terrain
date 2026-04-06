@@ -178,9 +178,14 @@ internal class TextureInspectorPanel
 
             // 操作按钮
             ImGui.Spacing();
-            if (onClear != null && ImGui.Button($"Clear##{label}", new Vector2(60, 0)))
+            if (onClear != null)
             {
-                onClear();
+                string clearText = "Clear";
+                float clearWidth = ImGui.CalcTextSize(clearText).X + EditorStyle.ScaleValue(16.0f);
+                if (ImGui.Button($"{clearText}##{label}", new Vector2(clearWidth, 0)))
+                {
+                    onClear();
+                }
             }
         }
         else
@@ -188,7 +193,9 @@ internal class TextureInspectorPanel
             // 无纹理，显示导入按钮
             if (onImport != null)
             {
-                if (ImGui.Button($"Import {label}##{label}", new Vector2(100, 0)))
+                string importText = $"Import {label}";
+                float importWidth = ImGui.CalcTextSize(importText).X + EditorStyle.ScaleValue(16.0f);
+                if (ImGui.Button($"{importText}##{label}", new Vector2(importWidth, 0)))
                 {
                     onImport();
                 }
