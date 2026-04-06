@@ -49,6 +49,12 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         base.OnEntityComponentRemoved(entity, component, renderObject);
     }
 
+    private static readonly TerrainDataChannel[] AllDataChannels = new[]
+    {
+        TerrainDataChannel.Height,
+        TerrainDataChannel.MaterialIndex
+    };
+
     public override void Draw(RenderContext context)
     {
         base.Draw(context);
@@ -68,10 +74,16 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         {
             var entity = pair.Key.TerrainEntity;
 
-            // Sync dirty height data to GPU only when there are actual changes
-            if (entity != null && entity.HasAnyDirtySlice)
+            if (entity != null)
             {
-                entity.SyncToGpu(commandList!);
+                // 统一处理所有脏数据通道
+                foreach (var channel in AllDataChannels)
+                {
+                    if (entity.IsDataDirty(channel))
+                    {
+                        entity.SyncDataToGpu(channel, commandList!);
+                    }
+                }
             }
 
             UpdateRenderObject(pair.Key, pair.Value, graphicsDevice);
@@ -196,21 +208,29 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         }
 
         // Set material texture array parameters
-        var graphicsContext = Services.GetService<GraphicsContext>();
-        var commandList = graphicsContext?.CommandList;
-        if (commandList != null)
+        var albedoArray = MaterialSlotManager.Instance.GetMaterialAlbedoArray();
+        if (albedoArray != null)
         {
-            var albedoArray = MaterialSlotManager.Instance.GetOrBuildMaterialAlbedoArray(graphicsDevice, commandList);
-            if (albedoArray != null)
-            {
-                parameters.Set(EditorTerrainDiffuseKeys.MaterialAlbedoArray, albedoArray);
-                parameters.Set(EditorTerrainDiffuseKeys.MaterialAlbedoSampler, graphicsDevice.SamplerStates.LinearWrap);
-                parameters.Set(EditorTerrainDiffuseKeys.MaterialArraySize, albedoArray.ArraySize);
-            }
-            else
-            {
-                parameters.Set(EditorTerrainDiffuseKeys.MaterialArraySize, 0);
-            }
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialAlbedoArray, albedoArray);
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialAlbedoSampler, graphicsDevice.SamplerStates.LinearWrap);
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialArraySize, albedoArray.ArraySize);
+        }
+        else
+        {
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialArraySize, 0);
+        }
+
+        // Set material normal array parameters
+        var normalArray = MaterialSlotManager.Instance.GetMaterialNormalArray();
+        if (normalArray != null)
+        {
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialNormalArray, normalArray);
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialNormalSampler, graphicsDevice.SamplerStates.LinearWrap);
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialNormalArraySize, normalArray.ArraySize);
+        }
+        else
+        {
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialNormalArraySize, 0);
         }
 
         parameters.Set(EditorTerrainDiffuseKeys.MaterialTilingScale, 1.0f);

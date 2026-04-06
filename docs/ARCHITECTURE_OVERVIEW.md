@@ -45,6 +45,7 @@
 | **ImGui UI** | ✅ 已实现 | [terrain-editor-design-phase-2](design/terrain-editor-design-phase-2.md) |
 | **纹理刷** | ✅ 已实现 | [2026-04-06-3](log/2026/04/06/2026-04-06-3-terrain-texture-brush-implementation.md) |
 | **纹理导入增强** | ✅ 已实现 | [texture-auto-normal-import-and-inspector](design/texture-auto-normal-import-and-inspector.md) |
+| **数据同步机制** | ✅ 已实现 | [2026-04-07-1](log/2026/04/07/2026-04-07-1-unified-terrain-data-sync.md) |
 | **植被编辑** | 🚧 进行中 | [terrain-editor-design-phase-3](design/terrain-editor-design-phase-3.md) |
 
 ### 未来系统
@@ -60,6 +61,12 @@
 ---
 
 ## 关键架构决策
+
+### 0. 统一数据同步机制
+**问题：** 多种笔刷需要同步不同类型的数据到 GPU
+**方案：** 使用 `TerrainDataChannel` 枚举和统一的 `MarkDataDirty(channel)` 接口
+**权衡：** 抽象层 vs 直接调用
+**参考：** Godot heightmap 插件的 `notify_region_change(p_map_type)` 设计
 
 ### 1. 四叉树 LOD
 **问题：** 大地形需要不同细节级别
@@ -99,6 +106,7 @@
 | `Terrain.Editor/Services/HeightEditor.cs` | 高度编辑服务 |
 | `Terrain.Editor/Services/PaintEditor.cs` | 材质绘制服务 |
 | `Terrain.Editor/Services/MaterialSlotManager.cs` | 材质槽位管理 |
+| `Terrain.Editor/Rendering/EditorTerrainEntity.cs` | 地形实体（含统一数据同步接口） |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
 
 ### 着色器
@@ -151,5 +159,5 @@
 
 ---
 
-*最后更新: 2026-04-06*
+*最后更新: 2026-04-07*
 *状态: 反映当前实现状态*

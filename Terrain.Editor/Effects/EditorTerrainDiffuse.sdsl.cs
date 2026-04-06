@@ -33,5 +33,10 @@ namespace Terrain.Editor
         public static readonly ObjectParameterKey<SamplerState> MaterialAlbedoSampler = ParameterKeys.NewObject<SamplerState>();
         public static readonly ValueParameterKey<int> MaterialArraySize = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<float> MaterialTilingScale = ParameterKeys.NewValue<float>();
+
+        // 材质 Normal 纹理数组参数
+        public static readonly ObjectParameterKey<Texture> MaterialNormalArray = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> MaterialNormalSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ValueParameterKey<int> MaterialNormalArraySize = ParameterKeys.NewValue<int>();
     }
 }

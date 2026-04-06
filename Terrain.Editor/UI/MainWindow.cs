@@ -43,6 +43,7 @@ public class MainWindow : ControlBase
 
     private GraphicsDevice? graphicsDevice;
     private GameWindow? gameWindow;
+    private IServiceRegistry? services;
     private bool showMenuBar = true;
     private bool showDemoWindow;
     private bool shouldClose;
@@ -107,6 +108,7 @@ public class MainWindow : ControlBase
     {
         graphicsDevice = device;
         gameWindow = window;
+        services = serviceRegistry;
         // 自绘无边框窗口改用系统原生 hit-test 处理拖拽和缩放，避免手写标题栏状态机出现一次可拖一次不可拖的问题。
         WindowInterop.EnableCustomChrome(GetNativeWindowHandle(), (int)TitleBarHeight, (int)(TitleBarButtonWidth * 3.0f), 8);
 
@@ -188,6 +190,17 @@ public class MainWindow : ControlBase
         Viewport.HeightmapLoadFailed += (s, error) =>
         {
             Console.LogError($"Failed to load heightmap: {error}");
+        };
+
+        // 项目加载后加载材质纹理
+        Viewport.MaterialTexturesLoadRequired += (s, e) =>
+        {
+            if (graphicsDevice == null || services == null)
+                return;
+
+            var graphicsContext = services.GetService<GraphicsContext>();
+            Viewport.TerrainManager?.LoadMaterialTextures(graphicsContext.CommandList);
+            Console.LogInfo("Material textures loaded from project");
         };
     }
 
@@ -585,7 +598,10 @@ public class MainWindow : ControlBase
             {
                 if (e.TextureType == TextureType.Albedo)
                 {
-                    MaterialSlotManager.Instance.SetAlbedoTexture(e.SlotIndex, texture, filePath, TextureSize.Size512);
+                    var graphicsContext = services!.GetService<GraphicsContext>();
+                    MaterialSlotManager.Instance.SetAlbedoTexture(
+                        e.SlotIndex, texture, filePath, TextureSize.Size512,
+                        graphicsDevice!, graphicsContext!.CommandList);
                     Console.LogInfo($"Imported Albedo to slot {e.SlotIndex}: {filePath}");
 
                     // 自动查找并导入匹配的法线贴图
@@ -595,14 +611,17 @@ public class MainWindow : ControlBase
                         var normalTexture = TextureImporter.ImportFromFile(normalPath, graphicsDevice!, TextureSize.Size512);
                         if (normalTexture != null)
                         {
-                            MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, normalTexture, normalPath);
+                            MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, normalTexture, normalPath,
+                                graphicsDevice!, graphicsContext!.CommandList);
                             Console.LogInfo($"Auto-imported Normal map: {normalPath}");
                         }
                     }
                 }
                 else
                 {
-                    MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath);
+                    var graphicsContext = services!.GetService<GraphicsContext>();
+                    MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath,
+                        graphicsDevice!, graphicsContext!.CommandList);
                     Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
                 }
             }
@@ -623,7 +642,9 @@ public class MainWindow : ControlBase
             var texture = TextureImporter.ImportFromFile(filePath, graphicsDevice!, TextureSize.Size512);
             if (texture != null)
             {
-                MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath);
+                var graphicsContext = services!.GetService<GraphicsContext>();
+                MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath,
+                    graphicsDevice!, graphicsContext!.CommandList);
                 Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
             }
             else
@@ -635,7 +656,8 @@ public class MainWindow : ControlBase
 
     private void OnClearNormalRequested(object? sender, TextureSlotEventArgs e)
     {
-        MaterialSlotManager.Instance.ClearNormalTexture(e.SlotIndex);
+        var graphicsContext = services!.GetService<GraphicsContext>();
+        MaterialSlotManager.Instance.ClearNormalTexture(e.SlotIndex, graphicsDevice!, graphicsContext!.CommandList);
         Console.LogInfo($"Cleared normal map from slot {e.SlotIndex}");
     }
 

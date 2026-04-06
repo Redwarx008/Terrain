@@ -81,6 +81,11 @@ public class SceneViewPanel : PanelBase
     public event EventHandler<string>? HeightmapLoaded;
     public event EventHandler<string>? HeightmapLoadFailed;
 
+    /// <summary>
+    /// 项目加载完成后需要加载材质纹理时触发。
+    /// </summary>
+    public event EventHandler? MaterialTexturesLoadRequired;
+
     public SceneViewPanel()
     {
         Title = "Scene";
@@ -116,6 +121,12 @@ public class SceneViewPanel : PanelBase
 
             // Note: GPU sync context setup for EditorTerrainEntity is handled internally
             // The old TerrainComponent-based sync is no longer needed for editor terrain
+        };
+
+        // 转发材质纹理加载请求事件
+        terrainManager.MaterialTexturesLoadRequired += (s, e) =>
+        {
+            MaterialTexturesLoadRequired?.Invoke(this, e);
         };
     }
 
@@ -534,7 +545,8 @@ public class SceneViewPanel : PanelBase
                 currentHitPoint.Value,
                 materialIndices,
                 terrainManager.HeightCacheWidth,
-                terrainManager.HeightCacheHeight);
+                terrainManager.HeightCacheHeight,
+                terrainManager);
         }
 
         // End edit on release

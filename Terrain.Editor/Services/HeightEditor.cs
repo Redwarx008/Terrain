@@ -2,6 +2,7 @@
 
 using System;
 using Stride.Core.Mathematics;
+using Terrain.Editor.Rendering;
 using Terrain.Editor.Services;
 
 namespace Terrain.Editor.Services;
@@ -100,7 +101,7 @@ public sealed class HeightEditor
         // Apply the tool
         currentTool.Apply(ref context);
 
-        terrainManager.UpdateHeightData(pixelX, pixelZ, brushRadius);
+        terrainManager.MarkDataDirty(TerrainDataChannel.Height, pixelX, pixelZ, brushRadius);
     }
 
     /// <summary>

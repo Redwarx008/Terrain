@@ -61,6 +61,11 @@ public sealed class TerrainManager : IDisposable
 
     public event EventHandler<TerrainLoadedEventArgs>? TerrainLoaded;
 
+    /// <summary>
+    /// 项目加载完成后触发，通知需要加载材质纹理。
+    /// </summary>
+    public event EventHandler? MaterialTexturesLoadRequired;
+
     public TerrainManager(GraphicsDevice graphicsDevice, Scene scene, Texture? defaultTerrainTexture = null)
     {
         this.graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
@@ -124,6 +129,9 @@ public sealed class TerrainManager : IDisposable
 
             // 初始化材质索引图
             MaterialIndices = new MaterialIndexMap(heightDataWidth, heightDataHeight);
+
+            // 设置材质索引数据引用到实体
+            terrainEntity.MaterialIndexData = MaterialIndices.GetRawData();
 
             var sceneEntity = new Entity("EditorTerrain")
             {
@@ -236,6 +244,17 @@ public sealed class TerrainManager : IDisposable
         terrainComponent = component;
     }
 
+    /// <summary>
+    /// 标记指定通道的数据需要同步到 GPU。
+    /// </summary>
+    public void MarkDataDirty(TerrainDataChannel channel, int centerX = 0, int centerZ = 0, float radius = 0)
+    {
+        if (terrainEntities.Count == 0)
+            return;
+
+        terrainEntities[0].MarkDataDirty(channel, centerX, centerZ, radius);
+    }
+
     public void UpdateHeightData(int modifiedX, int modifiedZ, float radius)
     {
         if (heightDataCache == null || terrainEntities.Count == 0)
@@ -244,17 +263,17 @@ public sealed class TerrainManager : IDisposable
         terrainEntities[0].MarkHeightRegionDirty(modifiedX, modifiedZ, radius);
     }
 
+    // 注意：数据同步现在由 EditorTerrainProcessor.Draw() 通过统一的 TerrainDataChannel 机制处理。
+    // 此方法保留作为备用入口，但通常不需要直接调用。
     public void SyncToGpu(CommandList commandList)
     {
         foreach (var entity in terrainEntities)
         {
-            entity.SyncToGpu(commandList);
-        }
-
-        // 同步材质索引图
-        if (MaterialIndices != null && terrainEntities.Count > 0)
-        {
-            terrainEntities[0].SyncMaterialIndexMapToGpu(commandList, MaterialIndices.GetRawData());
+            // 使用统一接口同步所有脏数据
+            if (entity.IsDataDirty(TerrainDataChannel.Height))
+                entity.SyncDataToGpu(TerrainDataChannel.Height, commandList);
+            if (entity.IsDataDirty(TerrainDataChannel.MaterialIndex))
+                entity.SyncDataToGpu(TerrainDataChannel.MaterialIndex, commandList);
         }
     }
 
@@ -424,6 +443,18 @@ public sealed class TerrainManager : IDisposable
         {
             _ = LoadTerrainAsync(config.HeightmapPath);
         }
+
+        // 通知需要加载材质纹理（由外部调用 LoadMaterialTextures）
+        MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 加载项目后调用此方法来加载材质纹理到 GPU。
+    /// 需要在渲染线程中调用。
+    /// </summary>
+    public void LoadMaterialTextures(CommandList commandList)
+    {
+        MaterialSlotManager.Instance.LoadTexturesFromConfiguredPaths(graphicsDevice, commandList);
     }
 
     private MaterialIndexMap? LoadMaterialIndexMap(string path)

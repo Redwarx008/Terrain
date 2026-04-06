@@ -11,9 +11,13 @@ namespace Terrain.Editor
             stage Texture2D<uint> MaterialIndexMap;
             stage SamplerState MaterialIndexSampler;
 
-            // 材质纹理数组
+            // 材质 Albedo 纹理数组
             stage Texture2DArray MaterialAlbedoArray;
             stage SamplerState MaterialAlbedoSampler;
+
+            // 材质 Normal 纹理数组
+            stage Texture2DArray MaterialNormalArray;
+            stage SamplerState MaterialNormalSampler;
         }
 
         cbuffer PerMaterial
@@ -24,7 +28,8 @@ namespace Terrain.Editor
             stage float2 HeightmapDimensionsInSamples;
 
             // 材质参数
-            stage int MaterialArraySize;
+            stage int MaterialArraySize;          // Albedo 数组大小
+            stage int MaterialNormalArraySize;    // Normal 数组大小
             stage float MaterialTilingScale;
         }
 
@@ -64,8 +69,8 @@ namespace Terrain.Editor
             );
         }
 
-        // 从纹理数组采样指定索引的材质
-        float4 SampleMaterialFromArray(uint materialIndex, float2 worldUV)
+        // 从纹理数组采样指定索引的材质 Albedo
+        float4 SampleMaterialAlbedo(uint materialIndex, float2 worldUV)
         {
             if (materialIndex >= (uint)MaterialArraySize || MaterialArraySize == 0)
                 return DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, worldUV);
@@ -74,6 +79,19 @@ namespace Terrain.Editor
 
             // Texture2DArray 采样：float3(uv, sliceIndex)
             return MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)materialIndex));
+        }
+
+        // 从纹理数组采样指定索引的材质 Normal
+        float3 SampleMaterialNormal(uint materialIndex, float2 worldUV)
+        {
+            if (materialIndex >= (uint)MaterialNormalArraySize || MaterialNormalArraySize == 0)
+                return float3(0.0, 0.0, 1.0); // 默认平法线（切线空间）
+
+            float2 tiledUV = worldUV * MaterialTilingScale;
+
+            float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)materialIndex));
+            // 从 [0,1] 解码到 [-1,1]
+            return normalize(normalSample.xyz * 2.0 - 1.0);
         }
 
         override void Compute()
@@ -103,11 +121,11 @@ namespace Terrain.Editor
             uint4 indices = GetBilinearMaterialIndices(splatUV);
             float4 weights = GetBilinearWeights(splatUV);
 
-            // 采样并混合 4 种材质
-            float4 color0 = SampleMaterialFromArray(indices.x, uv);
-            float4 color1 = SampleMaterialFromArray(indices.y, uv);
-            float4 color2 = SampleMaterialFromArray(indices.z, uv);
-            float4 color3 = SampleMaterialFromArray(indices.w, uv);
+            // 采样并混合 4 种材质 Albedo
+            float4 color0 = SampleMaterialAlbedo(indices.x, uv);
+            float4 color1 = SampleMaterialAlbedo(indices.y, uv);
+            float4 color2 = SampleMaterialAlbedo(indices.z, uv);
+            float4 color3 = SampleMaterialAlbedo(indices.w, uv);
 
             float4 finalColor =
                 color0 * weights.x +
@@ -117,6 +135,29 @@ namespace Terrain.Editor
 
             streams.matDiffuse = finalColor * BaseColor;
             streams.matColorBase = finalColor * BaseColor;
+
+            // 采样并混合 4 种材质 Normal
+            float3 normal0 = SampleMaterialNormal(indices.x, uv);
+            float3 normal1 = SampleMaterialNormal(indices.y, uv);
+            float3 normal2 = SampleMaterialNormal(indices.z, uv);
+            float3 normal3 = SampleMaterialNormal(indices.w, uv);
+
+            // 加权混合法线（简单线性混合，非角度加权）
+            float3 blendedNormal = normalize(
+                normal0 * weights.x +
+                normal1 * weights.y +
+                normal2 * weights.z +
+                normal3 * weights.w
+            );
+
+            // 将切线空间法线转换到世界空间
+            // 处理平坦地形边缘情况：当法线接近 Y 轴时使用 Z 轴构建切线
+            float3 up = abs(worldNormal.y) > 0.99 ? float3(0, 0, 1) : float3(0, 1, 0);
+            float3 tangent = normalize(cross(up, worldNormal));
+            float3 bitangent = cross(worldNormal, tangent);
+            float3x3 tbn = float3x3(tangent, bitangent, worldNormal);
+
+            streams.normalWS = normalize(mul(blendedNormal, tbn));
         }
     };
 }

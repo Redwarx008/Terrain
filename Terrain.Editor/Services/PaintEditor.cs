@@ -2,6 +2,8 @@
 
 using System;
 using Stride.Core.Mathematics;
+using Terrain.Editor.Rendering;
+using Terrain.Editor.Services;
 
 namespace Terrain.Editor.Services;
 
@@ -41,7 +43,8 @@ public sealed class PaintEditor
     /// <param name="indexMap">材质索引图。</param>
     /// <param name="mapWidth">索引图宽度。</param>
     /// <param name="mapHeight">索引图高度。</param>
-    public void ApplyStroke(Vector3 worldPosition, MaterialIndexMap indexMap, int mapWidth, int mapHeight)
+    /// <param name="terrainManager">地形管理器，用于标记数据脏。</param>
+    public void ApplyStroke(Vector3 worldPosition, MaterialIndexMap indexMap, int mapWidth, int mapHeight, TerrainManager terrainManager)
     {
         if (!isStrokeActive || currentTool == null)
             return;
@@ -74,6 +77,9 @@ public sealed class PaintEditor
 
         // 应用工具
         currentTool.Apply(ref context);
+
+        // 标记材质索引图需要同步到 GPU
+        terrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex);
     }
 
     /// <summary>

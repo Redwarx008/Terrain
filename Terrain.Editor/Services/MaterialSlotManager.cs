@@ -47,21 +47,53 @@ public sealed class MaterialSlotManager
     }
 
     /// <summary>
-    /// 缓存的材质纹理数组。
+    /// 缓存的材质 Albedo 纹理数组。
     /// </summary>
     private Texture? cachedMaterialAlbedoArray;
 
     /// <summary>
-    /// 标记材质数组需要重建。
+    /// 缓存的材质 Normal 纹理数组。
     /// </summary>
-    private bool materialArrayDirty = true;
+    private Texture? cachedMaterialNormalArray;
+
+    /// <summary>
+    /// 已使用的最大槽位索引（用于统一数组大小）。
+    /// </summary>
+    private int maxSlotIndex = -1;
+
+    /// <summary>
+    /// 纹理数组容量档位，用于预分配优化。
+    /// </summary>
+    private static readonly int[] ArrayCapacityTiers = { 16, 32, 64, 128, 256 };
+
+    /// <summary>
+    /// 获取下一个合适的容量档位。
+    /// </summary>
+    private static int GetNextCapacity(int requiredSize)
+    {
+        foreach (var tier in ArrayCapacityTiers)
+        {
+            if (tier >= requiredSize) return tier;
+        }
+        return 256;
+    }
+
+    /// <summary>
+    /// 默认平法线纹理（用于填充清除的槽位）。
+    /// </summary>
+    private Texture? defaultNormalTexture;
 
     /// <summary>
     /// 标记材质数组需要重建。
     /// </summary>
     public void MarkMaterialArrayDirty()
     {
-        materialArrayDirty = true;
+        cachedMaterialAlbedoArray?.Dispose();
+        cachedMaterialAlbedoArray = null;
+        cachedMaterialNormalArray?.Dispose();
+        cachedMaterialNormalArray = null;
+        defaultNormalTexture?.Dispose();
+        defaultNormalTexture = null;
     }
 
     private MaterialSlotManager()
@@ -89,7 +121,8 @@ public sealed class MaterialSlotManager
     /// <summary>
     /// 设置 Albedo 纹理到指定槽位。
     /// </summary>
-    public void SetAlbedoTexture(int slotIndex, Texture texture, string path, TextureSize size)
+    public void SetAlbedoTexture(int slotIndex, Texture texture, string path, TextureSize size,
+        GraphicsDevice graphicsDevice, CommandList commandList)
     {
         var slot = slots[slotIndex];
         slot.AlbedoTexture?.Dispose();
@@ -103,29 +136,182 @@ public sealed class MaterialSlotManager
             slot.Name = Path.GetFileNameWithoutExtension(path);
         }
 
-        materialArrayDirty = true;
+        // 直接更新纹理数组
+        UpdateSlotInArray(slotIndex, graphicsDevice, commandList);
+    }
+
+    /// <summary>
+    /// 更新指定槽位的纹理到纹理数组。
+    /// </summary>
+    private void UpdateSlotInArray(int slotIndex, GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        var slot = slots[slotIndex];
+        if (slot.AlbedoTexture == null)
+            return;
+
+        // 更新最大槽位索引
+        maxSlotIndex = Math.Max(maxSlotIndex, slotIndex);
+
+        int width = slot.AlbedoTexture.Width;
+        int height = slot.AlbedoTexture.Height;
+        PixelFormat format = slot.AlbedoTexture.Format;
+
+        // 检查是否需要重建（使用容量档位优化）
+        int requiredCapacity = GetNextCapacity(maxSlotIndex + 1);
+        bool needsRebuild = cachedMaterialAlbedoArray == null
+            || cachedMaterialAlbedoArray.ArraySize < requiredCapacity
+            || cachedMaterialAlbedoArray.Format != format
+            || cachedMaterialAlbedoArray.Width != width
+            || cachedMaterialAlbedoArray.Height != height;
+
+        if (needsRebuild)
+        {
+            var oldArray = cachedMaterialAlbedoArray;
+
+            var desc = TextureDescription.New2D(width, height, format,
+                TextureFlags.ShaderResource | TextureFlags.RenderTarget,
+                arraySize: requiredCapacity);
+            cachedMaterialAlbedoArray = Texture.New(graphicsDevice, desc);
+
+            // 复制旧数组中的纹理到新数组
+            if (oldArray != null)
+            {
+                int copyCount = Math.Min(oldArray.ArraySize, requiredCapacity);
+                for (int i = 0; i < copyCount; i++)
+                {
+                    if (slots[i].AlbedoTexture != null)
+                    {
+                        commandList.CopyRegion(slots[i].AlbedoTexture, 0, null, cachedMaterialAlbedoArray, i, 0, 0, 0);
+                    }
+                }
+                oldArray.Dispose();
+            }
+        }
+
+        commandList.CopyRegion(slot.AlbedoTexture, 0, null, cachedMaterialAlbedoArray, slotIndex, 0, 0, 0);
     }
 
     /// <summary>
     /// 设置 Normal 纹理到指定槽位。
     /// </summary>
-    public void SetNormalTexture(int slotIndex, Texture texture, string path)
+    public void SetNormalTexture(int slotIndex, Texture texture, string path,
+        GraphicsDevice graphicsDevice, CommandList commandList)
     {
         var slot = slots[slotIndex];
         slot.NormalTexture?.Dispose();
         slot.NormalTexture = texture;
         slot.NormalTexturePath = path;
+
+        // 直接更新 Normal 纹理数组
+        UpdateNormalSlotInArray(slotIndex, graphicsDevice, commandList);
+    }
+
+    /// <summary>
+    /// 更新指定槽位的 Normal 纹理到纹理数组。
+    /// </summary>
+    private void UpdateNormalSlotInArray(int slotIndex, GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        var slot = slots[slotIndex];
+        if (slot.NormalTexture == null)
+            return;
+
+        // 更新最大槽位索引
+        maxSlotIndex = Math.Max(maxSlotIndex, slotIndex);
+
+        int width = slot.NormalTexture.Width;
+        int height = slot.NormalTexture.Height;
+        PixelFormat format = slot.NormalTexture.Format;
+
+        // 检查是否需要重建（使用容量档位优化）
+        int requiredCapacity = GetNextCapacity(maxSlotIndex + 1);
+        bool needsRebuild = cachedMaterialNormalArray == null
+            || cachedMaterialNormalArray.ArraySize < requiredCapacity
+            || cachedMaterialNormalArray.Format != format
+            || cachedMaterialNormalArray.Width != width
+            || cachedMaterialNormalArray.Height != height;
+
+        if (needsRebuild)
+        {
+            var oldArray = cachedMaterialNormalArray;
+
+            var desc = TextureDescription.New2D(width, height, format,
+                TextureFlags.ShaderResource | TextureFlags.RenderTarget,
+                arraySize: requiredCapacity);
+            cachedMaterialNormalArray = Texture.New(graphicsDevice, desc);
+
+            // 复制旧数组中的纹理到新数组
+            if (oldArray != null)
+            {
+                int copyCount = Math.Min(oldArray.ArraySize, requiredCapacity);
+                for (int i = 0; i < copyCount; i++)
+                {
+                    if (slots[i].NormalTexture != null)
+                    {
+                        commandList.CopyRegion(slots[i].NormalTexture, 0, null, cachedMaterialNormalArray, i, 0, 0, 0);
+                    }
+                }
+                oldArray.Dispose();
+            }
+        }
+
+        commandList.CopyRegion(slot.NormalTexture, 0, null, cachedMaterialNormalArray, slotIndex, 0, 0, 0);
     }
 
     /// <summary>
     /// 清除指定槽位的 Normal 纹理。
     /// </summary>
-    public void ClearNormalTexture(int slotIndex)
+    public void ClearNormalTexture(int slotIndex, GraphicsDevice graphicsDevice, CommandList commandList)
     {
         var slot = slots[slotIndex];
         slot.NormalTexture?.Dispose();
         slot.NormalTexture = null;
         slot.NormalTexturePath = null;
+
+        // 填充默认平法线到数组对应位置
+        if (cachedMaterialNormalArray != null && slotIndex < cachedMaterialNormalArray.ArraySize)
+        {
+            FillArraySliceWithDefaultNormal(slotIndex, graphicsDevice, commandList);
+        }
+    }
+
+    /// <summary>
+    /// 填充默认平法线到数组指定槽位。
+    /// </summary>
+    private void FillArraySliceWithDefaultNormal(int slotIndex, GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        // 懒加载默认平法线纹理
+        if (defaultNormalTexture == null)
+        {
+            defaultNormalTexture = CreateDefaultNormalTexture(graphicsDevice, commandList);
+        }
+
+        if (defaultNormalTexture != null)
+        {
+            commandList.CopyRegion(defaultNormalTexture, 0, null, cachedMaterialNormalArray!, slotIndex, 0, 0, 0);
+        }
+    }
+
+    /// <summary>
+    /// 创建默认平法线纹理 (0.5, 0.5, 1.0)。
+    /// </summary>
+    private static Texture? CreateDefaultNormalTexture(GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        // 创建 4x4 的平法线纹理
+        int size = 4;
+        var data = new byte[size * size * 4];
+        for (int i = 0; i < data.Length; i += 4)
+        {
+            data[i + 0] = 128; // R = 0.5
+            data[i + 1] = 128; // G = 0.5
+            data[i + 2] = 255; // B = 1.0
+            data[i + 3] = 255; // A = 1.0
+        }
+
+        var desc = TextureDescription.New2D(size, size, PixelFormat.R8G8B8A8_UNorm,
+            TextureFlags.ShaderResource);
+        var texture = Texture.New(graphicsDevice, desc);
+        texture.SetData(commandList, data);
+        return texture;
     }
 
     /// <summary>
@@ -134,7 +320,6 @@ public sealed class MaterialSlotManager
     public void ClearSlot(int slotIndex)
     {
         slots[slotIndex].Clear();
-        materialArrayDirty = true;
     }
 
     /// <summary>
@@ -146,99 +331,53 @@ public sealed class MaterialSlotManager
         {
             slot.Clear();
         }
-        materialArrayDirty = true;
     }
 
     /// <summary>
-    /// 获取或构建材质 Albedo 纹理数组。
-    /// 如果材质槽位发生变化，会重新构建数组。
-    /// 纹理数组索引与材质槽位索引保持一致。
+    /// 获取材质 Albedo 纹理数组。
     /// </summary>
-    /// <param name="graphicsDevice">图形设备。</param>
-    /// <param name="commandList">命令列表，用于复制纹理数据。</param>
-    /// <returns>材质纹理数组，如果没有活动槽位则返回 null。</returns>
-    public Texture? GetOrBuildMaterialAlbedoArray(GraphicsDevice graphicsDevice, CommandList commandList)
+    public Texture? GetMaterialAlbedoArray()
     {
-        var activeSlots = GetActiveSlots().ToList();
-
-        if (activeSlots.Count == 0)
-        {
-            cachedMaterialAlbedoArray?.Dispose();
-            cachedMaterialAlbedoArray = null;
-            return null;
-        }
-
-        // 如果不需要重建且有缓存，直接返回
-        if (!materialArrayDirty && cachedMaterialAlbedoArray != null)
-        {
-            return cachedMaterialAlbedoArray;
-        }
-
-        // 获取所有活动槽位及其纹理
-        var activeTextures = activeSlots
-            .Where(s => s.AlbedoTexture != null)
-            .Select(s => (Slot: s, Texture: s.AlbedoTexture!))
-            .ToList();
-
-        if (activeTextures.Count == 0)
-        {
-            return null;
-        }
-
-        // 使用第一个纹理的尺寸和格式作为基准
-        var first = activeTextures[0];
-        int width = first.Texture.Width;
-        int height = first.Texture.Height;
-        PixelFormat format = first.Texture.Format;
-
-        // 验证所有纹理尺寸和格式一致
-        var validTextures = new List<(MaterialSlot Slot, Texture Texture)>();
-        foreach (var (slot, tex) in activeTextures)
-        {
-            if (tex.Width != width || tex.Height != height)
-            {
-                // 跳过尺寸不匹配的纹理
-                continue;
-            }
-            if (tex.Format != format)
-            {
-                // 跳过格式不匹配的纹理
-                continue;
-            }
-            validTextures.Add((slot, tex));
-        }
-
-        if (validTextures.Count == 0)
-        {
-            return null;
-        }
-
-        // 释放旧的缓存
-        cachedMaterialAlbedoArray?.Dispose();
-
-        // 计算需要的数组大小（最大槽位索引 + 1）
-        // 这样纹理数组索引与材质槽位索引保持一致
-        int maxSlotIndex = validTextures.Max(t => t.Slot.Index) + 1;
-
-        // 创建 Texture2DArray，数组大小等于最大槽位索引 + 1
-        var desc = TextureDescription.New2D(width, height, format,
-            TextureFlags.ShaderResource | TextureFlags.RenderTarget,
-            arraySize: maxSlotIndex);
-        cachedMaterialAlbedoArray = Texture.New(graphicsDevice, desc);
-
-        // 复制每个纹理到对应的数组切片（槽位索引 = 数组索引）
-        foreach (var (slot, tex) in validTextures)
-        {
-            commandList.CopyRegion(
-                tex,
-                sourceSubResourceIndex: 0,
-                sourceRegion: null,
-                cachedMaterialAlbedoArray,
-                destinationSubResourceIndex: slot.Index,
-                dstX: 0, dstY: 0, dstZ: 0);
-        }
-
-        materialArrayDirty = false;
         return cachedMaterialAlbedoArray;
+    }
+
+    /// <summary>
+    /// 获取材质 Normal 纹理数组。
+    /// </summary>
+    public Texture? GetMaterialNormalArray()
+    {
+        return cachedMaterialNormalArray;
+    }
+
+    /// <summary>
+    /// 从已配置的路径加载纹理到 GPU。
+    /// 用于项目加载后恢复材质纹理。
+    /// </summary>
+    public void LoadTexturesFromConfiguredPaths(GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        foreach (var slot in GetActiveSlots())
+        {
+            // 加载 Albedo 纹理
+            if (!string.IsNullOrEmpty(slot.AlbedoTexturePath) && File.Exists(slot.AlbedoTexturePath) && slot.AlbedoTexture == null)
+            {
+                var texture = TextureImporter.ImportFromFile(slot.AlbedoTexturePath, graphicsDevice, slot.ImportSize);
+                if (texture != null)
+                {
+                    slot.AlbedoTexture = texture;
+                    UpdateSlotInArray(slot.Index, graphicsDevice, commandList);
+                }
+            }
+
+            // 加载 Normal 纹理
+            if (!string.IsNullOrEmpty(slot.NormalTexturePath) && File.Exists(slot.NormalTexturePath) && slot.NormalTexture == null)
+            {
+                var texture = TextureImporter.ImportFromFile(slot.NormalTexturePath, graphicsDevice, slot.ImportSize);
+                if (texture != null)
+                {
+                    slot.NormalTexture = texture;
+                    UpdateNormalSlotInArray(slot.Index, graphicsDevice, commandList);
+                }
+            }
+        }
     }
 }

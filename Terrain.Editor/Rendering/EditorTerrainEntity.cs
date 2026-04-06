@@ -14,6 +14,22 @@ using Buffer = Stride.Graphics.Buffer;
 namespace Terrain.Editor.Rendering;
 
 /// <summary>
+/// 地形数据通道类型。
+/// </summary>
+public enum TerrainDataChannel
+{
+    /// <summary>
+    /// 高度图。
+    /// </summary>
+    Height,
+
+    /// <summary>
+    /// 材质索引图。
+    /// </summary>
+    MaterialIndex
+}
+
+/// <summary>
 /// Represents one logical editor terrain. Large heightmaps are internally split into heightmap slices,
 /// but all LOD selection and rendering still operate as a single terrain.
 /// </summary>
@@ -53,6 +69,63 @@ public sealed class EditorTerrainEntity : IDisposable
     /// 材质索引图纹理 (R8_UInt)，存储每个像素的材质槽位索引。
     /// </summary>
     public Texture? MaterialIndexMapTexture { get; private set; }
+
+    /// <summary>
+    /// 材质索引数据缓存，由 TerrainManager 设置。
+    /// </summary>
+    public byte[]? MaterialIndexData { get; set; }
+
+    /// <summary>
+    /// 标记材质索引图需要同步到 GPU。
+    /// </summary>
+    public bool IsMaterialIndexMapDirty { get; private set; }
+
+    /// <summary>
+    /// 标记指定通道的数据为脏，需要在渲染时同步到 GPU。
+    /// </summary>
+    public void MarkDataDirty(TerrainDataChannel channel, int centerX = 0, int centerZ = 0, float radius = 0)
+    {
+        switch (channel)
+        {
+            case TerrainDataChannel.Height:
+                MarkHeightRegionDirty(centerX, centerZ, radius);
+                break;
+            case TerrainDataChannel.MaterialIndex:
+                IsMaterialIndexMapDirty = true;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 检查指定通道是否有脏数据。
+    /// </summary>
+    public bool IsDataDirty(TerrainDataChannel channel)
+    {
+        return channel switch
+        {
+            TerrainDataChannel.Height => HasAnyDirtySlice,
+            TerrainDataChannel.MaterialIndex => IsMaterialIndexMapDirty,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// 同步指定通道的脏数据到 GPU。
+    /// </summary>
+    public void SyncDataToGpu(TerrainDataChannel channel, CommandList commandList)
+    {
+        switch (channel)
+        {
+            case TerrainDataChannel.Height:
+                if (HasAnyDirtySlice)
+                    SyncToGpu(commandList);
+                break;
+            case TerrainDataChannel.MaterialIndex:
+                if (IsMaterialIndexMapDirty && MaterialIndexData != null)
+                    SyncMaterialIndexMapToGpu(commandList, MaterialIndexData);
+                break;
+        }
+    }
 
     /// <summary>
     /// 材质纹理数组，包含所有活动材质的 Albedo 纹理。
@@ -123,14 +196,12 @@ public sealed class EditorTerrainEntity : IDisposable
     /// </summary>
     public void InitializeMaterialResources(GraphicsDevice graphicsDevice)
     {
-        // R8_UInt 索引图 - 初始化为 0（默认材质）
-        var initialData = new byte[HeightmapWidth * HeightmapHeight];
+        // R8_UInt 索引图 - 不传入初始数据，允许后续通过 SetData 更新
         MaterialIndexMapTexture = Texture.New2D(
             graphicsDevice,
             HeightmapWidth,
             HeightmapHeight,
             PixelFormat.R8_UInt,
-            initialData,
             TextureFlags.ShaderResource);
     }
 
@@ -143,6 +214,7 @@ public sealed class EditorTerrainEntity : IDisposable
             return;
 
         MaterialIndexMapTexture.SetData(commandList, indexData);
+        IsMaterialIndexMapDirty = false;
     }
 
     public bool TryResolveNodeSlice(int originSampleX, int originSampleZ, int sizeInSamples, out EditorTerrainSlice slice, out int localOriginX, out int localOriginZ)
