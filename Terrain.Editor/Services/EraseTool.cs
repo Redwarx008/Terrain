@@ -5,7 +5,7 @@ using System;
 namespace Terrain.Editor.Services;
 
 /// <summary>
-/// 材质擦除工具，将像素重置为默认材质索引 0。
+/// Erase material index values back to the default slot (0).
 /// </summary>
 internal sealed class EraseTool : IPaintTool
 {
@@ -23,7 +23,6 @@ internal sealed class EraseTool : IPaintTool
                 int x = context.CenterX + dx;
                 int z = context.CenterZ + dz;
 
-                // 边界裁剪
                 if (x < 0 || x >= context.DataWidth || z < 0 || z >= context.DataHeight)
                     continue;
 
@@ -31,11 +30,11 @@ internal sealed class EraseTool : IPaintTool
                 if (distance > context.BrushRadius)
                     continue;
 
-                // Falloff 控制强度
                 float falloff = ComputeLinearFalloff(distance, context.BrushRadius, context.BrushInnerRadius);
 
-                // 只有当 falloff 足够高时才擦除
-                if (falloff * context.Strength > 0.5f)
+                // Discrete index painting: map strength to coverage threshold.
+                float paintThreshold = 1.0f - context.Strength;
+                if (falloff >= paintThreshold)
                 {
                     context.IndexMap.SetIndex(x, z, defaultIndex);
                 }

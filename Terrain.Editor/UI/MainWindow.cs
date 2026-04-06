@@ -162,12 +162,14 @@ public class MainWindow : ControlBase
         Assets.TextureSlotSelected += (s, e) =>
         {
             Console.LogInfo($"Texture slot selected: {e.SlotIndex}");
+            MaterialSlotManager.Instance.SelectedSlotIndex = e.SlotIndex;
             RightPanel.SelectedTextureSlot = e.SlotIndex;
             RightPanel.OnTextureSelected();
         };
         Assets.TextureSlotDeselected += (s, e) =>
         {
             Console.LogInfo("Texture slot deselected");
+            MaterialSlotManager.Instance.SelectedSlotIndex = 0;
             RightPanel.SelectedTextureSlot = -1;
             RightPanel.OnTextureDeselected();
         };
