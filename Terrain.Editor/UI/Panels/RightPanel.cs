@@ -17,6 +17,11 @@ public class RightPanel : PanelBase
     private readonly BrushesPanel brushesPanel;
     private readonly TextureInspectorPanel textureInspectorPanel;
 
+    // 标签页可见性状态
+    private bool _showParamsTab = true;
+    private bool _showBrushesTab = true;
+    private bool _showTextureTab = false;
+
     public event EventHandler<BrushSelectedEventArgs>? BrushSelected;
     public event EventHandler<BrushParamsChangedEventArgs>? BrushParamsChanged;
     public event EventHandler<TextureImportEventArgs>? ImportNormalRequested;
@@ -36,11 +41,36 @@ public class RightPanel : PanelBase
         set => textureInspectorPanel.SelectedSlotIndex = value;
     }
 
+    /// <summary>工具被选中时调用 - 显示 Params/Brushes 标签</summary>
+    public void OnToolSelected()
+    {
+        _showParamsTab = true;
+        _showBrushesTab = true;
+    }
+
+    /// <summary>工具取消选择时调用 - 关闭 Params/Brushes 标签</summary>
+    public void OnToolDeselected()
+    {
+        _showParamsTab = false;
+        _showBrushesTab = false;
+    }
+
+    /// <summary>纹理被选中时调用 - 显示 Texture 标签</summary>
+    public void OnTextureSelected()
+    {
+        _showTextureTab = true;
+    }
+
+    /// <summary>纹理取消选择时调用 - 关闭 Texture 标签</summary>
+    public void OnTextureDeselected()
+    {
+        _showTextureTab = false;
+    }
+
     public RightPanel()
     {
         Title = "";
         ShowTitleBar = false;
-        Padding = Controls.Margin.Zero;
 
         brushParamsPanel = new BrushParamsPanel();
         brushesPanel = new BrushesPanel();
@@ -61,24 +91,30 @@ public class RightPanel : PanelBase
             // Tab bar
             if (ImGui.BeginTabBar($"##right_tabs_{Id}", ImGuiTabBarFlags.None))
             {
-                // Params tab
-                if (ImGui.BeginTabItem($"{Icons.Settings} Params"))
+                // Params tab - 可关闭
+                if (_showParamsTab)
                 {
-                    brushParamsPanel.Render();
-                    ImGui.EndTabItem();
+                    if (ImGui.BeginTabItem($"{Icons.Settings} Params", ref _showParamsTab))
+                    {
+                        brushParamsPanel.Render();
+                        ImGui.EndTabItem();
+                    }
                 }
 
-                // Brushes tab
-                if (ImGui.BeginTabItem($"{Icons.Brush} Brushes"))
+                // Brushes tab - 可关闭
+                if (_showBrushesTab)
                 {
-                    brushesPanel.Render();
-                    ImGui.EndTabItem();
+                    if (ImGui.BeginTabItem($"{Icons.Brush} Brushes", ref _showBrushesTab))
+                    {
+                        brushesPanel.Render();
+                        ImGui.EndTabItem();
+                    }
                 }
 
-                // Texture tab - 只在 Paint 模式下显示
-                if (CurrentMode == EditorMode.Paint)
+                // Texture tab - 仅在 Paint 模式且可见时显示
+                if (CurrentMode == EditorMode.Paint && _showTextureTab)
                 {
-                    if (ImGui.BeginTabItem($"{Icons.Image} Texture"))
+                    if (ImGui.BeginTabItem($"{Icons.Image} Texture", ref _showTextureTab))
                     {
                         textureInspectorPanel.Render();
                         ImGui.EndTabItem();

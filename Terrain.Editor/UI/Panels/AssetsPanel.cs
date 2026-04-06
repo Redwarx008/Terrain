@@ -23,9 +23,9 @@ public class AssetsPanel : PanelBase
     public EditorMode CurrentMode { get; set; } = EditorMode.Sculpt;
 
     /// <summary>
-    /// 选中的纹理槽索引 (Paint mode)
+    /// 选中的纹理槽索引 (Paint mode)，-1 表示无选择
     /// </summary>
-    public int SelectedTextureSlot { get; set; } = 0;
+    public int SelectedTextureSlot { get; set; } = -1;
 
     /// <summary>
     /// 选中的植被索引 (Foliage mode)
@@ -42,6 +42,7 @@ public class AssetsPanel : PanelBase
     #region 事件
 
     public event EventHandler<TextureSlotSelectedEventArgs>? TextureSlotSelected;
+    public event EventHandler? TextureSlotDeselected;
     public event EventHandler<TextureImportEventArgs>? TextureImportRequested;
     public event EventHandler<TextureSlotEventArgs>? TextureClearRequested;
     public event EventHandler<FoliageSelectedEventArgs>? FoliageSelected;
@@ -246,11 +247,21 @@ public class AssetsPanel : PanelBase
 
         GridTileRenderer.DrawLabel(tile.DrawList, tile.Cursor, tileLayout, slot.Name);
 
-        // 点击选中
+        // 点击选中 - toggle behavior
         if (ImGui.IsItemClicked())
         {
-            SelectedTextureSlot = slot.Index;
-            TextureSlotSelected?.Invoke(this, new TextureSlotSelectedEventArgs { SlotIndex = slot.Index });
+            if (isSelected)
+            {
+                // 取消选择
+                SelectedTextureSlot = -1;
+                TextureSlotDeselected?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                // 选中新槽位
+                SelectedTextureSlot = slot.Index;
+                TextureSlotSelected?.Invoke(this, new TextureSlotSelectedEventArgs { SlotIndex = slot.Index });
+            }
         }
 
         // Tooltip

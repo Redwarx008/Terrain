@@ -141,14 +141,35 @@ public class MainWindow : ControlBase
         Toolbar.ButtonClicked += (s, e) => HandleToolbarAction(e.ButtonName);
         Toolbar.ModeChanged += (s, e) => HandleModeChange(e);
 
-        Tools.ToolSelected += (s, e) => Console.LogInfo($"Tool selected: {e.Tool.Name}");
+        // 工具选择/取消选择事件
+        Tools.ToolSelected += (s, e) =>
+        {
+            Console.LogInfo($"Tool selected: {e.Tool.Name}");
+            RightPanel.OnToolSelected();
+        };
+        Tools.ToolDeselected += (s, e) =>
+        {
+            Console.LogInfo("Tool deselected");
+            RightPanel.OnToolDeselected();
+        };
+
         RightPanel.BrushSelected += (s, e) => Console.LogInfo($"Brush selected: {e.BrushName}");
         RightPanel.BrushParamsChanged += (s, e) => Console.LogInfo($"Brush {e.Param} changed to {e.Value:F2}");
+
+        // 纹理选择/取消选择事件
         Assets.TextureSlotSelected += (s, e) =>
         {
             Console.LogInfo($"Texture slot selected: {e.SlotIndex}");
             RightPanel.SelectedTextureSlot = e.SlotIndex;
+            RightPanel.OnTextureSelected();
         };
+        Assets.TextureSlotDeselected += (s, e) =>
+        {
+            Console.LogInfo("Texture slot deselected");
+            RightPanel.SelectedTextureSlot = -1;
+            RightPanel.OnTextureDeselected();
+        };
+
         Assets.TextureImportRequested += OnTextureImportRequested;
         Assets.TextureClearRequested += OnTextureClearRequested;
         Assets.FoliageSelected += (s, e) => Console.LogInfo($"Foliage selected: {e.Item.Name}");

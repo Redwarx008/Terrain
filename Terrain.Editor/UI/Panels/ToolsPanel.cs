@@ -27,6 +27,7 @@ public class ToolsPanel : PanelBase
     #region 事件
 
     public event EventHandler<ToolSelectedEventArgs>? ToolSelected;
+    public event EventHandler? ToolDeselected;
 
     #endregion
 
@@ -128,31 +129,51 @@ public class ToolsPanel : PanelBase
             ImGui.SetTooltip(tool.Description);
         }
 
-        // Handle click
+        // Handle click - toggle behavior
         if (ImGui.IsItemClicked())
         {
-            SelectedTool = tool.Name;
-            // Update EditorState when tool is selected
-            if (Enum.TryParse<HeightTool>(tool.Name, out var heightTool))
+            if (isSelected)
             {
-                EditorState.Instance.CurrentHeightTool = heightTool;
+                // 取消选择
+                SelectedTool = null;
+                ToolDeselected?.Invoke(this, EventArgs.Empty);
             }
-            else if (Enum.TryParse<PaintTool>(tool.Name, out var paintTool))
+            else
             {
-                EditorState.Instance.CurrentPaintTool = paintTool;
+                // 选中新工具
+                SelectedTool = tool.Name;
+                // Update EditorState when tool is selected
+                if (Enum.TryParse<HeightTool>(tool.Name, out var heightTool))
+                {
+                    EditorState.Instance.CurrentHeightTool = heightTool;
+                }
+                else if (Enum.TryParse<PaintTool>(tool.Name, out var paintTool))
+                {
+                    EditorState.Instance.CurrentPaintTool = paintTool;
+                }
+                ToolSelected?.Invoke(this, new ToolSelectedEventArgs { Tool = tool });
             }
-            ToolSelected?.Invoke(this, new ToolSelectedEventArgs { Tool = tool });
         }
     }
 
     public void SetMode(EditorMode mode)
     {
         CurrentMode = mode;
-        // Select first tool of the mode
+        // Select first tool of the mode and trigger event
         var firstTool = Tools.Find(t => t.Mode == mode);
         if (firstTool != null)
         {
             SelectedTool = firstTool.Name;
+            // Update EditorState
+            if (Enum.TryParse<HeightTool>(firstTool.Name, out var heightTool))
+            {
+                EditorState.Instance.CurrentHeightTool = heightTool;
+            }
+            else if (Enum.TryParse<PaintTool>(firstTool.Name, out var paintTool))
+            {
+                EditorState.Instance.CurrentPaintTool = paintTool;
+            }
+            ToolSelected?.Invoke(this, new ToolSelectedEventArgs { Tool = firstTool });
         }
     }
 
