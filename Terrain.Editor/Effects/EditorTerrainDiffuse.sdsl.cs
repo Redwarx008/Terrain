@@ -23,5 +23,15 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<float> DiffuseWorldRepeatSize = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<Color4> BaseColor = ParameterKeys.NewValue<Color4>();
         public static readonly ValueParameterKey<Vector2> HeightmapDimensionsInSamples = ParameterKeys.NewValue<Vector2>();
+
+        // 材质索引图参数
+        public static readonly ObjectParameterKey<Texture> MaterialIndexMap = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> MaterialIndexSampler = ParameterKeys.NewObject<SamplerState>();
+
+        // 材质纹理数组参数
+        public static readonly ObjectParameterKey<Texture> MaterialAlbedoArray = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> MaterialAlbedoSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ValueParameterKey<int> MaterialArraySize = ParameterKeys.NewValue<int>();
+        public static readonly ValueParameterKey<float> MaterialTilingScale = ParameterKeys.NewValue<float>();
     }
 }

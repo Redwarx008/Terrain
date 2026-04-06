@@ -15,6 +15,7 @@ using Stride.Rendering;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
 using Terrain.Editor.Rendering.Materials;
+using Terrain.Editor.Services;
 
 namespace Terrain.Editor.Rendering;
 
@@ -186,6 +187,33 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         parameters.Set(EditorTerrainDiffuseKeys.TerrainDiffuseRepeatSampler, graphicsDevice.SamplerStates.LinearWrap);
         parameters.Set(EditorTerrainDiffuseKeys.DiffuseWorldRepeatSize, DiffuseWorldRepeatSize);
         parameters.Set(EditorTerrainDiffuseKeys.BaseColor, new Color4(1.0f, 1.0f, 1.0f, 1.0f));
+
+        // Set material index map parameters
+        if (entity.MaterialIndexMapTexture != null)
+        {
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialIndexMap, entity.MaterialIndexMapTexture);
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialIndexSampler, graphicsDevice.SamplerStates.PointClamp);
+        }
+
+        // Set material texture array parameters
+        var graphicsContext = Services.GetService<GraphicsContext>();
+        var commandList = graphicsContext?.CommandList;
+        if (commandList != null)
+        {
+            var albedoArray = MaterialSlotManager.Instance.GetOrBuildMaterialAlbedoArray(graphicsDevice, commandList);
+            if (albedoArray != null)
+            {
+                parameters.Set(EditorTerrainDiffuseKeys.MaterialAlbedoArray, albedoArray);
+                parameters.Set(EditorTerrainDiffuseKeys.MaterialAlbedoSampler, graphicsDevice.SamplerStates.LinearWrap);
+                parameters.Set(EditorTerrainDiffuseKeys.MaterialArraySize, albedoArray.ArraySize);
+            }
+            else
+            {
+                parameters.Set(EditorTerrainDiffuseKeys.MaterialArraySize, 0);
+            }
+        }
+
+        parameters.Set(EditorTerrainDiffuseKeys.MaterialTilingScale, 1.0f);
     }
 
     private static void SetSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity, EditorTerrainRenderObject renderObject)
