@@ -567,6 +567,7 @@ public class MainWindow : ControlBase
         Tools.SetMode(mode);
         Assets.SetMode(mode);
         RightPanel.CurrentMode = mode;
+        Viewport.SetEditMode(mode);
 
         Console.LogInfo($"Mode changed to: {mode}");
     }
