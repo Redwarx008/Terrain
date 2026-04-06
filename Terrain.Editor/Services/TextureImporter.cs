@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.IO;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using Stride.Graphics;
@@ -95,7 +96,106 @@ public static class TextureImporter
     /// </summary>
     public static bool IsSupportedImageFormat(string filePath)
     {
-        string ext = System.IO.Path.GetExtension(filePath).ToLowerInvariant();
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
         return ext is ".png" or ".jpg" or ".jpeg" or ".tga" or ".bmp";
+    }
+
+    /// <summary>
+    /// 根据 Albedo 纹理路径查找匹配的法线贴图。
+    /// 支持常见的命名约定：_normal, _n, _Normal 等。
+    /// </summary>
+    /// <param name="albedoPath">Albedo 纹理文件路径。</param>
+    /// <returns>法线贴图路径，未找到返回 null。</returns>
+    public static string? FindMatchingNormalMap(string albedoPath)
+    {
+        if (!File.Exists(albedoPath))
+            return null;
+
+        string directory = Path.GetDirectoryName(albedoPath) ?? "";
+        string nameWithoutExt = Path.GetFileNameWithoutExtension(albedoPath);
+        string ext = Path.GetExtension(albedoPath);
+
+        // 支持的图像扩展名（用于候选文件检查）
+        string[] supportedExts = { ".png", ".jpg", ".jpeg", ".tga", ".bmp" };
+
+        // 常见 Diffuse 后缀，需要替换为 Normal 后缀
+        string[] diffuseSuffixes = {
+            "_diffuse", "_Diffuse", "_DIFFUSE",
+            "_albedo", "_Albedo", "_ALBEDO",
+            "_basecolor", "_BaseColor", "_BaseColor", "_baseColor",
+            "_color", "_Color", "_COLOR",
+            "_d", "_D"
+        };
+
+        // Normal 后缀候选
+        string[] normalSuffixes = {
+            "_normal", "_Normal", "_NORMAL",
+            "_n", "_N",
+            "_normalmap", "_NormalMap", "_Normalmap"
+        };
+
+        // Normal 前缀候选
+        string[] normalPrefixes = {
+            "Normal_", "normal_", "NORMAL_"
+        };
+
+        // 1. 尝试替换 Diffuse 后缀为 Normal 后缀
+        foreach (var ds in diffuseSuffixes)
+        {
+            if (nameWithoutExt.EndsWith(ds, StringComparison.OrdinalIgnoreCase))
+            {
+                string baseName = nameWithoutExt[..^ds.Length];
+                foreach (var ns in normalSuffixes)
+                {
+                    foreach (var e in supportedExts)
+                    {
+                        string candidate = Path.Combine(directory, baseName + ns + e);
+                        if (File.Exists(candidate))
+                            return candidate;
+                    }
+                }
+            }
+        }
+
+        // 2. 尝试直接添加 Normal 后缀
+        foreach (var ns in normalSuffixes)
+        {
+            foreach (var e in supportedExts)
+            {
+                string candidate = Path.Combine(directory, nameWithoutExt + ns + e);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        // 3. 尝试 Normal 子目录
+        string normalSubdir = Path.Combine(directory, "Normal");
+        string normalSubdirLower = Path.Combine(directory, "normal");
+
+        foreach (var subdir in new[] { normalSubdir, normalSubdirLower })
+        {
+            if (Directory.Exists(subdir))
+            {
+                foreach (var e in supportedExts)
+                {
+                    string candidate = Path.Combine(subdir, nameWithoutExt + e);
+                    if (File.Exists(candidate))
+                        return candidate;
+                }
+
+                // 也尝试带 _normal 后缀
+                foreach (var ns in normalSuffixes)
+                {
+                    foreach (var e in supportedExts)
+                    {
+                        string candidate = Path.Combine(subdir, nameWithoutExt + ns + e);
+                        if (File.Exists(candidate))
+                            return candidate;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 }

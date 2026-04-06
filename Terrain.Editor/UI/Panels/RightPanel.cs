@@ -9,15 +9,32 @@ using Terrain.Editor.UI.Styling;
 namespace Terrain.Editor.UI.Panels;
 
 /// <summary>
-/// 右侧面板 - 包含参数和笔刷两个标签页
+/// 右侧面板 - 包含参数、笔刷和纹理属性标签页
 /// </summary>
 public class RightPanel : PanelBase
 {
     private readonly BrushParamsPanel brushParamsPanel;
     private readonly BrushesPanel brushesPanel;
+    private readonly TextureInspectorPanel textureInspectorPanel;
 
     public event EventHandler<BrushSelectedEventArgs>? BrushSelected;
     public event EventHandler<BrushParamsChangedEventArgs>? BrushParamsChanged;
+    public event EventHandler<TextureImportEventArgs>? ImportNormalRequested;
+    public event EventHandler<TextureSlotEventArgs>? ClearNormalRequested;
+
+    /// <summary>
+    /// 当前编辑模式。
+    /// </summary>
+    public EditorMode CurrentMode { get; set; } = EditorMode.Sculpt;
+
+    /// <summary>
+    /// 选中的纹理槽位索引（Paint 模式）。
+    /// </summary>
+    public int SelectedTextureSlot
+    {
+        get => textureInspectorPanel.SelectedSlotIndex;
+        set => textureInspectorPanel.SelectedSlotIndex = value;
+    }
 
     public RightPanel()
     {
@@ -27,9 +44,12 @@ public class RightPanel : PanelBase
 
         brushParamsPanel = new BrushParamsPanel();
         brushesPanel = new BrushesPanel();
+        textureInspectorPanel = new TextureInspectorPanel();
 
         brushesPanel.BrushSelected += (s, e) => BrushSelected?.Invoke(this, e);
         brushParamsPanel.ParamsChanged += (s, e) => BrushParamsChanged?.Invoke(this, e);
+        textureInspectorPanel.ImportNormalRequested += (s, e) => ImportNormalRequested?.Invoke(this, e);
+        textureInspectorPanel.ClearNormalRequested += (s, e) => ClearNormalRequested?.Invoke(this, e);
     }
 
     protected override void RenderContent()
@@ -53,6 +73,16 @@ public class RightPanel : PanelBase
                 {
                     brushesPanel.Render();
                     ImGui.EndTabItem();
+                }
+
+                // Texture tab - 只在 Paint 模式下显示
+                if (CurrentMode == EditorMode.Paint)
+                {
+                    if (ImGui.BeginTabItem($"{Icons.Image} Texture"))
+                    {
+                        textureInspectorPanel.Render();
+                        ImGui.EndTabItem();
+                    }
                 }
 
                 ImGui.EndTabBar();

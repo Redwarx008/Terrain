@@ -98,6 +98,17 @@ public sealed class MaterialSlotManager
     }
 
     /// <summary>
+    /// 清除指定槽位的 Normal 纹理。
+    /// </summary>
+    public void ClearNormalTexture(int slotIndex)
+    {
+        var slot = slots[slotIndex];
+        slot.NormalTexture?.Dispose();
+        slot.NormalTexture = null;
+        slot.NormalTexturePath = null;
+    }
+
+    /// <summary>
     /// 清除指定槽位的配置。
     /// </summary>
     public void ClearSlot(int slotIndex)

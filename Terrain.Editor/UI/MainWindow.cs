@@ -144,11 +144,19 @@ public class MainWindow : ControlBase
         Tools.ToolSelected += (s, e) => Console.LogInfo($"Tool selected: {e.Tool.Name}");
         RightPanel.BrushSelected += (s, e) => Console.LogInfo($"Brush selected: {e.BrushName}");
         RightPanel.BrushParamsChanged += (s, e) => Console.LogInfo($"Brush {e.Param} changed to {e.Value:F2}");
-        Assets.TextureSlotSelected += (s, e) => Console.LogInfo($"Texture slot selected: {e.SlotIndex}");
+        Assets.TextureSlotSelected += (s, e) =>
+        {
+            Console.LogInfo($"Texture slot selected: {e.SlotIndex}");
+            RightPanel.SelectedTextureSlot = e.SlotIndex;
+        };
         Assets.TextureImportRequested += OnTextureImportRequested;
         Assets.TextureClearRequested += OnTextureClearRequested;
         Assets.FoliageSelected += (s, e) => Console.LogInfo($"Foliage selected: {e.Item.Name}");
         Assets.LayerSelected += (s, e) => Console.LogInfo($"Layer selected: {e.Layer.Name}");
+
+        // RightPanel texture inspector events
+        RightPanel.ImportNormalRequested += OnImportNormalRequested;
+        RightPanel.ClearNormalRequested += OnClearNormalRequested;
 
         // Subscribe to terrain events
         Viewport.HeightmapLoaded += (s, path) =>
@@ -537,6 +545,7 @@ public class MainWindow : ControlBase
     {
         Tools.SetMode(mode);
         Assets.SetMode(mode);
+        RightPanel.CurrentMode = mode;
 
         Console.LogInfo($"Mode changed to: {mode}");
     }
@@ -553,17 +562,59 @@ public class MainWindow : ControlBase
             if (texture != null)
             {
                 if (e.TextureType == TextureType.Albedo)
+                {
                     MaterialSlotManager.Instance.SetAlbedoTexture(e.SlotIndex, texture, filePath, TextureSize.Size512);
-                else
-                    MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath);
+                    Console.LogInfo($"Imported Albedo to slot {e.SlotIndex}: {filePath}");
 
-                Console.LogInfo($"Imported {e.TextureType} to slot {e.SlotIndex}: {filePath}");
+                    // 自动查找并导入匹配的法线贴图
+                    string? normalPath = TextureImporter.FindMatchingNormalMap(filePath);
+                    if (normalPath != null)
+                    {
+                        var normalTexture = TextureImporter.ImportFromFile(normalPath, graphicsDevice!, TextureSize.Size512);
+                        if (normalTexture != null)
+                        {
+                            MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, normalTexture, normalPath);
+                            Console.LogInfo($"Auto-imported Normal map: {normalPath}");
+                        }
+                    }
+                }
+                else
+                {
+                    MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath);
+                    Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
+                }
             }
             else
             {
                 Console.LogError($"Failed to import texture: {filePath}");
             }
         }
+    }
+
+    private void OnImportNormalRequested(object? sender, TextureImportEventArgs e)
+    {
+        nint hwnd = GetNativeWindowHandle();
+        string filter = "Image Files (*.png;*.jpg;*.tga;*.bmp)|*.png;*.jpg;*.jpeg;*.tga;*.bmp";
+
+        if (FileDialog.ShowOpenDialog(hwnd, filter, "Import Normal Texture", out string? filePath))
+        {
+            var texture = TextureImporter.ImportFromFile(filePath, graphicsDevice!, TextureSize.Size512);
+            if (texture != null)
+            {
+                MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath);
+                Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
+            }
+            else
+            {
+                Console.LogError($"Failed to import texture: {filePath}");
+            }
+        }
+    }
+
+    private void OnClearNormalRequested(object? sender, TextureSlotEventArgs e)
+    {
+        MaterialSlotManager.Instance.ClearNormalTexture(e.SlotIndex);
+        Console.LogInfo($"Cleared normal map from slot {e.SlotIndex}");
     }
 
     private void OnTextureClearRequested(object? sender, TextureSlotEventArgs e)

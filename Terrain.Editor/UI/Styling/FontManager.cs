@@ -156,4 +156,5 @@ public static class Icons
     public const string Unlock = "\uE785";
     public const string Eraser = "\uE75C";
     public const string EyeOff = "\uE890";
+    public const string Image = "\uEB9F";  // Same as FileImage, but semantically for images
 }
