@@ -36,11 +36,28 @@ public sealed class EditorState
     private static readonly Lazy<EditorState> _instance = new(() => new());
     private HeightTool _currentHeightTool = HeightTool.Raise;
     private PaintTool _currentPaintTool = PaintTool.Paint;
+    private bool _hasSelectedTool = false;
 
     /// <summary>
     /// Gets the singleton instance of EditorState.
     /// </summary>
     public static EditorState Instance => _instance.Value;
+
+    /// <summary>
+    /// 获取或设置是否有工具被选中。
+    /// </summary>
+    public bool HasSelectedTool
+    {
+        get => _hasSelectedTool;
+        set
+        {
+            if (_hasSelectedTool != value)
+            {
+                _hasSelectedTool = value;
+                ToolSelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
 
     /// <summary>
     /// Gets or sets the currently active height editing tool.
@@ -84,6 +101,11 @@ public sealed class EditorState
     /// Raised when the current paint tool changes.
     /// </summary>
     public event EventHandler? PaintToolChanged;
+
+    /// <summary>
+    /// 当工具选择状态改变时触发（选中或取消选中）。
+    /// </summary>
+    public event EventHandler? ToolSelectionChanged;
 
     /// <summary>
     /// 向后兼容属性。

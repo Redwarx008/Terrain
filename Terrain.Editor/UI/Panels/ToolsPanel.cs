@@ -42,7 +42,6 @@ public class ToolsPanel : PanelBase
 
         // D-18, D-19: Wire to EditorState for tool selection
         EditorState.Instance.ToolChanged += OnEditorToolChanged;
-        SelectedTool = EditorState.Instance.CurrentTool.ToString();
     }
 
     private void InitializeTools()
@@ -136,12 +135,14 @@ public class ToolsPanel : PanelBase
             {
                 // 取消选择
                 SelectedTool = null;
+                EditorState.Instance.HasSelectedTool = false;
                 ToolDeselected?.Invoke(this, EventArgs.Empty);
             }
             else
             {
                 // 选中新工具
                 SelectedTool = tool.Name;
+                EditorState.Instance.HasSelectedTool = true;
                 // Update EditorState when tool is selected
                 if (Enum.TryParse<HeightTool>(tool.Name, out var heightTool))
                 {
@@ -159,21 +160,16 @@ public class ToolsPanel : PanelBase
     public void SetMode(EditorMode mode)
     {
         CurrentMode = mode;
-        // Select first tool of the mode and trigger event
-        var firstTool = Tools.Find(t => t.Mode == mode);
-        if (firstTool != null)
+        // 如果当前有选中的工具且不属于新模式，清除选择
+        if (SelectedTool != null)
         {
-            SelectedTool = firstTool.Name;
-            // Update EditorState
-            if (Enum.TryParse<HeightTool>(firstTool.Name, out var heightTool))
+            var currentTool = Tools.Find(t => t.Name == SelectedTool);
+            if (currentTool != null && currentTool.Mode != mode)
             {
-                EditorState.Instance.CurrentHeightTool = heightTool;
+                SelectedTool = null;
+                EditorState.Instance.HasSelectedTool = false;
+                ToolDeselected?.Invoke(this, EventArgs.Empty);
             }
-            else if (Enum.TryParse<PaintTool>(firstTool.Name, out var paintTool))
-            {
-                EditorState.Instance.CurrentPaintTool = paintTool;
-            }
-            ToolSelected?.Invoke(this, new ToolSelectedEventArgs { Tool = firstTool });
         }
     }
 

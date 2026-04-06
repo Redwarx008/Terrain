@@ -133,7 +133,7 @@ public class MainWindow : ControlBase
 
     private void InitializeDefaultData()
     {
-        Tools.SelectedTool = "Raise";
+        // 不再默认选择工具，让用户主动选择
     }
 
     private void SubscribeEvents()

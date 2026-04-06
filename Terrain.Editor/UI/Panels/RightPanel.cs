@@ -17,9 +17,9 @@ public class RightPanel : PanelBase
     private readonly BrushesPanel brushesPanel;
     private readonly TextureInspectorPanel textureInspectorPanel;
 
-    // 标签页可见性状态
-    private bool _showParamsTab = true;
-    private bool _showBrushesTab = true;
+    // 标签页可见性状态 - 默认不显示，等工具被选中后再显示
+    private bool _showParamsTab = false;
+    private bool _showBrushesTab = false;
     private bool _showTextureTab = false;
 
     public event EventHandler<BrushSelectedEventArgs>? BrushSelected;

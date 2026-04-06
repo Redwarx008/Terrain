@@ -363,6 +363,10 @@ public class SceneViewPanel : PanelBase
         // Reset currentHitPoint at start of each frame
         currentHitPoint = null;
 
+        // 没有选择工具时不显示笔刷预览
+        if (!EditorState.Instance.HasSelectedTool)
+            return;
+
         // Per D-09: Show preview when viewport is hovered and not in camera control mode.
         // D-02: Left button editing should still show brush preview.
         var io = ImGui.GetIO();
