@@ -1,66 +1,86 @@
 #nullable enable
 
+using System;
 using Stride.Core.Mathematics;
 
 namespace Terrain.Editor.UI.Styling;
 
 /// <summary>
-/// 编辑器颜色方案 - 深黑色专业主题
+/// Editor color palette.
+/// Colors are authored as sRGB bytes and converted to linear space,
+/// so what you see on screen matches the intended hex values.
 /// </summary>
 public static class ColorPalette
 {
-    // 背景色
-    public static readonly Color4 Background = new(0.118f, 0.118f, 0.118f, 1.0f);        // #1E1E1E
-    public static readonly Color4 PanelBackground = new(0.145f, 0.145f, 0.149f, 1.0f);   // #252526
-    public static readonly Color4 DarkBackground = new(0.09f, 0.09f, 0.09f, 1.0f);       // #171717
+    private static float SrgbByteToLinear(byte channel)
+    {
+        float srgb = channel / 255.0f;
+        if (srgb <= 0.04045f)
+            return srgb / 12.92f;
 
-    // 交互状态色
-    public static readonly Color4 Selection = new(0.035f, 0.294f, 0.443f, 1.0f);         // #094771
-    public static readonly Color4 SelectionInactive = new(0.15f, 0.15f, 0.15f, 1.0f);    // #262626
-    public static readonly Color4 Hover = new(0.165f, 0.176f, 0.18f, 1.0f);              // #2A2D2E
-    public static readonly Color4 HoverLight = new(0.2f, 0.21f, 0.22f, 1.0f);            // #333638
-    public static readonly Color4 Pressed = new(0.063f, 0.247f, 0.373f, 1.0f);           // #103E5F
+        return MathF.Pow((srgb + 0.055f) / 1.055f, 2.4f);
+    }
 
-    // 边框和分隔线
-    public static readonly Color4 Border = new(0.243f, 0.243f, 0.259f, 1.0f);            // #3E3E42
-    public static readonly Color4 BorderLight = new(0.337f, 0.337f, 0.353f, 1.0f);       // #56565A
-    public static readonly Color4 BorderDark = new(0.1f, 0.1f, 0.1f, 1.0f);              // #1A1A1A
+    private static Color4 Srgb(byte r, byte g, byte b, float a = 1.0f)
+    {
+        return new Color4(
+            SrgbByteToLinear(r),
+            SrgbByteToLinear(g),
+            SrgbByteToLinear(b),
+            a);
+    }
 
-    // 文字颜色
-    public static readonly Color4 TextPrimary = new(0.8f, 0.8f, 0.8f, 1.0f);             // #CCCCCC
-    public static readonly Color4 TextSecondary = new(0.522f, 0.522f, 0.522f, 1.0f);     // #858585
-    public static readonly Color4 TextDisabled = new(0.4f, 0.4f, 0.4f, 1.0f);            // #666666
-    public static readonly Color4 TextHighlight = new(1.0f, 1.0f, 1.0f, 1.0f);           // #FFFFFF
+    // Background colors
+    public static readonly Color4 Background = Srgb(0x1F, 0x1F, 0x1F);       // #1F1F1F
+    public static readonly Color4 PanelBackground = Srgb(0x18, 0x18, 0x18);  // #181818
+    public static readonly Color4 DarkBackground = Srgb(0x15, 0x15, 0x15);   // #151515
 
-    // 强调色
-    public static readonly Color4 Accent = new(0.0f, 0.478f, 0.8f, 1.0f);                // #007ACC
-    public static readonly Color4 AccentHover = new(0.0f, 0.557f, 0.933f, 1.0f);         // #008Eee
-    public static readonly Color4 AccentPressed = new(0.0f, 0.4f, 0.667f, 1.0f);         // #006AAA
+    // Interaction colors
+    public static readonly Color4 Selection = Srgb(0x00, 0x78, 0xD4);          // #0078D4
+    public static readonly Color4 SelectionInactive = Srgb(0x2B, 0x2B, 0x2B);  // #2B2B2B
+    public static readonly Color4 Hover = Srgb(0x2B, 0x2B, 0x2B);              // #2B2B2B
+    public static readonly Color4 HoverLight = Srgb(0x3C, 0x3C, 0x3C);         // #3C3C3C
+    public static readonly Color4 Pressed = Srgb(0x02, 0x6E, 0xC1);            // #026EC1
 
-    // 状态色
-    public static readonly Color4 Success = new(0.306f, 0.788f, 0.69f, 1.0f);            // #4EC9B0
-    public static readonly Color4 Warning = new(0.808f, 0.569f, 0.47f, 1.0f);            // #CE9178
-    public static readonly Color4 Error = new(0.957f, 0.278f, 0.278f, 1.0f);             // #F44747
-    public static readonly Color4 Info = new(0.38f, 0.61f, 0.92f, 1.0f);                 // #61AFEF
+    // Borders and separators
+    public static readonly Color4 Border = Srgb(0x2B, 0x2B, 0x2B);       // #2B2B2B
+    public static readonly Color4 BorderLight = Srgb(0x3C, 0x3C, 0x3C);  // #3C3C3C
+    public static readonly Color4 BorderDark = Srgb(0x1A, 0x1A, 0x1A);   // #1A1A1A
 
-    // 控件特定颜色
-    public static readonly Color4 ButtonDefault = new(0.2f, 0.2f, 0.2f, 1.0f);           // #333333
-    public static readonly Color4 ButtonHover = new(0.25f, 0.25f, 0.25f, 1.0f);          // #404040
-    public static readonly Color4 ButtonPressed = new(0.15f, 0.15f, 0.15f, 1.0f);        // #262626
+    // Text colors
+    public static readonly Color4 TextPrimary = Srgb(0xCC, 0xCC, 0xCC);    // #CCCCCC
+    public static readonly Color4 TextSecondary = Srgb(0x9D, 0x9D, 0x9D);  // #9D9D9D
+    public static readonly Color4 TextDisabled = Srgb(0x66, 0x66, 0x66);   // #666666
+    public static readonly Color4 TextHighlight = Srgb(0xFF, 0xFF, 0xFF);  // #FFFFFF
 
-    public static readonly Color4 InputBackground = new(0.1f, 0.1f, 0.1f, 1.0f);         // #1A1A1A
-    public static readonly Color4 InputBorder = new(0.3f, 0.3f, 0.3f, 1.0f);             // #4D4D4D
-    public static readonly Color4 InputFocus = new(0.0f, 0.478f, 0.8f, 1.0f);            // #007ACC
+    // Accent colors
+    public static readonly Color4 Accent = Srgb(0x00, 0x78, 0xD4);         // #0078D4
+    public static readonly Color4 AccentHover = Srgb(0x02, 0x6E, 0xC1);    // #026EC1
+    public static readonly Color4 AccentPressed = Srgb(0x00, 0x5F, 0xA8);  // #005FA8
 
-    public static readonly Color4 ScrollbarTrack = new(0.15f, 0.15f, 0.15f, 1.0f);       // #262626
-    public static readonly Color4 ScrollbarThumb = new(0.3f, 0.3f, 0.3f, 1.0f);          // #4D4D4D
-    public static readonly Color4 ScrollbarThumbHover = new(0.4f, 0.4f, 0.4f, 1.0f);     // #666666
+    // Status colors
+    public static readonly Color4 Success = Srgb(0x4E, 0xC9, 0xB0);  // #4EC9B0
+    public static readonly Color4 Warning = Srgb(0xCE, 0x91, 0x78);  // #CE9178
+    public static readonly Color4 Error = Srgb(0xF4, 0x47, 0x47);    // #F44747
+    public static readonly Color4 Info = Srgb(0x61, 0xAF, 0xEF);     // #61AFEF
 
-    // 标题栏颜色
-    public static readonly Color4 TitleBar = new(0.2f, 0.2f, 0.2f, 1.0f);                // #333333
-    public static readonly Color4 TitleBarActive = new(0.0f, 0.478f, 0.8f, 1.0f);        // #007ACC
+    // Control-specific colors
+    public static readonly Color4 ButtonDefault = Srgb(0x31, 0x31, 0x31);  // #313131
+    public static readonly Color4 ButtonHover = Srgb(0x2B, 0x2B, 0x2B);    // #2B2B2B
+    public static readonly Color4 ButtonPressed = Srgb(0x24, 0x24, 0x24);  // #242424
 
-    // 转换为System.Numerics.Vector4用于ImGui
+    public static readonly Color4 InputBackground = Srgb(0x31, 0x31, 0x31);  // #313131
+    public static readonly Color4 InputBorder = Srgb(0x3C, 0x3C, 0x3C);      // #3C3C3C
+    public static readonly Color4 InputFocus = Srgb(0x00, 0x78, 0xD4);       // #0078D4
+
+    public static readonly Color4 ScrollbarTrack = Srgb(0x18, 0x18, 0x18);      // #181818
+    public static readonly Color4 ScrollbarThumb = Srgb(0x61, 0x61, 0x61);      // #616161
+    public static readonly Color4 ScrollbarThumbHover = Srgb(0x7E, 0x7E, 0x7E); // #7E7E7E
+
+    // Title bar colors
+    public static readonly Color4 TitleBar = Srgb(0x18, 0x18, 0x18);        // #181818
+    public static readonly Color4 TitleBarActive = Srgb(0x18, 0x18, 0x18);  // #181818
+
     public static System.Numerics.Vector4 ToVector4(this Color4 color)
     {
         return new System.Numerics.Vector4(color.R, color.G, color.B, color.A);
