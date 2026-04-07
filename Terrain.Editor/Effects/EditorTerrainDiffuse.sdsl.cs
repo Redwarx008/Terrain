@@ -23,6 +23,7 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<float> DiffuseWorldRepeatSize = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<Color4> BaseColor = ParameterKeys.NewValue<Color4>();
         public static readonly ValueParameterKey<Vector2> HeightmapDimensionsInSamples = ParameterKeys.NewValue<Vector2>();
+        public static readonly ValueParameterKey<float> DetailContrast = ParameterKeys.NewValue<float>();
 
         // 材质索引图参数
         public static readonly ObjectParameterKey<Texture> MaterialIndexMap = ParameterKeys.NewObject<Texture>();

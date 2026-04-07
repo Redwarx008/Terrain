@@ -31,6 +31,7 @@ namespace Terrain.Editor
             [Color]
             stage float4 BaseColor;
             stage float2 HeightmapDimensionsInSamples;
+            stage float DetailContrast;
 
             stage int MaterialArraySize;
             stage int MaterialNormalArraySize;
@@ -82,72 +83,63 @@ namespace Terrain.Editor
             return DecodeMaterialPixel(raw);
         }
 
-        float2 RotateUV(float2 uv, float angle)
+        uint ResolveAlbedoIndex(uint materialIndex)
         {
-            float s = sin(angle);
-            float c = cos(angle);
-            return float2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);
+            int maxIndex = max(MaterialArraySize - 1, 0);
+            return (uint)min((int)materialIndex, maxIndex);
         }
 
-        float2 GetProjectedUV(float3 worldPos, float3 projDir, float scale)
+        uint ResolveNormalIndex(uint materialIndex)
         {
-            float3 up = abs(projDir.y) > 0.99f ? float3(0, 0, 1) : float3(0, 1, 0);
-            float3 projU = normalize(cross(up, projDir));
-            float3 projV = cross(projDir, projU);
+            int maxIndex = max(MaterialNormalArraySize - 1, 0);
+            return (uint)min((int)materialIndex, maxIndex);
+        }
+
+        void BuildProjectionBasis(float3 projDir, float rotation, out float3 projU, out float3 projV)
+        {
+            float rx = sin(rotation);
+            float ry = cos(rotation);
+            float2 rot = normalize(float2(rx, ry));
+            projU = normalize(cross(projDir, float3(rot.x, 0.0f, rot.y)));
+            projV = normalize(cross(projU, projDir));
+        }
+
+        float2 GetProjectedUV(float3 worldPos, float3 projDir, float rotation)
+        {
+            float3 projU;
+            float3 projV;
+            BuildProjectionBasis(projDir, rotation, projU, projV);
+            float scale = 0.0625f * MaterialTilingScale;
             return float2(dot(projU, worldPos), dot(projV, worldPos)) * scale;
         }
 
-        float4 SampleMaterialAlbedo(uint materialIndex, float2 worldUV, float rotation)
+        float3 BuildProjectedNormalWS(float3 normalTS, float3 projDir, float rotation)
         {
-            if (materialIndex >= (uint)MaterialArraySize || MaterialArraySize == 0)
-                return DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, worldUV);
+            float3 projU;
+            float3 projV;
+            BuildProjectionBasis(projDir, rotation, projU, projV);
 
-            float2 tiledUV = worldUV * MaterialTilingScale;
-            if (rotation > 0.001f)
-                tiledUV = RotateUV(tiledUV, rotation);
+            float3 mappedNormalWS =
+                normalTS.x * projU +
+                normalTS.y * projV +
+                normalTS.z * projDir;
 
-            return MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)materialIndex));
+            float len2 = dot(mappedNormalWS, mappedNormalWS);
+            bool invalid =
+                len2 < 0.000001f ||
+                !(mappedNormalWS.x == mappedNormalWS.x) ||
+                !(mappedNormalWS.y == mappedNormalWS.y) ||
+                !(mappedNormalWS.z == mappedNormalWS.z);
+            return invalid ? projDir : normalize(mappedNormalWS);
         }
 
-        float4 SampleMaterialAlbedoProjected(uint materialIndex, float3 worldPos, float3 projDir, float rotation)
+        float ApplyDetailContrast(float weight, float detail)
         {
-            if (materialIndex >= (uint)MaterialArraySize || MaterialArraySize == 0)
-            {
-                float2 uv = worldPos.xz / DiffuseWorldRepeatSize;
-                return DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv);
-            }
-
-            float2 tiledUV = GetProjectedUV(worldPos, projDir, MaterialTilingScale);
-            if (rotation > 0.001f)
-                tiledUV = RotateUV(tiledUV, rotation);
-
-            return MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)materialIndex));
-        }
-
-        float3 SampleMaterialNormal(uint materialIndex, float2 worldUV, float rotation)
-        {
-            if (materialIndex >= (uint)MaterialNormalArraySize || MaterialNormalArraySize == 0)
-                return float3(0.0f, 0.0f, 1.0f);
-
-            float2 tiledUV = worldUV * MaterialTilingScale;
-            if (rotation > 0.001f)
-                tiledUV = RotateUV(tiledUV, rotation);
-
-            float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)materialIndex));
-            return normalize(normalSample.xyz * 2.0f - 1.0f);
-        }
-
-        float3 SampleMaterialNormalProjected(uint materialIndex, float3 worldPos, float3 projDir, float rotation)
-        {
-            if (materialIndex >= (uint)MaterialNormalArraySize || MaterialNormalArraySize == 0)
-                return float3(0.0f, 0.0f, 1.0f);
-
-            float2 tiledUV = GetProjectedUV(worldPos, projDir, MaterialTilingScale);
-            if (rotation > 0.001f)
-                tiledUV = RotateUV(tiledUV, rotation);
-
-            float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)materialIndex));
-            return normalize(normalSample.xyz * 2.0f - 1.0f);
+            float detailContrast = max(DetailContrast, 0.0f);
+            float result = max(
+                0.1f * weight,
+                detailContrast * (weight + detail) + 1.0f - (detail + detailContrast));
+            return pow(result, 4.0f);
         }
 
         // Accumulate one neighbor sample using both bilinear weight and material blend weight.
@@ -155,36 +147,48 @@ namespace Terrain.Editor
             MaterialPixel pixel,
             float bilinearWeight,
             float3 worldPos,
-            float2 worldUV,
             float3 geomNormalWS,
-            inout float4 colorSum,
+            inout float3 colorSum,
             inout float3 normalSum,
             inout float totalWeight)
         {
             if (bilinearWeight <= 0.0f)
                 return;
 
-            float sampleWeight = bilinearWeight * (pixel.weight * pixel.weight + 0.1f);
-            bool useProjection = pixel.projDir.y < 0.99f;
-
+            float sampleWeight = bilinearWeight;
+            float weightMod = pixel.weight * pixel.weight + 0.1f;
+            float2 tiledUV = GetProjectedUV(worldPos, pixel.projDir, pixel.rotation);
             float4 color;
-            float3 normalTS;
-            if (useProjection)
+            if (MaterialArraySize == 0)
             {
-                color = SampleMaterialAlbedoProjected(pixel.index, worldPos, pixel.projDir, pixel.rotation);
-                normalTS = SampleMaterialNormalProjected(pixel.index, worldPos, pixel.projDir, pixel.rotation);
-
-                float projWeight = saturate(dot(pixel.projDir, geomNormalWS));
-                sampleWeight *= (projWeight * projWeight + 0.0001f);
+                color = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, worldPos.xz / DiffuseWorldRepeatSize);
             }
             else
             {
-                color = SampleMaterialAlbedo(pixel.index, worldUV, pixel.rotation);
-                normalTS = SampleMaterialNormal(pixel.index, worldUV, pixel.rotation);
+                uint resolvedAlbedoIndex = ResolveAlbedoIndex(pixel.index);
+                color = MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)resolvedAlbedoIndex));
             }
 
-            colorSum += color * sampleWeight;
-            normalSum += normalTS * sampleWeight;
+            float3 normalTS = float3(0.0f, 0.0f, 1.0f);
+            if (MaterialNormalArraySize > 0)
+            {
+                uint resolvedNormalIndex = ResolveNormalIndex(pixel.index);
+                float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)resolvedNormalIndex));
+                normalTS = normalize(normalSample.xyz * 2.0f - 1.0f);
+            }
+
+            float3 normalWS = BuildProjectedNormalWS(normalTS, pixel.projDir, pixel.rotation);
+            if (dot(normalWS, geomNormalWS) < 0.0f)
+                normalWS = -normalWS;
+
+            float projWeight = saturate(dot(pixel.projDir, geomNormalWS));
+            sampleWeight *= (projWeight * projWeight + 0.0001f);
+
+            float detail = color.a;
+            sampleWeight = ApplyDetailContrast(sqrt(max(0.0f, sampleWeight * weightMod)), detail);
+
+            colorSum += color.rgb * sampleWeight;
+            normalSum += normalWS * sampleWeight;
             totalWeight += sampleWeight;
         }
 
@@ -232,46 +236,41 @@ namespace Terrain.Editor
             float w10 = weights1.x * weights0.y;
             float w11 = weights1.x * weights1.y;
 
-            float4 colorSum = float4(0.0f, 0.0f, 0.0f, 0.0f);
+            float3 colorSum = float3(0.0f, 0.0f, 0.0f);
             float3 normalSum = float3(0.0f, 0.0f, 0.0f);
             float totalWeight = 0.0f;
+            AccumulateMaterialSample(m00, w00, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
+            AccumulateMaterialSample(m01, w01, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
+            AccumulateMaterialSample(m10, w10, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
+            AccumulateMaterialSample(m11, w11, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
 
-            AccumulateMaterialSample(m00, w00, streams.PositionWS.xyz, uv, worldNormal, colorSum, normalSum, totalWeight);
-            AccumulateMaterialSample(m01, w01, streams.PositionWS.xyz, uv, worldNormal, colorSum, normalSum, totalWeight);
-            AccumulateMaterialSample(m10, w10, streams.PositionWS.xyz, uv, worldNormal, colorSum, normalSum, totalWeight);
-            AccumulateMaterialSample(m11, w11, streams.PositionWS.xyz, uv, worldNormal, colorSum, normalSum, totalWeight);
-
-            float4 finalColor;
-            float3 blendedNormal;
-            if (totalWeight > 0.0001f)
+            if (totalWeight <= 0.0f)
             {
-                finalColor = colorSum / totalWeight;
-                blendedNormal = normalize(normalSum / totalWeight);
-            }
-            else
-            {
-                finalColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv);
-                blendedNormal = float3(0.0f, 0.0f, 1.0f);
+                float4 baseColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv) * BaseColor;
+                streams.matDiffuse = baseColor;
+                streams.matColorBase = baseColor;
+                streams.normalWS = worldNormal;
+                return;
             }
 
-            streams.matDiffuse = finalColor * BaseColor;
-            streams.matColorBase = finalColor * BaseColor;
+            float invWeight = 1.0f / totalWeight;
+            float3 finalColor = colorSum * invWeight;
+            float3 normalAverage = normalSum * invWeight;
 
-            float3 up = abs(worldNormal.y) > 0.99f ? float3(0, 0, 1) : float3(0, 1, 0);
-            float3 tangent = normalize(cross(up, worldNormal));
-            float3 bitangent = normalize(cross(worldNormal, tangent));
+            float normalLen2 = dot(normalAverage, normalAverage);
+            bool invalidNormal =
+                normalLen2 < 0.000001f ||
+                !(normalAverage.x == normalAverage.x) ||
+                !(normalAverage.y == normalAverage.y) ||
+                !(normalAverage.z == normalAverage.z);
+            float3 blendedNormal = invalidNormal ? worldNormal : normalize(normalAverage);
 
-            // Match the reference implementation: construct world-space normal explicitly from T/B/N.
-            float3 mappedNormalWS =
-                blendedNormal.x * tangent +
-                blendedNormal.y * bitangent +
-                blendedNormal.z * worldNormal;
-            mappedNormalWS = normalize(mappedNormalWS);
-
-            // Keep mapped normals on the same hemisphere as geometric normal to avoid black back-facing lighting.
+            float4 outputColor = float4(finalColor, 1.0f) * BaseColor;
+            streams.matDiffuse = outputColor;
+            streams.matColorBase = outputColor;
+            float3 mappedNormalWS = normalize(blendedNormal);
             if (dot(mappedNormalWS, worldNormal) < 0.0f)
                 mappedNormalWS = -mappedNormalWS;
-
             streams.normalWS = mappedNormalWS;
         }
     };

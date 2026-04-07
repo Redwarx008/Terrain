@@ -199,6 +199,8 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         parameters.Set(EditorTerrainDiffuseKeys.TerrainDiffuseRepeatSampler, graphicsDevice.SamplerStates.LinearWrap);
         parameters.Set(EditorTerrainDiffuseKeys.DiffuseWorldRepeatSize, DiffuseWorldRepeatSize);
         parameters.Set(EditorTerrainDiffuseKeys.BaseColor, new Color4(1.0f, 1.0f, 1.0f, 1.0f));
+        // Match the reference fixed-strength behavior for height-like blend contrast.
+        parameters.Set(EditorTerrainDiffuseKeys.DetailContrast, 2.0f);
 
         // Set material index map parameters
         if (entity.MaterialIndexMapTexture != null)
