@@ -1,30 +1,27 @@
 #nullable enable
 
 using System;
-using Stride.Core.Mathematics;
+using System.Collections.Generic;
 using Terrain.Editor.Rendering;
 
 namespace Terrain.Editor.Services.Commands;
 
 /// <summary>
 /// Command for material painting operations.
-/// Stores before/after states for the affected region only (Copy-on-Write).
+/// Stores only changed chunks touched by one stroke.
 /// </summary>
 public sealed class PaintEditCommand : TerrainEditCommand
 {
     private readonly string toolName;
+    private readonly Dictionary<long, byte[]> beforeChunkData = new();
+    private readonly List<PaintChunkDelta> changedChunks = new();
+    private long estimatedSizeBytes;
 
-    // State storage - RGBA data for the affected region
-    private byte[]? beforeData;
-    private byte[]? afterData;
-
-    private const int BytesPerPixel = 4; // RGBA
+    private const int BytesPerPixel = MaterialIndexMap.BytesPerPixel;
 
     public override TerrainDataChannel AffectedChannel => TerrainDataChannel.MaterialIndex;
     public override string Description => $"{toolName} Material";
-
-    public override long EstimatedSizeBytes =>
-        (beforeData?.Length ?? 0) + (afterData?.Length ?? 0);
+    public override long EstimatedSizeBytes => estimatedSizeBytes;
 
     public PaintEditCommand(TerrainManager terrainManager, string toolName)
         : base(terrainManager)
@@ -32,58 +29,55 @@ public sealed class PaintEditCommand : TerrainEditCommand
         this.toolName = toolName;
     }
 
-    protected override int GetDataWidth()
-    {
-        return TerrainManager.MaterialIndices?.Width ?? 0;
-    }
+    protected override int GetDataWidth() => TerrainManager.MaterialIndices?.Width ?? 0;
+    protected override int GetDataHeight() => TerrainManager.MaterialIndices?.Height ?? 0;
 
-    protected override int GetDataHeight()
-    {
-        return TerrainManager.MaterialIndices?.Height ?? 0;
-    }
-
-    /// <summary>
-    /// Captures the before state. Called in BeginStroke.
-    /// </summary>
-    public override void CaptureBeforeState()
+    protected override void CaptureBeforeChunk(TerrainChunkRegion chunk)
     {
         var indexMap = TerrainManager.MaterialIndices;
-        if (indexMap == null) return;
+        if (indexMap == null || chunk.Width <= 0 || chunk.Height <= 0)
+            return;
 
-        if (AffectedRegion.Width == 0 || AffectedRegion.Height == 0)
+        beforeChunkData[chunk.Key] = CopyChunk(indexMap.GetRawData(), indexMap.Width, chunk);
+    }
+
+    protected override bool CaptureAfterStateAndFilter(IReadOnlyList<TerrainChunkRegion> chunks)
+    {
+        var indexMap = TerrainManager.MaterialIndices;
+        if (indexMap == null)
+            return false;
+
+        changedChunks.Clear();
+        estimatedSizeBytes = 0;
+
+        var rawData = indexMap.GetRawData();
+        foreach (var chunk in chunks)
         {
-            AffectedRegion = new Rectangle(0, 0, GetDataWidth(), GetDataHeight());
+            if (!beforeChunkData.TryGetValue(chunk.Key, out var before))
+                continue;
+
+            var after = CopyChunk(rawData, indexMap.Width, chunk);
+            if (before.AsSpan().SequenceEqual(after))
+                continue;
+
+            changedChunks.Add(new PaintChunkDelta(chunk, before, after));
+            estimatedSizeBytes += before.Length + after.Length;
         }
 
-        beforeData = CopyRegion(indexMap, AffectedRegion);
+        beforeChunkData.Clear();
+        return changedChunks.Count > 0;
     }
 
-    /// <summary>
-    /// Captures the after state. Called in EndStroke.
-    /// </summary>
-    public override void CaptureAfterState()
+    private static byte[] CopyChunk(byte[] source, int dataWidth, TerrainChunkRegion chunk)
     {
-        var indexMap = TerrainManager.MaterialIndices;
-        if (indexMap == null) return;
+        int rowBytes = chunk.Width * BytesPerPixel;
+        var result = new byte[rowBytes * chunk.Height];
 
-        afterData = CopyRegion(indexMap, AffectedRegion);
-    }
-
-    private byte[] CopyRegion(MaterialIndexMap source, Rectangle region)
-    {
-        var result = new byte[region.Width * region.Height * BytesPerPixel];
-        int index = 0;
-
-        for (int z = 0; z < region.Height; z++)
+        for (int row = 0; row < chunk.Height; row++)
         {
-            for (int x = 0; x < region.Width; x++)
-            {
-                var pixel = source.GetPixel(region.X + x, region.Y + z);
-                result[index++] = pixel.Index;
-                result[index++] = pixel.Weight;
-                result[index++] = pixel.Projection;
-                result[index++] = pixel.Rotation;
-            }
+            int srcOffset = ((chunk.Y + row) * dataWidth + chunk.X) * BytesPerPixel;
+            int dstOffset = row * rowBytes;
+            Array.Copy(source, srcOffset, result, dstOffset, rowBytes);
         }
 
         return result;
@@ -91,38 +85,38 @@ public sealed class PaintEditCommand : TerrainEditCommand
 
     public override void Execute()
     {
-        ApplyState(afterData);
+        ApplyState(afterState: true);
     }
 
     public override void Undo()
     {
-        ApplyState(beforeData);
+        ApplyState(afterState: false);
     }
 
-    private void ApplyState(byte[]? stateData)
+    private void ApplyState(bool afterState)
     {
-        if (stateData == null) return;
-
         var indexMap = TerrainManager.MaterialIndices;
-        if (indexMap == null) return;
+        if (indexMap == null || changedChunks.Count == 0)
+            return;
 
-        int index = 0;
-        for (int z = 0; z < AffectedRegion.Height; z++)
+        var rawData = indexMap.GetRawData();
+        int dataWidth = indexMap.Width;
+
+        foreach (var delta in changedChunks)
         {
-            for (int x = 0; x < AffectedRegion.Width; x++)
+            // Replay chunk rows with raw RGBA block copies for speed.
+            var stateData = afterState ? delta.After : delta.Before;
+            int rowBytes = delta.Region.Width * BytesPerPixel;
+            for (int row = 0; row < delta.Region.Height; row++)
             {
-                var pixel = new MaterialPixel
-                {
-                    Index = stateData[index++],
-                    Weight = stateData[index++],
-                    Projection = stateData[index++],
-                    Rotation = stateData[index++]
-                };
-                indexMap.SetPixel(AffectedRegion.X + x, AffectedRegion.Y + z, pixel);
+                int srcOffset = row * rowBytes;
+                int dstOffset = ((delta.Region.Y + row) * dataWidth + delta.Region.X) * BytesPerPixel;
+                Array.Copy(stateData, srcOffset, rawData, dstOffset, rowBytes);
             }
         }
 
-        // Mark the region as dirty for GPU sync
         TerrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex);
     }
+
+    private readonly record struct PaintChunkDelta(TerrainChunkRegion Region, byte[] Before, byte[] After);
 }

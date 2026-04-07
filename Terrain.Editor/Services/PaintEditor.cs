@@ -95,14 +95,14 @@ public sealed class PaintEditor
             HeightDataHeight = terrainManager.HeightCacheHeight
         };
 
+        // Mark chunks before mutation so each chunk can cache its true "before" state.
+        HistoryManager.Instance.MarkCommandChunks(pixelX, pixelZ, brushRadius);
+
         // 应用工具
         currentTool.Apply(ref context);
 
         // 标记材质索引图需要同步到 GPU
         terrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex);
-
-        // Update command region for undo/redo
-        HistoryManager.Instance.UpdateCommandRegion(pixelX, pixelZ, brushRadius);
     }
 
     /// <summary>

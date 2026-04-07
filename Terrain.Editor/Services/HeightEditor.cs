@@ -103,13 +103,13 @@ public sealed class HeightEditor
             FrameTime = frameTime
         };
 
+        // Mark chunks before mutation so each chunk can cache its true "before" state.
+        HistoryManager.Instance.MarkCommandChunks(pixelX, pixelZ, brushRadius);
+
         // Apply the tool
         currentTool.Apply(ref context);
 
         terrainManager.MarkDataDirty(TerrainDataChannel.Height, pixelX, pixelZ, brushRadius);
-
-        // Update command region for undo/redo
-        HistoryManager.Instance.UpdateCommandRegion(pixelX, pixelZ, brushRadius);
     }
 
     /// <summary>

@@ -41,7 +41,7 @@ public sealed class HistoryManager
 
     /// <summary>
     /// Begins a new command. Call this when starting a stroke.
-    /// The command will accumulate region changes during the stroke.
+    /// The command will accumulate chunk changes during the stroke.
     /// </summary>
     public void BeginCommand(ICommand command)
     {
@@ -52,23 +52,17 @@ public sealed class HistoryManager
         }
 
         activeCommand = command;
-
-        // Capture before state if it's a terrain edit command
-        if (command is TerrainEditCommand terrainCommand)
-        {
-            terrainCommand.CaptureBeforeState();
-        }
     }
 
     /// <summary>
-    /// Updates the active command's affected region.
-    /// Call this during ApplyStroke to accumulate the modified area.
+    /// Updates the active command's affected chunks.
+    /// Call this during ApplyStroke before mutating terrain data.
     /// </summary>
-    public void UpdateCommandRegion(int x, int z, float radius)
+    public void MarkCommandChunks(int x, int z, float radius)
     {
         if (activeCommand is TerrainEditCommand terrainCommand)
         {
-            terrainCommand.ExpandRegion(x, z, radius);
+            terrainCommand.MarkAffectedArea(x, z, radius);
         }
     }
 
@@ -79,10 +73,15 @@ public sealed class HistoryManager
     {
         if (activeCommand == null) return;
 
-        // Capture after state
+        // Terrain commands decide if they actually changed anything.
+        // Empty/no-op strokes should not pollute history.
         if (activeCommand is TerrainEditCommand terrainCommand)
         {
-            terrainCommand.CaptureAfterState();
+            if (!terrainCommand.PrepareForCommit())
+            {
+                activeCommand = null;
+                return;
+            }
         }
 
         // Clear redo stack (new action invalidates redo history)

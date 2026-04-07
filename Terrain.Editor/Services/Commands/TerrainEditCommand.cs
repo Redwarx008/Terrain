@@ -1,27 +1,19 @@
 #nullable enable
 
 using System;
-using Stride.Core.Mathematics;
+using System.Collections.Generic;
 using Terrain.Editor.Rendering;
 
 namespace Terrain.Editor.Services.Commands;
 
 /// <summary>
-/// Base class for terrain editing commands with region-based state capture.
-/// Implements Copy-on-Write optimization by only storing affected regions.
+/// Base class for terrain editing commands with chunk-based state capture.
 /// </summary>
 public abstract class TerrainEditCommand : ICommand
 {
     protected readonly TerrainManager TerrainManager;
+    private readonly StrokeChunkTracker chunkTracker = new();
 
-    /// <summary>
-    /// The bounding box of the affected region in pixel coordinates.
-    /// </summary>
-    protected Rectangle AffectedRegion;
-
-    /// <summary>
-    /// Timestamp when the command was created.
-    /// </summary>
     public DateTime CreatedAt { get; } = DateTime.UtcNow;
 
     protected TerrainEditCommand(TerrainManager terrainManager)
@@ -30,49 +22,37 @@ public abstract class TerrainEditCommand : ICommand
     }
 
     /// <summary>
-    /// Expands the affected region to include a new point.
-    /// Called during ApplyStroke to accumulate the modified area.
+    /// Marks touched chunks for the current stroke.
+    /// The first time a chunk is touched, we capture its "before" state immediately
+    /// so we never need to snapshot the whole map at stroke begin.
     /// </summary>
-    public void ExpandRegion(int x, int z, float radius)
+    public void MarkAffectedArea(int x, int z, float radius)
     {
-        int minX = Math.Max(0, (int)MathF.Floor(x - radius));
-        int minZ = Math.Max(0, (int)MathF.Floor(z - radius));
-        int maxX = Math.Min(GetDataWidth() - 1, (int)MathF.Ceiling(x + radius));
-        int maxZ = Math.Min(GetDataHeight() - 1, (int)MathF.Ceiling(z + radius));
-
-        if (AffectedRegion.Width == 0 && AffectedRegion.Height == 0)
-        {
-            AffectedRegion = new Rectangle(minX, minZ, maxX - minX + 1, maxZ - minZ + 1);
-        }
-        else
-        {
-            int newMinX = Math.Min(AffectedRegion.X, minX);
-            int newMinZ = Math.Min(AffectedRegion.Y, minZ);
-            int newMaxX = Math.Max(AffectedRegion.Right - 1, maxX);
-            int newMaxZ = Math.Max(AffectedRegion.Bottom - 1, maxZ);
-            AffectedRegion = new Rectangle(newMinX, newMinZ, newMaxX - newMinX + 1, newMaxZ - newMinZ + 1);
-        }
+        chunkTracker.MarkCircle(x, z, radius, GetDataWidth(), GetDataHeight(), CaptureBeforeChunk);
     }
 
-    /// <summary>
-    /// Gets the width of the data being edited.
-    /// </summary>
     protected abstract int GetDataWidth();
-
-    /// <summary>
-    /// Gets the height of the data being edited.
-    /// </summary>
     protected abstract int GetDataHeight();
 
     /// <summary>
-    /// Captures the before state. Called in BeginStroke.
+    /// Called when a chunk is first touched by the active stroke.
     /// </summary>
-    public abstract void CaptureBeforeState();
+    protected abstract void CaptureBeforeChunk(TerrainChunkRegion chunk);
 
     /// <summary>
-    /// Captures the after state. Called in EndStroke.
+    /// Captures after-state and filters unchanged chunks.
+    /// Returns true when at least one chunk changed and the command should be committed.
     /// </summary>
-    public abstract void CaptureAfterState();
+    protected abstract bool CaptureAfterStateAndFilter(IReadOnlyList<TerrainChunkRegion> chunks);
+
+    public bool PrepareForCommit()
+    {
+        var chunks = chunkTracker.GetRegions(GetDataWidth(), GetDataHeight());
+        if (chunks.Count == 0)
+            return false;
+
+        return CaptureAfterStateAndFilter(chunks);
+    }
 
     public abstract string Description { get; }
     public abstract TerrainDataChannel AffectedChannel { get; }
