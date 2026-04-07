@@ -10,6 +10,7 @@ using System.Linq;
 using System.Numerics;
 using Terrain.Editor.Platform;
 using Terrain.Editor.Services;
+using Terrain.Editor.Services.Commands;
 using Terrain.Editor.UI.Controls;
 using Terrain.Editor.UI.Layout;
 using Terrain.Editor.UI.Panels;
@@ -558,11 +559,25 @@ public class MainWindow : ControlBase
                 break;
 
             case "Undo":
-                Console.LogInfo("Undo");
+                if (HistoryManager.Instance.Undo())
+                {
+                    Console.LogInfo($"Undone: {HistoryManager.Instance.RedoDescription}");
+                }
+                else
+                {
+                    Console.LogInfo("Nothing to undo");
+                }
                 break;
 
             case "Redo":
-                Console.LogInfo("Redo");
+                if (HistoryManager.Instance.Redo())
+                {
+                    Console.LogInfo($"Redone: {HistoryManager.Instance.UndoDescription}");
+                }
+                else
+                {
+                    Console.LogInfo("Nothing to redo");
+                }
                 break;
         }
     }

@@ -535,7 +535,7 @@ public class SceneViewPanel : PanelBase
         if (io.MouseDown[0] && !isEditing)
         {
             isEditing = true;
-            paintEditor.BeginStroke(editorState.CurrentPaintTool.ToString());
+            paintEditor.BeginStroke(editorState.CurrentPaintTool.ToString(), terrainManager);
         }
 
         // Apply edit during drag

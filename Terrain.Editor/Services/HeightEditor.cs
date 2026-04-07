@@ -4,6 +4,7 @@ using System;
 using Stride.Core.Mathematics;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Services;
+using Terrain.Editor.Services.Commands;
 
 namespace Terrain.Editor.Services;
 
@@ -56,6 +57,10 @@ public sealed class HeightEditor
             "Flatten" => new FlattenTool(flattenTargetHeight ?? 0f),
             _ => throw new ArgumentException($"Unknown tool: {toolName}", nameof(toolName))
         };
+
+        // Create and begin command for undo/redo
+        var command = new HeightEditCommand(terrainManager, toolName);
+        HistoryManager.Instance.BeginCommand(command);
     }
 
     /// <summary>
@@ -102,6 +107,9 @@ public sealed class HeightEditor
         currentTool.Apply(ref context);
 
         terrainManager.MarkDataDirty(TerrainDataChannel.Height, pixelX, pixelZ, brushRadius);
+
+        // Update command region for undo/redo
+        HistoryManager.Instance.UpdateCommandRegion(pixelX, pixelZ, brushRadius);
     }
 
     /// <summary>
@@ -113,6 +121,9 @@ public sealed class HeightEditor
         isStrokeActive = false;
         currentTool = null;
         flattenTargetHeight = null;
+
+        // Commit command for undo/redo
+        HistoryManager.Instance.CommitCommand();
     }
 
     /// <summary>

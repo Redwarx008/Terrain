@@ -4,6 +4,7 @@ using System;
 using Stride.Core.Mathematics;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Services;
+using Terrain.Editor.Services.Commands;
 
 namespace Terrain.Editor.Services;
 
@@ -25,7 +26,8 @@ public sealed class PaintEditor
     /// 开始新的绘制笔触。
     /// </summary>
     /// <param name="toolName">工具名称 ("Paint", "Erase")。</param>
-    public void BeginStroke(string toolName)
+    /// <param name="terrainManager">地形管理器，用于撤销/重做命令。</param>
+    public void BeginStroke(string toolName, TerrainManager terrainManager)
     {
         isStrokeActive = true;
 
@@ -38,6 +40,10 @@ public sealed class PaintEditor
             "Erase" => new EraseTool(),
             _ => throw new ArgumentException($"Unknown paint tool: {toolName}", nameof(toolName))
         };
+
+        // Create and begin command for undo/redo
+        var command = new PaintEditCommand(terrainManager, toolName);
+        HistoryManager.Instance.BeginCommand(command);
     }
 
     /// <summary>
@@ -94,6 +100,9 @@ public sealed class PaintEditor
 
         // 标记材质索引图需要同步到 GPU
         terrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex);
+
+        // Update command region for undo/redo
+        HistoryManager.Instance.UpdateCommandRegion(pixelX, pixelZ, brushRadius);
     }
 
     /// <summary>
@@ -103,6 +112,9 @@ public sealed class PaintEditor
     {
         isStrokeActive = false;
         currentTool = null;
+
+        // Commit command for undo/redo
+        HistoryManager.Instance.CommitCommand();
     }
 
     /// <summary>
