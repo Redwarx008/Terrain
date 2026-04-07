@@ -14,6 +14,18 @@ public class ToolbarPanel : PanelBase
     public event EventHandler<ToolbarButtonEventArgs>? ButtonClicked;
     public event EventHandler<EditorMode>? ModeChanged;
 
+    /// <summary>
+    /// 程序化切换编辑模式。
+    /// </summary>
+    public void SetMode(EditorMode mode)
+    {
+        if (CurrentMode != mode)
+        {
+            CurrentMode = mode;
+            ModeChanged?.Invoke(this, mode);
+        }
+    }
+
     public ToolbarPanel()
     {
         Title = "Toolbar";

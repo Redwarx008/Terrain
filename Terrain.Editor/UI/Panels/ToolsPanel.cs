@@ -174,6 +174,35 @@ public class ToolsPanel : PanelBase
     }
 
     /// <summary>
+    /// 程序化选择指定名称的工具。
+    /// </summary>
+    public bool SelectTool(string toolName)
+    {
+        var tool = Tools.Find(t => t.Name == toolName);
+        if (tool == null)
+            return false;
+
+        // 验证工具属于当前模式
+        if (tool.Mode != CurrentMode)
+            return false;
+
+        SelectedTool = tool.Name;
+        EditorState.Instance.HasSelectedTool = true;
+
+        if (Enum.TryParse<HeightTool>(tool.Name, out var heightTool))
+        {
+            EditorState.Instance.CurrentHeightTool = heightTool;
+        }
+        else if (Enum.TryParse<PaintTool>(tool.Name, out var paintTool))
+        {
+            EditorState.Instance.CurrentPaintTool = paintTool;
+        }
+
+        ToolSelected?.Invoke(this, new ToolSelectedEventArgs { Tool = tool });
+        return true;
+    }
+
+    /// <summary>
     /// Handles tool change events from EditorState.
     /// Per D-19: Current tool state stored in EditorState service.
     /// </summary>
