@@ -166,6 +166,18 @@ public class MainWindow : ControlBase
             MaterialSlotManager.Instance.SelectedSlotIndex = e.SlotIndex;
             RightPanel.SelectedTextureSlot = e.SlotIndex;
             RightPanel.OnTextureSelected();
+
+            // 自动切换到 Paint 模式并选择 Paint 工具
+            if (Toolbar.CurrentMode != EditorMode.Paint)
+            {
+                Toolbar.SetMode(EditorMode.Paint);
+                // HandleModeChange 通过 ModeChanged 事件自动调用
+            }
+
+            if (!EditorState.Instance.HasSelectedTool)
+            {
+                Tools.SelectTool("Paint");
+            }
         };
         Assets.TextureSlotDeselected += (s, e) =>
         {
