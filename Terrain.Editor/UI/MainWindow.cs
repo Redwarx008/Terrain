@@ -254,7 +254,9 @@ public class MainWindow : ControlBase
 
         if (began)
         {
-            // 无边框窗口在“最大化”状态下要主动留出安全边距，否则右上角按钮会被屏幕边缘裁掉。
+            HandleKeyboardShortcuts();
+
+            // 无边框窗口在”最大化”状态下要主动留出安全边距，否则右上角按钮会被屏幕边缘裁掉。
             float windowInset = UseSystemTitleBar ? 0.0f : GetWindowContentInset();
 
             if (!UseSystemTitleBar)
@@ -552,6 +554,23 @@ public class MainWindow : ControlBase
     {
         base.Update(deltaTime);
         LayoutManager.Update(deltaTime);
+    }
+
+    private void HandleKeyboardShortcuts()
+    {
+        var io = ImGui.GetIO();
+        if (io.WantTextInput)
+            return;
+        if (!io.KeyCtrl)
+            return;
+        if (ImGui.IsKeyPressed(ImGuiKey.Z, false))
+        {
+            HandleToolbarAction("Undo");
+        }
+        else if (ImGui.IsKeyPressed(ImGuiKey.Y, false))
+        {
+            HandleToolbarAction("Redo");
+        }
     }
 
     private void HandleToolbarAction(string buttonName)
