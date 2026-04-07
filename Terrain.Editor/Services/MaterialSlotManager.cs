@@ -360,7 +360,11 @@ public sealed class MaterialSlotManager
             // 加载 Albedo 纹理
             if (!string.IsNullOrEmpty(slot.AlbedoTexturePath) && File.Exists(slot.AlbedoTexturePath) && slot.AlbedoTexture == null)
             {
-                var texture = TextureImporter.ImportFromFile(slot.AlbedoTexturePath, graphicsDevice, slot.ImportSize);
+                var texture = TextureImporter.ImportFromFile(
+                    slot.AlbedoTexturePath,
+                    graphicsDevice,
+                    slot.ImportSize,
+                    isNormalMap: false);
                 if (texture != null)
                 {
                     slot.AlbedoTexture = texture;
@@ -371,7 +375,11 @@ public sealed class MaterialSlotManager
             // 加载 Normal 纹理
             if (!string.IsNullOrEmpty(slot.NormalTexturePath) && File.Exists(slot.NormalTexturePath) && slot.NormalTexture == null)
             {
-                var texture = TextureImporter.ImportFromFile(slot.NormalTexturePath, graphicsDevice, slot.ImportSize);
+                var texture = TextureImporter.ImportFromFile(
+                    slot.NormalTexturePath,
+                    graphicsDevice,
+                    slot.ImportSize,
+                    isNormalMap: true);
                 if (texture != null)
                 {
                     slot.NormalTexture = texture;

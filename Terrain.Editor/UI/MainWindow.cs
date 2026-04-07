@@ -595,7 +595,11 @@ public class MainWindow : ControlBase
 
         if (FileDialog.ShowOpenDialog(hwnd, filter, title, out string? filePath))
         {
-            var texture = TextureImporter.ImportFromFile(filePath, graphicsDevice!, TextureSize.Size512);
+            var texture = TextureImporter.ImportFromFile(
+                filePath,
+                graphicsDevice!,
+                TextureSize.Size512,
+                isNormalMap: e.TextureType == TextureType.Normal);
             if (texture != null)
             {
                 if (e.TextureType == TextureType.Albedo)
@@ -610,7 +614,11 @@ public class MainWindow : ControlBase
                     string? normalPath = TextureImporter.FindMatchingNormalMap(filePath);
                     if (normalPath != null)
                     {
-                        var normalTexture = TextureImporter.ImportFromFile(normalPath, graphicsDevice!, TextureSize.Size512);
+                        var normalTexture = TextureImporter.ImportFromFile(
+                            normalPath,
+                            graphicsDevice!,
+                            TextureSize.Size512,
+                            isNormalMap: true);
                         if (normalTexture != null)
                         {
                             MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, normalTexture, normalPath,
@@ -641,7 +649,11 @@ public class MainWindow : ControlBase
 
         if (FileDialog.ShowOpenDialog(hwnd, filter, "Import Normal Texture", out string? filePath))
         {
-            var texture = TextureImporter.ImportFromFile(filePath, graphicsDevice!, TextureSize.Size512);
+            var texture = TextureImporter.ImportFromFile(
+                filePath,
+                graphicsDevice!,
+                TextureSize.Size512,
+                isNormalMap: true);
             if (texture != null)
             {
                 var graphicsContext = services!.GetService<GraphicsContext>();

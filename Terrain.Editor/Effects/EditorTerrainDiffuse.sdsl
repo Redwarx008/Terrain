@@ -259,10 +259,20 @@ namespace Terrain.Editor
 
             float3 up = abs(worldNormal.y) > 0.99f ? float3(0, 0, 1) : float3(0, 1, 0);
             float3 tangent = normalize(cross(up, worldNormal));
-            float3 bitangent = cross(worldNormal, tangent);
-            float3x3 tbn = float3x3(tangent, bitangent, worldNormal);
+            float3 bitangent = normalize(cross(worldNormal, tangent));
 
-            streams.normalWS = normalize(mul(blendedNormal, tbn));
+            // Match the reference implementation: construct world-space normal explicitly from T/B/N.
+            float3 mappedNormalWS =
+                blendedNormal.x * tangent +
+                blendedNormal.y * bitangent +
+                blendedNormal.z * worldNormal;
+            mappedNormalWS = normalize(mappedNormalWS);
+
+            // Keep mapped normals on the same hemisphere as geometric normal to avoid black back-facing lighting.
+            if (dot(mappedNormalWS, worldNormal) < 0.0f)
+                mappedNormalWS = -mappedNormalWS;
+
+            streams.normalWS = mappedNormalWS;
         }
     };
 }

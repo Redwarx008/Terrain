@@ -34,13 +34,14 @@ public static class TextureImporter
     public static Texture? ImportFromFile(
         string filePath,
         GraphicsDevice device,
-        TextureSize targetSize = TextureSize.Size512)
+        TextureSize targetSize = TextureSize.Size512,
+        bool isNormalMap = false)
     {
         var rgbaData = LoadAndResize(filePath, (int)targetSize);
         if (rgbaData == null)
             return null;
 
-        return CreateTextureFromBytes(device, rgbaData, (int)targetSize);
+        return CreateTextureFromBytes(device, rgbaData, (int)targetSize, isNormalMap);
     }
 
     /// <summary>
@@ -80,13 +81,17 @@ public static class TextureImporter
     /// <summary>
     /// 从 RGBA 字节数组创建 GPU 纹理。
     /// </summary>
-    public static Texture CreateTextureFromBytes(GraphicsDevice device, byte[] rgbaData, int size)
+    public static Texture CreateTextureFromBytes(GraphicsDevice device, byte[] rgbaData, int size, bool isNormalMap = false)
     {
+        PixelFormat pixelFormat = isNormalMap
+            ? PixelFormat.R8G8B8A8_UNorm
+            : PixelFormat.R8G8B8A8_UNorm_SRgb;
+
         return Texture.New2D(
             device,
             size,
             size,
-            PixelFormat.R8G8B8A8_UNorm_SRgb,
+            pixelFormat,
             rgbaData,
             TextureFlags.ShaderResource);
     }
