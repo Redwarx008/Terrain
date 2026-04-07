@@ -18,7 +18,6 @@ public class RightPanel : PanelBase
     private readonly TextureInspectorPanel textureInspectorPanel;
 
     // 标签页可见性状态 - 默认不显示，等工具被选中后再显示
-    private bool _showParamsTab = false;
     private bool _showBrushesTab = false;
     private bool _showTextureTab = false;
 
@@ -41,17 +40,15 @@ public class RightPanel : PanelBase
         set => textureInspectorPanel.SelectedSlotIndex = value;
     }
 
-    /// <summary>工具被选中时调用 - 显示 Params/Brushes 标签</summary>
+    /// <summary>工具被选中时调用 - 显示 Brush 标签</summary>
     public void OnToolSelected()
     {
-        _showParamsTab = true;
         _showBrushesTab = true;
     }
 
-    /// <summary>工具取消选择时调用 - 关闭 Params/Brushes 标签</summary>
+    /// <summary>工具取消选择时调用 - 隐藏 Brush 标签</summary>
     public void OnToolDeselected()
     {
-        _showParamsTab = false;
         _showBrushesTab = false;
     }
 
@@ -94,22 +91,16 @@ public class RightPanel : PanelBase
             // Tab bar
             if (ImGui.BeginTabBar($"##right_tabs_{Id}", ImGuiTabBarFlags.None))
             {
-                // Params tab - 可关闭
-                if (_showParamsTab)
-                {
-                    if (ImGui.BeginTabItem($"{Icons.Settings} Params", ref _showParamsTab))
-                    {
-                        brushParamsPanel.Render();
-                        ImGui.EndTabItem();
-                    }
-                }
-
-                // Brushes tab - 可关闭
+                // Brush tab - 合并了 Brush 选择和 Params 参数
                 if (_showBrushesTab)
                 {
-                    if (ImGui.BeginTabItem($"{Icons.Brush} Brushes", ref _showBrushesTab))
+                    if (ImGui.BeginTabItem($"{Icons.Brush} Brush", ref _showBrushesTab))
                     {
                         brushesPanel.Render();
+                        ImGui.Spacing();
+                        ImGui.Separator();
+                        ImGui.Spacing();
+                        brushParamsPanel.Render();
                         ImGui.EndTabItem();
                     }
                 }
