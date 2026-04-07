@@ -102,7 +102,7 @@ public static class TextureImporter
     public static bool IsSupportedImageFormat(string filePath)
     {
         string ext = Path.GetExtension(filePath).ToLowerInvariant();
-        return ext is ".png" or ".jpg" or ".jpeg" or ".tga" or ".bmp";
+        return ext is ".png" or ".jpg" or ".jpeg" or ".tga" or ".bmp" or ".tiff" or ".tif";
     }
 
     /// <summary>
@@ -121,7 +121,7 @@ public static class TextureImporter
         string ext = Path.GetExtension(albedoPath);
 
         // 支持的图像扩展名（用于候选文件检查）
-        string[] supportedExts = { ".png", ".jpg", ".jpeg", ".tga", ".bmp" };
+        string[] supportedExts = { ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".tiff", ".tif" };
 
         // 常见 Diffuse 后缀，需要替换为 Normal 后缀
         string[] diffuseSuffixes = {

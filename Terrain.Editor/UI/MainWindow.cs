@@ -605,7 +605,7 @@ public class MainWindow : ControlBase
     private void OnTextureImportRequested(object? sender, TextureImportEventArgs e)
     {
         nint hwnd = GetNativeWindowHandle();
-        string filter = "Image Files (*.png;*.jpg;*.tga;*.bmp)|*.png;*.jpg;*.jpeg;*.tga;*.bmp";
+        string filter = "Image Files (*.png;*.jpg;*.tga;*.bmp;*.tiff)|*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
         string title = e.TextureType == TextureType.Albedo ? "Import Albedo Texture" : "Import Normal Texture";
 
         if (FileDialog.ShowOpenDialog(hwnd, filter, title, out string? filePath))
@@ -660,7 +660,7 @@ public class MainWindow : ControlBase
     private void OnImportNormalRequested(object? sender, TextureImportEventArgs e)
     {
         nint hwnd = GetNativeWindowHandle();
-        string filter = "Image Files (*.png;*.jpg;*.tga;*.bmp)|*.png;*.jpg;*.jpeg;*.tga;*.bmp";
+        string filter = "Image Files (*.png;*.jpg;*.tga;*.bmp;*.tiff)|*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
 
         if (FileDialog.ShowOpenDialog(hwnd, filter, "Import Normal Texture", out string? filePath))
         {
