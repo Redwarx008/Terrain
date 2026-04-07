@@ -2,20 +2,25 @@ namespace Terrain.Editor
 {
     shader EditorTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturing, NormalStream, Transformation, EditorTerrainHeightStream, EditorTerrainHeightParameters
     {
+        struct MaterialPixel
+        {
+            uint index;
+            float weight;
+            float3 projDir;
+            float rotation;
+        };
+
         rgroup PerMaterial
         {
             stage Texture2D DefaultDiffuseTexture;
             stage SamplerState TerrainDiffuseRepeatSampler;
 
-            // 材质索引图 (R8_UInt)
-            stage Texture2D<uint> MaterialIndexMap;
+            stage Texture2D MaterialIndexMap;
             stage SamplerState MaterialIndexSampler;
 
-            // 材质 Albedo 纹理数组
             stage Texture2DArray MaterialAlbedoArray;
             stage SamplerState MaterialAlbedoSampler;
 
-            // 材质 Normal 纹理数组
             stage Texture2DArray MaterialNormalArray;
             stage SamplerState MaterialNormalSampler;
         }
@@ -27,9 +32,8 @@ namespace Terrain.Editor
             stage float4 BaseColor;
             stage float2 HeightmapDimensionsInSamples;
 
-            // 材质参数
-            stage int MaterialArraySize;          // Albedo 数组大小
-            stage int MaterialNormalArraySize;    // Normal 数组大小
+            stage int MaterialArraySize;
+            stage int MaterialNormalArraySize;
             stage float MaterialTilingScale;
         }
 
@@ -42,56 +46,146 @@ namespace Terrain.Editor
             return normalize(float3(left - right, 2.0f, up - down));
         }
 
-        // 手动双线性采样获取 4 个相邻索引
-        uint4 GetBilinearMaterialIndices(float2 uv)
+        float3 DecodeProjectionDirection(float encoded)
         {
-            float2 pixelPos = uv * HeightmapDimensionsInSamples - 0.5;
-            int2 basePos = int2(floor(pixelPos));
-
-            uint i0 = MaterialIndexMap.Load(int3(basePos + int2(0, 0), 0)).r;
-            uint i1 = MaterialIndexMap.Load(int3(basePos + int2(1, 0), 0)).r;
-            uint i2 = MaterialIndexMap.Load(int3(basePos + int2(0, 1), 0)).r;
-            uint i3 = MaterialIndexMap.Load(int3(basePos + int2(1, 1), 0)).r;
-
-            return uint4(i0, i1, i2, i3);
+            float proj = floor(encoded * 255.0f + 0.5f);
+            float encX = frac(proj / 16.0f) * 16.0f;
+            float encZ = floor(proj / 16.0f);
+            float projDX = (encX - 7.0f) / 7.0f;
+            float projDZ = (encZ - 7.0f) / 7.0f;
+            return normalize(float3(projDX, 0.5f, projDZ));
         }
 
-        // 计算双线性权重
-        float4 GetBilinearWeights(float2 uv)
+        MaterialPixel DecodeMaterialPixel(float4 raw)
         {
-            float2 pixelPos = uv * HeightmapDimensionsInSamples - 0.5;
-            float2 f = frac(pixelPos);
-            return float4(
-                (1-f.x) * (1-f.y),
-                f.x * (1-f.y),
-                (1-f.x) * f.y,
-                f.x * f.y
-            );
+            MaterialPixel p;
+            p.index = (uint)(raw.r * 255.0f + 0.5f);
+            p.weight = raw.g;
+            p.projDir = DecodeProjectionDirection(raw.b);
+            p.rotation = raw.a * 6.28318530718f;
+            return p;
         }
 
-        // 从纹理数组采样指定索引的材质 Albedo
-        float4 SampleMaterialAlbedo(uint materialIndex, float2 worldUV)
+        int2 ClampIndexPixel(int2 pixel)
+        {
+            int maxX = (int)(HeightmapDimensionsInSamples.x + 0.5f);
+            int maxY = (int)(HeightmapDimensionsInSamples.y + 0.5f);
+            return int2(
+                clamp(pixel.x, 0, maxX),
+                clamp(pixel.y, 0, maxY));
+        }
+
+        MaterialPixel LoadMaterialPixel(int2 pixel)
+        {
+            int2 clampedPixel = ClampIndexPixel(pixel);
+            float4 raw = MaterialIndexMap.Load(int3(clampedPixel, 0));
+            return DecodeMaterialPixel(raw);
+        }
+
+        float2 RotateUV(float2 uv, float angle)
+        {
+            float s = sin(angle);
+            float c = cos(angle);
+            return float2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);
+        }
+
+        float2 GetProjectedUV(float3 worldPos, float3 projDir, float scale)
+        {
+            float3 up = abs(projDir.y) > 0.99f ? float3(0, 0, 1) : float3(0, 1, 0);
+            float3 projU = normalize(cross(up, projDir));
+            float3 projV = cross(projDir, projU);
+            return float2(dot(projU, worldPos), dot(projV, worldPos)) * scale;
+        }
+
+        float4 SampleMaterialAlbedo(uint materialIndex, float2 worldUV, float rotation)
         {
             if (materialIndex >= (uint)MaterialArraySize || MaterialArraySize == 0)
                 return DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, worldUV);
 
             float2 tiledUV = worldUV * MaterialTilingScale;
+            if (rotation > 0.001f)
+                tiledUV = RotateUV(tiledUV, rotation);
 
-            // Texture2DArray 采样：float3(uv, sliceIndex)
             return MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)materialIndex));
         }
 
-        // 从纹理数组采样指定索引的材质 Normal
-        float3 SampleMaterialNormal(uint materialIndex, float2 worldUV)
+        float4 SampleMaterialAlbedoProjected(uint materialIndex, float3 worldPos, float3 projDir, float rotation)
+        {
+            if (materialIndex >= (uint)MaterialArraySize || MaterialArraySize == 0)
+            {
+                float2 uv = worldPos.xz / DiffuseWorldRepeatSize;
+                return DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv);
+            }
+
+            float2 tiledUV = GetProjectedUV(worldPos, projDir, MaterialTilingScale);
+            if (rotation > 0.001f)
+                tiledUV = RotateUV(tiledUV, rotation);
+
+            return MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)materialIndex));
+        }
+
+        float3 SampleMaterialNormal(uint materialIndex, float2 worldUV, float rotation)
         {
             if (materialIndex >= (uint)MaterialNormalArraySize || MaterialNormalArraySize == 0)
-                return float3(0.0, 0.0, 1.0); // 默认平法线（切线空间）
+                return float3(0.0f, 0.0f, 1.0f);
 
             float2 tiledUV = worldUV * MaterialTilingScale;
+            if (rotation > 0.001f)
+                tiledUV = RotateUV(tiledUV, rotation);
 
             float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)materialIndex));
-            // 从 [0,1] 解码到 [-1,1]
-            return normalize(normalSample.xyz * 2.0 - 1.0);
+            return normalize(normalSample.xyz * 2.0f - 1.0f);
+        }
+
+        float3 SampleMaterialNormalProjected(uint materialIndex, float3 worldPos, float3 projDir, float rotation)
+        {
+            if (materialIndex >= (uint)MaterialNormalArraySize || MaterialNormalArraySize == 0)
+                return float3(0.0f, 0.0f, 1.0f);
+
+            float2 tiledUV = GetProjectedUV(worldPos, projDir, MaterialTilingScale);
+            if (rotation > 0.001f)
+                tiledUV = RotateUV(tiledUV, rotation);
+
+            float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)materialIndex));
+            return normalize(normalSample.xyz * 2.0f - 1.0f);
+        }
+
+        // Accumulate one neighbor sample using both bilinear weight and material blend weight.
+        void AccumulateMaterialSample(
+            MaterialPixel pixel,
+            float bilinearWeight,
+            float3 worldPos,
+            float2 worldUV,
+            float3 geomNormalWS,
+            inout float4 colorSum,
+            inout float3 normalSum,
+            inout float totalWeight)
+        {
+            if (bilinearWeight <= 0.0f)
+                return;
+
+            float sampleWeight = bilinearWeight * (pixel.weight * pixel.weight + 0.1f);
+            bool useProjection = pixel.projDir.y < 0.99f;
+
+            float4 color;
+            float3 normalTS;
+            if (useProjection)
+            {
+                color = SampleMaterialAlbedoProjected(pixel.index, worldPos, pixel.projDir, pixel.rotation);
+                normalTS = SampleMaterialNormalProjected(pixel.index, worldPos, pixel.projDir, pixel.rotation);
+
+                float projWeight = saturate(dot(pixel.projDir, geomNormalWS));
+                sampleWeight *= (projWeight * projWeight + 0.0001f);
+            }
+            else
+            {
+                color = SampleMaterialAlbedo(pixel.index, worldUV, pixel.rotation);
+                normalTS = SampleMaterialNormal(pixel.index, worldUV, pixel.rotation);
+            }
+
+            colorSum += color * sampleWeight;
+            normalSum += normalTS * sampleWeight;
+            totalWeight += sampleWeight;
         }
 
         override void Compute()
@@ -104,8 +198,6 @@ namespace Terrain.Editor
             streams.normalWS = worldNormal;
 
             float2 uv = streams.PositionWS.xz / DiffuseWorldRepeatSize;
-
-            // 如果没有材质数组，使用默认纹理
             if (MaterialArraySize == 0)
             {
                 float4 baseColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv) * BaseColor;
@@ -114,45 +206,58 @@ namespace Terrain.Editor
                 return;
             }
 
-            // 获取材质索引图 UV
-            float2 splatUV = sampleCoord / HeightmapDimensionsInSamples;
+            // Mirror-neighbor sampling stabilizes edges and derivative behavior near index-map borders.
+            float2 indexPixels = sampleCoord;
+            float2 index00Pixel = floor(indexPixels);
 
-            // 获取 4 个相邻材质索引
-            uint4 indices = GetBilinearMaterialIndices(splatUV);
-            float4 weights = GetBilinearWeights(splatUV);
+            float2 mirror00 = frac(index00Pixel * 0.5f) * 2.0f;
+            float2 mirror11 = 1.0f - mirror00;
 
-            // 采样并混合 4 种材质 Albedo
-            float4 color0 = SampleMaterialAlbedo(indices.x, uv);
-            float4 color1 = SampleMaterialAlbedo(indices.y, uv);
-            float4 color2 = SampleMaterialAlbedo(indices.z, uv);
-            float4 color3 = SampleMaterialAlbedo(indices.w, uv);
+            float2 weights1 = saturate(indexPixels - index00Pixel);
+            weights1 = lerp(weights1, 1.0f - weights1, mirror00);
+            float2 weights0 = 1.0f - weights1;
 
-            float4 finalColor =
-                color0 * weights.x +
-                color1 * weights.y +
-                color2 * weights.z +
-                color3 * weights.w;
+            int2 p00 = int2(index00Pixel + mirror00);
+            int2 p01 = int2(index00Pixel + float2(mirror00.x, mirror11.y));
+            int2 p10 = int2(index00Pixel + float2(mirror11.x, mirror00.y));
+            int2 p11 = int2(index00Pixel + mirror11);
+
+            MaterialPixel m00 = LoadMaterialPixel(p00);
+            MaterialPixel m01 = LoadMaterialPixel(p01);
+            MaterialPixel m10 = LoadMaterialPixel(p10);
+            MaterialPixel m11 = LoadMaterialPixel(p11);
+
+            float w00 = weights0.x * weights0.y;
+            float w01 = weights0.x * weights1.y;
+            float w10 = weights1.x * weights0.y;
+            float w11 = weights1.x * weights1.y;
+
+            float4 colorSum = float4(0.0f, 0.0f, 0.0f, 0.0f);
+            float3 normalSum = float3(0.0f, 0.0f, 0.0f);
+            float totalWeight = 0.0f;
+
+            AccumulateMaterialSample(m00, w00, streams.PositionWS.xyz, uv, worldNormal, colorSum, normalSum, totalWeight);
+            AccumulateMaterialSample(m01, w01, streams.PositionWS.xyz, uv, worldNormal, colorSum, normalSum, totalWeight);
+            AccumulateMaterialSample(m10, w10, streams.PositionWS.xyz, uv, worldNormal, colorSum, normalSum, totalWeight);
+            AccumulateMaterialSample(m11, w11, streams.PositionWS.xyz, uv, worldNormal, colorSum, normalSum, totalWeight);
+
+            float4 finalColor;
+            float3 blendedNormal;
+            if (totalWeight > 0.0001f)
+            {
+                finalColor = colorSum / totalWeight;
+                blendedNormal = normalize(normalSum / totalWeight);
+            }
+            else
+            {
+                finalColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv);
+                blendedNormal = float3(0.0f, 0.0f, 1.0f);
+            }
 
             streams.matDiffuse = finalColor * BaseColor;
             streams.matColorBase = finalColor * BaseColor;
 
-            // 采样并混合 4 种材质 Normal
-            float3 normal0 = SampleMaterialNormal(indices.x, uv);
-            float3 normal1 = SampleMaterialNormal(indices.y, uv);
-            float3 normal2 = SampleMaterialNormal(indices.z, uv);
-            float3 normal3 = SampleMaterialNormal(indices.w, uv);
-
-            // 加权混合法线（简单线性混合，非角度加权）
-            float3 blendedNormal = normalize(
-                normal0 * weights.x +
-                normal1 * weights.y +
-                normal2 * weights.z +
-                normal3 * weights.w
-            );
-
-            // 将切线空间法线转换到世界空间
-            // 处理平坦地形边缘情况：当法线接近 Y 轴时使用 Z 轴构建切线
-            float3 up = abs(worldNormal.y) > 0.99 ? float3(0, 0, 1) : float3(0, 1, 0);
+            float3 up = abs(worldNormal.y) > 0.99f ? float3(0, 0, 1) : float3(0, 1, 0);
             float3 tangent = normalize(cross(up, worldNormal));
             float3 bitangent = cross(worldNormal, tangent);
             float3x3 tbn = float3x3(tangent, bitangent, worldNormal);

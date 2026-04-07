@@ -19,6 +19,7 @@ public sealed class PaintEditor
 
     private IPaintTool? currentTool;
     private bool isStrokeActive;
+    private int strokeSeed; // 笔触内的随机种子
 
     /// <summary>
     /// 开始新的绘制笔触。
@@ -27,6 +28,9 @@ public sealed class PaintEditor
     public void BeginStroke(string toolName)
     {
         isStrokeActive = true;
+
+        // 生成笔触内的随机种子
+        strokeSeed = Random.Shared.Next();
 
         currentTool = toolName switch
         {
@@ -72,7 +76,17 @@ public sealed class PaintEditor
             BrushRadius = brushRadius,
             BrushInnerRadius = brushInnerRadius,
             Strength = brushParams.Strength,
-            TargetMaterialIndex = targetIndex
+            TargetMaterialIndex = targetIndex,
+
+            // 新增参数
+            Weight = brushParams.Weight,
+            RandomRotation = brushParams.RandomRotation,
+            FixedRotationDegrees = brushParams.FixedRotationDegrees,
+            Use3DProjection = brushParams.Use3DProjection,
+            RandomSeed = strokeSeed,
+            HeightData = terrainManager.HeightDataCache,
+            HeightDataWidth = terrainManager.HeightCacheWidth,
+            HeightDataHeight = terrainManager.HeightCacheHeight
         };
 
         // 应用工具

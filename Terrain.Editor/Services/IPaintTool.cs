@@ -53,6 +53,51 @@ public readonly struct PaintEditContext
     /// 目标材质索引（要绘制或擦除的材质）。
     /// </summary>
     public byte TargetMaterialIndex { get; init; }
+
+    // === 新增参数 ===
+
+    /// <summary>
+    /// 是否启用随机旋转。
+    /// </summary>
+    public bool RandomRotation { get; init; }
+
+    /// <summary>
+    /// 是否启用 3D 投影。
+    /// </summary>
+    public bool Use3DProjection { get; init; }
+
+    /// <summary>
+    /// 固定旋转角度 (度数，0-360)。
+    /// 仅在 RandomRotation = false 时使用。
+    /// </summary>
+    public float FixedRotationDegrees { get; init; }
+
+    /// <summary>
+    /// 权重值 (0-1)。
+    /// 控制材质混合的权重。
+    /// </summary>
+    public float Weight { get; init; }
+
+    /// <summary>
+    /// 随机种子，用于生成一致的随机旋转。
+    /// </summary>
+    public int RandomSeed { get; init; }
+
+    /// <summary>
+    /// Optional terrain height cache used by paint tools to derive local normals for projection encoding.
+    /// Height values are expected to be 16-bit samples in [0, 65535].
+    /// </summary>
+    public ushort[]? HeightData { get; init; }
+
+    /// <summary>
+    /// Width of <see cref="HeightData"/> in samples.
+    /// </summary>
+    public int HeightDataWidth { get; init; }
+
+    /// <summary>
+    /// Height of <see cref="HeightData"/> in samples.
+    /// </summary>
+    public int HeightDataHeight { get; init; }
 }
 
 /// <summary>

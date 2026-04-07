@@ -66,14 +66,29 @@ public sealed class EditorTerrainEntity : IDisposable
     public Buffer? PatchIndexBuffer { get; private set; }
 
     /// <summary>
-    /// 材质索引图纹理 (R8_UInt)，存储每个像素的材质槽位索引。
+    /// 材质索引图纹理 (R8G8B8A8_UNorm)，存储每个像素的 RGBA 数据。
+    /// R: 材质索引, G: 权重, B: 投影方向, A: 旋转角度。
     /// </summary>
     public Texture? MaterialIndexMapTexture { get; private set; }
 
+    private byte[]? materialIndexData;
+
     /// <summary>
     /// 材质索引数据缓存，由 TerrainManager 设置。
+    /// Setting this marks the material-index channel dirty so the texture is uploaded on the next draw.
     /// </summary>
-    public byte[]? MaterialIndexData { get; set; }
+    public byte[]? MaterialIndexData
+    {
+        get => materialIndexData;
+        set
+        {
+            materialIndexData = value;
+            if (value != null)
+            {
+                IsMaterialIndexMapDirty = true;
+            }
+        }
+    }
 
     /// <summary>
     /// 标记材质索引图需要同步到 GPU。
@@ -196,12 +211,13 @@ public sealed class EditorTerrainEntity : IDisposable
     /// </summary>
     public void InitializeMaterialResources(GraphicsDevice graphicsDevice)
     {
-        // R8_UInt 索引图 - 不传入初始数据，允许后续通过 SetData 更新
+        // R8G8B8A8_UNorm 索引图 - RGBA 四通道
+        // R: 材质索引, G: 权重, B: 投影方向, A: 旋转角度
         MaterialIndexMapTexture = Texture.New2D(
             graphicsDevice,
             HeightmapWidth,
             HeightmapHeight,
-            PixelFormat.R8_UInt,
+            PixelFormat.R8G8B8A8_UNorm,
             TextureFlags.ShaderResource);
     }
 
@@ -210,7 +226,12 @@ public sealed class EditorTerrainEntity : IDisposable
     /// </summary>
     public void SyncMaterialIndexMapToGpu(CommandList commandList, byte[] indexData)
     {
-        if (MaterialIndexMapTexture == null || indexData.Length != HeightmapWidth * HeightmapHeight)
+        if (MaterialIndexMapTexture == null)
+            return;
+
+        // RGBA 数据大小应为 Width * Height * 4
+        int expectedSize = HeightmapWidth * HeightmapHeight * MaterialIndexMap.BytesPerPixel;
+        if (indexData.Length != expectedSize)
             return;
 
         MaterialIndexMapTexture.SetData(commandList, indexData);

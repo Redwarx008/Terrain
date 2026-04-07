@@ -397,13 +397,18 @@ public sealed class TerrainManager : IDisposable
 
     private void SaveMaterialIndexMap(MaterialIndexMap map, string path)
     {
-        using var image = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.L8>(map.Width, map.Height);
+        using var image = new Image<Rgba32>(map.Width, map.Height);
         for (int y = 0; y < map.Height; y++)
         {
             for (int x = 0; x < map.Width; x++)
             {
-                byte index = map.GetIndex(x, y);
-                image[x, y] = new SixLabors.ImageSharp.PixelFormats.L8(index);
+                var pixel = map.GetPixel(x, y);
+                image[x, y] = new Rgba32(
+                    pixel.Index,
+                    pixel.Weight,
+                    pixel.Projection,
+                    pixel.Rotation
+                );
             }
         }
         image.SaveAsPng(path);
@@ -462,15 +467,24 @@ public sealed class TerrainManager : IDisposable
         if (!File.Exists(path))
             return null;
 
-        using var image = HeightmapImage.Load<L8>(path);
+        using var image = HeightmapImage.Load<Rgba32>(path);
         var map = new MaterialIndexMap(image.Width, image.Height);
+
         for (int y = 0; y < image.Height; y++)
         {
             for (int x = 0; x < image.Width; x++)
             {
-                map.SetIndex(x, y, image[x, y].PackedValue);
+                var pixel = image[x, y];
+                map.SetPixel(x, y, new MaterialPixel
+                {
+                    Index = pixel.R,
+                    Weight = pixel.G,
+                    Projection = pixel.B,
+                    Rotation = pixel.A
+                });
             }
         }
+
         return map;
     }
 

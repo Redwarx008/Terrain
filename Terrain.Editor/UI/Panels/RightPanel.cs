@@ -84,6 +84,9 @@ public class RightPanel : PanelBase
 
     protected override void RenderContent()
     {
+        // 同步当前模式到子面板
+        brushParamsPanel.CurrentMode = CurrentMode;
+
         ImGui.SetCursorScreenPos(new Vector2(ContentRect.X, ContentRect.Y));
 
         if (ImGui.BeginChild($"##right_panel_{Id}", new Vector2(ContentRect.Width, ContentRect.Height), ImGuiChildFlags.None))
@@ -146,6 +149,11 @@ internal class BrushParamsPanel
     public float BrushStrength { get => _brushParams.Strength; set => _brushParams.Strength = value; }
     public float BrushFalloff { get => _brushParams.Falloff; set => _brushParams.Falloff = value; }
 
+    /// <summary>
+    /// 当前编辑模式，由外部设置。
+    /// </summary>
+    public EditorMode CurrentMode { get; set; } = EditorMode.Sculpt;
+
     public event EventHandler<BrushParamsChangedEventArgs>? ParamsChanged;
 
     public void Render()
@@ -193,9 +201,83 @@ internal class BrushParamsPanel
         ImGui.Separator();
         ImGui.Spacing();
 
+        // === 材质绘制参数 (Paint 模式) ===
+        RenderMaterialPaintParams();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
         // Brush preview
         ImGui.Text("Preview");
         RenderBrushPreview();
+    }
+
+    /// <summary>
+    /// 渲染材质绘制参数 (仅在 Paint 模式显示)。
+    /// </summary>
+    private void RenderMaterialPaintParams()
+    {
+        // 检查当前是否为 Paint 模式
+        if (CurrentMode != EditorMode.Paint)
+            return;
+
+        ImGui.Text("Material Settings");
+        ImGui.Spacing();
+
+        // Weight slider
+        ImGui.Text("Weight");
+        ImGui.SetNextItemWidth(-1);
+        float weight = _brushParams.Weight;
+        if (ImGui.SliderFloat("##material_weight", ref weight, 0.0f, 1.0f, "%.2f"))
+        {
+            _brushParams.Weight = weight;
+            ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "Weight", Value = weight });
+        }
+        ImGui.TextColored(ColorPalette.TextSecondary.ToVector4(), "Edge <---> Center");
+
+        ImGui.Spacing();
+
+        // Random Rotation toggle
+        bool randomRotation = _brushParams.RandomRotation;
+        if (ImGui.Checkbox("Random Rotation", ref randomRotation))
+        {
+            _brushParams.RandomRotation = randomRotation;
+            ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "RandomRotation", Value = randomRotation ? 1.0f : 0.0f });
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Break texture tiling pattern with random rotation");
+        }
+
+        // Fixed Rotation (only when random rotation is disabled)
+        if (!randomRotation)
+        {
+            ImGui.Indent();
+            ImGui.Text("Fixed Angle");
+            ImGui.SetNextItemWidth(-1);
+            float fixedAngle = _brushParams.FixedRotationDegrees;
+            if (ImGui.SliderFloat("##fixed_rotation", ref fixedAngle, 0.0f, 360.0f, "%.0f°"))
+            {
+                _brushParams.FixedRotationDegrees = fixedAngle;
+                ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "FixedRotation", Value = fixedAngle });
+            }
+            ImGui.Unindent();
+        }
+
+        ImGui.Spacing();
+
+        // 3D Projection toggle
+        bool use3DProjection = _brushParams.Use3DProjection;
+        if (ImGui.Checkbox("3D Projection", ref use3DProjection))
+        {
+            _brushParams.Use3DProjection = use3DProjection;
+            ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "Use3DProjection", Value = use3DProjection ? 1.0f : 0.0f });
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Fix texture stretching on steep cliff faces");
+        }
     }
 
     private void RenderBrushPreview()
