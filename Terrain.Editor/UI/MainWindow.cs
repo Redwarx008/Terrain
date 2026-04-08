@@ -739,13 +739,23 @@ public class MainWindow : ControlBase
 public class TabPanel : PanelBase
 {
     private readonly List<PanelBase> panels;
-    private int selectedTab;
+    private readonly TabController tabs = new();
 
     public TabPanel(params PanelBase[] panels)
     {
         this.panels = panels.ToList();
         ShowTitleBar = false;
         Padding = Margin.Zero;
+
+        foreach (var panel in this.panels)
+        {
+            tabs.Register(new TabItemState(panel.Id, panel.Title, panel.Icon)
+            {
+                IsVisible = true,
+                IsClosable = true,
+                IsClosed = panel.IsClosed
+            });
+        }
     }
 
     protected override void RenderContent()
@@ -758,15 +768,22 @@ public class TabPanel : PanelBase
                 for (int i = 0; i < panels.Count; i++)
                 {
                     var panel = panels[i];
-                    bool isOpen = !panel.IsClosed;
+                    var tab = tabs.GetRequired(panel.Id);
+                    bool isOpen = !tab.IsClosed;
 
                     ImGuiTabItemFlags flags = ImGuiTabItemFlags.None;
-                    if (panel.IsClosed)
+                    if (tab.RequestActivate)
+                    {
+                        flags |= ImGuiTabItemFlags.SetSelected;
+                        tab.RequestActivate = false;
+                    }
+
+                    if (tab.IsClosed)
                         flags |= ImGuiTabItemFlags.UnsavedDocument;
 
-                    if (ImGui.BeginTabItem($"{panel.Icon} {panel.Title}###{panel.Id}", ref isOpen, flags))
+                    if (ImGui.BeginTabItem($"{tab.Icon} {tab.Title}###{tab.Id}", ref isOpen, flags))
                     {
-                        selectedTab = i;
+                        tabs.SetActive(tab.Id);
                         panel.IsVisible = true;
 
                         Vector2 panelPosition = ImGui.GetCursorScreenPos();
@@ -796,7 +813,17 @@ public class TabPanel : PanelBase
 
                     if (!isOpen)
                     {
+                        // Keep TabItemState and PanelBase close/visibility state in sync.
+                        tab.IsClosed = true;
+                        tab.IsVisible = false;
                         panel.IsClosed = true;
+                        tabs.ClearActive(tab.Id);
+                    }
+                    else
+                    {
+                        tab.IsClosed = false;
+                        tab.IsVisible = true;
+                        panel.IsClosed = false;
                     }
                 }
 

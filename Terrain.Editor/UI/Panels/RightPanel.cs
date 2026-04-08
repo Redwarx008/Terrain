@@ -4,6 +4,7 @@ using Hexa.NET.ImGui;
 using System;
 using System.Numerics;
 using Terrain.Editor.Services;
+using Terrain.Editor.UI.Controls;
 using Terrain.Editor.UI.Styling;
 
 namespace Terrain.Editor.UI.Panels;
@@ -13,13 +14,15 @@ namespace Terrain.Editor.UI.Panels;
 /// </summary>
 public class RightPanel : PanelBase
 {
+    private const string BrushTabId = "brush";
+    private const string TextureTabId = "texture";
+
     private readonly BrushParamsPanel brushParamsPanel;
     private readonly BrushesPanel brushesPanel;
     private readonly TextureInspectorPanel textureInspectorPanel;
 
-    // 标签页可见性状态 - 默认不显示，等工具被选中后再显示
-    private bool _showBrushesTab = false;
-    private bool _showTextureTab = false;
+    // Centralized tab state (visibility/activation/close) for this panel.
+    private readonly TabController tabs = new();
 
     public event EventHandler<BrushSelectedEventArgs>? BrushSelected;
     public event EventHandler<BrushParamsChangedEventArgs>? BrushParamsChanged;
@@ -43,25 +46,29 @@ public class RightPanel : PanelBase
     /// <summary>工具被选中时调用 - 显示 Brush 标签</summary>
     public void OnToolSelected()
     {
-        _showBrushesTab = true;
+        // Key behavior: any tool click should show Brush and activate it immediately.
+        tabs.SetVisible(BrushTabId, true);
+        tabs.RequestActivate(BrushTabId);
     }
 
     /// <summary>工具取消选择时调用 - 隐藏 Brush 标签</summary>
     public void OnToolDeselected()
     {
-        _showBrushesTab = false;
+        tabs.SetVisible(BrushTabId, false);
+        tabs.ClearActive(BrushTabId);
     }
 
     /// <summary>纹理被选中时调用 - 显示 Texture 标签</summary>
     public void OnTextureSelected()
     {
-        _showTextureTab = true;
+        tabs.SetVisible(TextureTabId, true);
     }
 
     /// <summary>纹理取消选择时调用 - 关闭 Texture 标签</summary>
     public void OnTextureDeselected()
     {
-        _showTextureTab = false;
+        tabs.SetVisible(TextureTabId, false);
+        tabs.ClearActive(TextureTabId);
     }
 
     public RightPanel()
@@ -72,6 +79,8 @@ public class RightPanel : PanelBase
         brushParamsPanel = new BrushParamsPanel();
         brushesPanel = new BrushesPanel();
         textureInspectorPanel = new TextureInspectorPanel();
+        tabs.Register(new TabItemState(BrushTabId, "Brush", Icons.Brush) { IsVisible = false });
+        tabs.Register(new TabItemState(TextureTabId, "Texture", Icons.Image) { IsVisible = false });
 
         brushesPanel.BrushSelected += (s, e) => BrushSelected?.Invoke(this, e);
         brushParamsPanel.ParamsChanged += (s, e) => BrushParamsChanged?.Invoke(this, e);
@@ -92,10 +101,15 @@ public class RightPanel : PanelBase
             if (ImGui.BeginTabBar($"##right_tabs_{Id}", ImGuiTabBarFlags.None))
             {
                 // Brush tab - 合并了 Brush 选择和 Params 参数
-                if (_showBrushesTab)
+                var brushTab = tabs.GetRequired(BrushTabId);
+                if (brushTab.IsVisible)
                 {
-                    if (ImGui.BeginTabItem($"{Icons.Brush} Brush", ref _showBrushesTab))
+                    bool brushOpen = !brushTab.IsClosed;
+                    ImGuiTabItemFlags brushFlags = ConsumeSelectionRequest(brushTab);
+
+                    if (ImGui.BeginTabItem($"{brushTab.Icon} {brushTab.Title}###{brushTab.Id}", ref brushOpen, brushFlags))
                     {
+                        tabs.SetActive(brushTab.Id);
                         brushesPanel.Render();
                         ImGui.Spacing();
                         ImGui.Separator();
@@ -103,16 +117,26 @@ public class RightPanel : PanelBase
                         brushParamsPanel.Render();
                         ImGui.EndTabItem();
                     }
+
+                    // Keep tab state in one place after ImGui close interactions.
+                    ApplyOpenState(brushTab, brushOpen);
                 }
 
                 // Texture tab - 仅在 Paint 模式且可见时显示
-                if (CurrentMode == EditorMode.Paint && _showTextureTab)
+                var textureTab = tabs.GetRequired(TextureTabId);
+                if (CurrentMode == EditorMode.Paint && textureTab.IsVisible)
                 {
-                    if (ImGui.BeginTabItem($"{Icons.Image} Texture", ref _showTextureTab))
+                    bool textureOpen = !textureTab.IsClosed;
+                    ImGuiTabItemFlags textureFlags = ConsumeSelectionRequest(textureTab);
+
+                    if (ImGui.BeginTabItem($"{textureTab.Icon} {textureTab.Title}###{textureTab.Id}", ref textureOpen, textureFlags))
                     {
+                        tabs.SetActive(textureTab.Id);
                         textureInspectorPanel.Render();
                         ImGui.EndTabItem();
                     }
+
+                    ApplyOpenState(textureTab, textureOpen);
                 }
 
                 ImGui.EndTabBar();
@@ -127,6 +151,29 @@ public class RightPanel : PanelBase
     public float GetBrushSize() => brushParamsPanel.BrushSize;
     public float GetBrushStrength() => brushParamsPanel.BrushStrength;
     public float GetBrushFalloff() => brushParamsPanel.BrushFalloff;
+
+    private static ImGuiTabItemFlags ConsumeSelectionRequest(TabItemState tab)
+    {
+        // Key behavior: consume once so SetSelected affects only next frame.
+        if (!tab.RequestActivate)
+            return ImGuiTabItemFlags.None;
+
+        tab.RequestActivate = false;
+        return ImGuiTabItemFlags.SetSelected;
+    }
+
+    private void ApplyOpenState(TabItemState tab, bool isOpen)
+    {
+        if (isOpen)
+        {
+            tab.IsClosed = false;
+            return;
+        }
+
+        tab.IsClosed = true;
+        tab.IsVisible = false;
+        tabs.ClearActive(tab.Id);
+    }
 }
 
 /// <summary>
