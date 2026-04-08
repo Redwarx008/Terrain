@@ -352,7 +352,7 @@ public sealed class TerrainManager : IDisposable
     #region 项目持久化
 
     /// <summary>
-    /// 保存项目。
+    /// 保存项目到 TOML 文件。
     /// </summary>
     public void SaveProject()
     {
@@ -360,36 +360,38 @@ public sealed class TerrainManager : IDisposable
         if (!projectManager.IsProjectOpen)
             return;
 
-        var config = new ProjectConfig
-        {
-            HeightmapPath = currentTerrainPath,
-            MaterialSlots = SaveMaterialSlotConfigs(),
-            DefaultTextureSize = TextureSize.Size512
-        };
-
-        // 保存材质索引图
+        // 保存材质索引图到 splatmaps/
         if (MaterialIndices != null)
         {
             string indexPath = projectManager.GetMaterialIndexPath("terrain");
             SaveMaterialIndexMap(MaterialIndices, indexPath);
         }
 
+        var config = new TomlProjectConfig
+        {
+            Name = projectManager.ProjectName,
+            HeightmapPath = currentTerrainPath,
+            IndexMapPath = MaterialIndices != null
+                ? projectManager.GetMaterialIndexPath("terrain")
+                : null,
+            MaterialSlots = SaveMaterialSlotConfigs()
+        };
+
         projectManager.SaveConfig(config);
     }
 
-    private List<MaterialSlotConfig> SaveMaterialSlotConfigs()
+    private List<TomlMaterialSlotConfig> SaveMaterialSlotConfigs()
     {
-        var configs = new List<MaterialSlotConfig>();
+        var configs = new List<TomlMaterialSlotConfig>();
         foreach (var slot in MaterialSlotManager.Instance.GetActiveSlots())
         {
-            configs.Add(new MaterialSlotConfig
+            configs.Add(new TomlMaterialSlotConfig
             {
                 Index = slot.Index,
                 Name = slot.Name,
-                AlbedoTexturePath = slot.AlbedoTexturePath,
-                NormalTexturePath = slot.NormalTexturePath,
+                AlbedoPath = slot.AlbedoTexturePath,
+                NormalPath = slot.NormalTexturePath,
                 TilingScale = slot.TilingScale,
-                TextureSize = TextureSize.Size512
             });
         }
         return configs;
@@ -397,6 +399,8 @@ public sealed class TerrainManager : IDisposable
 
     private void SaveMaterialIndexMap(MaterialIndexMap map, string path)
     {
+        EnsureDirectoryForFile(path);
+
         using var image = new Image<Rgba32>(map.Width, map.Height);
         for (int y = 0; y < map.Height; y++)
         {
@@ -415,38 +419,49 @@ public sealed class TerrainManager : IDisposable
     }
 
     /// <summary>
-    /// 加载项目。
+    /// 从 TOML 文件加载项目。
     /// </summary>
-    public void LoadProject(string projectPath)
+    public void LoadProject(string tomlFilePath)
     {
+        // 清理旧项目状态
+        RemoveCurrentTerrain();
+        MaterialSlotManager.Instance.ClearAll();
+
         var projectManager = ProjectManager.Instance;
-        if (!projectManager.OpenProject(projectPath))
+        if (!projectManager.OpenProject(tomlFilePath))
             return;
 
         var config = projectManager.LoadConfig();
         if (config == null)
             return;
 
-        // 恢复材质槽位
+        // 恢复材质槽位（路径已由 TomlProjectConfig.ReadFrom 解析为绝对路径）
         foreach (var slotConfig in config.MaterialSlots)
         {
             var slot = MaterialSlotManager.Instance[slotConfig.Index];
             slot.Name = slotConfig.Name;
             slot.TilingScale = slotConfig.TilingScale;
 
-            if (!string.IsNullOrEmpty(slotConfig.AlbedoTexturePath))
-            {
-                string fullPath = Path.IsPathRooted(slotConfig.AlbedoTexturePath)
-                    ? slotConfig.AlbedoTexturePath
-                    : Path.Combine(projectManager.MaterialsPath, slotConfig.AlbedoTexturePath);
-                slot.AlbedoTexturePath = fullPath;
-            }
+            if (!string.IsNullOrEmpty(slotConfig.AlbedoPath))
+                slot.AlbedoTexturePath = slotConfig.AlbedoPath;
+            if (!string.IsNullOrEmpty(slotConfig.NormalPath))
+                slot.NormalTexturePath = slotConfig.NormalPath;
         }
 
         // 加载高度图
-        if (!string.IsNullOrEmpty(config.HeightmapPath))
+        if (!string.IsNullOrEmpty(config.HeightmapPath) && File.Exists(config.HeightmapPath))
         {
             _ = LoadTerrainAsync(config.HeightmapPath);
+        }
+
+        // 加载材质索引图（如果存在）
+        if (!string.IsNullOrEmpty(config.IndexMapPath) && File.Exists(config.IndexMapPath))
+        {
+            var loadedIndexMap = LoadMaterialIndexMap(config.IndexMapPath);
+            if (loadedIndexMap != null)
+            {
+                MaterialIndices = loadedIndexMap;
+            }
         }
 
         // 通知需要加载材质纹理（由外部调用 LoadMaterialTextures）
@@ -486,6 +501,13 @@ public sealed class TerrainManager : IDisposable
         }
 
         return map;
+    }
+
+    private static void EnsureDirectoryForFile(string filePath)
+    {
+        var dir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
     }
 
     #endregion

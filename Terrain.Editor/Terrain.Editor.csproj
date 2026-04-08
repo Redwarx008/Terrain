@@ -22,6 +22,7 @@
     <PackageReference Include="Stride.UI" />
     <PackageReference Include="Stride.Core.Assets.CompilerApp" IncludeAssets="build;buildTransitive" />
     <PackageReference Include="Hexa.NET.ImGui" />
+    <PackageReference Include="Tommy" />
   </ItemGroup>
 
   <ItemGroup>

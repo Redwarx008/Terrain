@@ -37,6 +37,37 @@ internal static class FileDialog
         return false;
     }
 
+    public static bool ShowSaveDialog(nint hwndOwner, string? filter, string? title, string? defaultFileName, out string? filePath)
+    {
+        filePath = null;
+
+        var ofn = new OPENFILENAME
+        {
+            lStructSize = Marshal.SizeOf<OPENFILENAME>(),
+            hwndOwner = hwndOwner,
+            lpstrFilter = ConvertFilter(filter),
+            lpstrFile = new string(new char[260]),
+            nMaxFile = 260,
+            lpstrTitle = title,
+            lpstrDefExt = "toml",
+            Flags = OFN_OVERWRITEPROMPT
+        };
+
+        if (!string.IsNullOrEmpty(defaultFileName))
+        {
+            ofn.lpstrFile = defaultFileName.PadRight(260, '\0');
+            ofn.nMaxFile = 260;
+        }
+
+        if (GetSaveFileName(ref ofn))
+        {
+            filePath = ofn.lpstrFile.TrimEnd('\0');
+            return !string.IsNullOrEmpty(filePath);
+        }
+
+        return false;
+    }
+
     private static string? ConvertFilter(string? filter)
     {
         // Convert "PNG Files (*.png)|*.png" to "PNG Files (*.png)\0*.png\0\0"
@@ -55,6 +86,10 @@ internal static class FileDialog
     [DllImport("comdlg32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetOpenFileName(ref OPENFILENAME ofn);
+
+    [DllImport("comdlg32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSaveFileName(ref OPENFILENAME ofn);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct OPENFILENAME
@@ -86,4 +121,5 @@ internal static class FileDialog
 
     private const int OFN_FILEMUSTEXIST = 0x00001000;
     private const int OFN_PATHMUSTEXIST = 0x00000800;
+    private const int OFN_OVERWRITEPROMPT = 0x00000002;
 }

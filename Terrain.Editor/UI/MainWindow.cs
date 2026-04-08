@@ -15,6 +15,7 @@ using Terrain.Editor.UI.Controls;
 using Terrain.Editor.UI.Layout;
 using Terrain.Editor.UI.Panels;
 using Terrain.Editor.UI.Styling;
+using Terrain.Editor.UI.Dialogs;
 
 namespace Terrain.Editor.UI;
 
@@ -48,6 +49,8 @@ public class MainWindow : ControlBase
     private bool showMenuBar = true;
     private bool showDemoWindow;
     private bool shouldClose;
+    private string currentTitle = "Terrain Editor";
+    private readonly NewProjectWizard newProjectWizard = new();
 
     public MainWindow()
     {
@@ -137,6 +140,51 @@ public class MainWindow : ControlBase
     private void InitializeDefaultData()
     {
         // 不再默认选择工具，让用户主动选择
+
+        // 订阅新建向导事件
+        newProjectWizard.ProjectCreated += OnNewProjectCreated;
+
+        // 订阅脏标记事件
+        ProjectManager.Instance.DirtyChanged += OnDirtyChanged;
+    }
+
+    private void OnNewProjectCreated(object? sender, NewProjectEventArgs e)
+    {
+        var projectManager = ProjectManager.Instance;
+
+        // 创建项目并直接写入包含 heightmap/indexmap 的完整配置
+        projectManager.CreateProject(e.ProjectFilePath, e.ProjectName);
+        var config = new TomlProjectConfig
+        {
+            Name = e.ProjectName,
+            HeightmapPath = e.HeightmapPath,
+            IndexMapPath = e.IndexMapPath,
+        };
+        projectManager.SaveConfig(config);
+
+        Viewport.LoadHeightmap(e.HeightmapPath);
+        UpdateTitle();
+        Console.LogInfo($"Created project: {e.ProjectName} at {e.ProjectFilePath}");
+    }
+
+    private void OnDirtyChanged(object? sender, EventArgs e)
+    {
+        UpdateTitle();
+    }
+
+    private void UpdateTitle()
+    {
+        var pm = ProjectManager.Instance;
+        if (!pm.IsProjectOpen)
+        {
+            currentTitle = "Terrain Editor";
+        }
+        else
+        {
+            currentTitle = pm.IsDirty
+                ? $"Terrain Editor - {pm.ProjectName} *"
+                : $"Terrain Editor - {pm.ProjectName}";
+        }
     }
 
     private void SubscribeEvents()
@@ -277,6 +325,9 @@ public class MainWindow : ControlBase
 
         ImGui.End();
 
+        // 渲染模态弹窗（在主窗口 End 之后）
+        newProjectWizard.Render(GetNativeWindowHandle());
+
         if (shouldClose || !open)
         {
             Environment.Exit(0);
@@ -309,12 +360,12 @@ public class MainWindow : ControlBase
         float buttonAreaWidth = titleBarButtonWidth * 3.0f;
         float dragRegionWidth = Math.Max(0.0f, titleBarWidth - buttonAreaWidth - rightInset);
 
-        Vector2 textSize = ImGui.CalcTextSize("Terrain Editor");
+        Vector2 textSize = ImGui.CalcTextSize(currentTitle);
         Vector2 textPos = new Vector2(
             titleBarMin.X + Math.Max(0.0f, (dragRegionWidth - textSize.X) * 0.5f),
             titleBarMin.Y + (titleBarHeight - textSize.Y) * 0.5f
         );
-        drawList.AddText(textPos, ColorPalette.TextPrimary.ToUint(), "Terrain Editor");
+        drawList.AddText(textPos, ColorPalette.TextPrimary.ToUint(), currentTitle);
 
         float buttonY = titleBarMin.Y;
         float buttonsStartX = titleBarMax.X - buttonAreaWidth - rightInset;
@@ -442,7 +493,7 @@ public class MainWindow : ControlBase
 
                 if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S"))
                 {
-                    Console.LogInfo("Save As...");
+                    HandleToolbarAction("SaveAs");
                 }
 
                 ImGui.Separator();
@@ -563,6 +614,7 @@ public class MainWindow : ControlBase
             return;
         if (!io.KeyCtrl)
             return;
+
         if (ImGui.IsKeyPressed(ImGuiKey.Z, false))
         {
             HandleToolbarAction("Undo");
@@ -571,6 +623,21 @@ public class MainWindow : ControlBase
         {
             HandleToolbarAction("Redo");
         }
+        else if (ImGui.IsKeyPressed(ImGuiKey.S, false))
+        {
+            if (io.KeyShift)
+                HandleToolbarAction("SaveAs");
+            else
+                HandleToolbarAction("Save");
+        }
+        else if (ImGui.IsKeyPressed(ImGuiKey.N, false))
+        {
+            HandleToolbarAction("New");
+        }
+        else if (ImGui.IsKeyPressed(ImGuiKey.O, false))
+        {
+            HandleToolbarAction("Open");
+        }
     }
 
     private void HandleToolbarAction(string buttonName)
@@ -578,21 +645,26 @@ public class MainWindow : ControlBase
         switch (buttonName)
         {
             case "New":
-                Console.LogInfo("New terrain project");
+                newProjectWizard.Open();
                 break;
 
             case "Open":
-                OpenHeightmap();
+                OpenProject();
                 break;
 
             case "Save":
-                Console.LogInfo("Save terrain project");
+                SaveProject();
+                break;
+
+            case "SaveAs":
+                SaveProjectAs();
                 break;
 
             case "Undo":
                 if (HistoryManager.Instance.Undo())
                 {
                     Console.LogInfo($"Undone: {HistoryManager.Instance.RedoDescription}");
+                    ProjectManager.Instance.MarkDirty();
                 }
                 else
                 {
@@ -604,6 +676,7 @@ public class MainWindow : ControlBase
                 if (HistoryManager.Instance.Redo())
                 {
                     Console.LogInfo($"Redone: {HistoryManager.Instance.UndoDescription}");
+                    ProjectManager.Instance.MarkDirty();
                 }
                 else
                 {
@@ -613,13 +686,64 @@ public class MainWindow : ControlBase
         }
     }
 
-    private void OpenHeightmap()
+    private void OpenProject()
     {
         nint hwnd = GetNativeWindowHandle();
-        if (FileDialog.ShowOpenDialog(hwnd, "PNG Files (*.png)|*.png", "Open Heightmap", out string? filePath))
+        if (FileDialog.ShowOpenDialog(hwnd, "TOML Files (*.toml)|*.toml", "Open Terrain Project", out string? filePath))
         {
-            Console.LogInfo($"Loading heightmap: {filePath}");
-            Viewport.LoadHeightmap(filePath);
+            Console.LogInfo($"Opening project: {filePath}");
+            Viewport.TerrainManager?.LoadProject(filePath);
+            UpdateTitle();
+            Console.LogInfo($"Project opened: {ProjectManager.Instance.ProjectName}");
+        }
+    }
+
+    private void SaveProject()
+    {
+        var pm = ProjectManager.Instance;
+        if (!pm.IsProjectOpen)
+        {
+            // 没有打开的项目，走 SaveAs
+            SaveProjectAs();
+            return;
+        }
+
+        if (Viewport.TerrainManager?.HasTerrainLoaded == true)
+        {
+            Viewport.TerrainManager.SaveProject();
+            Console.LogInfo("Project saved");
+        }
+        else
+        {
+            Console.LogInfo("Nothing to save");
+        }
+    }
+
+    private void SaveProjectAs()
+    {
+        nint hwnd = GetNativeWindowHandle();
+        var pm = ProjectManager.Instance;
+        string defaultName = pm.IsProjectOpen ? pm.ProjectName + ".toml" : "terrain_project.toml";
+
+        if (FileDialog.ShowSaveDialog(hwnd, "TOML Files (*.toml)|*.toml", "Save Project As", defaultName, out string? filePath))
+        {
+            // 如果当前有项目，先复制配置到新路径
+            if (pm.IsProjectOpen)
+            {
+                pm.SaveProjectAs(filePath);
+            }
+            else
+            {
+                pm.CreateProject(filePath, System.IO.Path.GetFileNameWithoutExtension(filePath));
+            }
+
+            if (Viewport.TerrainManager?.HasTerrainLoaded == true)
+            {
+                Viewport.TerrainManager.SaveProject();
+            }
+
+            UpdateTitle();
+            Console.LogInfo($"Project saved as: {filePath}");
         }
     }
 
@@ -655,6 +779,7 @@ public class MainWindow : ControlBase
                         e.SlotIndex, texture, filePath, TextureSize.Size512,
                         graphicsDevice!, graphicsContext!.CommandList);
                     Console.LogInfo($"Imported Albedo to slot {e.SlotIndex}: {filePath}");
+                    ProjectManager.Instance.MarkDirty();
 
                     // 自动查找并导入匹配的法线贴图
                     string? normalPath = TextureImporter.FindMatchingNormalMap(filePath);
@@ -679,6 +804,7 @@ public class MainWindow : ControlBase
                     MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath,
                         graphicsDevice!, graphicsContext!.CommandList);
                     Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
+                    ProjectManager.Instance.MarkDirty();
                 }
             }
             else
@@ -706,6 +832,7 @@ public class MainWindow : ControlBase
                 MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath,
                     graphicsDevice!, graphicsContext!.CommandList);
                 Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
+                ProjectManager.Instance.MarkDirty();
             }
             else
             {
@@ -719,6 +846,7 @@ public class MainWindow : ControlBase
         var graphicsContext = services!.GetService<GraphicsContext>();
         MaterialSlotManager.Instance.ClearNormalTexture(e.SlotIndex, graphicsDevice!, graphicsContext!.CommandList);
         Console.LogInfo($"Cleared normal map from slot {e.SlotIndex}");
+        ProjectManager.Instance.MarkDirty();
     }
 
     private void OnTextureClearRequested(object? sender, TextureSlotEventArgs e)
@@ -727,6 +855,7 @@ public class MainWindow : ControlBase
         {
             MaterialSlotManager.Instance.ClearSlot(e.SlotIndex);
             Console.LogInfo($"Cleared slot {e.SlotIndex}");
+            ProjectManager.Instance.MarkDirty();
         }
         else
         {

@@ -46,6 +46,9 @@
 | **纹理刷** | ✅ 已实现 | [2026-04-06-3](log/2026/04/06/2026-04-06-3-terrain-texture-brush-implementation.md) |
 | **纹理导入增强** | ✅ 已实现 | [texture-auto-normal-import-and-inspector](design/texture-auto-normal-import-and-inspector.md) |
 | **数据同步机制** | ✅ 已实现 | [2026-04-07-1](log/2026/04/07/2026-04-07-1-unified-terrain-data-sync.md) |
+| **材质索引图增强** | ✅ 已实现 | [2026-04-07-2](log/2026/04/07/2026-04-07-2-index-map-enhancement.md) |
+| **Undo/Redo（Chunk事务）** | ✅ 已实现 | [2026-04-07-5](log/2026/04/07/2026-04-07-5-chunk-based-undo-redo-implementation.md) |
+| **项目持久化（TOML）** | ✅ 已实现 | [2026-04-08-2](log/2026/04/08/2026-04-08-2-toml-project-persistence.md) |
 | **植被编辑** | 🚧 进行中 | [terrain-editor-design-phase-3](design/terrain-editor-design-phase-3.md) |
 
 ### 未来系统
@@ -68,7 +71,17 @@
 **权衡：** 抽象层 vs 直接调用
 **参考：** Godot heightmap 插件的 `notify_region_change(p_map_type)` 设计
 
-### 1. 四叉树 LOD
+### 1. 材质索引图数据格式 (RGBA)
+**问题：** 传统 splatmap 受通道数限制，且缺少投影和旋转控制
+**方案：** 使用 R8G8B8A8_UNorm 格式，R=索引, G=权重, B=投影方向, A=旋转角度
+**权衡：** 内存翻倍 vs 功能增强
+**参考：** Unity IndexMapTerrain 项目的 Index Map 设计
+**优势：**
+- 支持 256 种材质
+- 3D 投影解决悬崖纹理拉伸
+- 随机旋转打破平铺重复
+
+### 2. 四叉树 LOD
 **问题：** 大地形需要不同细节级别
 **方案：** 四叉树分割，GPU 选择 LOD
 **权衡：** 内存 vs 视觉质量
@@ -88,6 +101,18 @@
 **方案：** 使用 ImGui 自定义编辑器
 **权衡：** 学习曲线 vs 灵活性
 
+### 5. Undo/Redo Chunk 事务模型
+**问题：** 区域快照在笔触开始阶段容易退化为整图复制，导致 Paint Mode 卡顿
+**方案：** 参考 Godot heightmap 插件，采用“笔触期间标记 chunk，提交时抓取 before/after”的事务模型
+**权衡：** 命令结构更复杂 vs 明显更稳定的交互性能与更干净的历史栈
+**参考：** [2026-04-07-5](log/2026/04/07/2026-04-07-5-chunk-based-undo-redo-implementation.md)
+
+### 6. TOML 项目持久化
+**问题：** 编辑器没有真正的 Open/Save 流程，用户无法保存和恢复工作状态
+**方案：** 使用 .toml 文件作为项目配置（Tommy 库），存储 heightmap/indexmap 路径和 material slot 纹理路径
+**权衡：** TOML 比 JSON 更易手写编辑，但需要额外 NuGet 依赖
+**关键：** 所有路径使用相对路径（相对于 .toml 所在目录），确保项目可移植
+
 ---
 
 ## 关键文件
@@ -105,9 +130,14 @@
 | `Terrain.Editor/Services/TerrainManager.cs` | 地形管理服务 |
 | `Terrain.Editor/Services/HeightEditor.cs` | 高度编辑服务 |
 | `Terrain.Editor/Services/PaintEditor.cs` | 材质绘制服务 |
+| `Terrain.Editor/Services/Commands/HistoryManager.cs` | Undo/Redo 历史事务管理 |
+| `Terrain.Editor/Services/Commands/StrokeChunkTracker.cs` | 笔触 Chunk 跟踪与去重 |
 | `Terrain.Editor/Services/MaterialSlotManager.cs` | 材质槽位管理 |
+| `Terrain.Editor/Services/ProjectManager.cs` | 项目管理（TOML 配置、dirty tracking） |
+| `Terrain.Editor/Services/TomlProjectConfig.cs` | TOML 配置数据模型和读写器 |
 | `Terrain.Editor/Rendering/EditorTerrainEntity.cs` | 地形实体（含统一数据同步接口） |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
+| `Terrain.Editor/UI/Dialogs/NewProjectWizard.cs` | 新建项目模态弹窗 |
 
 ### 着色器
 | 文件 | 职责 |
@@ -159,5 +189,5 @@
 
 ---
 
-*最后更新: 2026-04-07*
+*最后更新: 2026-04-08*
 *状态: 反映当前实现状态*
