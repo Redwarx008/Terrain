@@ -32,14 +32,40 @@
     ]
   },
   "hooks": {
-    "session-start": {
-      "command": "echo '=== AI 协作流程提醒 ===' && echo '1. 首先阅读 docs/ARCHITECTURE_OVERVIEW.md' && echo '2. 然后阅读 docs/log/ 目录下的最新日志' && echo '3. 了解上次工作的 Next Session 部分' && echo '========================'"
-    },
-    "pre-commit": {
-      "command": "echo '=== 提交前检查 ===' && echo '是否已创建本次会话日志？' && echo '日志路径: docs/log/YYYY/MM/DD/YYYY-MM-DD-[description].md' && echo '=================='"
-    },
-    "session-end": {
-      "command": "echo '=== 会话结束提醒 ===' && echo '必须创建会话日志文件！' && echo '路径: docs/log/YYYY/MM/DD/YYYY-MM-DD-[seq]-[description].md' && echo '使用模板: docs/log/TEMPLATE.md' && echo '=================='"
-    }
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.ps1"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop.ps1"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "if": "Bash(git commit*)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-commit-check.ps1"
+          }
+        ]
+      }
+    ]
   }
 }
