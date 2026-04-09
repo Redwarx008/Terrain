@@ -778,9 +778,14 @@ public class MainWindow : ControlBase
             {
                 if (e.TextureType == TextureType.Albedo)
                 {
-                    MaterialSlotManager.Instance.SetAlbedoTexture(
-                        e.SlotIndex, texture, filePath, TextureSize.Size512,
-                        graphicsDevice!, graphicsContext!.CommandList);
+                    if (!MaterialSlotManager.Instance.TrySetAlbedoTexture(
+                            e.SlotIndex, texture, filePath, TextureSize.Size512,
+                            graphicsDevice!, graphicsContext!.CommandList, out string? error))
+                    {
+                        Console.LogError(error ?? $"Failed to import Albedo to slot {e.SlotIndex}: {filePath}");
+                        return;
+                    }
+
                     Console.LogInfo($"Imported Albedo to slot {e.SlotIndex}: {filePath}");
                     ProjectManager.Instance.MarkDirty();
 
@@ -796,16 +801,29 @@ public class MainWindow : ControlBase
                             isNormalMap: true);
                         if (normalTexture != null)
                         {
-                            MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, normalTexture, normalPath,
-                                graphicsDevice!, graphicsContext!.CommandList);
-                            Console.LogInfo($"Auto-imported Normal map: {normalPath}");
+                            if (MaterialSlotManager.Instance.TrySetNormalTexture(
+                                    e.SlotIndex, normalTexture, normalPath,
+                                    graphicsDevice!, graphicsContext!.CommandList, out string? normalError))
+                            {
+                                Console.LogInfo($"Auto-imported Normal map: {normalPath}");
+                            }
+                            else
+                            {
+                                Console.LogWarning(normalError ?? $"Auto-imported normal map was rejected for slot {e.SlotIndex}: {normalPath}");
+                            }
                         }
                     }
                 }
                 else
                 {
-                    MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath,
-                        graphicsDevice!, graphicsContext!.CommandList);
+                    if (!MaterialSlotManager.Instance.TrySetNormalTexture(
+                            e.SlotIndex, texture, filePath,
+                            graphicsDevice!, graphicsContext!.CommandList, out string? error))
+                    {
+                        Console.LogError(error ?? $"Failed to import Normal to slot {e.SlotIndex}: {filePath}");
+                        return;
+                    }
+
                     Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
                     ProjectManager.Instance.MarkDirty();
                 }
@@ -833,8 +851,14 @@ public class MainWindow : ControlBase
                 isNormalMap: true);
             if (texture != null)
             {
-                MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath,
-                    graphicsDevice!, graphicsContext!.CommandList);
+                if (!MaterialSlotManager.Instance.TrySetNormalTexture(
+                        e.SlotIndex, texture, filePath,
+                        graphicsDevice!, graphicsContext!.CommandList, out string? error))
+                {
+                    Console.LogError(error ?? $"Failed to import Normal to slot {e.SlotIndex}: {filePath}");
+                    return;
+                }
+
                 Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
                 ProjectManager.Instance.MarkDirty();
             }
