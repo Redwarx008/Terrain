@@ -398,8 +398,6 @@ public sealed class TerrainManager : IDisposable
 
     private void SaveMaterialIndexMap(MaterialIndexMap map, string path)
     {
-        EnsureDirectoryForFile(path);
-
         using var image = new Image<Rgba32>(map.Width, map.Height);
         for (int y = 0; y < map.Height; y++)
         {
@@ -523,13 +521,6 @@ public sealed class TerrainManager : IDisposable
         }
 
         return map;
-    }
-
-    private static void EnsureDirectoryForFile(string filePath)
-    {
-        var dir = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
     }
 
     #endregion

@@ -65,10 +65,6 @@ public sealed class ProjectManager
         ProjectFilePath = projectFilePath;
         ProjectName = projectName;
 
-        EnsureDirectoryExists(ProjectPath);
-        EnsureDirectoryExists(MaterialsPath);
-        EnsureDirectoryExists(SplatMapsPath);
-        EnsureDirectoryExists(HeightmapsPath);
 
         // 此时还没选 heightmap，先写一个最小配置
         var config = new TomlProjectConfig { Name = projectName };
@@ -187,11 +183,10 @@ public sealed class ProjectManager
     /// 获取材质索引图的保存路径。
     /// </summary>
     public string GetMaterialIndexPath(string terrainName)
-        => Path.Combine(SplatMapsPath, $"{terrainName}_material_index.png");
-
-    private void EnsureDirectoryExists(string? path)
     {
-        if (!string.IsNullOrEmpty(path) && !Directory.Exists(path))
-            Directory.CreateDirectory(path);
+        if (!string.IsNullOrEmpty(cachedConfig?.IndexMapPath))
+            return cachedConfig.IndexMapPath;
+
+        return Path.Combine(ProjectPath, $"{terrainName}_material_index.png");
     }
 }

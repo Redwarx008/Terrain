@@ -116,7 +116,6 @@ public class TomlProjectConfig
         }
 
         // 确保目录存在
-        Directory.CreateDirectory(baseDir);
 
         using var writer = File.CreateText(tomlFilePath);
         root.WriteTo(writer);
