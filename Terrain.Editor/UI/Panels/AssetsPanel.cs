@@ -54,6 +54,9 @@ public class AssetsPanel : PanelBase
 
     private List<FoliageItem> foliageItems = new();
     private List<HeightLayer> heightLayers = new();
+    private int textureContextMenuSlotIndex = -1;
+    private Vector2 textureContextMenuPosition;
+    private int textureContextMenuOpenedFrame = -1;
 
     #endregion
 
@@ -149,7 +152,7 @@ public class AssetsPanel : PanelBase
 
         ImGui.Selectable($"##layer_select_{index}", isSelected);
 
-        if (ImGui.IsItemClicked())
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
         {
             SelectedLayerIndex = index;
             LayerSelected?.Invoke(this, new LayerSelectedEventArgs { LayerIndex = index, Layer = layer });
@@ -165,7 +168,7 @@ public class AssetsPanel : PanelBase
         ImGui.PushStyleColor(ImGuiCol.Text, visible ? ColorPalette.TextPrimary.ToVector4() : ColorPalette.TextSecondary.ToVector4());
         ImGui.Text(visible ? Icons.Eye : Icons.EyeOff);
         ImGui.PopStyleColor();
-        if (ImGui.IsItemClicked())
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
         {
             layer.IsVisible = !layer.IsVisible;
         }
@@ -216,14 +219,41 @@ public class AssetsPanel : PanelBase
         // 渲染 "+" 导入入口（始终显示）
         GridTileRenderer.AdvanceRowLayout(visibleCount, itemsPerRow, tileLayout);
         RenderAddTextureTile(tileLayout);
+        RenderTextureContextMenu();
     }
 
     private void RenderMaterialSlot(MaterialSlot slot, GridTileLayout tileLayout)
     {
         bool isSelected = SelectedTextureSlot == slot.Index;
+        var drawList = ImGui.GetWindowDrawList();
+        Vector2 cursor = ImGui.GetCursorScreenPos();
+        ImGui.InvisibleButton($"##tex_slot_{slot.Index}", new Vector2(tileLayout.ItemWidth, tileLayout.ItemHeight));
+        bool isHovered = ImGui.IsItemHovered();
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+        {
+            OpenTextureContextMenu(slot.Index);
+        }
 
-        GridTileContext tile = GridTileRenderer.BeginTile($"##tex_slot_{slot.Index}", tileLayout, isSelected);
-        Vector2 previewPos = GridTileRenderer.GetSquareContentMin(tile.Cursor, tileLayout);
+        bool isContextMenuOpenForSlot = textureContextMenuSlotIndex == slot.Index;
+        uint bgColor = isSelected ? ColorPalette.Selection.ToUint() :
+                       isHovered ? ColorPalette.Hover.ToUint() :
+                       ColorPalette.DarkBackground.ToUint();
+        drawList.AddRectFilled(
+            cursor,
+            new Vector2(cursor.X + tileLayout.ItemWidth, cursor.Y + tileLayout.ItemHeight),
+            bgColor,
+            tileLayout.CornerRounding);
+        if (isSelected)
+        {
+            drawList.AddRect(
+                cursor,
+                new Vector2(cursor.X + tileLayout.ItemWidth, cursor.Y + tileLayout.ItemHeight),
+                ColorPalette.Accent.ToUint(),
+                tileLayout.CornerRounding,
+                ImDrawFlags.None,
+                2.0f);
+        }
+        Vector2 previewPos = GridTileRenderer.GetSquareContentMin(cursor, tileLayout);
         Vector2 previewSize = GridTileRenderer.GetSquareContentSize(tileLayout);
 
         // 纹理预览 - 使用 DrawList 绘制，避免干扰 ImGui 布局
@@ -231,25 +261,27 @@ public class AssetsPanel : PanelBase
         {
             // 使用 DrawList 的 AddImage 方法绘制纹理
             var texRef = ImGuiExtension.GetTextureKey(slot.AlbedoTexture);
-            tile.DrawList.AddImage(texRef, previewPos, new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y));
+            drawList.AddImage(texRef, previewPos, new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y));
         }
         else
         {
             // 有路径但无 GPU 纹理 - 显示占位
-            tile.DrawList.AddRectFilled(previewPos,
+            drawList.AddRectFilled(previewPos,
                 new Vector2(previewPos.X + previewSize.X, previewPos.Y + previewSize.Y),
                 ColorPalette.Background.ToUint());
-            tile.DrawList.AddText(
+            drawList.AddText(
                 new Vector2(previewPos.X + tileLayout.Inset, previewPos.Y + previewSize.Y * 0.4f),
                 ColorPalette.TextSecondary.ToUint(),
                 $"#{slot.Index}");
         }
 
-        GridTileRenderer.DrawLabel(tile.DrawList, tile.Cursor, tileLayout, slot.Name);
+        GridTileRenderer.DrawLabel(drawList, cursor, tileLayout, slot.Name);
 
         // 点击选中 - toggle behavior
-        if (ImGui.IsItemClicked())
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
         {
+            CloseTextureContextMenu();
+
             if (isSelected)
             {
                 // 取消选择
@@ -264,28 +296,85 @@ public class AssetsPanel : PanelBase
             }
         }
 
+
+        // 右键菜单
+
         // Tooltip
-        if (tile.IsHovered)
+        if (isHovered &&
+            !isContextMenuOpenForSlot &&
+            !ImGui.IsMouseDown(ImGuiMouseButton.Left) &&
+            !ImGui.IsMouseDown(ImGuiMouseButton.Right) &&
+            !ImGui.IsMouseDown(ImGuiMouseButton.Middle))
         {
             ImGui.SetTooltip($"{slot.Name}\nIndex: {slot.Index}");
         }
+    }
 
-        // 右键菜单
-        if (ImGui.BeginPopupContextItem($"##tex_context_{slot.Index}"))
+    private void RenderTextureContextMenu()
+    {
+        if (textureContextMenuSlotIndex < 0)
+            return;
+
+        var slot = MaterialSlotManager.Instance[textureContextMenuSlotIndex];
+        if (slot.IsEmpty)
         {
-            if (ImGui.BeginMenu("Import Texture"))
-            {
-                if (ImGui.MenuItem("Albedo"))
-                    TextureImportRequested?.Invoke(this, new TextureImportEventArgs { SlotIndex = slot.Index, TextureType = TextureType.Albedo });
-                if (ImGui.MenuItem("Normal"))
-                    TextureImportRequested?.Invoke(this, new TextureImportEventArgs { SlotIndex = slot.Index, TextureType = TextureType.Normal });
-                ImGui.EndMenu();
-            }
-            ImGui.Separator();
-            if (ImGui.MenuItem("Delete"))
-                TextureClearRequested?.Invoke(this, new TextureSlotEventArgs { SlotIndex = slot.Index });
-            ImGui.EndPopup();
+            CloseTextureContextMenu();
+            return;
         }
+
+        var style = ImGui.GetStyle();
+        Vector2 labelSize = ImGui.CalcTextSize("Delete");
+        float menuWidth = labelSize.X + style.FramePadding.X * 2.0f + EditorStyle.ScaleValue(2.0f);
+        float menuHeight = labelSize.Y + style.FramePadding.Y * 2.0f + EditorStyle.ScaleValue(2.0f);
+        float maxX = MathF.Max(ContentRect.X, ContentRect.X + ContentRect.Width - menuWidth);
+        float maxY = MathF.Max(ContentRect.Y, ContentRect.Y + ContentRect.Height - menuHeight);
+        Vector2 menuPos = new Vector2(
+            Math.Clamp(textureContextMenuPosition.X, ContentRect.X, maxX),
+            Math.Clamp(textureContextMenuPosition.Y, ContentRect.Y, maxY));
+        Vector2 menuSize = new Vector2(menuWidth, menuHeight);
+
+        ImGui.SetCursorScreenPos(menuPos);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+        bool began = ImGui.BeginChild(
+            $"##texture_context_menu_{Id}",
+            menuSize,
+            ImGuiChildFlags.Borders,
+            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+        bool isWindowHovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem);
+
+        if (began)
+        {
+            Vector2 itemSize = new Vector2(menuSize.X, menuSize.Y);
+
+            if (ImGui.Button("Delete", itemSize))
+            {
+                TextureClearRequested?.Invoke(this, new TextureSlotEventArgs { SlotIndex = textureContextMenuSlotIndex });
+                CloseTextureContextMenu();
+            }
+        }
+
+        ImGui.EndChild();
+        ImGui.PopStyleVar();
+
+        if (ImGui.GetFrameCount() > textureContextMenuOpenedFrame &&
+            !isWindowHovered &&
+            (ImGui.IsMouseClicked(ImGuiMouseButton.Left) || ImGui.IsMouseClicked(ImGuiMouseButton.Right)))
+        {
+            CloseTextureContextMenu();
+        }
+    }
+
+    private void OpenTextureContextMenu(int slotIndex)
+    {
+        textureContextMenuSlotIndex = slotIndex;
+        textureContextMenuPosition = ImGui.GetIO().MousePos;
+        textureContextMenuOpenedFrame = ImGui.GetFrameCount();
+    }
+
+    private void CloseTextureContextMenu()
+    {
+        textureContextMenuSlotIndex = -1;
+        textureContextMenuOpenedFrame = -1;
     }
 
     private void RenderAddTextureTile(GridTileLayout tileLayout)

@@ -270,10 +270,13 @@ public class EditorUIRenderer : GameSystemBase
         io.DeltaTime = deltaTime;
 
         // 处理输入
-        if (input != null && input.HasMouse && !input.IsMousePositionLocked)
+        if (input != null && input.HasMouse)
         {
-            var mousePos = input.AbsoluteMousePosition;
-            io.AddMousePosEvent(mousePos.X, mousePos.Y);
+            if (!input.IsMousePositionLocked)
+            {
+                var mousePos = input.AbsoluteMousePosition;
+                io.AddMousePosEvent(mousePos.X, mousePos.Y);
+            }
 
             if (io.WantTextInput)
                 input.TextInput.EnabledTextInput();

@@ -855,7 +855,13 @@ public class MainWindow : ControlBase
     {
         if (e.SlotIndex >= 0 && e.SlotIndex < 256)
         {
-            MaterialSlotManager.Instance.ClearSlot(e.SlotIndex);
+            var graphicsContext = services!.GetService<GraphicsContext>();
+            MaterialSlotManager.Instance.ClearSlot(e.SlotIndex, graphicsDevice!, graphicsContext!.CommandList);
+
+            if (Assets.SelectedTextureSlot == e.SlotIndex)
+            {
+                DeselectTextureSlot();
+            }
             Console.LogInfo($"Cleared slot {e.SlotIndex}");
             ProjectManager.Instance.MarkDirty();
         }
@@ -863,6 +869,14 @@ public class MainWindow : ControlBase
         {
             Console.LogError($"Invalid slot index: {e.SlotIndex}");
         }
+    }
+
+    private void DeselectTextureSlot()
+    {
+        Assets.SelectedTextureSlot = -1;
+        MaterialSlotManager.Instance.SelectedSlotIndex = 0;
+        RightPanel.SelectedTextureSlot = -1;
+        RightPanel.OnTextureDeselected();
     }
 
 }

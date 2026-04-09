@@ -94,6 +94,7 @@ public sealed class MaterialSlotManager
         cachedMaterialNormalArray = null;
         defaultNormalTexture?.Dispose();
         defaultNormalTexture = null;
+        maxSlotIndex = -1;
     }
 
     private MaterialSlotManager()
@@ -317,9 +318,10 @@ public sealed class MaterialSlotManager
     /// <summary>
     /// 清除指定槽位的配置。
     /// </summary>
-    public void ClearSlot(int slotIndex)
+    public void ClearSlot(int slotIndex, GraphicsDevice graphicsDevice, CommandList commandList)
     {
         slots[slotIndex].Clear();
+        RebuildMaterialArrays(graphicsDevice, commandList);
     }
 
     /// <summary>
@@ -331,6 +333,8 @@ public sealed class MaterialSlotManager
         {
             slot.Clear();
         }
+
+        MarkMaterialArrayDirty();
     }
 
     /// <summary>
@@ -385,6 +389,24 @@ public sealed class MaterialSlotManager
                     slot.NormalTexture = texture;
                     UpdateNormalSlotInArray(slot.Index, graphicsDevice, commandList);
                 }
+            }
+        }
+    }
+
+    private void RebuildMaterialArrays(GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        MarkMaterialArrayDirty();
+
+        foreach (var slot in slots)
+        {
+            if (slot.AlbedoTexture != null)
+            {
+                UpdateSlotInArray(slot.Index, graphicsDevice, commandList);
+            }
+
+            if (slot.NormalTexture != null)
+            {
+                UpdateNormalSlotInArray(slot.Index, graphicsDevice, commandList);
             }
         }
     }
