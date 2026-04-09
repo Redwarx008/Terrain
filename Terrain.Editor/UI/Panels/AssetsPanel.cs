@@ -63,7 +63,7 @@ public class AssetsPanel : PanelBase
     public AssetsPanel()
     {
         Title = "Assets";
-        Icon = Icons.Folder;
+        Icon = null;
         ShowTitleBar = true;
 
         InitializeFoliageItems();

@@ -46,7 +46,7 @@ public class ConsolePanel : PanelBase
     public ConsolePanel()
     {
         Title = "Console";
-        Icon = Icons.Info;
+        Icon = null;
         ShowTitleBar = true;
     }
 

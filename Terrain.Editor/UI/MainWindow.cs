@@ -926,7 +926,11 @@ public class TabPanel : PanelBase
                     if (tab.IsClosed)
                         flags |= ImGuiTabItemFlags.UnsavedDocument;
 
-                    if (ImGui.BeginTabItem($"{tab.Icon} {tab.Title}###{tab.Id}", ref isOpen, flags))
+                    string label = string.IsNullOrWhiteSpace(tab.Icon)
+                        ? $"{tab.Title}###{tab.Id}"
+                        : $"{tab.Icon} {tab.Title}###{tab.Id}";
+
+                    if (ImGui.BeginTabItem(label, ref isOpen, flags))
                     {
                         tabs.SetActive(tab.Id);
                         panel.IsVisible = true;

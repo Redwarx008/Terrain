@@ -79,8 +79,8 @@ public class RightPanel : PanelBase
         brushParamsPanel = new BrushParamsPanel();
         brushesPanel = new BrushesPanel();
         textureInspectorPanel = new TextureInspectorPanel();
-        tabs.Register(new TabItemState(BrushTabId, "Brush", Icons.Brush) { IsVisible = false });
-        tabs.Register(new TabItemState(TextureTabId, "Texture", Icons.Image) { IsVisible = false });
+        tabs.Register(new TabItemState(BrushTabId, "Brush") { IsVisible = false });
+        tabs.Register(new TabItemState(TextureTabId, "Texture") { IsVisible = false });
 
         brushesPanel.BrushSelected += (s, e) => BrushSelected?.Invoke(this, e);
         brushParamsPanel.ParamsChanged += (s, e) => BrushParamsChanged?.Invoke(this, e);
@@ -107,7 +107,7 @@ public class RightPanel : PanelBase
                     bool brushOpen = !brushTab.IsClosed;
                     ImGuiTabItemFlags brushFlags = ConsumeSelectionRequest(brushTab);
 
-                    if (ImGui.BeginTabItem($"{brushTab.Icon} {brushTab.Title}###{brushTab.Id}", ref brushOpen, brushFlags))
+                    if (ImGui.BeginTabItem(GetTabLabel(brushTab), ref brushOpen, brushFlags))
                     {
                         tabs.SetActive(brushTab.Id);
                         brushesPanel.Render();
@@ -129,7 +129,7 @@ public class RightPanel : PanelBase
                     bool textureOpen = !textureTab.IsClosed;
                     ImGuiTabItemFlags textureFlags = ConsumeSelectionRequest(textureTab);
 
-                    if (ImGui.BeginTabItem($"{textureTab.Icon} {textureTab.Title}###{textureTab.Id}", ref textureOpen, textureFlags))
+                    if (ImGui.BeginTabItem(GetTabLabel(textureTab), ref textureOpen, textureFlags))
                     {
                         tabs.SetActive(textureTab.Id);
                         textureInspectorPanel.Render();
@@ -160,6 +160,13 @@ public class RightPanel : PanelBase
 
         tab.RequestActivate = false;
         return ImGuiTabItemFlags.SetSelected;
+    }
+
+    private static string GetTabLabel(TabItemState tab)
+    {
+        return string.IsNullOrWhiteSpace(tab.Icon)
+            ? $"{tab.Title}###{tab.Id}"
+            : $"{tab.Icon} {tab.Title}###{tab.Id}";
     }
 
     private void ApplyOpenState(TabItemState tab, bool isOpen)
