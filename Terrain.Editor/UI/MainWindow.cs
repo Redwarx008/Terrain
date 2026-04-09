@@ -51,6 +51,7 @@ public class MainWindow : ControlBase
     private bool shouldClose;
     private string currentTitle = "Terrain Editor";
     private readonly NewProjectWizard newProjectWizard = new();
+    private string? pendingIndexMapPath;
 
     public MainWindow()
     {
@@ -150,21 +151,11 @@ public class MainWindow : ControlBase
 
     private void OnNewProjectCreated(object? sender, NewProjectEventArgs e)
     {
-        var projectManager = ProjectManager.Instance;
-
-        // 创建项目并直接写入包含 heightmap/indexmap 的完整配置
-        projectManager.CreateProject(e.ProjectFilePath, e.ProjectName);
-        var config = new TomlProjectConfig
-        {
-            Name = e.ProjectName,
-            HeightmapPath = e.HeightmapPath,
-            IndexMapPath = e.IndexMapPath,
-        };
-        projectManager.SaveConfig(config);
-
+        // 只加载高度图，不创建项目文件。用户 Save 时再确定保存路径。
+        pendingIndexMapPath = e.IndexMapPath;
         Viewport.LoadHeightmap(e.HeightmapPath);
         UpdateTitle();
-        Console.LogInfo($"Created project: {e.ProjectName} at {e.ProjectFilePath}");
+        Console.LogInfo($"Loaded heightmap: {e.HeightmapPath}");
     }
 
     private void OnDirtyChanged(object? sender, EventArgs e)
@@ -177,7 +168,10 @@ public class MainWindow : ControlBase
         var pm = ProjectManager.Instance;
         if (!pm.IsProjectOpen)
         {
-            currentTitle = "Terrain Editor";
+            bool hasTerrain = Viewport.TerrainManager?.HasTerrainLoaded == true;
+            currentTitle = hasTerrain
+                ? "Terrain Editor - Unsaved *"
+                : "Terrain Editor";
         }
         else
         {
@@ -248,6 +242,14 @@ public class MainWindow : ControlBase
         Viewport.HeightmapLoaded += (s, path) =>
         {
             Console.LogInfo($"Heightmap loaded successfully: {path}");
+
+            // 加载新建向导中选择的 index map（需在 heightmap 加载完成后）
+            if (!string.IsNullOrEmpty(pendingIndexMapPath))
+            {
+                if (Viewport.TerrainManager?.LoadIndexMap(pendingIndexMapPath) == true)
+                    Console.LogInfo($"Loaded index map: {pendingIndexMapPath}");
+                pendingIndexMapPath = null;
+            }
         };
 
         Viewport.HeightmapLoadFailed += (s, error) =>

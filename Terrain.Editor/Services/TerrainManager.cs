@@ -477,6 +477,23 @@ public sealed class TerrainManager : IDisposable
         MaterialSlotManager.Instance.LoadTexturesFromConfiguredPaths(graphicsDevice, commandList);
     }
 
+    /// <summary>
+    /// 从 PNG 文件加载材质索引图，替换当前的索引图。
+    /// </summary>
+    public bool LoadIndexMap(string path)
+    {
+        if (terrainEntities.Count == 0)
+            return false;
+
+        var loaded = LoadMaterialIndexMap(path);
+        if (loaded == null)
+            return false;
+
+        MaterialIndices = loaded;
+        terrainEntities[0].MaterialIndexData = MaterialIndices.GetRawData();
+        return true;
+    }
+
     private MaterialIndexMap? LoadMaterialIndexMap(string path)
     {
         if (!File.Exists(path))

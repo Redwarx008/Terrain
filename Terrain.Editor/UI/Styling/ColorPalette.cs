@@ -65,9 +65,9 @@ public static class ColorPalette
     public static readonly Color4 Info = Srgb(0x47, 0x8E, 0xFF);     // #478EFF
 
     // Control-specific colors
-    public static readonly Color4 ButtonDefault = Srgb(0x21, 0x25, 0x2B);  // #21252B
-    public static readonly Color4 ButtonHover = Srgb(0x3D, 0x44, 0x50);    // #3D4450
-    public static readonly Color4 ButtonPressed = Srgb(0x1D, 0x20, 0x26);  // #1D2026
+    public static readonly Color4 ButtonDefault = Srgb(0x42, 0x42, 0x42);  // #424242
+    public static readonly Color4 ButtonHover = Srgb(0x4D, 0x4D, 0x4D);    // #4D4D4D
+    public static readonly Color4 ButtonPressed = Srgb(0x47, 0x8E, 0xFF);  // #478EFF
 
     public static readonly Color4 InputBackground = Srgb(0x21, 0x25, 0x2B);  // #21252B
     public static readonly Color4 InputBorder = Srgb(0x21, 0x25, 0x2B);      // #21252B
