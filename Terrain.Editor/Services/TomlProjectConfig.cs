@@ -35,7 +35,7 @@ public class TomlProjectConfig
         config.Name = root.HasKey("name") && root["name"].IsString
             ? root["name"].AsString.Value : "Untitled";
 
-        if (root.HasKey("terrain"))
+        if (root.HasKey("terrain") && root["terrain"].IsTable)
         {
             var terrain = root["terrain"];
             config.HeightmapPath = terrain.HasKey("heightmap") && terrain["heightmap"].IsString
@@ -48,19 +48,30 @@ public class TomlProjectConfig
         {
             foreach (TomlNode slotNode in root["material_slots"].AsArray)
             {
+                if (!slotNode.IsTable)
+                    continue;
+
+                int index = slotNode.HasKey("index") && slotNode["index"].IsInteger
+                    ? (int)slotNode["index"].AsInteger
+                    : -1;
+
+                if (index < 0)
+                    continue;
+
+                string name = slotNode.HasKey("name") && slotNode["name"].IsString
+                    ? slotNode["name"].AsString.Value
+                    : $"Slot {index}";
+
                 var slot = new TomlMaterialSlotConfig
                 {
-                    Index = (int)slotNode["index"].AsInteger,
-                    Name = slotNode["name"].AsString.Value,
+                    Index = index,
+                    Name = name,
                     AlbedoPath = slotNode.HasKey("albedo") && slotNode["albedo"].IsString
                         ? ResolvePath(slotNode["albedo"].AsString.Value, baseDir)
                         : null,
                     NormalPath = slotNode.HasKey("normal") && slotNode["normal"].IsString
                         ? ResolvePath(slotNode["normal"].AsString.Value, baseDir)
                         : null,
-                    TilingScale = slotNode.HasKey("tiling_scale")
-                        ? (float)slotNode["tiling_scale"].AsFloat
-                        : 1.0f,
                 };
                 config.MaterialSlots.Add(slot);
             }
@@ -99,7 +110,6 @@ public class TomlProjectConfig
                     slotTable["albedo"] = MakeRelative(slot.AlbedoPath, baseDir);
                 if (!string.IsNullOrEmpty(slot.NormalPath))
                     slotTable["normal"] = MakeRelative(slot.NormalPath, baseDir);
-                slotTable["tiling_scale"] = Math.Round(slot.TilingScale, 2);
                 slotsArray.Add(slotTable);
             }
             root["material_slots"] = slotsArray;
@@ -155,5 +165,4 @@ public class TomlMaterialSlotConfig
     public string Name { get; set; } = "";
     public string? AlbedoPath { get; set; }
     public string? NormalPath { get; set; }
-    public float TilingScale { get; set; } = 1.0f;
 }

@@ -391,7 +391,6 @@ public sealed class TerrainManager : IDisposable
                 Name = slot.Name,
                 AlbedoPath = slot.AlbedoTexturePath,
                 NormalPath = slot.NormalTexturePath,
-                TilingScale = slot.TilingScale,
             });
         }
         return configs;
@@ -440,7 +439,6 @@ public sealed class TerrainManager : IDisposable
         {
             var slot = MaterialSlotManager.Instance[slotConfig.Index];
             slot.Name = slotConfig.Name;
-            slot.TilingScale = slotConfig.TilingScale;
 
             if (!string.IsNullOrEmpty(slotConfig.AlbedoPath))
                 slot.AlbedoTexturePath = slotConfig.AlbedoPath;
@@ -461,6 +459,13 @@ public sealed class TerrainManager : IDisposable
             if (loadedIndexMap != null)
             {
                 MaterialIndices = loadedIndexMap;
+
+                // Rebind render-side data reference after replacing MaterialIndices,
+                // otherwise paint edits update a different byte[] than the GPU upload path.
+                if (terrainEntities.Count > 0)
+                {
+                    terrainEntities[0].MaterialIndexData = MaterialIndices.GetRawData();
+                }
             }
         }
 
