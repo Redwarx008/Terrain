@@ -175,7 +175,12 @@ public class ConsolePanel : PanelBase
         ImGui.SetCursorScreenPos(new Vector2(toolbarEnd.X - 150, toolbarPos.Y + 4));
         ImGui.SetNextItemWidth(140);
         string searchBuffer = SearchFilter;
-        if (ImGui.InputTextWithHint($"##search_{Id}", "Search...", ref searchBuffer, 256))
+        bool searchChanged = false;
+        TextInputStyle.Render(() =>
+        {
+            searchChanged = ImGui.InputTextWithHint($"##search_{Id}", "Search...", ref searchBuffer, 256);
+        });
+        if (searchChanged)
         {
             SearchFilter = searchBuffer;
         }
@@ -336,7 +341,12 @@ public class ConsolePanel : PanelBase
         // 捕获Enter键
         ImGuiInputTextFlags flags = ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.CallbackHistory;
 
-        if (ImGui.InputText($"##command_{Id}", ref commandBuffer, 256, flags))
+        bool submitted = false;
+        TextInputStyle.Render(() =>
+        {
+            submitted = ImGui.InputText($"##command_{Id}", ref commandBuffer, 256, flags);
+        });
+        if (submitted)
         {
             SubmitCommand();
         }

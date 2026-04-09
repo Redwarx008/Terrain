@@ -78,8 +78,12 @@ public class NewProjectWizard
             ImGui.Text("Heightmap");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(inputWidth);
-            string heightmapDisplay = heightmapPicked ? System.IO.Path.GetFileName(heightmapPath) : "(required)";
-            ImGui.InputText("##heightmap", ref heightmapDisplay, 260, ImGuiInputTextFlags.ReadOnly);
+            string heightmapDisplay = heightmapPicked ? System.IO.Path.GetFileName(heightmapPath) : "";
+            string heightmapHint = heightmapPicked ? "" : "(required)";
+            TextInputStyle.Render(() =>
+            {
+                ImGui.InputTextWithHint("##heightmap", heightmapHint, ref heightmapDisplay, 260, ImGuiInputTextFlags.ReadOnly);
+            });
             ImGui.SameLine();
             if (ImGui.Button("Browse##heightmap_browse", new Vector2(browseButtonWidth, 0)))
             {
@@ -101,8 +105,12 @@ public class NewProjectWizard
             if (!string.IsNullOrEmpty(indexMapPath))
                 indexInputWidth -= clearButtonWidth + itemSpacing;
             ImGui.SetNextItemWidth(indexInputWidth);
-            string indexDisplay = !string.IsNullOrEmpty(indexMapPath) ? System.IO.Path.GetFileName(indexMapPath) : "(optional)";
-            ImGui.InputText("##indexmap", ref indexDisplay, 260, ImGuiInputTextFlags.ReadOnly);
+            string indexDisplay = !string.IsNullOrEmpty(indexMapPath) ? System.IO.Path.GetFileName(indexMapPath) : "";
+            string indexHint = !string.IsNullOrEmpty(indexMapPath) ? "" : "(optional)";
+            TextInputStyle.Render(() =>
+            {
+                ImGui.InputTextWithHint("##indexmap", indexHint, ref indexDisplay, 260, ImGuiInputTextFlags.ReadOnly);
+            });
             ImGui.SameLine();
             if (ImGui.Button("Browse##indexmap_browse", new Vector2(browseButtonWidth, 0)))
             {

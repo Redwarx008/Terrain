@@ -145,10 +145,6 @@ public class TextBox : ControlBase
                 wasFocused = true;
                 FocusEntered?.Invoke(this, EventArgs.Empty);
 
-                if (SelectAllOnFocus && firstFocus)
-                {
-                    ImGui.SetKeyboardFocusHere(-1);
-                }
                 firstFocus = false;
             }
             else if (!isFocused && wasFocused)
@@ -164,6 +160,8 @@ public class TextBox : ControlBase
                     ControlState.Normal;
 
             // 处理改变
+            TextInputStyle.DrawFocusOutline();
+
             if (changed)
             {
                 Text = buffer;
@@ -196,6 +194,9 @@ public class TextBox : ControlBase
 
         if (MaxLength > 0)
             flags |= ImGuiInputTextFlags.CallbackResize;
+
+        if (SelectAllOnFocus)
+            flags |= ImGuiInputTextFlags.AutoSelectAll;
 
         if (IsMultiline)
         {
@@ -254,12 +255,14 @@ public class TextBox : ControlBase
 
     private void PushStyle()
     {
+        TextInputStyle.Push();
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(EditorStyle.ScaleValue(6.0f), EditorStyle.ScaleValue(4.0f)));
     }
 
     private void PopStyle()
     {
         ImGui.PopStyleVar();
+        TextInputStyle.Pop();
     }
 
     #endregion
