@@ -762,21 +762,22 @@ public class MainWindow : ControlBase
     private void OnTextureImportRequested(object? sender, TextureImportEventArgs e)
     {
         nint hwnd = GetNativeWindowHandle();
-        string filter = "Image Files (*.png;*.jpg;*.tga;*.bmp;*.tiff)|*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
+        string filter = "Image Files (*.dds;*.png;*.jpg;*.tga;*.bmp;*.tiff)|*.dds;*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
         string title = e.TextureType == TextureType.Albedo ? "Import Albedo Texture" : "Import Normal Texture";
 
         if (FileDialog.ShowOpenDialog(hwnd, filter, title, out string? filePath))
         {
+            var graphicsContext = services!.GetService<GraphicsContext>();
             var texture = TextureImporter.ImportFromFile(
                 filePath,
                 graphicsDevice!,
+                graphicsContext!.CommandList,
                 TextureSize.Size512,
                 isNormalMap: e.TextureType == TextureType.Normal);
             if (texture != null)
             {
                 if (e.TextureType == TextureType.Albedo)
                 {
-                    var graphicsContext = services!.GetService<GraphicsContext>();
                     MaterialSlotManager.Instance.SetAlbedoTexture(
                         e.SlotIndex, texture, filePath, TextureSize.Size512,
                         graphicsDevice!, graphicsContext!.CommandList);
@@ -790,6 +791,7 @@ public class MainWindow : ControlBase
                         var normalTexture = TextureImporter.ImportFromFile(
                             normalPath,
                             graphicsDevice!,
+                            graphicsContext!.CommandList,
                             TextureSize.Size512,
                             isNormalMap: true);
                         if (normalTexture != null)
@@ -802,7 +804,6 @@ public class MainWindow : ControlBase
                 }
                 else
                 {
-                    var graphicsContext = services!.GetService<GraphicsContext>();
                     MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath,
                         graphicsDevice!, graphicsContext!.CommandList);
                     Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
@@ -819,18 +820,19 @@ public class MainWindow : ControlBase
     private void OnImportNormalRequested(object? sender, TextureImportEventArgs e)
     {
         nint hwnd = GetNativeWindowHandle();
-        string filter = "Image Files (*.png;*.jpg;*.tga;*.bmp;*.tiff)|*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
+        string filter = "Image Files (*.dds;*.png;*.jpg;*.tga;*.bmp;*.tiff)|*.dds;*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
 
         if (FileDialog.ShowOpenDialog(hwnd, filter, "Import Normal Texture", out string? filePath))
         {
+            var graphicsContext = services!.GetService<GraphicsContext>();
             var texture = TextureImporter.ImportFromFile(
                 filePath,
                 graphicsDevice!,
+                graphicsContext!.CommandList,
                 TextureSize.Size512,
                 isNormalMap: true);
             if (texture != null)
             {
-                var graphicsContext = services!.GetService<GraphicsContext>();
                 MaterialSlotManager.Instance.SetNormalTexture(e.SlotIndex, texture, filePath,
                     graphicsDevice!, graphicsContext!.CommandList);
                 Console.LogInfo($"Imported Normal to slot {e.SlotIndex}: {filePath}");
