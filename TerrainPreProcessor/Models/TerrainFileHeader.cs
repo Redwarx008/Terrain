@@ -26,8 +26,7 @@ public struct TerrainFileHeader
     // 高度图 SVT 信息
     public int HeightMapMipLevels;
 
-    // SplatMap 信息
-    public int HasSplatMap;    // bool 作为 int 存储（0/1）
+    // SplatMap 信息（SplatMap 为运行时必需，始终存在）
     public int SplatMapFormat; // VTFormat 枚举值
     public int SplatMapMipLevels;
 
@@ -38,7 +37,7 @@ public struct TerrainFileHeader
     public int Reserved4;
 
     public const int MAGIC_VALUE = 0x52524554; // "TERR" in little-endian
-    public const int CURRENT_VERSION = 1;
+    public const int CURRENT_VERSION = 2;
 
     public static TerrainFileHeader CreateDefault()
     {
@@ -52,7 +51,6 @@ public struct TerrainFileHeader
             TileSize = 129,
             Padding = 2,
             HeightMapMipLevels = 0,
-            HasSplatMap = 0,
             SplatMapFormat = 0,
             SplatMapMipLevels = 0,
             Reserved1 = 0,

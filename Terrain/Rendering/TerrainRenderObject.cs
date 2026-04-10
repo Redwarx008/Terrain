@@ -13,6 +13,7 @@ namespace Terrain;
 public sealed class TerrainRenderObject : RenderMesh
 {
     public Texture? HeightmapArray;
+    public Texture? SplatMapArray;
     public Buffer? ChunkNodeBuffer;
     public Buffer? LodLookupBuffer;
     public Buffer? LodLookupLayoutBuffer;
@@ -38,6 +39,15 @@ public sealed class TerrainRenderObject : RenderMesh
             fullTileSize,
             1,
             PixelFormat.R16_UNorm,
+            TextureFlags.ShaderResource,
+            maxResidentChunks);
+
+        SplatMapArray = Texture.New2D(
+            graphicsDevice,
+            fullTileSize,
+            fullTileSize,
+            1,
+            PixelFormat.R8G8B8A8_UNorm,
             TextureFlags.ShaderResource,
             maxResidentChunks);
 
@@ -231,6 +241,9 @@ public sealed class TerrainRenderObject : RenderMesh
     {
         HeightmapArray?.Dispose();
         HeightmapArray = null;
+
+        SplatMapArray?.Dispose();
+        SplatMapArray = null;
 
         ChunkNodeBuffer?.Dispose();
         ChunkNodeBuffer = null;

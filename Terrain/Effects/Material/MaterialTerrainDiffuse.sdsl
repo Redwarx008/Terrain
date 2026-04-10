@@ -2,24 +2,155 @@ namespace Terrain
 {
 shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturing, NormalStream, Transformation, TerrainHeightStream, TerrainHeightParameters
     {
+        struct MaterialPixel
+        {
+            uint index;
+            float weight;
+            float3 projDir;
+            float rotation;
+        };
+
         rgroup PerMaterial
         {
-            stage Texture2D DefaultDiffuseTexture;
-            stage SamplerState TerrainDiffuseRepeatSampler;
+            stage Texture2DArray IndexMapArray;
+            stage SamplerState MaterialIndexSampler;
+
+            stage Texture2DArray MaterialAlbedoArray;
+            stage SamplerState MaterialAlbedoSampler;
+
+            stage Texture2DArray MaterialNormalArray;
+            stage SamplerState MaterialNormalSampler;
         }
 
         cbuffer PerMaterial
         {
-            stage float DiffuseWorldRepeatSize;
-            [Color]
-            stage float4 BaseColor;
+            stage float MaterialTilingScale;
+            stage float DetailContrast;
+            stage int MaterialArraySize;
+            stage int MaterialNormalArraySize;
         }
 
-        // Normals must be derived from adjacent source-mip texels, not from the chunk's vertex spacing.
-        // When low terrain LODs still reuse the same VT mip (via heightmapLodOffset), pageLocalPos jumps by
-        // pageTexelStride between vertices, but the correct normal neighborhood is still +/- 1 texel in that mip.
-        // Dividing sampleSpacing by pageTexelStride converts the chunk's world-space vertex spacing back into
-        // the world-space spacing of a single source height texel, so lod0/lod1 can share the same normal detail.
+        float3 DecodeProjectionDirection(float encoded)
+        {
+            float proj = floor(encoded * 255.0f + 0.5f);
+            float encX = frac(proj / 16.0f) * 16.0f;
+            float encZ = floor(proj / 16.0f);
+            float projDX = (encX - 7.0f) / 7.0f;
+            float projDZ = (encZ - 7.0f) / 7.0f;
+            return normalize(float3(projDX, 0.5f, projDZ));
+        }
+
+        MaterialPixel DecodeMaterialPixel(float4 raw)
+        {
+            MaterialPixel p;
+            p.index = (uint)(raw.r * 255.0f + 0.5f);
+            p.weight = raw.g;
+            p.projDir = DecodeProjectionDirection(raw.b);
+            p.rotation = raw.a * 6.28318530718f;
+            return p;
+        }
+
+        void BuildProjectionBasis(float3 projDir, float rotation, out float3 projU, out float3 projV)
+        {
+            float rx = sin(rotation);
+            float ry = cos(rotation);
+            float2 rot = normalize(float2(rx, ry));
+            projU = normalize(cross(projDir, float3(rot.x, 0.0f, rot.y)));
+            projV = normalize(cross(projU, projDir));
+        }
+
+        float2 GetProjectedUV(float3 worldPos, float3 projDir, float rotation)
+        {
+            float3 projU;
+            float3 projV;
+            BuildProjectionBasis(projDir, rotation, projU, projV);
+            float scale = 0.0625f * MaterialTilingScale;
+            return float2(dot(projU, worldPos), dot(projV, worldPos)) * scale;
+        }
+
+        float3 BuildProjectedNormalWS(float3 normalTS, float3 projDir, float rotation)
+        {
+            float3 projU;
+            float3 projV;
+            BuildProjectionBasis(projDir, rotation, projU, projV);
+
+            float3 mappedNormalWS =
+                normalTS.x * projU +
+                normalTS.y * projV +
+                normalTS.z * projDir;
+
+            float len2 = dot(mappedNormalWS, mappedNormalWS);
+            bool invalid =
+                len2 < 0.000001f ||
+                !(mappedNormalWS.x == mappedNormalWS.x) ||
+                !(mappedNormalWS.y == mappedNormalWS.y) ||
+                !(mappedNormalWS.z == mappedNormalWS.z);
+            return invalid ? projDir : normalize(mappedNormalWS);
+        }
+
+        float ApplyDetailContrast(float weight, float detail)
+        {
+            float detailContrast = max(DetailContrast, 0.0f);
+            float result = max(
+                0.1f * weight,
+                detailContrast * (weight + detail) + 1.0f - (detail + detailContrast));
+            return pow(result, 4.0f);
+        }
+
+        MaterialPixel LoadMaterialPixel(float2 pageLocalPos, int sliceIndex)
+        {
+            float padding = float(HeightmapTilePadding);
+            float2 paddedMin = float2(-padding, -padding);
+            float2 paddedMax = float2((float)(HeightmapTileSize - 1) + padding, (float)(HeightmapTileSize - 1) + padding);
+            float2 clampedPos = clamp(pageLocalPos, paddedMin, paddedMax);
+            int2 texelCoord = int2(clampedPos + float2(padding, padding) + 0.5f);
+
+            float4 raw = IndexMapArray.Load(int4(texelCoord, sliceIndex, 0));
+            return DecodeMaterialPixel(raw);
+        }
+
+        void AccumulateMaterialSample(
+            MaterialPixel pixel,
+            float bilinearWeight,
+            float3 worldPos,
+            float3 geomNormalWS,
+            inout float3 colorSum,
+            inout float3 normalSum,
+            inout float totalWeight)
+        {
+            if (bilinearWeight <= 0.0f)
+                return;
+
+            float sampleWeight = bilinearWeight;
+            float weightMod = pixel.weight * pixel.weight + 0.1f;
+            float2 tiledUV = GetProjectedUV(worldPos, pixel.projDir, pixel.rotation);
+
+            uint resolvedAlbedoIndex = (uint)min((int)pixel.index, max(MaterialArraySize - 1, 0));
+            float4 color = MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)resolvedAlbedoIndex));
+
+            float3 normalTS = float3(0.0f, 0.0f, 1.0f);
+            if (MaterialNormalArraySize > 0)
+            {
+                uint resolvedNormalIndex = (uint)min((int)pixel.index, max(MaterialNormalArraySize - 1, 0));
+                float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)resolvedNormalIndex));
+                normalTS = normalize(normalSample.xyz * 2.0f - 1.0f);
+            }
+
+            float3 normalWS = BuildProjectedNormalWS(normalTS, pixel.projDir, pixel.rotation);
+            if (dot(normalWS, geomNormalWS) < 0.0f)
+                normalWS = -normalWS;
+
+            float projWeight = saturate(dot(pixel.projDir, geomNormalWS));
+            sampleWeight *= (projWeight * projWeight + 0.0001f);
+
+            float detail = color.a;
+            sampleWeight = ApplyDetailContrast(sqrt(max(0.0f, sampleWeight * weightMod)), detail);
+
+            colorSum += color.rgb * sampleWeight;
+            normalSum += normalWS * sampleWeight;
+            totalWeight += sampleWeight;
+        }
+
         float3 CaculateNormal(float2 pageLocalPos, int sliceIndex, float pageTexelStride, float sampleSpacing)
         {
             float left = SampleHeightAtLocalPosLinear(pageLocalPos + float2(-1.0f, 0.0f), sliceIndex);
@@ -42,10 +173,58 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
             streams.meshNormalWS = worldNormal;
             streams.normalWS = worldNormal;
 
-            float2 uv = streams.Position.xz / DiffuseWorldRepeatSize;
-            float4 baseColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv) * BaseColor;
-            streams.matDiffuse = baseColor;
-            streams.matColorBase = baseColor;
+            // Mirror-neighbor sampling stabilizes edges
+            float2 indexPixels = pageLocalPos;
+            float2 index00Pixel = floor(indexPixels);
+
+            float2 mirror00 = frac(index00Pixel * 0.5f) * 2.0f;
+            float2 mirror11 = 1.0f - mirror00;
+
+            float2 weights1 = saturate(indexPixels - index00Pixel);
+            weights1 = lerp(weights1, 1.0f - weights1, mirror00);
+            float2 weights0 = 1.0f - weights1;
+
+            int2 p00 = int2(index00Pixel + mirror00);
+            int2 p01 = int2(index00Pixel + float2(mirror00.x, mirror11.y));
+            int2 p10 = int2(index00Pixel + float2(mirror11.x, mirror00.y));
+            int2 p11 = int2(index00Pixel + mirror11);
+
+            MaterialPixel m00 = LoadMaterialPixel(float2(p00), sliceIndex);
+            MaterialPixel m01 = LoadMaterialPixel(float2(p01), sliceIndex);
+            MaterialPixel m10 = LoadMaterialPixel(float2(p10), sliceIndex);
+            MaterialPixel m11 = LoadMaterialPixel(float2(p11), sliceIndex);
+
+            float w00 = weights0.x * weights0.y;
+            float w01 = weights0.x * weights1.y;
+            float w10 = weights1.x * weights0.y;
+            float w11 = weights1.x * weights1.y;
+
+            float3 colorSum = float3(0.0f, 0.0f, 0.0f);
+            float3 normalSum = float3(0.0f, 0.0f, 0.0f);
+            float totalWeight = 0.0f;
+            AccumulateMaterialSample(m00, w00, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
+            AccumulateMaterialSample(m01, w01, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
+            AccumulateMaterialSample(m10, w10, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
+            AccumulateMaterialSample(m11, w11, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
+
+            float invWeight = 1.0f / max(totalWeight, 0.0001f);
+            float3 finalColor = colorSum * invWeight;
+            float3 normalAverage = normalSum * invWeight;
+
+            float normalLen2 = dot(normalAverage, normalAverage);
+            bool invalidNormal =
+                normalLen2 < 0.000001f ||
+                !(normalAverage.x == normalAverage.x) ||
+                !(normalAverage.y == normalAverage.y) ||
+                !(normalAverage.z == normalAverage.z);
+            float3 blendedNormal = invalidNormal ? worldNormal : normalize(normalAverage);
+
+            streams.matDiffuse = float4(finalColor, 1.0f);
+            streams.matColorBase = float4(finalColor, 1.0f);
+            float3 mappedNormalWS = normalize(blendedNormal);
+            if (dot(mappedNormalWS, worldNormal) < 0.0f)
+                mappedNormalWS = -mappedNormalWS;
+            streams.normalWS = mappedNormalWS;
         }
     };
 }

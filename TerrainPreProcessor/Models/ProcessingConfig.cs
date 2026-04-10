@@ -25,7 +25,7 @@ public class ProcessingConfig
     public string? HeightMapPath { get; set; }
 
     /// <summary>
-    /// SplatMap 文件路径（可选）
+    /// SplatMap (IndexMap) 文件路径（必填）
     /// </summary>
     public string? SplatMapPath { get; set; }
 
@@ -62,10 +62,10 @@ public class ProcessingConfig
             return false;
         }
 
-        // 验证 SplatMap 路径（如果提供了）
-        if (!string.IsNullOrWhiteSpace(SplatMapPath) && !File.Exists(SplatMapPath))
+        // 验证 SplatMap 路径（必填）
+        if (string.IsNullOrWhiteSpace(SplatMapPath) || !File.Exists(SplatMapPath))
         {
-            errorMessage = "SplatMap 文件不存在";
+            errorMessage = "SplatMap (IndexMap) 文件不存在或未指定";
             return false;
         }
 

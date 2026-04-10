@@ -24,6 +24,9 @@ public sealed class TerrainComponent : ActivableEntityComponent
     [DataMember(10)]
     public string? TerrainDataPath { get; set; }
 
+    [DataMember(15)]
+    public string? MaterialConfigPath { get; set; }
+
     [DataMember(20)]
     public float HeightScale { get; set; } = 24.0f;
 
@@ -93,13 +96,13 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal TerrainConfig LoadedConfig;
 
     [DataMemberIgnore]
-    internal Texture? LoadedDiffuseTexture;
-
-    [DataMemberIgnore]
     internal bool IsRegisteredWithVisibilityGroup;
 
     [DataMemberIgnore]
     internal TerrainQuadTree? QuadTree;
+
+    [DataMemberIgnore]
+    internal RuntimeMaterialManager? MaterialManager;
 }
 
 /// <summary>

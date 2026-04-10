@@ -101,20 +101,18 @@ public class TerrainProcessor
 
         var minMaxErrorMaps = minMaxErrorMapsResult.Value!;
 
-        // 加载 SplatMap（如果有）
-        Image? splatMap = null;
-        VTFormat splatMapFormat = VTFormat.Rgba32;
-        int splatMapMipLevels = 0;
-
-        if (!string.IsNullOrWhiteSpace(config.SplatMapPath))
+        // 加载 SplatMap（必需）
+        if (string.IsNullOrWhiteSpace(config.SplatMapPath))
         {
-            progress?.Report((50, 100, "加载 SplatMap..."));
-            var splatMapInfo = LoadSplatMap(config.SplatMapPath);
-            splatMap = splatMapInfo.image;
-            splatMapFormat = splatMapInfo.format;
-            splatMapMipLevels = CoordinateConsistentMipmap.CalculateMipLevels(
-                splatMap.Width, splatMap.Height, config.TileSize);
+            return Result.Failure("SplatMap (IndexMap) path is required for terrain processing.");
         }
+
+        progress?.Report((50, 100, "加载 SplatMap..."));
+        var splatMapInfo = LoadSplatMap(config.SplatMapPath!);
+        Image splatMap = splatMapInfo.image;
+        VTFormat splatMapFormat = splatMapInfo.format;
+        int splatMapMipLevels = CoordinateConsistentMipmap.CalculateMipLevels(
+            splatMap.Width, splatMap.Height, config.TileSize);
 
         try
         {
@@ -136,7 +134,7 @@ public class TerrainProcessor
         }
         finally
         {
-            splatMap?.Dispose();
+            splatMap.Dispose();
         }
     }
 
@@ -186,7 +184,7 @@ public class TerrainProcessor
         MinMaxErrorMap[] minMaxErrorMaps,
         ProcessingConfig config,
         int heightMapMipLevels,
-        Image? splatMap,
+        Image splatMap,
         VTFormat splatMapFormat,
         int splatMapMipLevels,
         IProgress<(int current, int total, string message)>? progress)
@@ -205,7 +203,6 @@ public class TerrainProcessor
             TileSize = config.TileSize,
             Padding = HeightMapPadding,
             HeightMapMipLevels = heightMapMipLevels,
-            HasSplatMap = splatMap != null ? 1 : 0,
             SplatMapFormat = (int)splatMapFormat,
             SplatMapMipLevels = splatMapMipLevels
         };
@@ -224,12 +221,9 @@ public class TerrainProcessor
         progress?.Report((70, 100, "写入高度图 SVT 数据..."));
         WriteHeightMapSVT(writer, heightMap, config.TileSize, heightMapMipLevels, config, progress);
 
-        // 写入 SplatMap SVT 数据（如果有）
-        if (splatMap != null)
-        {
-            progress?.Report((85, 100, "写入 SplatMap SVT 数据..."));
-            WriteSplatMapSVT(writer, splatMap, splatMapFormat, config.TileSize, splatMapMipLevels, config, progress);
-        }
+        // 写入 SplatMap SVT 数据
+        progress?.Report((85, 100, "写入 SplatMap SVT 数据..."));
+        WriteSplatMapSVT(writer, splatMap, splatMapFormat, config.TileSize, splatMapMipLevels, config, progress);
     }
 
     /// <summary>
