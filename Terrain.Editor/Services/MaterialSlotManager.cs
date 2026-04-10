@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using Stride.Core.Diagnostics;
 using Stride.Graphics;
+using Terrain.Utilities;
 
 namespace Terrain.Editor.Services;
 
@@ -335,20 +336,11 @@ public sealed class MaterialSlotManager
             signature.Format,
             TextureFlags.ShaderResource);
 
+        var mipData = TextureBlockEncoder.CreateFlatNormalMipData(
+            signature.Format, signature.Width, signature.Height, signature.MipLevelCount);
         for (int mipLevel = 0; mipLevel < signature.MipLevelCount; mipLevel++)
         {
-            int mipWidth = Math.Max(1, signature.Width >> mipLevel);
-            int mipHeight = Math.Max(1, signature.Height >> mipLevel);
-            var data = new byte[mipWidth * mipHeight * 4];
-            for (int i = 0; i < data.Length; i += 4)
-            {
-                data[i + 0] = 128;
-                data[i + 1] = 128;
-                data[i + 2] = 255;
-                data[i + 3] = 255;
-            }
-
-            cachedDefaultNormalTexture.SetData(commandList, data, 0, mipLevel);
+            cachedDefaultNormalTexture.SetData(commandList, mipData[mipLevel], 0, mipLevel);
         }
 
         cachedDefaultNormalSignature = signature;

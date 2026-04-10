@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using Stride.Core.Diagnostics;
 using Stride.Graphics;
+using Terrain.Utilities;
 using Tommy;
 
 namespace Terrain;
@@ -229,20 +230,9 @@ public sealed class RuntimeMaterialManager : IDisposable
     private static Texture CreateDefaultNormalTexture(GraphicsDevice graphicsDevice, CommandList commandList, int width, int height, int mipCount, PixelFormat format)
     {
         var texture = Texture.New2D(graphicsDevice, width, height, mipCount, format, TextureFlags.ShaderResource);
+        var mipData = TextureBlockEncoder.CreateFlatNormalMipData(format, width, height, mipCount);
         for (int mip = 0; mip < mipCount; mip++)
-        {
-            int mipW = Math.Max(1, width >> mip);
-            int mipH = Math.Max(1, height >> mip);
-            var data = new byte[mipW * mipH * 4];
-            for (int i = 0; i < data.Length; i += 4)
-            {
-                data[i + 0] = 128; // R
-                data[i + 1] = 128; // G
-                data[i + 2] = 255; // B (flat normal Z)
-                data[i + 3] = 255; // A
-            }
-            texture.SetData(commandList, data, 0, mip);
-        }
+            texture.SetData(commandList, mipData[mip], 0, mip);
         return texture;
     }
 
