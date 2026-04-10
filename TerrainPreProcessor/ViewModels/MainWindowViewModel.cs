@@ -125,7 +125,7 @@ public partial class MainWindowViewModel : ViewModelBase
                     lastProgressUpdate = now;
                     Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                     {
-                        progressWindow.UpdateProgress(progress.current, progress.total, progress.message);
+                        progressWindow?.UpdateProgress(progress.current, progress.total, progress.message);
                     });
                 });
 
