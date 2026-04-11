@@ -21,7 +21,7 @@ public sealed class BrushParameters
 
     // === 新增材质绘制参数 ===
     private float _weight = 1.0f;          // 权重，默认最大
-    private bool _randomRotation = true;   // 随机旋转
+    private bool _randomRotation = false;  // 随机旋转 (默认禁用)
     private float _fixedRotationDegrees = 0.0f; // 固定旋转角度
     private bool _use3DProjection = false; // 3D 投影开关
 
