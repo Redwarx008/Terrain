@@ -94,6 +94,17 @@ public class SceneViewPanel : PanelBase
         IsCollapsible = true;
 
         cameraController = new HybridCameraController();
+
+        // Load saved camera speed preference
+        var preferences = EditorPreferences.Instance;
+        cameraController.SetSpeedPreset(preferences.CameraSpeedIndex);
+
+        // Save preference when speed changes
+        cameraController.SpeedPresetChanged += (index) =>
+        {
+            preferences.CameraSpeedIndex = index;
+            preferences.Save();
+        };
     }
 
     /// <summary>
@@ -274,11 +285,50 @@ public class SceneViewPanel : PanelBase
         if (ImGui.Checkbox("Gizmos", ref showGizmos))
             ShowGizmos = showGizmos;
 
+        // Camera speed display (right-aligned)
+        RenderCameraSpeedDisplay(toolbarPos, toolbarHeight);
+
         drawList.AddLine(
             new NumericsVector2(ContentRect.X, ContentRect.Y + toolbarHeight),
             new NumericsVector2(ContentRect.X + ContentRect.Width, ContentRect.Y + toolbarHeight),
             ColorPalette.Border.ToUint(),
             1.0f);
+    }
+
+    /// <summary>
+    /// Renders the camera speed display on the right side of the toolbar.
+    /// </summary>
+    private void RenderCameraSpeedDisplay(NumericsVector2 toolbarPos, float toolbarHeight)
+    {
+        float speed = cameraController.CurrentSpeed;
+        string speedText = FormatSpeedDisplay(speed);
+
+        var textSize = ImGui.CalcTextSize(speedText);
+        float paddingX = EditorStyle.ScaleValue(8.0f);
+        float textY = toolbarPos.Y + (toolbarHeight - textSize.Y) * 0.5f;
+
+        // Position on the right side
+        float textX = toolbarPos.X + ContentRect.Width - textSize.X - paddingX;
+
+        var drawList = ImGui.GetWindowDrawList();
+
+        // Draw subtle background for speed display
+        var bgMin = new NumericsVector2(textX - paddingX * 0.5f, textY - EditorStyle.ScaleValue(2.0f));
+        var bgMax = new NumericsVector2(textX + textSize.X + paddingX * 0.5f, textY + textSize.Y + EditorStyle.ScaleValue(2.0f));
+        drawList.AddRectFilled(bgMin, bgMax, new Color4(0.15f, 0.15f, 0.15f, 0.8f).ToUint(), EditorStyle.ScaleValue(3.0f));
+
+        // Draw speed text
+        drawList.AddText(new NumericsVector2(textX, textY), ColorPalette.TextSecondary.ToUint(), speedText);
+    }
+
+    /// <summary>
+    /// Formats speed value for display with appropriate unit suffix.
+    /// </summary>
+    private static string FormatSpeedDisplay(float speed)
+    {
+        if (speed >= 1000)
+            return $"{speed / 1000:F1}k u/s";
+        return $"{speed:F0} u/s";
     }
 
     private void Render3DView()

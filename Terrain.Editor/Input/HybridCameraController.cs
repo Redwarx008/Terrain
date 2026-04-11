@@ -14,7 +14,12 @@ namespace Terrain.Editor.Input;
 public sealed class HybridCameraController
 {
     private const float DefaultRotationSpeed = 0.3f;
-    private const float DefaultFlySpeed = 50.0f;
+
+    /// <summary>
+    /// Speed presets in units per second. Index 2 (50) matches the original default.
+    /// </summary>
+    private static readonly float[] SpeedPresets = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+    private const int DefaultSpeedIndex = 2; // 50 units/sec
 
     private Vector3 orbitCenter = Vector3.Zero;
     private float orbitDistance = 100.0f;
@@ -23,7 +28,59 @@ public sealed class HybridCameraController
     private bool hasPendingCameraRefresh = true;
 
     public float RotationSpeed { get; set; } = DefaultRotationSpeed;
-    public float FlySpeed { get; set; } = DefaultFlySpeed;
+
+    /// <summary>
+    /// Current fly speed in units per second. Automatically synced with SpeedPresetIndex.
+    /// </summary>
+    public float FlySpeed { get; private set; } = SpeedPresets[DefaultSpeedIndex];
+
+    /// <summary>
+    /// Current index into SpeedPresets array.
+    /// </summary>
+    public int SpeedPresetIndex { get; private set; } = DefaultSpeedIndex;
+
+    /// <summary>
+    /// Current speed value from the presets array.
+    /// </summary>
+    public float CurrentSpeed => SpeedPresets[SpeedPresetIndex];
+
+    /// <summary>
+    /// Number of available speed presets.
+    /// </summary>
+    public static int SpeedPresetCount => SpeedPresets.Length;
+
+    /// <summary>
+    /// Event raised when speed preset changes.
+    /// </summary>
+    public event Action<int>? SpeedPresetChanged;
+
+    /// <summary>
+    /// Adjusts speed by the given number of preset steps. Positive increases, negative decreases.
+    /// </summary>
+    public void AdjustSpeed(int delta)
+    {
+        int newIndex = Math.Clamp(SpeedPresetIndex + delta, 0, SpeedPresets.Length - 1);
+        if (newIndex != SpeedPresetIndex)
+        {
+            SpeedPresetIndex = newIndex;
+            FlySpeed = SpeedPresets[SpeedPresetIndex];
+            SpeedPresetChanged?.Invoke(SpeedPresetIndex);
+        }
+    }
+
+    /// <summary>
+    /// Sets speed to a specific preset index.
+    /// </summary>
+    public void SetSpeedPreset(int index)
+    {
+        int clampedIndex = Math.Clamp(index, 0, SpeedPresets.Length - 1);
+        if (clampedIndex != SpeedPresetIndex)
+        {
+            SpeedPresetIndex = clampedIndex;
+            FlySpeed = SpeedPresets[SpeedPresetIndex];
+            SpeedPresetChanged?.Invoke(SpeedPresetIndex);
+        }
+    }
 
     public CameraComponent? Camera { get; set; }
     public bool IsFlyModeActive { get; private set; } = true;
@@ -77,6 +134,15 @@ public sealed class HybridCameraController
         if (Camera == null)
         {
             return;
+        }
+
+        // Handle speed adjustment via mouse wheel when right mouse button is held
+        if (rightMouseDown && mouseWheelDelta != 0)
+        {
+            int delta = Math.Sign(mouseWheelDelta);
+            // Shift modifier doubles the adjustment speed
+            if (flyModifier) delta *= 2;
+            AdjustSpeed(delta);
         }
 
         UpdateFlyMode(
@@ -186,7 +252,7 @@ public sealed class HybridCameraController
         if (movement != Vector3.Zero)
         {
             movement = Vector3.Normalize(movement);
-            float speed = FlySpeed * deltaTime * (speedBoost ? 4.0f : 1.0f);
+            float speed = FlySpeed * deltaTime * (speedBoost ? 2.0f : 1.0f);
             cameraEntity.Transform.Position += movement * speed;
             orbitCenter = cameraEntity.Transform.Position + forward * orbitDistance;
             transformChanged = true;
