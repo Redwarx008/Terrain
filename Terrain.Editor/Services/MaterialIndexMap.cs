@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Runtime.InteropServices;
 
 namespace Terrain.Editor.Services;
 
@@ -9,228 +10,177 @@ namespace Terrain.Editor.Services;
 /// </summary>
 public struct MaterialPixel
 {
-    /// <summary>
-    /// 材质索引 (0-255)。
-    /// </summary>
     public byte Index;
-
-    /// <summary>
-    /// 权重 (0-255)，控制混合权重和过渡位置。
-    /// 0 = 边缘，255 = 中心。
-    /// </summary>
     public byte Weight;
-
-    /// <summary>
-    /// 投影方向编码 (4:4 格式)。
-    /// 用于 3D 投影，解决悬崖纹理拉伸问题。
-    /// 0x77 = 默认向上 (0, 1, 0)。
-    /// </summary>
     public byte Projection;
-
-    /// <summary>
-    /// 旋转角度 (0-255 = 0°-360°)。
-    /// 用于打破纹理平铺重复。
-    /// </summary>
     public byte Rotation;
 
-    /// <summary>
-    /// 默认像素值：索引0，权重最大，向上投影，无旋转。
-    /// </summary>
     public static readonly MaterialPixel Default = new()
     {
         Index = 0,
         Weight = 255,
-        Projection = 0x77, // 默认向上
+        Projection = 0x77,
         Rotation = 0
+    };
+
+    /// <summary>
+    /// 将像素打包为 uint32 (R=低字节, A=高字节)。
+    /// </summary>
+    public uint Pack() => (uint)(Index | (Weight << 8) | (Projection << 16) | (Rotation << 24));
+
+    /// <summary>
+    /// 从 uint32 解包像素。
+    /// </summary>
+    public static MaterialPixel Unpack(uint packed) => new()
+    {
+        Index = (byte)(packed & 0xFF),
+        Weight = (byte)((packed >> 8) & 0xFF),
+        Projection = (byte)((packed >> 16) & 0xFF),
+        Rotation = (byte)((packed >> 24) & 0xFF)
     };
 }
 
 /// <summary>
-/// 材质索引图，存储每个像素的 RGBA 数据。
-/// R: 材质索引 (0-255)
-/// G: 权重 (0-255)
-/// B: 投影方向编码 (4:4 格式)
-/// A: 旋转角度 (0-255 = 0°-360°)
+/// 材质索引图，使用 uint[] 存储（每像素一个 uint），避免 byte[] 的 2GB 长度限制。
+/// R: 材质索引, G: 权重, B: 投影方向, A: 旋转角度
 /// </summary>
 public sealed class MaterialIndexMap
 {
     public int Width { get; }
     public int Height { get; }
-
-    /// <summary>
-    /// 原始 RGBA 数据，每像素 4 字节。
-    /// </summary>
-    private readonly byte[] data;
-
-    /// <summary>
-    /// 每像素字节数 (RGBA = 4)。
-    /// </summary>
+    private readonly uint[] data;
     public const int BytesPerPixel = 4;
 
     public MaterialIndexMap(int width, int height)
     {
         Width = width;
         Height = height;
-        data = new byte[width * height * BytesPerPixel];
-
-        // 初始化为默认值
+        data = new uint[(long)width * height];
         Fill(MaterialPixel.Default);
     }
 
-    /// <summary>
-    /// 获取指定位置的材质像素数据。
-    /// </summary>
     public MaterialPixel GetPixel(int x, int z)
     {
         if (x < 0 || x >= Width || z < 0 || z >= Height)
             return MaterialPixel.Default;
-
-        int offset = (z * Width + x) * BytesPerPixel;
-        return new MaterialPixel
-        {
-            Index = data[offset],
-            Weight = data[offset + 1],
-            Projection = data[offset + 2],
-            Rotation = data[offset + 3]
-        };
+        return MaterialPixel.Unpack(data[z * Width + x]);
     }
 
-    /// <summary>
-    /// 设置指定位置的材质像素数据。
-    /// </summary>
     public void SetPixel(int x, int z, MaterialPixel pixel)
     {
         if (x < 0 || x >= Width || z < 0 || z >= Height)
             return;
-
-        int offset = (z * Width + x) * BytesPerPixel;
-        data[offset] = pixel.Index;
-        data[offset + 1] = pixel.Weight;
-        data[offset + 2] = pixel.Projection;
-        data[offset + 3] = pixel.Rotation;
+        data[z * Width + x] = pixel.Pack();
     }
 
-    /// <summary>
-    /// 设置指定位置的材质索引（保持其他通道不变）。
-    /// 兼容旧接口。
-    /// </summary>
     public void SetIndex(int x, int z, byte materialIndex)
     {
         if (x < 0 || x >= Width || z < 0 || z >= Height)
             return;
-
-        int offset = (z * Width + x) * BytesPerPixel;
-        data[offset] = materialIndex;
-        // 保持其他通道不变
+        int idx = z * Width + x;
+        data[idx] = (data[idx] & 0xFFFFFF00u) | materialIndex;
     }
 
-    /// <summary>
-    /// 获取指定位置的材质索引。
-    /// 兼容旧接口。
-    /// </summary>
     public byte GetIndex(int x, int z)
     {
         if (x < 0 || x >= Width || z < 0 || z >= Height)
             return 0;
-
-        int offset = (z * Width + x) * BytesPerPixel;
-        return data[offset];
+        return (byte)(data[z * Width + x] & 0xFF);
     }
 
     /// <summary>
-    /// 获取原始 RGBA 数据用于 GPU 上传。
+    /// 获取原始 uint 数据的直接引用。
     /// </summary>
-    public byte[] GetRawData() => data;
+    public uint[] GetRawData() => data;
 
     /// <summary>
-    /// 清空所有数据为默认值。
+    /// 获取指定切片区域的 uint 子 Span。
     /// </summary>
-    public void Clear()
+    public Span<uint> GetSliceSpan(int startX, int startZ, int sliceWidth, int sliceHeight)
     {
-        Fill(MaterialPixel.Default);
+        return data.AsSpan(startZ * Width + startX, sliceHeight * sliceWidth);
     }
 
     /// <summary>
-    /// 填充所有像素为指定像素值。
+    /// 将指定切片区域的数据作为 byte Span 返回，用于 GPU 上传。
+    /// 使用 MemoryMarshal 零拷贝转换。
+    /// 注意：返回的是整行的 byte view，调用方需按行切片处理非连续行。
     /// </summary>
-    public void Fill(MaterialPixel pixel)
+    public ReadOnlySpan<byte> GetSliceBytesPerRow(int startX, int startZ, int row, int sliceWidth)
     {
-        for (int i = 0; i < data.Length; i += BytesPerPixel)
+        int pixelOffset = (startZ + row) * Width + startX;
+        var pixelSpan = data.AsSpan(pixelOffset, sliceWidth);
+        return MemoryMarshal.AsBytes(pixelSpan);
+    }
+
+    /// <summary>
+    /// 从 byte Span 写回指定区域（用于 undo/redo）。
+    /// </summary>
+    public void SetRegionFromBytes(int startX, int startZ, int regionWidth, int regionHeight, ReadOnlySpan<byte> bytes)
+    {
+        for (int row = 0; row < regionHeight; row++)
         {
-            data[i] = pixel.Index;
-            data[i + 1] = pixel.Weight;
-            data[i + 2] = pixel.Projection;
-            data[i + 3] = pixel.Rotation;
+            int dstOffset = (startZ + row) * Width + startX;
+            int srcByteOffset = row * regionWidth * BytesPerPixel;
+            var srcPixels = MemoryMarshal.Cast<byte, uint>(bytes.Slice(srcByteOffset, regionWidth * BytesPerPixel));
+            srcPixels.CopyTo(data.AsSpan(dstOffset, regionWidth));
         }
     }
 
     /// <summary>
-    /// 填充所有像素为指定索引（保持其他通道为默认值）。
-    /// 兼容旧接口。
+    /// 将指定区域的数据读取为 byte[]（用于 undo/redo before-capture）。
     /// </summary>
-    public void Fill(byte materialIndex)
+    public byte[] CopyRegionToBytes(int startX, int startZ, int regionWidth, int regionHeight)
     {
-        var pixel = new MaterialPixel
+        var bytes = new byte[regionWidth * regionHeight * BytesPerPixel];
+        for (int row = 0; row < regionHeight; row++)
         {
-            Index = materialIndex,
-            Weight = 255,
-            Projection = 0x77,
-            Rotation = 0
-        };
-        Fill(pixel);
+            int srcOffset = (startZ + row) * Width + startX;
+            var srcPixels = data.AsSpan(srcOffset, regionWidth);
+            var dstBytes = MemoryMarshal.AsBytes(srcPixels);
+            dstBytes.CopyTo(bytes.AsSpan(row * regionWidth * BytesPerPixel));
+        }
+        return bytes;
     }
 
-    /// <summary>
-    /// 从旧格式 (R8) 数据迁移。
-    /// </summary>
-    /// <param name="oldData">旧格式数据，每像素 1 字节。</param>
+    public void Clear() => Fill(MaterialPixel.Default);
+
+    public void Fill(MaterialPixel pixel)
+    {
+        Array.Fill(data, pixel.Pack());
+    }
+
+    public void Fill(byte materialIndex)
+    {
+        Fill(new MaterialPixel { Index = materialIndex, Weight = 255, Projection = 0x77, Rotation = 0 });
+    }
+
     public void MigrateFromR8(byte[] oldData)
     {
-        if (oldData.Length != Width * Height)
+        if (oldData.Length != (long)Width * Height)
             throw new ArgumentException("Old data size mismatch.", nameof(oldData));
 
+        uint defaultPixel = new MaterialPixel { Weight = 255, Projection = 0x77 }.Pack();
         for (int i = 0; i < oldData.Length; i++)
         {
-            int offset = i * BytesPerPixel;
-            data[offset] = oldData[i];      // R: 索引
-            data[offset + 1] = 255;          // G: 权重最大
-            data[offset + 2] = 0x77;         // B: 默认向上投影
-            data[offset + 3] = 0;            // A: 无旋转
+            data[i] = (defaultPixel & 0xFFFFFF00u) | oldData[i];
         }
     }
 
     #region 投影方向编码工具
 
-    /// <summary>
-    /// 编码投影方向到单字节 (4:4 格式)。
-    /// </summary>
-    /// <param name="normalX">法线 X 分量。</param>
-    /// <param name="normalY">法线 Y 分量 (应该 > 0)。</param>
-    /// <param name="normalZ">法线 Z 分量。</param>
-    /// <returns>编码后的投影方向 (0-255)。</returns>
     public static byte EncodeProjectionDirection(float normalX, float normalY, float normalZ)
     {
-        // 防止除零
         if (MathF.Abs(normalY) < 0.0001f)
-            return 0x77; // 默认向上
+            return 0x77;
 
-        // 计算投影方向
         float projX = normalX / normalY;
         float projZ = normalZ / normalY;
-
-        // 缩放到 [0, 15] 范围
         int encX = Math.Clamp((int)MathF.Floor(projX * 7.0f + 7.5f), 0, 15);
         int encZ = Math.Clamp((int)MathF.Floor(projZ * 7.0f + 7.5f), 0, 15);
-
-        // 4:4 编码
         return (byte)(encZ * 16 + encX);
     }
 
-    /// <summary>
-    /// 编码投影方向到单字节 (4:4 格式)。
-    /// </summary>
-    /// <param name="normal">法线向量。</param>
-    /// <returns>编码后的投影方向 (0-255)。</returns>
     public static byte EncodeProjectionDirection(System.Numerics.Vector3 normal)
     {
         return EncodeProjectionDirection(normal.X, normal.Y, normal.Z);

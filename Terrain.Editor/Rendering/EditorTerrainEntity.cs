@@ -66,23 +66,24 @@ public sealed class EditorTerrainEntity : IDisposable
     public Buffer? PatchIndexBuffer { get; private set; }
 
     /// <summary>
-    /// 材质索引图纹理 (R8G8B8A8_UNorm)，存储每个像素的 RGBA 数据。
+    /// 材质索引图切片纹理数组 (R8G8B8A8_UNorm)，每个切片对应一个纹理。
     /// R: 材质索引, G: 权重, B: 投影方向, A: 旋转角度。
+    /// 与高度图切片使用相同的 SplitConfig 切分。
     /// </summary>
-    public Texture? MaterialIndexMapTexture { get; private set; }
+    public Texture?[] MaterialIndexMapTextures { get; private set; } = Array.Empty<Texture?>();
 
-    private byte[]? materialIndexData;
+    private MaterialIndexMap? materialIndexMap;
 
     /// <summary>
-    /// 材质索引数据缓存，由 TerrainManager 设置。
+    /// 材质索引图引用，由 TerrainManager 设置。
     /// Setting this marks the material-index channel dirty so the texture is uploaded on the next draw.
     /// </summary>
-    public byte[]? MaterialIndexData
+    public MaterialIndexMap? MaterialIndexMap
     {
-        get => materialIndexData;
+        get => materialIndexMap;
         set
         {
-            materialIndexData = value;
+            materialIndexMap = value;
             if (value != null)
             {
                 IsMaterialIndexMapDirty = true;
@@ -136,8 +137,8 @@ public sealed class EditorTerrainEntity : IDisposable
                     SyncToGpu(commandList);
                 break;
             case TerrainDataChannel.MaterialIndex:
-                if (IsMaterialIndexMapDirty && MaterialIndexData != null)
-                    SyncMaterialIndexMapToGpu(commandList, MaterialIndexData);
+                if (IsMaterialIndexMapDirty && MaterialIndexMap != null)
+                    SyncMaterialIndexMapToGpu(commandList, MaterialIndexMap);
                 break;
         }
     }
@@ -208,33 +209,65 @@ public sealed class EditorTerrainEntity : IDisposable
 
     /// <summary>
     /// 初始化材质相关 GPU 资源。
+    /// 为每个高度图切片创建对应的材质索引图纹理。
     /// </summary>
     public void InitializeMaterialResources(GraphicsDevice graphicsDevice)
     {
-        // R8G8B8A8_UNorm 索引图 - RGBA 四通道
-        // R: 材质索引, G: 权重, B: 投影方向, A: 旋转角度
-        MaterialIndexMapTexture = Texture.New2D(
-            graphicsDevice,
-            HeightmapWidth,
-            HeightmapHeight,
-            PixelFormat.R8G8B8A8_UNorm,
-            TextureFlags.ShaderResource);
+        MaterialIndexMapTextures = new Texture[SplitConfig.TotalSliceCount];
+        for (int i = 0; i < SplitConfig.TotalSliceCount; i++)
+        {
+            var sliceInfo = SplitConfig.Slices[i];
+            MaterialIndexMapTextures[i] = Texture.New2D(
+                graphicsDevice,
+                sliceInfo.Width,
+                sliceInfo.Height,
+                PixelFormat.R8G8B8A8_UNorm,
+                TextureFlags.ShaderResource);
+        }
     }
 
     /// <summary>
     /// 同步材质索引图到 GPU。
+    /// 使用 MemoryMarshal.AsBytes 零拷贝将 uint[] 行转为 byte span，按切片上传。
     /// </summary>
-    public void SyncMaterialIndexMapToGpu(CommandList commandList, byte[] indexData)
+    public void SyncMaterialIndexMapToGpu(CommandList commandList, Services.MaterialIndexMap indexMap)
     {
-        if (MaterialIndexMapTexture == null)
+        if (indexMap.Width != HeightmapWidth || indexMap.Height != HeightmapHeight)
             return;
 
-        // RGBA 数据大小应为 Width * Height * 4
-        int expectedSize = HeightmapWidth * HeightmapHeight * MaterialIndexMap.BytesPerPixel;
-        if (indexData.Length != expectedSize)
-            return;
+        var rawData = indexMap.GetRawData(); // uint[]
 
-        MaterialIndexMapTexture.SetData(commandList, indexData);
+        for (int i = 0; i < MaterialIndexMapTextures.Length; i++)
+        {
+            var texture = MaterialIndexMapTextures[i];
+            if (texture == null)
+                continue;
+
+            var sliceInfo = SplitConfig.Slices[i];
+            int slicePixelCount = sliceInfo.Width * sliceInfo.Height;
+            int sliceByteSize = slicePixelCount * Services.MaterialIndexMap.BytesPerPixel;
+
+            byte[] uploadBuffer = ArrayPool<byte>.Shared.Rent(sliceByteSize);
+            try
+            {
+                // 按行拷贝：从 uint[] 的全局行 → byte[] 的切片行
+                for (int row = 0; row < sliceInfo.Height; row++)
+                {
+                    int srcPixelOffset = (sliceInfo.StartSampleZ + row) * HeightmapWidth + sliceInfo.StartSampleX;
+                    var srcRow = rawData.AsSpan(srcPixelOffset, sliceInfo.Width);
+                    var srcBytes = MemoryMarshal.AsBytes(srcRow);
+                    int dstOffset = row * sliceInfo.Width * Services.MaterialIndexMap.BytesPerPixel;
+                    srcBytes.CopyTo(uploadBuffer.AsSpan(dstOffset));
+                }
+
+                texture.SetData(commandList, new ReadOnlySpan<byte>(uploadBuffer, 0, sliceByteSize));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(uploadBuffer);
+            }
+        }
+
         IsMaterialIndexMapDirty = false;
     }
 
@@ -625,8 +658,12 @@ public sealed class EditorTerrainEntity : IDisposable
         PatchIndexBuffer?.Dispose();
         PatchIndexBuffer = null;
 
-        MaterialIndexMapTexture?.Dispose();
-        MaterialIndexMapTexture = null;
+        if (MaterialIndexMapTextures != null)
+        {
+            foreach (var tex in MaterialIndexMapTextures)
+                tex?.Dispose();
+            MaterialIndexMapTextures = Array.Empty<Texture?>();
+        }
 
         MaterialAlbedoArray?.Dispose();
         MaterialAlbedoArray = null;

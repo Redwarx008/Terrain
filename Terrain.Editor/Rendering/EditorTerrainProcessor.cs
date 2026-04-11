@@ -202,12 +202,9 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         // Match the reference fixed-strength behavior for height-like blend contrast.
         parameters.Set(EditorTerrainDiffuseKeys.DetailContrast, 2.0f);
 
-        // Set material index map parameters
-        if (entity.MaterialIndexMapTexture != null)
-        {
-            parameters.Set(EditorTerrainDiffuseKeys.MaterialIndexMap, entity.MaterialIndexMapTexture);
-            parameters.Set(EditorTerrainDiffuseKeys.MaterialIndexSampler, graphicsDevice.SamplerStates.PointClamp);
-        }
+        // Set material index map slice textures
+        SetIndexMapSliceTextures(parameters, entity);
+        parameters.Set(EditorTerrainDiffuseKeys.MaterialIndexSampler, graphicsDevice.SamplerStates.PointClamp);
 
         // Set material texture array parameters
         var albedoArray = MaterialSlotManager.Instance.GetMaterialAlbedoArray();
@@ -299,6 +296,36 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
             case 5: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds5, bounds); break;
             case 6: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds6, bounds); break;
             case 7: parameters.Set(EditorTerrainHeightParametersKeys.HeightmapSliceBounds7, bounds); break;
+        }
+    }
+
+    private static void SetIndexMapSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity)
+    {
+        var textures = entity.MaterialIndexMapTextures;
+        var fallback = textures.Length > 0 ? textures[0] : null;
+
+        for (int i = 0; i < 8; i++)
+        {
+            var texture = i < textures.Length ? textures[i] : fallback;
+            SetIndexMapSliceTexture(parameters, i, texture);
+        }
+    }
+
+    private static void SetIndexMapSliceTexture(ParameterCollection parameters, int sliceIndex, Texture? texture)
+    {
+        if (texture == null)
+            return;
+
+        switch (sliceIndex)
+        {
+            case 0: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice0, texture); break;
+            case 1: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice1, texture); break;
+            case 2: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice2, texture); break;
+            case 3: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice3, texture); break;
+            case 4: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice4, texture); break;
+            case 5: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice5, texture); break;
+            case 6: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice6, texture); break;
+            case 7: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice7, texture); break;
         }
     }
 }

@@ -26,6 +26,14 @@ namespace Terrain.Editor
         public static readonly ObjectParameterKey<Texture> HeightmapSlice5 = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<Texture> HeightmapSlice6 = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<Texture> HeightmapSlice7 = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> IndexMapSlice0 = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> IndexMapSlice1 = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> IndexMapSlice2 = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> IndexMapSlice3 = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> IndexMapSlice4 = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> IndexMapSlice5 = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> IndexMapSlice6 = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> IndexMapSlice7 = ParameterKeys.NewObject<Texture>();
         public static readonly ValueParameterKey<float> HeightScale = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<int> BaseChunkSize = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> SliceCount = ParameterKeys.NewValue<int>();

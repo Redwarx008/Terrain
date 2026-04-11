@@ -17,8 +17,6 @@ public sealed class PaintEditCommand : TerrainEditCommand
     private readonly List<PaintChunkDelta> changedChunks = new();
     private long estimatedSizeBytes;
 
-    private const int BytesPerPixel = MaterialIndexMap.BytesPerPixel;
-
     public override TerrainDataChannel AffectedChannel => TerrainDataChannel.MaterialIndex;
     public override string Description => $"{toolName} Material";
     public override long EstimatedSizeBytes => estimatedSizeBytes;
@@ -38,7 +36,7 @@ public sealed class PaintEditCommand : TerrainEditCommand
         if (indexMap == null || chunk.Width <= 0 || chunk.Height <= 0)
             return;
 
-        beforeChunkData[chunk.Key] = CopyChunk(indexMap.GetRawData(), indexMap.Width, chunk);
+        beforeChunkData[chunk.Key] = indexMap.CopyRegionToBytes(chunk.X, chunk.Y, chunk.Width, chunk.Height);
     }
 
     protected override bool CaptureAfterStateAndFilter(IReadOnlyList<TerrainChunkRegion> chunks)
@@ -50,13 +48,12 @@ public sealed class PaintEditCommand : TerrainEditCommand
         changedChunks.Clear();
         estimatedSizeBytes = 0;
 
-        var rawData = indexMap.GetRawData();
         foreach (var chunk in chunks)
         {
             if (!beforeChunkData.TryGetValue(chunk.Key, out var before))
                 continue;
 
-            var after = CopyChunk(rawData, indexMap.Width, chunk);
+            var after = indexMap.CopyRegionToBytes(chunk.X, chunk.Y, chunk.Width, chunk.Height);
             if (before.AsSpan().SequenceEqual(after))
                 continue;
 
@@ -66,21 +63,6 @@ public sealed class PaintEditCommand : TerrainEditCommand
 
         beforeChunkData.Clear();
         return changedChunks.Count > 0;
-    }
-
-    private static byte[] CopyChunk(byte[] source, int dataWidth, TerrainChunkRegion chunk)
-    {
-        int rowBytes = chunk.Width * BytesPerPixel;
-        var result = new byte[rowBytes * chunk.Height];
-
-        for (int row = 0; row < chunk.Height; row++)
-        {
-            int srcOffset = ((chunk.Y + row) * dataWidth + chunk.X) * BytesPerPixel;
-            int dstOffset = row * rowBytes;
-            Array.Copy(source, srcOffset, result, dstOffset, rowBytes);
-        }
-
-        return result;
     }
 
     public override void Execute()
@@ -99,20 +81,10 @@ public sealed class PaintEditCommand : TerrainEditCommand
         if (indexMap == null || changedChunks.Count == 0)
             return;
 
-        var rawData = indexMap.GetRawData();
-        int dataWidth = indexMap.Width;
-
         foreach (var delta in changedChunks)
         {
-            // Replay chunk rows with raw RGBA block copies for speed.
             var stateData = afterState ? delta.After : delta.Before;
-            int rowBytes = delta.Region.Width * BytesPerPixel;
-            for (int row = 0; row < delta.Region.Height; row++)
-            {
-                int srcOffset = row * rowBytes;
-                int dstOffset = ((delta.Region.Y + row) * dataWidth + delta.Region.X) * BytesPerPixel;
-                Array.Copy(stateData, srcOffset, rawData, dstOffset, rowBytes);
-            }
+            indexMap.SetRegionFromBytes(delta.Region.X, delta.Region.Y, delta.Region.Width, delta.Region.Height, stateData);
         }
 
         TerrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex);

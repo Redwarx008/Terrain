@@ -25,8 +25,7 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<Vector2> HeightmapDimensionsInSamples = ParameterKeys.NewValue<Vector2>();
         public static readonly ValueParameterKey<float> DetailContrast = ParameterKeys.NewValue<float>();
 
-        // 材质索引图参数
-        public static readonly ObjectParameterKey<Texture> MaterialIndexMap = ParameterKeys.NewObject<Texture>();
+        // 材质索引图采样器（IndexMapSlice 纹理定义在 EditorTerrainHeightParametersKeys 中）
         public static readonly ObjectParameterKey<SamplerState> MaterialIndexSampler = ParameterKeys.NewObject<SamplerState>();
 
         // 材质纹理数组参数

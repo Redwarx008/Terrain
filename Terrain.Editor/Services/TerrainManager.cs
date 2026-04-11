@@ -127,11 +127,11 @@ public sealed class TerrainManager : IDisposable
             currentHeightmapInfo = info;
             currentTerrainPath = heightmapPath;
 
-            // 初始化材质索引图
+            // 初始化材质索引图（使用 uint[] 存储，支持超大尺寸）
             MaterialIndices = new MaterialIndexMap(heightDataWidth, heightDataHeight);
 
             // 设置材质索引数据引用到实体
-            terrainEntity.MaterialIndexData = MaterialIndices.GetRawData();
+            terrainEntity.MaterialIndexMap = MaterialIndices;
 
             var sceneEntity = new Entity("EditorTerrain")
             {
@@ -161,7 +161,7 @@ public sealed class TerrainManager : IDisposable
         catch (Exception ex)
         {
             lastLoadError = $"Failed to load terrain: {ex.Message}";
-            Log.Error(lastLoadError);
+            Log.Error($"{lastLoadError}\n{ex.StackTrace}");
             return new List<EditorTerrainEntity>();
         }
     }
@@ -462,7 +462,7 @@ public sealed class TerrainManager : IDisposable
                 // otherwise paint edits update a different byte[] than the GPU upload path.
                 if (terrainEntities.Count > 0)
                 {
-                    terrainEntities[0].MaterialIndexData = MaterialIndices.GetRawData();
+                    terrainEntities[0].MaterialIndexMap = MaterialIndices;
                 }
             }
         }
@@ -493,7 +493,7 @@ public sealed class TerrainManager : IDisposable
             return false;
 
         MaterialIndices = loaded;
-        terrainEntities[0].MaterialIndexData = MaterialIndices.GetRawData();
+        terrainEntities[0].MaterialIndexMap = MaterialIndices;
         return true;
     }
 
