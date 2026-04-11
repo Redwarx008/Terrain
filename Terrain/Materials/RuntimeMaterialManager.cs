@@ -182,19 +182,27 @@ public sealed class RuntimeMaterialManager : IDisposable
         }
 
         // Build normal array
-        if (normalTemplate != null)
+        var normalArrayTemplate = normalTemplate ?? albedoTemplate;
+        if (normalArrayTemplate != null)
         {
+            PixelFormat normalArrayFormat = normalTemplate?.Format ?? PixelFormat.R8G8B8A8_UNorm;
             normalArray = Texture.New2D(
                 graphicsDevice,
-                normalTemplate.Width,
-                normalTemplate.Height,
-                normalTemplate.MipLevelCount,
-                normalTemplate.Format,
+                normalArrayTemplate.Width,
+                normalArrayTemplate.Height,
+                normalArrayTemplate.MipLevelCount,
+                normalArrayFormat,
                 TextureFlags.ShaderResource,
                 arraySize: capacity);
 
             // Create default flat normal (128,128,255,255)
-            var defaultNormal = CreateDefaultNormalTexture(graphicsDevice, commandList, normalTemplate.Width, normalTemplate.Height, normalTemplate.MipLevelCount, normalTemplate.Format);
+            var defaultNormal = CreateDefaultNormalTexture(
+                graphicsDevice,
+                commandList,
+                normalArrayTemplate.Width,
+                normalArrayTemplate.Height,
+                normalArrayTemplate.MipLevelCount,
+                normalArrayFormat);
 
             for (int i = 0; i < capacity; i++)
             {

@@ -88,6 +88,40 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
             return invalid ? projDir : normalize(mappedNormalWS);
         }
 
+        float3 BuildDetailNormalWS(float3 normalTS, float3 geomNormalWS, float3 projDir, float rotation)
+        {
+            float3 projU;
+            float3 projV;
+            BuildProjectionBasis(projDir, rotation, projU, projV);
+
+            float3 detailU = projU - geomNormalWS * dot(projU, geomNormalWS);
+            float detailULen2 = dot(detailU, detailU);
+            if (detailULen2 < 0.000001f)
+            {
+                float3 fallbackAxis = abs(geomNormalWS.y) < 0.999f ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
+                detailU = cross(fallbackAxis, geomNormalWS);
+                detailULen2 = dot(detailU, detailU);
+                if (detailULen2 < 0.000001f)
+                    return geomNormalWS;
+            }
+
+            detailU = normalize(detailU);
+            float3 detailV = normalize(cross(geomNormalWS, detailU));
+
+            float3 blendedNormal =
+                normalTS.x * detailU +
+                normalTS.y * detailV +
+                normalTS.z * geomNormalWS;
+
+            float len2 = dot(blendedNormal, blendedNormal);
+            bool invalid =
+                len2 < 0.000001f ||
+                !(blendedNormal.x == blendedNormal.x) ||
+                !(blendedNormal.y == blendedNormal.y) ||
+                !(blendedNormal.z == blendedNormal.z);
+            return invalid ? geomNormalWS : normalize(blendedNormal);
+        }
+
         float ApplyDetailContrast(float weight, float detail)
         {
             float detailContrast = max(DetailContrast, 0.0f);
@@ -128,17 +162,14 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
             uint resolvedAlbedoIndex = (uint)min((int)pixel.index, max(MaterialArraySize - 1, 0));
             float4 color = MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)resolvedAlbedoIndex));
 
-            float3 normalTS = float3(0.0f, 0.0f, 1.0f);
+            float3 normalWS = geomNormalWS;
             if (MaterialNormalArraySize > 0)
             {
                 uint resolvedNormalIndex = (uint)min((int)pixel.index, max(MaterialNormalArraySize - 1, 0));
                 float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)resolvedNormalIndex));
-                normalTS = normalize(normalSample.xyz * 2.0f - 1.0f);
+                float3 normalTS = normalize(normalSample.xyz * 2.0f - 1.0f);
+                normalWS = BuildDetailNormalWS(normalTS, geomNormalWS, pixel.projDir, pixel.rotation);
             }
-
-            float3 normalWS = BuildProjectedNormalWS(normalTS, pixel.projDir, pixel.rotation);
-            if (dot(normalWS, geomNormalWS) < 0.0f)
-                normalWS = -normalWS;
 
             float projWeight = saturate(dot(pixel.projDir, geomNormalWS));
             sampleWeight *= (projWeight * projWeight + 0.0001f);

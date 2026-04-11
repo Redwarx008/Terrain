@@ -268,23 +268,37 @@ public sealed class MaterialSlotManager
 
     private Texture? BuildNormalArrayTexture(int requiredCapacity, GraphicsDevice graphicsDevice, CommandList commandList)
     {
-        Texture? templateTexture = slots
+        Texture? normalFormatSource = slots
             .Select(static slot => slot.NormalTexture)
             .FirstOrDefault(static texture => texture != null);
 
-        if (templateTexture == null)
+        Texture? arrayLayoutSource = normalFormatSource ?? slots
+            .Select(static slot => slot.AlbedoTexture)
+            .FirstOrDefault(static texture => texture != null);
+
+        if (arrayLayoutSource == null)
             return null;
+
+        PixelFormat arrayFormat = normalFormatSource?.Format ?? PixelFormat.R8G8B8A8_UNorm;
+        var arraySignature = new TextureSignature(
+            arrayLayoutSource.Width,
+            arrayLayoutSource.Height,
+            arrayFormat,
+            arrayLayoutSource.MipLevelCount);
 
         var arrayTexture = Texture.New2D(
             graphicsDevice,
-            templateTexture.Width,
-            templateTexture.Height,
-            templateTexture.MipLevelCount,
-            templateTexture.Format,
+            arraySignature.Width,
+            arraySignature.Height,
+            arraySignature.MipLevelCount,
+            arraySignature.Format,
             TextureFlags.ShaderResource,
             arraySize: requiredCapacity);
 
-        var defaultNormalTexture = GetOrCreateDefaultNormalTexture(TextureSignature.FromTexture(templateTexture), graphicsDevice, commandList);
+        var defaultNormalTexture = GetOrCreateDefaultNormalTexture(
+            arraySignature,
+            graphicsDevice,
+            commandList);
 
         foreach (var slot in slots)
         {
@@ -292,7 +306,7 @@ public sealed class MaterialSlotManager
                 continue;
 
             var sourceTexture = slot.NormalTexture ?? defaultNormalTexture;
-            if (!IsCompatible(sourceTexture, templateTexture))
+            if (!IsCompatible(sourceTexture, defaultNormalTexture))
             {
                 Log.Warning($"Encountered incompatible normal texture in slot {slot.Index} during array rebuild.");
                 Debug.Assert(false, "Normal texture compatibility should have been validated before rebuild.");
