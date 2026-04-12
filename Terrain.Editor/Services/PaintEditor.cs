@@ -69,7 +69,9 @@ public sealed class PaintEditor
         float brushInnerRadius = brushRadius * brushParams.EffectiveFalloff;
 
         // 获取目标材质索引
-        byte targetIndex = (byte)MaterialSlotManager.Instance.SelectedSlotIndex;
+        byte targetIndex = ResolveTargetMaterialIndex();
+        if (targetIndex == byte.MaxValue)
+            return;
 
         // 构建编辑上下文
         var context = new PaintEditContext
@@ -129,5 +131,21 @@ public sealed class PaintEditor
             return 0.0f;
 
         return 1.0f - (distance - innerRadius) / (outerRadius - innerRadius);
+    }
+
+    private static byte ResolveTargetMaterialIndex()
+    {
+        var manager = MaterialSlotManager.Instance;
+        int selectedIndex = manager.SelectedSlotIndex;
+        if (selectedIndex >= 0 && selectedIndex < 256 && !manager[selectedIndex].IsEmpty)
+            return (byte)selectedIndex;
+
+        foreach (var slot in manager.GetActiveSlots())
+        {
+            manager.SelectedSlotIndex = slot.Index;
+            return (byte)slot.Index;
+        }
+
+        return byte.MaxValue;
     }
 }

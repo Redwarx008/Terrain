@@ -789,6 +789,16 @@ public class MainWindow : ControlBase
                     Console.LogInfo($"Imported Albedo to slot {e.SlotIndex}: {filePath}");
                     ProjectManager.Instance.MarkDirty();
 
+                    Assets.SelectedTextureSlot = e.SlotIndex;
+                    MaterialSlotManager.Instance.SelectedSlotIndex = e.SlotIndex;
+                    RightPanel.SelectedTextureSlot = e.SlotIndex;
+                    RightPanel.OnTextureSelected();
+                    if (Toolbar.CurrentMode != EditorMode.Paint)
+                    {
+                        Toolbar.SetMode(EditorMode.Paint);
+                    }
+                    Tools.SelectTool("Paint");
+
                     // 自动查找并导入匹配的法线贴图
                     string? normalPath = TextureImporter.FindMatchingNormalMap(filePath);
                     if (normalPath != null)
