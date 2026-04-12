@@ -85,9 +85,12 @@ public sealed class PaintEditCommand : TerrainEditCommand
         {
             var stateData = afterState ? delta.After : delta.Before;
             indexMap.SetRegionFromBytes(delta.Region.X, delta.Region.Y, delta.Region.Width, delta.Region.Height, stateData);
-        }
 
-        TerrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex);
+            float centerX = delta.Region.X + delta.Region.Width * 0.5f;
+            float centerZ = delta.Region.Y + delta.Region.Height * 0.5f;
+            float radius = MathF.Max(delta.Region.Width, delta.Region.Height) * 0.5f;
+            TerrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex, (int)centerX, (int)centerZ, radius);
+        }
     }
 
     private readonly record struct PaintChunkDelta(TerrainChunkRegion Region, byte[] Before, byte[] After);

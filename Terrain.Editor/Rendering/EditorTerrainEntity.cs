@@ -50,9 +50,9 @@ public sealed class EditorTerrainEntity : IDisposable
     public IReadOnlyList<EditorTerrainSlice> Slices => slices;
 
     /// <summary>
-    /// Returns true if any slice has dirty data that needs to be synced to GPU.
+    /// Returns true if any slice has dirty height data that needs to be synced to GPU.
     /// </summary>
-    public bool HasAnyDirtySlice => slices.Exists(s => s.IsDirty);
+    public bool HasAnyDirtySlice => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.Height));
 
     public EditorMinMaxErrorMap[]? MinMaxErrorMaps { get; private set; }
     public int MaxLod { get; private set; }
@@ -86,29 +86,25 @@ public sealed class EditorTerrainEntity : IDisposable
             materialIndexMap = value;
             if (value != null)
             {
-                IsMaterialIndexMapDirty = true;
+                foreach (var slice in slices)
+                    slice.Dirty.MarkFullDirty(TerrainDataChannel.MaterialIndex);
             }
         }
     }
-
-    /// <summary>
-    /// 标记材质索引图需要同步到 GPU。
-    /// </summary>
-    public bool IsMaterialIndexMapDirty { get; private set; }
 
     /// <summary>
     /// 标记指定通道的数据为脏，需要在渲染时同步到 GPU。
     /// </summary>
     public void MarkDataDirty(TerrainDataChannel channel, int centerX = 0, int centerZ = 0, float radius = 0)
     {
-        switch (channel)
+        if (radius > 0)
         {
-            case TerrainDataChannel.Height:
-                MarkHeightRegionDirty(centerX, centerZ, radius);
-                break;
-            case TerrainDataChannel.MaterialIndex:
-                IsMaterialIndexMapDirty = true;
-                break;
+            MarkRegionDirty(channel, centerX, centerZ, radius);
+        }
+        else
+        {
+            foreach (var slice in slices)
+                slice.Dirty.MarkFullDirty(channel);
         }
     }
 
@@ -119,8 +115,8 @@ public sealed class EditorTerrainEntity : IDisposable
     {
         return channel switch
         {
-            TerrainDataChannel.Height => HasAnyDirtySlice,
-            TerrainDataChannel.MaterialIndex => IsMaterialIndexMapDirty,
+            TerrainDataChannel.Height => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.Height)),
+            TerrainDataChannel.MaterialIndex => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.MaterialIndex)),
             _ => false
         };
     }
@@ -137,7 +133,7 @@ public sealed class EditorTerrainEntity : IDisposable
                     SyncToGpu(commandList);
                 break;
             case TerrainDataChannel.MaterialIndex:
-                if (IsMaterialIndexMapDirty && MaterialIndexMap != null)
+                if (slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.MaterialIndex)) && MaterialIndexMap != null)
                     SyncMaterialIndexMapToGpu(commandList, MaterialIndexMap);
                 break;
         }
@@ -228,7 +224,7 @@ public sealed class EditorTerrainEntity : IDisposable
 
     /// <summary>
     /// 同步材质索引图到 GPU。
-    /// 使用 MemoryMarshal.AsBytes 零拷贝将 uint[] 行转为 byte span，按切片上传。
+    /// 支持脏区域部分上传：仅上传被修改的子矩形，而非整个切片。
     /// </summary>
     public void SyncMaterialIndexMapToGpu(CommandList commandList, Services.MaterialIndexMap indexMap)
     {
@@ -243,32 +239,95 @@ public sealed class EditorTerrainEntity : IDisposable
             if (texture == null)
                 continue;
 
-            var sliceInfo = SplitConfig.Slices[i];
-            int slicePixelCount = sliceInfo.Width * sliceInfo.Height;
-            int sliceByteSize = slicePixelCount * Services.MaterialIndexMap.BytesPerPixel;
+            var slice = slices[i];
+            if (!slice.Dirty.IsChannelDirty(TerrainDataChannel.MaterialIndex))
+                continue;
 
-            byte[] uploadBuffer = ArrayPool<byte>.Shared.Rent(sliceByteSize);
-            try
+            if (slice.Dirty.HasRegion)
             {
-                // 按行拷贝：从 uint[] 的全局行 → byte[] 的切片行
-                for (int row = 0; row < sliceInfo.Height; row++)
+                // Partial region upload
+                int regionWidth = slice.Dirty.MaxX - slice.Dirty.MinX + 1;
+                int regionHeight = slice.Dirty.MaxZ - slice.Dirty.MinZ + 1;
+                int regionByteSize = regionWidth * regionHeight * Services.MaterialIndexMap.BytesPerPixel;
+
+                byte[] uploadBuffer = ArrayPool<byte>.Shared.Rent(regionByteSize);
+                try
                 {
-                    int srcPixelOffset = (sliceInfo.StartSampleZ + row) * HeightmapWidth + sliceInfo.StartSampleX;
-                    var srcRow = rawData.AsSpan(srcPixelOffset, sliceInfo.Width);
-                    var srcBytes = MemoryMarshal.AsBytes(srcRow);
-                    int dstOffset = row * sliceInfo.Width * Services.MaterialIndexMap.BytesPerPixel;
-                    srcBytes.CopyTo(uploadBuffer.AsSpan(dstOffset));
-                }
+                    CopyMatIndexRegionData(slice, rawData,
+                        slice.Dirty.MinX, slice.Dirty.MinZ,
+                        regionWidth, regionHeight, uploadBuffer);
 
-                texture.SetData(commandList, new ReadOnlySpan<byte>(uploadBuffer, 0, sliceByteSize));
+                    var region = new ResourceRegion(
+                        left: slice.Dirty.MinX,
+                        top: slice.Dirty.MinZ,
+                        front: 0,
+                        right: slice.Dirty.MinX + regionWidth,
+                        bottom: slice.Dirty.MinZ + regionHeight,
+                        back: 1);
+
+                    texture.SetData(commandList,
+                        new ReadOnlySpan<byte>(uploadBuffer, 0, regionByteSize),
+                        arrayIndex: 0, mipLevel: 0, region);
+
+                    slice.Dirty.ClearChannel(TerrainDataChannel.MaterialIndex);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(uploadBuffer);
+                }
             }
-            finally
+            else
             {
-                ArrayPool<byte>.Shared.Return(uploadBuffer);
+                // Full slice upload fallback (initial load, etc.)
+                int sliceByteSize = slice.Width * slice.Height * Services.MaterialIndexMap.BytesPerPixel;
+
+                byte[] uploadBuffer = ArrayPool<byte>.Shared.Rent(sliceByteSize);
+                try
+                {
+                    CopyMatIndexSliceData(slice, rawData, uploadBuffer);
+                    texture.SetData(commandList, new ReadOnlySpan<byte>(uploadBuffer, 0, sliceByteSize));
+                    slice.Dirty.ClearChannel(TerrainDataChannel.MaterialIndex);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(uploadBuffer);
+                }
             }
         }
+    }
 
-        IsMaterialIndexMapDirty = false;
+    /// <summary>
+    /// 将材质索引图的脏区域数据从全局 uint[] 拷贝到 byte[] 上传缓冲区。
+    /// </summary>
+    private void CopyMatIndexRegionData(EditorTerrainSlice slice, uint[] srcData,
+        int localStartX, int localStartZ, int regionWidth, int regionHeight, byte[] destination)
+    {
+        int bytesPerPixel = Services.MaterialIndexMap.BytesPerPixel;
+        for (int row = 0; row < regionHeight; row++)
+        {
+            int globalZ = slice.StartSampleZ + localStartZ + row;
+            int srcPixelOffset = globalZ * HeightmapWidth + slice.StartSampleX + localStartX;
+            var srcRow = srcData.AsSpan(srcPixelOffset, regionWidth);
+            var srcBytes = MemoryMarshal.AsBytes(srcRow);
+            int dstOffset = row * regionWidth * bytesPerPixel;
+            srcBytes.CopyTo(destination.AsSpan(dstOffset));
+        }
+    }
+
+    /// <summary>
+    /// 将材质索引图的完整切片数据从全局 uint[] 拷贝到 byte[] 上传缓冲区。
+    /// </summary>
+    private void CopyMatIndexSliceData(EditorTerrainSlice slice, uint[] srcData, byte[] destination)
+    {
+        int bytesPerPixel = Services.MaterialIndexMap.BytesPerPixel;
+        for (int row = 0; row < slice.Height; row++)
+        {
+            int srcPixelOffset = (slice.StartSampleZ + row) * HeightmapWidth + slice.StartSampleX;
+            var srcRow = srcData.AsSpan(srcPixelOffset, slice.Width);
+            var srcBytes = MemoryMarshal.AsBytes(srcRow);
+            int dstOffset = row * slice.Width * bytesPerPixel;
+            srcBytes.CopyTo(destination.AsSpan(dstOffset));
+        }
     }
 
     public bool TryResolveNodeSlice(int originSampleX, int originSampleZ, int sizeInSamples, out EditorTerrainSlice slice, out int localOriginX, out int localOriginZ)
@@ -305,32 +364,31 @@ public sealed class EditorTerrainEntity : IDisposable
         return false;
     }
 
-    public void MarkHeightRegionDirty(int modifiedX, int modifiedZ, float radius)
+    /// <summary>
+    /// 标记指定通道的脏区域，将全局坐标转换为切片本地坐标。
+    /// </summary>
+    public void MarkRegionDirty(TerrainDataChannel channel, int centerX, int centerZ, float radius)
     {
-        if (HeightDataCache == null)
-            return;
-
-        int minX = Math.Max(0, (int)MathF.Floor(modifiedX - radius));
-        int minZ = Math.Max(0, (int)MathF.Floor(modifiedZ - radius));
-        int maxX = Math.Min(HeightmapWidth - 1, (int)MathF.Ceiling(modifiedX + radius));
-        int maxZ = Math.Min(HeightmapHeight - 1, (int)MathF.Ceiling(modifiedZ + radius));
+        int minX = Math.Max(0, (int)MathF.Floor(centerX - radius));
+        int minZ = Math.Max(0, (int)MathF.Floor(centerZ - radius));
+        int maxX = Math.Min(HeightmapWidth - 1, (int)MathF.Ceiling(centerX + radius));
+        int maxZ = Math.Min(HeightmapHeight - 1, (int)MathF.Ceiling(centerZ + radius));
 
         foreach (var slice in slices)
         {
-            if (slice.Intersects(minX, minZ, maxX, maxZ))
-            {
-                // Convert global coordinates to slice-local coordinates
-                int localMinX = Math.Max(0, minX - slice.StartSampleX);
-                int localMinZ = Math.Max(0, minZ - slice.StartSampleZ);
-                int localMaxX = Math.Min(slice.Width - 1, maxX - slice.StartSampleX);
-                int localMaxZ = Math.Min(slice.Height - 1, maxZ - slice.StartSampleZ);
+            if (!slice.Intersects(minX, minZ, maxX, maxZ))
+                continue;
 
-                slice.MarkDirtyRegion(localMinX, localMinZ, localMaxX, localMaxZ);
-            }
+            int localMinX = Math.Max(0, minX - slice.StartSampleX);
+            int localMinZ = Math.Max(0, minZ - slice.StartSampleZ);
+            int localMaxX = Math.Min(slice.Width - 1, maxX - slice.StartSampleX);
+            int localMaxZ = Math.Min(slice.Height - 1, maxZ - slice.StartSampleZ);
+
+            slice.Dirty.MarkRegion(channel, localMinX, localMinZ, localMaxX, localMaxZ);
         }
 
-        // Incremental bounds update - only check the modified region
-        UpdateBoundsForRegion(minX, minZ, maxX, maxZ);
+        if (channel == TerrainDataChannel.Height)
+            UpdateBoundsForRegion(minX, minZ, maxX, maxZ);
     }
 
     /// <summary>
@@ -386,36 +444,36 @@ public sealed class EditorTerrainEntity : IDisposable
 
         foreach (var slice in slices)
         {
-            if (!slice.IsDirty || slice.Texture == null)
+            if (!slice.Dirty.IsChannelDirty(TerrainDataChannel.Height) || slice.Texture == null)
                 continue;
 
-            if (slice.HasDirtyRegion)
+            if (slice.Dirty.HasRegion)
             {
                 // Partial region upload for efficiency
-                int regionWidth = slice.DirtyMaxX - slice.DirtyMinX + 1;
-                int regionHeight = slice.DirtyMaxZ - slice.DirtyMinZ + 1;
+                int regionWidth = slice.Dirty.MaxX - slice.Dirty.MinX + 1;
+                int regionHeight = slice.Dirty.MaxZ - slice.Dirty.MinZ + 1;
                 int sampleCount = regionWidth * regionHeight;
 
                 ushort[] uploadBuffer = ArrayPool<ushort>.Shared.Rent(sampleCount);
                 try
                 {
-                    CopySliceRegionData(slice, slice.DirtyMinX, slice.DirtyMinZ,
+                    CopySliceRegionData(slice, slice.Dirty.MinX, slice.Dirty.MinZ,
                         regionWidth, regionHeight, uploadBuffer);
 
                     // ResourceRegion uses exclusive bounds for Right/Bottom (pixel + 1)
                     var region = new ResourceRegion(
-                        left: slice.DirtyMinX,
-                        top: slice.DirtyMinZ,
+                        left: slice.Dirty.MinX,
+                        top: slice.Dirty.MinZ,
                         front: 0,
-                        right: slice.DirtyMinX + regionWidth,
-                        bottom: slice.DirtyMinZ + regionHeight,
+                        right: slice.Dirty.MinX + regionWidth,
+                        bottom: slice.Dirty.MinZ + regionHeight,
                         back: 1);
 
                     slice.Texture.SetData(commandList,
                         new ReadOnlySpan<ushort>(uploadBuffer, 0, sampleCount),
                         arrayIndex: 0, mipLevel: 0, region);
 
-                    slice.ClearDirtyRegion();
+                    slice.Dirty.ClearChannel(TerrainDataChannel.Height);
                 }
                 finally
                 {
@@ -431,7 +489,7 @@ public sealed class EditorTerrainEntity : IDisposable
                 {
                     CopySliceData(slice, uploadBuffer);
                     slice.Texture.SetData(commandList, new ReadOnlySpan<ushort>(uploadBuffer, 0, sampleCount));
-                    slice.IsDirty = false;
+                    slice.Dirty.ClearChannel(TerrainDataChannel.Height);
                 }
                 finally
                 {
@@ -440,7 +498,7 @@ public sealed class EditorTerrainEntity : IDisposable
             }
         }
 
-        // Note: Bounds are updated incrementally in MarkHeightRegionDirty, no need to recalculate here
+        // Note: Bounds are updated incrementally in MarkRegionDirty, no need to recalculate here
     }
 
     private void CopySliceRegionData(EditorTerrainSlice slice,
@@ -674,6 +732,81 @@ public sealed class EditorTerrainEntity : IDisposable
     }
 }
 
+/// <summary>
+/// 切片级脏区域追踪器。区域范围对全部通道共用，
+/// 用位掩码记录哪些通道在该区域内被修改。
+/// 注意：这是一个可变 struct，必须通过 slice.Dirty.Method() 直接调用，
+/// 不要赋值到局部变量后再修改（修改的是副本，不会反映回原值）。
+/// </summary>
+public struct DirtyRegionTracker
+{
+    private int minX;
+    private int minZ;
+    private int maxX;
+    private int maxZ;
+    private int dirtyChannels; // TerrainDataChannel 位掩码
+
+    public DirtyRegionTracker()
+    {
+        minX = int.MaxValue;
+        minZ = int.MaxValue;
+        maxX = int.MinValue;
+        maxZ = int.MinValue;
+        dirtyChannels = 0;
+    }
+
+    public bool IsDirty => dirtyChannels != 0;
+    /// <summary>是否有有效的脏区域。同时检查通道掩码以防止默认构造的误报。</summary>
+    public bool HasRegion => dirtyChannels != 0 && minX <= maxX && minZ <= maxZ;
+
+    public bool IsChannelDirty(TerrainDataChannel channel)
+        => (dirtyChannels & (1 << (int)channel)) != 0;
+
+    public int MinX => minX;
+    public int MinZ => minZ;
+    public int MaxX => maxX;
+    public int MaxZ => maxZ;
+
+    /// <summary>标记指定通道在给定区域内被修改。区域自动合并。</summary>
+    public void MarkRegion(TerrainDataChannel channel, int localMinX, int localMinZ, int localMaxX, int localMaxZ)
+    {
+        dirtyChannels |= (1 << (int)channel);
+        minX = Math.Min(minX, localMinX);
+        minZ = Math.Min(minZ, localMinZ);
+        maxX = Math.Max(maxX, localMaxX);
+        maxZ = Math.Max(maxZ, localMaxZ);
+    }
+
+    /// <summary>标记通道为全量脏（无区域信息，如初始加载）。</summary>
+    /// <remarks>全量脏会使区域失效，强制所有通道走全量上传路径。</remarks>
+    public void MarkFullDirty(TerrainDataChannel channel)
+    {
+        dirtyChannels |= (1 << (int)channel);
+        // 任何通道标记为全量脏时，区域信息不再可靠，必须回退到全量上传
+        minX = int.MaxValue;
+        minZ = int.MaxValue;
+        maxX = int.MinValue;
+        maxZ = int.MinValue;
+    }
+
+    /// <summary>清除指定通道的脏标记。如果全部通道已清除，区域也重置。</summary>
+    public void ClearChannel(TerrainDataChannel channel)
+    {
+        dirtyChannels &= ~(1 << (int)channel);
+        if (dirtyChannels == 0) Clear();
+    }
+
+    /// <summary>清除所有通道和区域。</summary>
+    public void Clear()
+    {
+        dirtyChannels = 0;
+        minX = int.MaxValue;
+        minZ = int.MaxValue;
+        maxX = int.MinValue;
+        maxZ = int.MinValue;
+    }
+}
+
 public sealed class EditorTerrainSlice
 {
     public EditorTerrainSlice(SplitTerrainSliceInfo info, Texture texture)
@@ -684,15 +817,7 @@ public sealed class EditorTerrainSlice
 
     public SplitTerrainSliceInfo Info { get; }
     public Texture Texture { get; }
-    public bool IsDirty { get; set; }
-
-    /// <summary>
-    /// Dirty region tracking for partial GPU uploads (slice-local coordinates).
-    /// </summary>
-    public int DirtyMinX { get; set; } = int.MaxValue;
-    public int DirtyMinZ { get; set; } = int.MaxValue;
-    public int DirtyMaxX { get; set; } = int.MinValue;
-    public int DirtyMaxZ { get; set; } = int.MinValue;
+    public DirtyRegionTracker Dirty;
 
     public int Index => Info.Index;
     public int StartSampleX => Info.StartSampleX;
@@ -706,35 +831,6 @@ public sealed class EditorTerrainSlice
     {
         return minX <= EndSampleX && maxX >= StartSampleX && minZ <= EndSampleZ && maxZ >= StartSampleZ;
     }
-
-    /// <summary>
-    /// Marks a region as dirty, merging with any existing dirty region.
-    /// </summary>
-    public void MarkDirtyRegion(int localMinX, int localMinZ, int localMaxX, int localMaxZ)
-    {
-        IsDirty = true;
-        DirtyMinX = Math.Min(DirtyMinX, localMinX);
-        DirtyMinZ = Math.Min(DirtyMinZ, localMinZ);
-        DirtyMaxX = Math.Max(DirtyMaxX, localMaxX);
-        DirtyMaxZ = Math.Max(DirtyMaxZ, localMaxZ);
-    }
-
-    /// <summary>
-    /// Clears the dirty region tracking after GPU upload.
-    /// </summary>
-    public void ClearDirtyRegion()
-    {
-        IsDirty = false;
-        DirtyMinX = int.MaxValue;
-        DirtyMinZ = int.MaxValue;
-        DirtyMaxX = int.MinValue;
-        DirtyMaxZ = int.MinValue;
-    }
-
-    /// <summary>
-    /// Returns true if a dirty region has been tracked.
-    /// </summary>
-    public bool HasDirtyRegion => DirtyMinX <= DirtyMaxX && DirtyMinZ <= DirtyMaxZ;
 }
 
 [StructLayout(LayoutKind.Sequential)]

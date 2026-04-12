@@ -101,8 +101,8 @@ public sealed class PaintEditor
         // 应用工具
         currentTool.Apply(ref context);
 
-        // 标记材质索引图需要同步到 GPU
-        terrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex);
+        // 标记材质索引图需要同步到 GPU（传递笔刷位置和半径以支持部分上传）
+        terrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex, pixelX, pixelZ, brushRadius);
     }
 
     /// <summary>

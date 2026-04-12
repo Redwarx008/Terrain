@@ -260,7 +260,7 @@ public sealed class TerrainManager : IDisposable
         if (heightDataCache == null || terrainEntities.Count == 0)
             return;
 
-        terrainEntities[0].MarkHeightRegionDirty(modifiedX, modifiedZ, radius);
+        terrainEntities[0].MarkRegionDirty(TerrainDataChannel.Height, modifiedX, modifiedZ, radius);
     }
 
     // 注意：数据同步现在由 EditorTerrainProcessor.Draw() 通过统一的 TerrainDataChannel 机制处理。
