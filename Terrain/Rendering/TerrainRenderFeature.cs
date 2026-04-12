@@ -161,10 +161,9 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
 
         pipelineState.InputElements = PrepareInputElements(pipelineState, drawData);
         pipelineState.PrimitiveType = drawData.PrimitiveType;
-        // The editor viewport currently renders custom terrain patches without any authoring-time
-        // guarantee that the generated index winding matches Stride's front-face convention.
-        // Disable culling here so terrain remains visible while we validate the dedicated viewport path.
-        pipelineState.RasterizerState = new RasterizerStateDescription(CullMode.None);
+        // Terrain should render as a single-sided heightfield so backfaces
+        // do not win depth and show up as view-dependent dark specks.
+        pipelineState.RasterizerState = new RasterizerStateDescription(CullMode.Back);
 
         foreach (var renderFeature in RenderFeatures)
         {

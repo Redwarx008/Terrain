@@ -166,8 +166,9 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
 
         pipelineState.InputElements = PrepareInputElements(pipelineState, drawData);
         pipelineState.PrimitiveType = drawData.PrimitiveType;
-        // Disable culling for editor terrain patches
-        pipelineState.RasterizerState = new RasterizerStateDescription(CullMode.None);
+        // Shaded terrain should render as a single-sided heightfield so backfaces
+        // do not win depth and show up as view-dependent dark specks.
+        pipelineState.RasterizerState = new RasterizerStateDescription(CullMode.Back);
 
         foreach (var renderFeature in RenderFeatures)
         {
