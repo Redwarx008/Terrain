@@ -68,8 +68,9 @@ namespace Terrain.Editor
 
         int2 ClampIndexPixel(int2 pixel)
         {
-            int maxX = (int)(HeightmapDimensionsInSamples.x + 0.5f);
-            int maxY = (int)(HeightmapDimensionsInSamples.y + 0.5f);
+            // IndexMap 使用 heightmap 的 1/2 分辨率
+            int maxX = (int)(HeightmapDimensionsInSamples.x + 0.5f) / 2;
+            int maxY = (int)(HeightmapDimensionsInSamples.y + 0.5f) / 2;
             return int2(
                 clamp(pixel.x, 0, maxX),
                 clamp(pixel.y, 0, maxY));
@@ -241,7 +242,8 @@ namespace Terrain.Editor
             }
 
             // Mirror-neighbor sampling stabilizes edges and derivative behavior near index-map borders.
-            float2 indexPixels = sampleCoord;
+            // IndexMap 使用 heightmap 的 1/2 分辨率
+            float2 indexPixels = sampleCoord * 0.5;
             float2 index00Pixel = floor(indexPixels);
 
             float2 mirror00 = frac(index00Pixel * 0.5f) * 2.0f;

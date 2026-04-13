@@ -193,7 +193,9 @@ namespace Terrain.Editor
 
         float4 LoadIndexMapAtGlobal(int2 globalPixel)
         {
-            float2 sampleCoord = float2(globalPixel);
+            // 从 heightmap 坐标转换到 splatmap 坐标（1/2 分辨率）
+            int2 splatPixel = globalPixel / 2;
+            float2 sampleCoord = float2(splatPixel);
             int sliceIndex = ResolveSliceIndex(sampleCoord, 0);
             int4 bounds = GetSliceBounds(sliceIndex);
             int2 localCoord = ComputeSliceTexelCoord(sampleCoord, bounds);
