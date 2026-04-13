@@ -868,6 +868,7 @@ public struct TerrainChunkNode
 {
     public Int4 NodeInfo;
     public Int4 StreamInfo;
+    public Int4 SplatInfo;  // 与 StreamInfo 相同（编辑器不使用 VT streaming）
 }
 
 public enum TerrainLodLookupNodeState : uint

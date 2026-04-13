@@ -212,6 +212,7 @@ internal sealed class EditorTerrainQuadTree
         {
             NodeInfo = new Int4(chunkX, chunkY, lodLevel, (int)TerrainLodLookupNodeState.Stop),
             StreamInfo = new Int4(sliceIndex, 0, 0, 0),
+            SplatInfo = new Int4(sliceIndex, 0, 0, 0),  // 编辑器中与 heightmap 相同
         };
     }
 
@@ -229,6 +230,7 @@ internal sealed class EditorTerrainQuadTree
         {
             NodeInfo = new Int4(chunkX, chunkY, lodLevel, (int)nodeState),
             StreamInfo = default,
+            SplatInfo = default,
         };
         state.SubdividedCount++;
     }

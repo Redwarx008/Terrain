@@ -6,6 +6,7 @@ namespace Terrain.Editor
         {
             int4 NodeInfo;
             int4 StreamInfo;  // sliceIndex, sliceLocalOriginX, sliceLocalOriginY, reserved
+            int4 SplatInfo;   // 与 StreamInfo 相同（编辑器不使用 VT streaming）
         };
 
         rgroup PerMaterial
@@ -69,6 +70,8 @@ namespace Terrain.Editor
             EditorTerrainChunkNode instance = InstanceBuffer[streams.InstanceID];
             int4 nodeInfo = instance.NodeInfo;
             int4 streamInfo = instance.StreamInfo;
+            // SplatInfo read (keep struct layout consistent, editor doesn't use separate splat coordinates yet)
+            int splatSliceIndex = instance.SplatInfo.x;
             float lodLevel = nodeInfo.z;
             int neighborMask = nodeInfo.w;
             int sliceIndex = streamInfo.x;
