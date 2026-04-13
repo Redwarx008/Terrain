@@ -224,8 +224,9 @@ internal sealed class TerrainQuadTree : IDisposable
 
     private void SelectRenderNode(ref SelectionState state, TerrainChunkKey key, int chunkX, int chunkY, int lodLevel)
     {
-        // Only touch streaming for a node once it is actually selected for drawing or needed as fallback.
-        bool isResident = streamingManager.TryGetResidentPageForChunk(key, out int sliceIndex, out int pageOffsetX, out int pageOffsetY, out int pageTexelStride);
+        bool isResident = streamingManager.TryGetResidentPageForChunk(key,
+            out int heightSliceIndex, out int splatSliceIndex,
+            out int pageOffsetX, out int pageOffsetY, out int pageTexelStride);
         if (!isResident)
         {
             streamingManager.RequestChunk(key);
@@ -233,11 +234,13 @@ internal sealed class TerrainQuadTree : IDisposable
             return;
         }
 
-        // Render nodes are written from the front
+        var (splatPageOffsetX, splatPageOffsetY, splatPageTexelStride) = streamingManager.GetSplatMapPageInfo(key);
+
         state.Data[state.RenderCount++] = new TerrainChunkNode
         {
             NodeInfo = new Int4(chunkX, chunkY, lodLevel, (int)TerrainLodLookupNodeState.Stop),
-            StreamInfo = new Int4(sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
+            StreamInfo = new Int4(heightSliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
+            SplatInfo = new Int4(splatSliceIndex, splatPageOffsetX, splatPageOffsetY, splatPageTexelStride),
         };
     }
 
