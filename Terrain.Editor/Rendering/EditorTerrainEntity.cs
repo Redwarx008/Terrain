@@ -690,6 +690,27 @@ public sealed class EditorTerrainEntity : IDisposable
             new Vector3(WorldOffset.X + HeightmapWidth - 1, WorldOffset.Y + maxHeight, WorldOffset.Z + HeightmapHeight - 1));
     }
 
+    /// <summary>
+    /// 运行时修改高度缩放系数，通过缩放缓存值 O(1) 重算包围盒。
+    /// </summary>
+    public void SetHeightScale(float newScale)
+    {
+        if (newScale <= 0.0f)
+            return;
+        if (MathF.Abs(HeightScale - newScale) < 0.001f)
+            return;
+
+        // O(1) 缩放：高度数据未变，只是解释比例变了
+        float ratio = newScale / HeightScale;
+        currentMinHeight *= ratio;
+        currentMaxHeight *= ratio;
+        HeightScale = newScale;
+
+        Bounds = new BoundingBox(
+            new Vector3(WorldOffset.X, WorldOffset.Y + currentMinHeight, WorldOffset.Z),
+            new Vector3(WorldOffset.X + HeightmapWidth - 1, WorldOffset.Y + currentMaxHeight, WorldOffset.Z + HeightmapHeight - 1));
+    }
+
     public void Dispose()
     {
         foreach (var slice in slices)

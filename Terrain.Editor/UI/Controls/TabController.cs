@@ -23,7 +23,14 @@ public sealed class TabItemState
 
     public string? Icon { get; set; }
 
-    public bool IsVisible { get; set; } = true;
+    /// <summary>
+    /// 标签页是否可见。等价于 !IsClosed。
+    /// </summary>
+    public bool IsVisible
+    {
+        get => !IsClosed;
+        set => IsClosed = !value;
+    }
 
     public bool IsClosable { get; set; } = true;
 
@@ -67,7 +74,7 @@ public sealed class TabController
     public void SetVisible(string id, bool visible)
     {
         var tab = GetRequired(id);
-        tab.IsVisible = visible;
+        tab.IsClosed = !visible;
     }
 
     public void RequestActivate(string id)

@@ -19,7 +19,8 @@ public static class TerrainSplitter
         int width,
         int height,
         IProgress<(int current, int total, string message)>? progress = null,
-        int baseChunkSize = SplitTerrainConfig.DefaultBaseChunkSize)
+        int baseChunkSize = SplitTerrainConfig.DefaultBaseChunkSize,
+        float heightScale = 100.0f)
     {
         if (graphicsDevice == null)
             throw new ArgumentNullException(nameof(graphicsDevice));
@@ -35,7 +36,8 @@ public static class TerrainSplitter
             width,
             height,
             splitConfig,
-            baseChunkSize: baseChunkSize);
+            baseChunkSize: baseChunkSize,
+            heightScale: heightScale);
 
         if (entity != null)
         {

@@ -17,6 +17,7 @@ public class TomlProjectConfig
     public string Name { get; set; } = "Untitled";
     public string? HeightmapPath { get; set; }
     public string? IndexMapPath { get; set; }
+    public float HeightScale { get; set; } = 100.0f;
     public List<TomlMaterialSlotConfig> MaterialSlots { get; set; } = new();
 
     /// <summary>
@@ -42,6 +43,13 @@ public class TomlProjectConfig
                 ? ResolvePath(terrain["heightmap"].AsString.Value, baseDir) : null;
             config.IndexMapPath = terrain.HasKey("indexmap") && terrain["indexmap"].IsString
                 ? ResolvePath(terrain["indexmap"].AsString.Value, baseDir) : null;
+            if (terrain.HasKey("height_scale"))
+            {
+                var hsNode = terrain["height_scale"];
+                config.HeightScale = hsNode.IsFloat ? (float)hsNode.AsFloat
+                    : hsNode.IsInteger ? (float)hsNode.AsInteger
+                    : 100.0f;
+            }
         }
 
         if (root.HasKey("material_slots") && root["material_slots"].IsArray)
@@ -96,6 +104,7 @@ public class TomlProjectConfig
             terrain["heightmap"] = MakeRelative(HeightmapPath, baseDir);
         if (!string.IsNullOrEmpty(IndexMapPath))
             terrain["indexmap"] = MakeRelative(IndexMapPath, baseDir);
+        terrain["height_scale"] = HeightScale;
         root["terrain"] = terrain;
 
         if (MaterialSlots.Count > 0)

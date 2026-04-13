@@ -24,7 +24,6 @@ public sealed class TerrainManager : IDisposable
 {
     private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
     private const int DefaultLeafNodeSize = 32;
-    private const float DefaultHeightScale = 100.0f;
     private const float HeightSampleNormalization = 1.0f / ushort.MaxValue;
 
     private readonly GraphicsDevice graphicsDevice;
@@ -50,6 +49,12 @@ public sealed class TerrainManager : IDisposable
     private string? currentTerrainPath;
     private string? lastLoadError;
 
+    /// <summary>
+    /// 高度缩放系数，将 ushort (0-65535) 值转换为世界空间高度。
+    /// 世界高度 = raw * (1/65535) * HeightScale。
+    /// </summary>
+    public float HeightScale { get; private set; } = 100.0f;
+
     public IReadOnlyList<EditorTerrainEntity> TerrainEntities => terrainEntities;
     public bool HasTerrainLoaded => terrainEntities.Count > 0;
     public bool HasHeightCache => heightDataCache != null;
@@ -58,6 +63,24 @@ public sealed class TerrainManager : IDisposable
     public ushort[]? HeightDataCache => heightDataCache;
     public SplitTerrainConfig? SplitConfig => currentSplitConfig;
     public string? LastLoadError => lastLoadError;
+
+    /// <summary>
+    /// 设置高度缩放系数，实时传播到所有地形实体。
+    /// </summary>
+    public void SetHeightScale(float newScale)
+    {
+        if (newScale <= 0.0f)
+            return;
+        if (MathF.Abs(HeightScale - newScale) < 0.001f)
+            return;
+
+        HeightScale = newScale;
+        foreach (var entity in terrainEntities)
+        {
+            entity.SetHeightScale(HeightScale);
+        }
+        ProjectManager.Instance.MarkDirty();
+    }
 
     public event EventHandler<TerrainLoadedEventArgs>? TerrainLoaded;
 
@@ -114,7 +137,8 @@ public sealed class TerrainManager : IDisposable
                 heightDataWidth,
                 heightDataHeight,
                 progress,
-                DefaultLeafNodeSize);
+                DefaultLeafNodeSize,
+                HeightScale);
 
             if (terrainEntity == null)
             {
@@ -209,7 +233,7 @@ public sealed class TerrainManager : IDisposable
             return null;
 
         ushort height = heightDataCache[z * heightDataWidth + x];
-        return height * HeightSampleNormalization * DefaultHeightScale;
+        return height * HeightSampleNormalization * HeightScale;
     }
 
     /// <summary>
@@ -374,6 +398,7 @@ public sealed class TerrainManager : IDisposable
             IndexMapPath = MaterialIndices != null
                 ? projectManager.GetMaterialIndexPath("terrain")
                 : null,
+            HeightScale = HeightScale,
             MaterialSlots = SaveMaterialSlotConfigs()
         };
 
@@ -443,6 +468,9 @@ public sealed class TerrainManager : IDisposable
             if (!string.IsNullOrEmpty(slotConfig.NormalPath))
                 slot.NormalTexturePath = slotConfig.NormalPath;
         }
+
+        // 设置 HeightScale（在加载高度图前，以便 LoadTerrainAsync 使用）
+        HeightScale = config.HeightScale;
 
         // 加载高度图
         if (!string.IsNullOrEmpty(config.HeightmapPath) && File.Exists(config.HeightmapPath))

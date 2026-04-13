@@ -183,6 +183,9 @@ public class MainWindow : ControlBase
 
     private void SubscribeEvents()
     {
+        // 传递 TerrainManager 给 RightPanel，用于 Terrain 标签页
+        RightPanel.SetTerrainManager(Viewport.TerrainManager);
+
         Toolbar.ButtonClicked += (s, e) => HandleToolbarAction(e.ButtonName);
         Toolbar.ModeChanged += (s, e) => HandleModeChange(e);
 
@@ -541,6 +544,14 @@ public class MainWindow : ControlBase
                 if (ImGui.MenuItem("Bottom Panel", "", ref showBottom))
                 {
                     LayoutManager.ToggleBottomPanel();
+                }
+
+                ImGui.Separator();
+
+                bool showTerrainTab = RightPanel.IsTerrainTabVisible;
+                if (ImGui.MenuItem("Terrain Tab", "", ref showTerrainTab))
+                {
+                    RightPanel.IsTerrainTabVisible = showTerrainTab;
                 }
 
                 ImGui.Separator();

@@ -16,9 +16,6 @@ namespace Terrain.Editor.Services;
 /// </summary>
 public sealed class HeightEditor
 {
-    // Height conversion constants (must match TerrainManager)
-    public const float DefaultHeightScale = 100.0f;
-    public const float WorldToUshort = ushort.MaxValue / DefaultHeightScale; // 655.35
 
     private static readonly Lazy<HeightEditor> _instance = new(() => new());
 
@@ -100,7 +97,8 @@ public sealed class HeightEditor
             BrushRadius = brushRadius,
             BrushInnerRadius = brushInnerRadius,
             Strength = brushParams.Strength,
-            FrameTime = frameTime
+            FrameTime = frameTime,
+            WorldToUshort = ushort.MaxValue / terrainManager.HeightScale
         };
 
         // Mark chunks before mutation so each chunk can cache its true "before" state.
@@ -161,7 +159,7 @@ internal sealed class RaiseTool : IHeightTool
     {
         // D-07: deltaHeight = Strength * FrameTime * Direction (+1 for Raise)
         // Convert world units to ushort: Strength=1 → 50 world units/sec
-        float deltaHeight = context.Strength * 50f * HeightEditor.WorldToUshort * context.FrameTime;
+        float deltaHeight = context.Strength * 50f * context.WorldToUshort * context.FrameTime;
 
         int radius = (int)MathF.Ceiling(context.BrushRadius);
 
@@ -209,7 +207,7 @@ internal sealed class LowerTool : IHeightTool
     {
         // D-07: deltaHeight = Strength * FrameTime * Direction (-1 for Lower)
         // Convert world units to ushort: Strength=1 → 50 world units/sec
-        float deltaHeight = -context.Strength * 50f * HeightEditor.WorldToUshort * context.FrameTime;
+        float deltaHeight = -context.Strength * 50f * context.WorldToUshort * context.FrameTime;
 
         int radius = (int)MathF.Ceiling(context.BrushRadius);
 

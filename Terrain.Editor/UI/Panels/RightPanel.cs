@@ -16,6 +16,7 @@ public class RightPanel : PanelBase
 {
     private const string BrushTabId = "brush";
     private const string TextureTabId = "texture";
+    private const string TerrainTabId = "terrain";
 
     private readonly BrushParamsPanel brushParamsPanel;
     private readonly BrushesPanel brushesPanel;
@@ -24,10 +25,26 @@ public class RightPanel : PanelBase
     // Centralized tab state (visibility/activation/close) for this panel.
     private readonly TabController tabs = new();
 
+    private TerrainManager? terrainManager;
+
     public event EventHandler<BrushSelectedEventArgs>? BrushSelected;
     public event EventHandler<BrushParamsChangedEventArgs>? BrushParamsChanged;
     public event EventHandler<TextureImportEventArgs>? ImportNormalRequested;
     public event EventHandler<TextureSlotEventArgs>? ClearNormalRequested;
+
+    /// <summary>
+    /// 设置地形管理器引用，用于 Terrain 标签页的高度缩放参数调整。
+    /// </summary>
+    public void SetTerrainManager(TerrainManager? manager) => terrainManager = manager;
+
+    /// <summary>
+    /// Terrain 标签页是否可见。
+    /// </summary>
+    public bool IsTerrainTabVisible
+    {
+        get => tabs.GetRequired(TerrainTabId).IsVisible;
+        set => tabs.GetRequired(TerrainTabId).IsVisible = value;
+    }
 
     /// <summary>
     /// 当前编辑模式。
@@ -81,6 +98,7 @@ public class RightPanel : PanelBase
         textureInspectorPanel = new TextureInspectorPanel();
         tabs.Register(new TabItemState(BrushTabId, "Brush") { IsVisible = false });
         tabs.Register(new TabItemState(TextureTabId, "Texture") { IsVisible = false });
+        tabs.Register(new TabItemState(TerrainTabId, "Terrain") { IsVisible = true });
 
         brushesPanel.BrushSelected += (s, e) => BrushSelected?.Invoke(this, e);
         brushParamsPanel.ParamsChanged += (s, e) => BrushParamsChanged?.Invoke(this, e);
@@ -139,6 +157,23 @@ public class RightPanel : PanelBase
                     ApplyOpenState(textureTab, textureOpen);
                 }
 
+                // Terrain tab - 地形全局参数
+                var terrainTab = tabs.GetRequired(TerrainTabId);
+                if (terrainTab.IsVisible)
+                {
+                    bool terrainOpen = !terrainTab.IsClosed;
+                    ImGuiTabItemFlags terrainFlags = ConsumeSelectionRequest(terrainTab);
+
+                    if (ImGui.BeginTabItem(GetTabLabel(terrainTab), ref terrainOpen, terrainFlags))
+                    {
+                        tabs.SetActive(terrainTab.Id);
+                        RenderTerrainSettings();
+                        ImGui.EndTabItem();
+                    }
+
+                    ApplyOpenState(terrainTab, terrainOpen);
+                }
+
                 ImGui.EndTabBar();
             }
         }
@@ -151,6 +186,40 @@ public class RightPanel : PanelBase
     public float GetBrushSize() => brushParamsPanel.BrushSize;
     public float GetBrushStrength() => brushParamsPanel.BrushStrength;
     public float GetBrushFalloff() => brushParamsPanel.BrushFalloff;
+
+    /// <summary>
+    /// 渲染 Terrain 标签页内容：HeightScale 等全局地形参数。
+    /// </summary>
+    private void RenderTerrainSettings()
+    {
+        ImGui.Spacing();
+
+        bool hasTerrain = terrainManager?.HasTerrainLoaded == true;
+
+        if (!hasTerrain)
+        {
+            ImGui.TextColored(ColorPalette.TextSecondary.ToVector4(), "No terrain loaded.");
+            return;
+        }
+
+        // Height Scale
+        ImGui.Text("Height Scale");
+        ImGui.SetNextItemWidth(-1);
+        float heightScale = terrainManager!.HeightScale;
+        if (ImGui.SliderFloat("##height_scale", ref heightScale, 1.0f, 1000.0f, "%.1f"))
+        {
+            terrainManager.SetHeightScale(heightScale);
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Scales raw height values (0-65535) to world space height.\nWorld height = raw * (1/65535) * HeightScale");
+        }
+
+        ImGui.Spacing();
+
+        // 显示高度范围
+        ImGui.TextColored(ColorPalette.TextSecondary.ToVector4(), $"Height range: 0 - {heightScale:F1}");
+    }
 
     private static ImGuiTabItemFlags ConsumeSelectionRequest(TabItemState tab)
     {
@@ -178,7 +247,6 @@ public class RightPanel : PanelBase
         }
 
         tab.IsClosed = true;
-        tab.IsVisible = false;
         tabs.ClearActive(tab.Id);
     }
 }

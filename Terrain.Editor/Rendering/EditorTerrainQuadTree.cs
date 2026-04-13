@@ -36,7 +36,6 @@ internal sealed class EditorTerrainQuadTree
     private readonly int maxLod;
     private readonly int topLevelChunkCountX;
     private readonly int topLevelChunkCountY;
-    private readonly float heightScale;
     private readonly float maxScreenSpaceErrorPixels;
     private readonly EditorTerrainEntity terrainEntity;
 
@@ -61,7 +60,6 @@ internal sealed class EditorTerrainQuadTree
         maxLod = minMaxErrorMaps.Length - 1;
         topLevelChunkCountX = minMaxErrorMaps[maxLod].Width;
         topLevelChunkCountY = minMaxErrorMaps[maxLod].Height;
-        this.heightScale = heightScale;
         this.maxScreenSpaceErrorPixels = maxScreenSpaceErrorPixels;
         this.terrainEntity = terrainEntity;
     }
@@ -140,7 +138,8 @@ internal sealed class EditorTerrainQuadTree
 
         int endSampleX = Math.Min(originSampleX + sizeInSamples, heightmapWidth - 1);
         int endSampleY = Math.Min(originSampleY + sizeInSamples, heightmapHeight - 1);
-        float worldHeightScale = heightScale * HeightSampleNormalization;
+        float currentHeightScale = terrainEntity.HeightScale;
+        float worldHeightScale = currentHeightScale * HeightSampleNormalization;
         var bounds = new BoundingBox(
             new Vector3(
                 state.TerrainOffset.X + originSampleX,
@@ -161,7 +160,7 @@ internal sealed class EditorTerrainQuadTree
         float dz = MathF.Max(MathF.Max(bounds.Minimum.Z - state.CameraPosition.Z, 0.0f), state.CameraPosition.Z - bounds.Maximum.Z);
         float distance = MathF.Sqrt(dx * dx + dy * dy + dz * dz);
         float sse = distance > 1e-4f
-            ? state.ScreenSpaceScale * (geometricError * heightScale * HeightSampleNormalization) / distance
+            ? state.ScreenSpaceScale * (geometricError * currentHeightScale * HeightSampleNormalization) / distance
             : float.MaxValue;
         if (lodLevel == 0 || sse <= maxScreenSpaceErrorPixels)
         {

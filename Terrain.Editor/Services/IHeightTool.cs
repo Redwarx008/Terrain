@@ -53,6 +53,12 @@ public readonly struct HeightEditContext
     /// Frame delta time for frame-rate independent editing.
     /// </summary>
     public float FrameTime { get; init; }
+
+    /// <summary>
+    /// World-to-ushort conversion factor: ushort.MaxValue / HeightScale.
+    /// Used by Raise/Lower tools to convert world-space editing speed to ushort increments.
+    /// </summary>
+    public float WorldToUshort { get; init; }
 }
 
 /// <summary>
