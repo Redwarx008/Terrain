@@ -151,8 +151,10 @@ public sealed class TerrainManager : IDisposable
             currentHeightmapInfo = info;
             currentTerrainPath = heightmapPath;
 
-            // 初始化材质索引图（使用 uint[] 存储，支持超大尺寸）
-            MaterialIndices = new MaterialIndexMap(heightDataWidth, heightDataHeight);
+            // 材质索引图使用 heightmap 的 1/2 分辨率
+            int splatMapWidth = (heightDataWidth + 1) / 2;
+            int splatMapHeight = (heightDataHeight + 1) / 2;
+            MaterialIndices = new MaterialIndexMap(splatMapWidth, splatMapHeight);
 
             // 设置材质索引数据引用到实体
             terrainEntity.MaterialIndexMap = MaterialIndices;

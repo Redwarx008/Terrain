@@ -206,6 +206,7 @@ public sealed class EditorTerrainEntity : IDisposable
     /// <summary>
     /// 初始化材质相关 GPU 资源。
     /// 为每个高度图切片创建对应的材质索引图纹理。
+    /// IndexMap 纹理使用 heightmap 切片的 1/2 分辨率。
     /// </summary>
     public void InitializeMaterialResources(GraphicsDevice graphicsDevice)
     {
@@ -213,10 +214,13 @@ public sealed class EditorTerrainEntity : IDisposable
         for (int i = 0; i < SplitConfig.TotalSliceCount; i++)
         {
             var sliceInfo = SplitConfig.Slices[i];
+            // IndexMap 纹理使用 heightmap 切片的 1/2 分辨率
+            int indexMapWidth = (sliceInfo.Width + 1) / 2;
+            int indexMapHeight = (sliceInfo.Height + 1) / 2;
             MaterialIndexMapTextures[i] = Texture.New2D(
                 graphicsDevice,
-                sliceInfo.Width,
-                sliceInfo.Height,
+                indexMapWidth,
+                indexMapHeight,
                 PixelFormat.R8G8B8A8_UNorm,
                 TextureFlags.ShaderResource);
         }
@@ -224,13 +228,11 @@ public sealed class EditorTerrainEntity : IDisposable
 
     /// <summary>
     /// 同步材质索引图到 GPU。
-    /// 支持脏区域部分上传：仅上传被修改的子矩形，而非整个切片。
+    /// IndexMap 使用 heightmap 的 1/2 分辨率，需要坐标转换。
     /// </summary>
     public void SyncMaterialIndexMapToGpu(CommandList commandList, Services.MaterialIndexMap indexMap)
     {
-        if (indexMap.Width != HeightmapWidth || indexMap.Height != HeightmapHeight)
-            return;
-
+        // IndexMap 是 heightmap 的 1/2 分辨率
         var rawData = indexMap.GetRawData(); // uint[]
 
         for (int i = 0; i < MaterialIndexMapTextures.Length; i++)
@@ -243,32 +245,47 @@ public sealed class EditorTerrainEntity : IDisposable
             if (!slice.Dirty.IsChannelDirty(TerrainDataChannel.MaterialIndex))
                 continue;
 
+            // heightmap 切片区域 → splatmap 区域（坐标 /2）
+            int splatSliceWidth = (slice.Width + 1) / 2;
+            int splatSliceHeight = (slice.Height + 1) / 2;
+
+            // splatmap 中该切片的起始位置（相对于 splatmap 原点）
+            int splatStartX = slice.StartSampleX / 2;
+            int splatStartZ = slice.StartSampleZ / 2;
+
             if (slice.Dirty.HasRegion)
             {
-                // Partial region upload
-                int regionWidth = slice.Dirty.MaxX - slice.Dirty.MinX + 1;
-                int regionHeight = slice.Dirty.MaxZ - slice.Dirty.MinZ + 1;
-                int regionByteSize = regionWidth * regionHeight * Services.MaterialIndexMap.BytesPerPixel;
+                // 将 heightmap 脏区域转换为 splatmap 区域
+                int regionLeft = Math.Max(0, slice.Dirty.MinX / 2);
+                int regionTop = Math.Max(0, slice.Dirty.MinZ / 2);
+                int regionRight = Math.Min(splatSliceWidth - 1, (slice.Dirty.MaxX + 1) / 2);
+                int regionBottom = Math.Min(splatSliceHeight - 1, (slice.Dirty.MaxZ + 1) / 2);
+                int regionWidth = regionRight - regionLeft + 1;
+                int regionHeight = regionBottom - regionTop + 1;
 
+                if (regionWidth <= 0 || regionHeight <= 0)
+                {
+                    slice.Dirty.ClearChannel(TerrainDataChannel.MaterialIndex);
+                    continue;
+                }
+
+                int regionByteSize = regionWidth * regionHeight * Services.MaterialIndexMap.BytesPerPixel;
                 byte[] uploadBuffer = ArrayPool<byte>.Shared.Rent(regionByteSize);
                 try
                 {
-                    CopyMatIndexRegionData(slice, rawData,
-                        slice.Dirty.MinX, slice.Dirty.MinZ,
+                    CopyMatIndexRegionDataAt(
+                        indexMap, splatStartX + regionLeft, splatStartZ + regionTop,
                         regionWidth, regionHeight, uploadBuffer);
 
                     var region = new ResourceRegion(
-                        left: slice.Dirty.MinX,
-                        top: slice.Dirty.MinZ,
+                        left: regionLeft,
+                        top: regionTop,
                         front: 0,
-                        right: slice.Dirty.MinX + regionWidth,
-                        bottom: slice.Dirty.MinZ + regionHeight,
+                        right: regionLeft + regionWidth,
+                        bottom: regionTop + regionHeight,
                         back: 1);
 
-                    texture.SetData(commandList,
-                        new ReadOnlySpan<byte>(uploadBuffer, 0, regionByteSize),
-                        arrayIndex: 0, mipLevel: 0, region);
-
+                    texture.SetData(commandList, uploadBuffer.AsSpan(0, regionByteSize), arrayIndex: 0, mipLevel: 0, region);
                     slice.Dirty.ClearChannel(TerrainDataChannel.MaterialIndex);
                 }
                 finally
@@ -278,14 +295,16 @@ public sealed class EditorTerrainEntity : IDisposable
             }
             else
             {
-                // Full slice upload fallback (initial load, etc.)
-                int sliceByteSize = slice.Width * slice.Height * Services.MaterialIndexMap.BytesPerPixel;
-
-                byte[] uploadBuffer = ArrayPool<byte>.Shared.Rent(sliceByteSize);
+                // Full slice upload
+                int byteSize = splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.BytesPerPixel;
+                byte[] uploadBuffer = ArrayPool<byte>.Shared.Rent(byteSize);
                 try
                 {
-                    CopyMatIndexSliceData(slice, rawData, uploadBuffer);
-                    texture.SetData(commandList, new ReadOnlySpan<byte>(uploadBuffer, 0, sliceByteSize));
+                    CopyMatIndexRegionDataAt(
+                        indexMap, splatStartX, splatStartZ,
+                        splatSliceWidth, splatSliceHeight, uploadBuffer);
+
+                    texture.SetData(commandList, uploadBuffer.AsSpan(0, byteSize));
                     slice.Dirty.ClearChannel(TerrainDataChannel.MaterialIndex);
                 }
                 finally
@@ -297,36 +316,20 @@ public sealed class EditorTerrainEntity : IDisposable
     }
 
     /// <summary>
-    /// 将材质索引图的脏区域数据从全局 uint[] 拷贝到 byte[] 上传缓冲区。
+    /// 从 MaterialIndexMap 的指定全局位置复制区域数据到 byte 数组。
+    /// 直接在 splatmap 坐标空间操作。
     /// </summary>
-    private void CopyMatIndexRegionData(EditorTerrainSlice slice, uint[] srcData,
-        int localStartX, int localStartZ, int regionWidth, int regionHeight, byte[] destination)
+    private static void CopyMatIndexRegionDataAt(
+        Services.MaterialIndexMap indexMap,
+        int startX, int startZ,
+        int regionWidth, int regionHeight,
+        byte[] destination)
     {
-        int bytesPerPixel = Services.MaterialIndexMap.BytesPerPixel;
         for (int row = 0; row < regionHeight; row++)
         {
-            int globalZ = slice.StartSampleZ + localStartZ + row;
-            int srcPixelOffset = globalZ * HeightmapWidth + slice.StartSampleX + localStartX;
-            var srcRow = srcData.AsSpan(srcPixelOffset, regionWidth);
-            var srcBytes = MemoryMarshal.AsBytes(srcRow);
-            int dstOffset = row * regionWidth * bytesPerPixel;
-            srcBytes.CopyTo(destination.AsSpan(dstOffset));
-        }
-    }
-
-    /// <summary>
-    /// 将材质索引图的完整切片数据从全局 uint[] 拷贝到 byte[] 上传缓冲区。
-    /// </summary>
-    private void CopyMatIndexSliceData(EditorTerrainSlice slice, uint[] srcData, byte[] destination)
-    {
-        int bytesPerPixel = Services.MaterialIndexMap.BytesPerPixel;
-        for (int row = 0; row < slice.Height; row++)
-        {
-            int srcPixelOffset = (slice.StartSampleZ + row) * HeightmapWidth + slice.StartSampleX;
-            var srcRow = srcData.AsSpan(srcPixelOffset, slice.Width);
-            var srcBytes = MemoryMarshal.AsBytes(srcRow);
-            int dstOffset = row * slice.Width * bytesPerPixel;
-            srcBytes.CopyTo(destination.AsSpan(dstOffset));
+            var srcSpan = indexMap.GetSliceBytesPerRow(startX, startZ + row, 0, regionWidth);
+            int dstOffset = row * regionWidth * Services.MaterialIndexMap.BytesPerPixel;
+            srcSpan.CopyTo(destination.AsSpan(dstOffset));
         }
     }
 

@@ -59,14 +59,22 @@ public sealed class PaintEditor
         if (!isStrokeActive || currentTool == null)
             return;
 
-        // 转换世界坐标到像素坐标
+        // 转换世界坐标到 heightmap 像素坐标
         int pixelX = (int)MathF.Round(worldPosition.X);
         int pixelZ = (int)MathF.Round(worldPosition.Z);
+
+        // 缩放到 splatmap 坐标空间（splatmap 是 heightmap 的 1/2）
+        int splatPixelX = pixelX / 2;
+        int splatPixelZ = pixelZ / 2;
 
         // 获取笔刷参数
         var brushParams = BrushParameters.Instance;
         float brushRadius = brushParams.Size * 0.5f;
         float brushInnerRadius = brushRadius * brushParams.EffectiveFalloff;
+
+        // 缩放笔刷半径到 splatmap 空间
+        float splatBrushRadius = MathF.Ceiling(brushRadius) / 2.0f;
+        float splatBrushInnerRadius = MathF.Ceiling(brushInnerRadius) / 2.0f;
 
         // 获取目标材质索引
         byte targetIndex = ResolveTargetMaterialIndex();
@@ -79,10 +87,10 @@ public sealed class PaintEditor
             IndexMap = indexMap,
             DataWidth = mapWidth,
             DataHeight = mapHeight,
-            CenterX = pixelX,
-            CenterZ = pixelZ,
-            BrushRadius = brushRadius,
-            BrushInnerRadius = brushInnerRadius,
+            CenterX = splatPixelX,
+            CenterZ = splatPixelZ,
+            BrushRadius = splatBrushRadius,
+            BrushInnerRadius = splatBrushInnerRadius,
             Strength = brushParams.Strength,
             TargetMaterialIndex = targetIndex,
 
@@ -98,12 +106,12 @@ public sealed class PaintEditor
         };
 
         // Mark chunks before mutation so each chunk can cache its true "before" state.
-        HistoryManager.Instance.MarkCommandChunks(pixelX, pixelZ, brushRadius);
+        HistoryManager.Instance.MarkCommandChunks(splatPixelX, splatPixelZ, splatBrushRadius);
 
         // 应用工具
         currentTool.Apply(ref context);
 
-        // 标记材质索引图需要同步到 GPU（传递笔刷位置和半径以支持部分上传）
+        // 标记脏区域（使用 heightmap 坐标，因为 MarkDataDirty 按 heightmap 切片工作）
         terrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex, pixelX, pixelZ, brushRadius);
     }
 
