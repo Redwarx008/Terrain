@@ -6,5 +6,7 @@ namespace Terrain
         stage stream float2 TerrainPageLocalPos;
         stage stream float TerrainPageTexelStride;
         stage stream float TerrainSampleSpacing;
+        stage stream float TerrainSplatSliceIndex;
+        stage stream float2 TerrainSplatPageLocalPos;
     };
 }

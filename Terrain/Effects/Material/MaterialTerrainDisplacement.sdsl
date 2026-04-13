@@ -6,6 +6,7 @@ namespace Terrain
         {
             int4 NodeInfo;
             int4 StreamInfo;
+            int4 SplatInfo;  // splatSliceIndex, splatPageOffsetX, splatPageOffsetY, splatPageTexelStride
         };
 
         rgroup PerMaterial
@@ -68,6 +69,7 @@ namespace Terrain
             MaterialTerrainChunkNode instance = InstanceBuffer[streams.InstanceID];
             int4 nodeInfo = instance.NodeInfo;
             int4 streamInfo = instance.StreamInfo;
+            int4 splatInfo = instance.SplatInfo;
             int sliceIndex = streamInfo.x;
             float pageTexelStride = max(1.0f, (float)streamInfo.w);
             float lodLevel = nodeInfo.z;
@@ -84,11 +86,18 @@ namespace Terrain
             float2 pageLocalPos = float2(streamInfo.y, streamInfo.z) + localPos * pageTexelStride;
             float height = SampleHeightAtLocalPos(pageLocalPos, sliceIndex);
 
+            // Splatmap page-local coordinates
+            int splatSliceIndex = splatInfo.x;
+            float splatPageTexelStride = max(1.0f, (float)splatInfo.w);
+            float2 splatPageLocalPos = float2(splatInfo.y, splatInfo.z) + localPos * splatPageTexelStride;
+
             streams.TexCoord = ComputeHeightmapUv(pageLocalPos);
             streams.TerrainSliceIndex = (float)sliceIndex;
             streams.TerrainPageLocalPos = pageLocalPos;
             streams.TerrainPageTexelStride = pageTexelStride;
             streams.TerrainSampleSpacing = max(1.0f, lodScale);
+            streams.TerrainSplatSliceIndex = (float)splatSliceIndex;
+            streams.TerrainSplatPageLocalPos = splatPageLocalPos;
             streams.Position = float4(sampleCoord.x, height, sampleCoord.y, 1.0f);
         }
     };

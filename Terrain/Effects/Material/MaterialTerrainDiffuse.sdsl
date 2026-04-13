@@ -131,15 +131,15 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
             return pow(result, 4.0f);
         }
 
-        MaterialPixel LoadMaterialPixel(float2 pageLocalPos, int sliceIndex)
+        MaterialPixel LoadMaterialPixel(float2 splatPageLocalPos, int splatSliceIndex)
         {
             float padding = float(HeightmapTilePadding);
             float2 paddedMin = float2(-padding, -padding);
             float2 paddedMax = float2((float)(HeightmapTileSize - 1) + padding, (float)(HeightmapTileSize - 1) + padding);
-            float2 clampedPos = clamp(pageLocalPos, paddedMin, paddedMax);
+            float2 clampedPos = clamp(splatPageLocalPos, paddedMin, paddedMax);
             int2 texelCoord = int2(clampedPos + float2(padding, padding) + 0.5f);
 
-            float4 raw = IndexMapArray.Load(int4(texelCoord, sliceIndex, 0));
+            float4 raw = IndexMapArray.Load(int4(texelCoord, splatSliceIndex, 0));
             return DecodeMaterialPixel(raw);
         }
 
@@ -195,7 +195,9 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
         override void Compute()
         {
             int sliceIndex = (int)(streams.TerrainSliceIndex + 0.5f);
+            int splatSliceIndex = (int)(streams.TerrainSplatSliceIndex + 0.5f);
             float2 pageLocalPos = streams.TerrainPageLocalPos;
+            float2 splatPageLocalPos = streams.TerrainSplatPageLocalPos;
             float pageTexelStride = max(1.0f, streams.TerrainPageTexelStride);
             float sampleSpacing = max(1.0f, streams.TerrainSampleSpacing);
             float3 localNormal = CaculateNormal(pageLocalPos, sliceIndex, pageTexelStride, sampleSpacing);
@@ -205,7 +207,7 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
             streams.normalWS = worldNormal;
 
             // Mirror-neighbor sampling stabilizes edges
-            float2 indexPixels = pageLocalPos;
+            float2 indexPixels = splatPageLocalPos;
             float2 index00Pixel = floor(indexPixels);
 
             float2 mirror00 = frac(index00Pixel * 0.5f) * 2.0f;
@@ -220,10 +222,10 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
             int2 p10 = int2(index00Pixel + float2(mirror11.x, mirror00.y));
             int2 p11 = int2(index00Pixel + mirror11);
 
-            MaterialPixel m00 = LoadMaterialPixel(float2(p00), sliceIndex);
-            MaterialPixel m01 = LoadMaterialPixel(float2(p01), sliceIndex);
-            MaterialPixel m10 = LoadMaterialPixel(float2(p10), sliceIndex);
-            MaterialPixel m11 = LoadMaterialPixel(float2(p11), sliceIndex);
+            MaterialPixel m00 = LoadMaterialPixel(float2(p00), splatSliceIndex);
+            MaterialPixel m01 = LoadMaterialPixel(float2(p01), splatSliceIndex);
+            MaterialPixel m10 = LoadMaterialPixel(float2(p10), splatSliceIndex);
+            MaterialPixel m11 = LoadMaterialPixel(float2(p11), splatSliceIndex);
 
             float w00 = weights0.x * weights0.y;
             float w01 = weights0.x * weights1.y;
