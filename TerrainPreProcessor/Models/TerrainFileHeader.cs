@@ -30,14 +30,14 @@ public struct TerrainFileHeader
     public int SplatMapFormat; // VTFormat 枚举值
     public int SplatMapMipLevels;
 
-    // 预留字段，用于未来扩展
-    public int Reserved1;
+    // SplatMap 分辨率比例（相对于高度图）
+    public int SplatMapResolutionRatio;  // 1 = same resolution (legacy), 2 = half resolution
     public int Reserved2;
     public int Reserved3;
     public int Reserved4;
 
     public const int MAGIC_VALUE = 0x52524554; // "TERR" in little-endian
-    public const int CURRENT_VERSION = 2;
+    public const int CURRENT_VERSION = 3;
 
     public static TerrainFileHeader CreateDefault()
     {
@@ -53,7 +53,7 @@ public struct TerrainFileHeader
             HeightMapMipLevels = 0,
             SplatMapFormat = 0,
             SplatMapMipLevels = 0,
-            Reserved1 = 0,
+            SplatMapResolutionRatio = 1,
             Reserved2 = 0,
             Reserved3 = 0,
             Reserved4 = 0
