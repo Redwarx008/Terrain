@@ -26,7 +26,8 @@ namespace Terrain;
 internal struct TerrainChunkNode
 {
     public Int4 NodeInfo;    // chunkX, chunkY, lodLevel, state (Stop=0, Subdivided=1)
-    public Int4 StreamInfo;  // sliceIndex, pageOffsetX, pageOffsetY, pageTexelStride
+    public Int4 StreamInfo;  // heightSliceIndex, pageOffsetX, pageOffsetY, pageTexelStride
+    public Int4 SplatInfo;   // splatSliceIndex, splatPageOffsetX, splatPageOffsetY, splatPageTexelStride
 }
 
 internal enum TerrainLodLookupNodeState : uint
@@ -115,7 +116,7 @@ internal struct TerrainFileHeader
     public int HeightMapMipLevels;
     public int SplatMapFormat;
     public int SplatMapMipLevels;
-    public int Reserved1;
+    public int SplatMapResolutionRatio;
     public int Reserved2;
     public int Reserved3;
     public int Reserved4;
@@ -204,6 +205,14 @@ internal sealed class TerrainFileReader : IDisposable
     public TerrainVirtualTextureHeader HeightmapHeader => heightmapHeader;
 
     public TerrainVirtualTextureHeader SplatMapHeader => splatMapHeader;
+
+    /// <summary>
+    /// Splatmap 与 heightmap 的分辨率比。1 = 同分辨率（legacy v2），2 = 半分辨率（v3）。
+    /// </summary>
+    public int SplatMapResolutionRatio =>
+        Header.Version >= 3 ? Header.SplatMapResolutionRatio : 1;
+
+    public int SplatMapMipCount => splatMapMipLayouts.Length;
 
     public TerrainMinMaxErrorMap[] ReadAllMinMaxErrorMaps()
         => minMaxErrorMaps;
@@ -593,6 +602,7 @@ internal sealed class TerrainStreamingManager : IDisposable
     private readonly PageBufferAllocator heightmapBufferPool;
     private readonly PageBufferAllocator? splatMapBufferPool;
     private bool hasLoggedBufferPoolExhaustion;
+    private readonly int splatMapEffectivePageSpanInSamples;
 
     public TerrainStreamingManager(
         TerrainFileReader fileReader,
@@ -605,6 +615,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         this.gpuSplatMapArray = gpuSplatMapArray;
         this.baseChunkSize = baseChunkSize;
         effectivePageSpanInSamples = Math.Max(1, fileReader.HeightmapHeader.TileSize - 1);
+        splatMapEffectivePageSpanInSamples = Math.Max(1, (fileReader.SplatMapHeader.TileSize - 1));
 
         int heightmapPaddedTileSize = gpuHeightArray.TileSize + gpuHeightArray.Padding * 2;
         int heightmapPageByteSize = heightmapPaddedTileSize * heightmapPaddedTileSize * fileReader.HeightmapHeader.BytesPerPixel;
@@ -638,21 +649,69 @@ internal sealed class TerrainStreamingManager : IDisposable
 
     public int Padding => gpuHeightArray.Padding;
 
-    public bool TryGetResidentPageForChunk(TerrainChunkKey chunkKey, out int sliceIndex, out int pageOffsetX, out int pageOffsetY, out int pageTexelStride)
+    /// <summary>
+    /// 将 heightmap page key 转换为对应的 splatmap page key。
+    /// </summary>
+    private TerrainPageKey TranslateToSplatMapPageKey(TerrainPageKey heightmapKey)
     {
-        TerrainPageKey pageKey = GetPageKey(chunkKey, out pageOffsetX, out pageOffsetY, out pageTexelStride);
-        if (!gpuHeightArray.TryGetResidentSlice(pageKey, out sliceIndex))
+        int ratio = fileReader.SplatMapResolutionRatio;
+        if (ratio <= 1)
+            return heightmapKey;
+
+        int splatMip = Math.Min(heightmapKey.MipLevel, fileReader.SplatMapMipCount - 1);
+        int splatPageX = heightmapKey.PageX / ratio;
+        int splatPageY = heightmapKey.PageY / ratio;
+        return new TerrainPageKey(splatMip, splatPageX, splatPageY);
+    }
+
+    public bool TryGetResidentPageForChunk(TerrainChunkKey chunkKey,
+        out int heightSliceIndex, out int splatSliceIndex,
+        out int pageOffsetX, out int pageOffsetY, out int pageTexelStride)
+    {
+        TerrainPageKey heightPageKey = GetPageKey(chunkKey, out pageOffsetX, out pageOffsetY, out pageTexelStride);
+        if (!gpuHeightArray.TryGetResidentSlice(heightPageKey, out heightSliceIndex))
         {
+            splatSliceIndex = -1;
             return false;
         }
 
-        // Both Heightmap and SplatMap must be resident
-        if (gpuSplatMapArray != null && !gpuSplatMapArray.IsPageResident(pageKey))
+        if (gpuSplatMapArray != null)
         {
-            return false;
+            TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(heightPageKey);
+            if (!gpuSplatMapArray.IsPageResident(splatPageKey))
+            {
+                splatSliceIndex = -1;
+                return false;
+            }
+            gpuSplatMapArray.TryGetResidentSlice(splatPageKey, out splatSliceIndex);
+        }
+        else
+        {
+            splatSliceIndex = -1;
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// 计算 chunk 在 splatmap page 内的偏移和步幅。
+    /// </summary>
+    public (int splatPageOffsetX, int splatPageOffsetY, int splatPageTexelStride) GetSplatMapPageInfo(TerrainChunkKey chunkKey)
+    {
+        int ratio = fileReader.SplatMapResolutionRatio;
+        if (ratio <= 1)
+        {
+            GetPageKey(chunkKey, out int _, out int _, out int heightStride);
+            return (0, 0, heightStride);
+        }
+
+        GetPageKey(chunkKey, out int heightPageOffsetX, out int heightPageOffsetY, out int heightPageTexelStride);
+
+        int splatPageOffsetX = heightPageOffsetX / ratio;
+        int splatPageOffsetY = heightPageOffsetY / ratio;
+        int splatPageTexelStride = Math.Max(1, heightPageTexelStride / ratio);
+
+        return (splatPageOffsetX, splatPageOffsetY, splatPageTexelStride);
     }
 
     public void RequestChunk(TerrainChunkKey chunkKey, bool pinned = false)
@@ -684,8 +743,12 @@ internal sealed class TerrainStreamingManager : IDisposable
 
                     if (splatMapPageData != null && gpuSplatMapArray != null)
                     {
-                        fileReader.ReadSplatMapPage(pageKey, splatMapPageData.Memory.Span);
-                        gpuSplatMapArray.UploadPage(commandList, pageKey, splatMapPageData.Memory.Span, pinned: false);
+                        TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(pageKey);
+                        if (!gpuSplatMapArray.IsPageResident(splatPageKey))
+                        {
+                            fileReader.ReadSplatMapPage(splatPageKey, splatMapPageData.Memory.Span);
+                            gpuSplatMapArray.UploadPage(commandList, splatPageKey, splatMapPageData.Memory.Span, pinned: false);
+                        }
                     }
                 }
             }
@@ -778,13 +841,13 @@ internal sealed class TerrainStreamingManager : IDisposable
     {
         TerrainPageKey pageKey = GetPageKey(chunkKey, out _, out _, out _);
         if (!gpuHeightArray.IsPageResident(pageKey))
-        {
             return false;
-        }
 
-        if (gpuSplatMapArray != null && !gpuSplatMapArray.IsPageResident(pageKey))
+        if (gpuSplatMapArray != null)
         {
-            return false;
+            TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(pageKey);
+            if (!gpuSplatMapArray.IsPageResident(splatPageKey))
+                return false;
         }
 
         return true;
@@ -800,9 +863,13 @@ internal sealed class TerrainStreamingManager : IDisposable
             }
 
             // Also fix splat map pin status
-            if (pinned && gpuSplatMapArray != null && gpuSplatMapArray.IsPageResident(pageKey))
+            if (pinned && gpuSplatMapArray != null)
             {
-                gpuSplatMapArray.TrySetPinned(pageKey, pinned: true);
+                TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(pageKey);
+                if (gpuSplatMapArray.IsPageResident(splatPageKey))
+                {
+                    gpuSplatMapArray.TrySetPinned(splatPageKey, pinned: true);
+                }
             }
 
             return;
@@ -838,18 +905,26 @@ internal sealed class TerrainStreamingManager : IDisposable
         }
 
         // Enqueue matching splat map page request
-        if (gpuSplatMapArray != null && !gpuSplatMapArray.IsPageResident(pageKey))
+        if (gpuSplatMapArray != null)
         {
-            if (splatMapBufferPool != null && splatMapBufferPool.TryRent(out IMemoryOwner<byte>? splatMapBuffer) && splatMapBuffer != null)
+            TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(pageKey);
+            if (!gpuSplatMapArray.IsPageResident(splatPageKey))
             {
-                try
+                if (splatMapBufferPool != null && splatMapBufferPool.TryRent(out IMemoryOwner<byte>? splatMapBuffer) && splatMapBuffer != null)
                 {
-                    pendingRequests.Add(new StreamingRequest(pageKey, splatMapBuffer, pinned, isSplatMap: true));
+                    try
+                    {
+                        pendingRequests.Add(new StreamingRequest(splatPageKey, splatMapBuffer, pinned, isSplatMap: true));
+                    }
+                    catch
+                    {
+                        splatMapBuffer.Dispose();
+                    }
                 }
-                catch
-                {
-                    splatMapBuffer.Dispose();
-                }
+            }
+            else if (pinned)
+            {
+                gpuSplatMapArray.TrySetPinned(splatPageKey, pinned: true);
             }
         }
     }
