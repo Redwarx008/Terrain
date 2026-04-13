@@ -111,6 +111,16 @@ public class TerrainProcessor
         var splatMapInfo = LoadSplatMap(config.SplatMapPath!);
         Image splatMap = splatMapInfo.image;
         VTFormat splatMapFormat = splatMapInfo.format;
+
+        // 降采样 SplatMap 到 heightmap 的 1/2 分辨率
+        if (splatMap.Width == heightMap.Width && splatMap.Height == heightMap.Height)
+        {
+            progress?.Report((52, 100, "降采样 SplatMap 到 1/2 分辨率..."));
+            var downsampled = DownsampleSplatMap(splatMap, splatMapFormat);
+            splatMap.Dispose();
+            splatMap = downsampled;
+        }
+
         int splatMapMipLevels = CoordinateConsistentMipmap.CalculateMipLevels(
             splatMap.Width, splatMap.Height, config.TileSize);
 
@@ -204,7 +214,8 @@ public class TerrainProcessor
             Padding = HeightMapPadding,
             HeightMapMipLevels = heightMapMipLevels,
             SplatMapFormat = (int)splatMapFormat,
-            SplatMapMipLevels = splatMapMipLevels
+            SplatMapMipLevels = splatMapMipLevels,
+            SplatMapResolutionRatio = splatMap.Width == heightMap.Width ? 1 : 2
         };
 
         WriteTerrainHeader(writer, header);
@@ -417,6 +428,20 @@ public class TerrainProcessor
         return Path.Combine(directory, "DebugMipmaps");
     }
 #endif
+
+    /// <summary>
+    /// 将 SplatMap 降采样到 1/2 分辨率，使用坐标一致性算法。
+    /// </summary>
+    private static Image DownsampleSplatMap(Image splatMap, VTFormat format)
+    {
+        return format switch
+        {
+            VTFormat.R8 => CoordinateConsistentMipmap.GenerateNextMip((Image<L8>)splatMap),
+            VTFormat.L16 => CoordinateConsistentMipmap.GenerateNextMip((Image<L16>)splatMap),
+            VTFormat.Rg32 => CoordinateConsistentMipmap.GenerateNextMip((Image<Rg32>)splatMap),
+            _ => CoordinateConsistentMipmap.GenerateNextMip((Image<Rgba32>)splatMap),
+        };
+    }
 
     /// <summary>
     /// 写入 VTHeader
