@@ -69,8 +69,8 @@ namespace Terrain.Editor
         int2 ClampIndexPixel(int2 pixel)
         {
             // IndexMap 使用 heightmap 的 1/2 分辨率
-            int maxX = (int)(HeightmapDimensionsInSamples.x + 0.5f) / 2;
-            int maxY = (int)(HeightmapDimensionsInSamples.y + 0.5f) / 2;
+            int maxX = (int)((HeightmapDimensionsInSamples.x + 0.5f) * 0.5f);
+            int maxY = (int)((HeightmapDimensionsInSamples.y + 0.5f) * 0.5f);
             return int2(
                 clamp(pixel.x, 0, maxX),
                 clamp(pixel.y, 0, maxY));

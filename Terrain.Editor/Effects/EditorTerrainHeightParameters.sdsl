@@ -59,8 +59,8 @@ namespace Terrain.Editor
         int4 GetIndexMapSliceBounds(int sliceIndex)
         {
             int4 heightBounds = GetSliceBounds(sliceIndex);
-            int2 origin = int2(heightBounds.x / 2, heightBounds.y / 2);
-            int2 size = int2((heightBounds.z + 1) / 2, (heightBounds.w + 1) / 2);
+            int2 origin = int2(heightBounds.x >> 1, heightBounds.y >> 1);
+            int2 size = int2((heightBounds.z + 1) >> 1, (heightBounds.w + 1) >> 1);
             return int4(origin.x, origin.y, max(1, size.x), max(1, size.y));
         }
 
