@@ -104,7 +104,7 @@ internal readonly struct TerrainPageKey : IEquatable<TerrainPageKey>
 internal struct TerrainFileHeader
 {
     public const int MagicValue = 0x52524554;
-    public const int SupportedVersion = 2;
+    public const int SupportedVersion = 3;
 
     public int Magic;
     public int Version;
@@ -599,10 +599,10 @@ internal sealed class TerrainStreamingManager : IDisposable
     private readonly int baseChunkSize;
     private readonly int effectivePageSpanInSamples;
     private readonly int heightmapLodOffset;
+    private readonly int splatMapLodOffset;
     private readonly PageBufferAllocator heightmapBufferPool;
     private readonly PageBufferAllocator? splatMapBufferPool;
     private bool hasLoggedBufferPoolExhaustion;
-    private readonly int splatMapEffectivePageSpanInSamples;
 
     public TerrainStreamingManager(
         TerrainFileReader fileReader,
@@ -615,7 +615,6 @@ internal sealed class TerrainStreamingManager : IDisposable
         this.gpuSplatMapArray = gpuSplatMapArray;
         this.baseChunkSize = baseChunkSize;
         effectivePageSpanInSamples = Math.Max(1, fileReader.HeightmapHeader.TileSize - 1);
-        splatMapEffectivePageSpanInSamples = Math.Max(1, (fileReader.SplatMapHeader.TileSize - 1));
 
         int heightmapPaddedTileSize = gpuHeightArray.TileSize + gpuHeightArray.Padding * 2;
         int heightmapPageByteSize = heightmapPaddedTileSize * heightmapPaddedTileSize * fileReader.HeightmapHeader.BytesPerPixel;
@@ -633,6 +632,12 @@ internal sealed class TerrainStreamingManager : IDisposable
         // then each coarser terrain lod advances the source VT mip by one.
         int pageChunkSpanAtLod0 = Math.Max(1, effectivePageSpanInSamples / Math.Max(1, baseChunkSize));
         heightmapLodOffset = pageChunkSpanAtLod0 > 0 ? BitOperations.Log2((uint)pageChunkSpanAtLod0) : 0;
+
+        // Splatmap LOD offset: each splatmap page covers ratio times more world area
+        // because splatmap texel (x,y) maps to heightmap texel (ratio*x, ratio*y)
+        int ratio = fileReader.SplatMapResolutionRatio;
+        int splatMapPageSpanInChunks = Math.Max(1, (fileReader.SplatMapHeader.TileSize - 1) * ratio / Math.Max(1, baseChunkSize));
+        splatMapLodOffset = splatMapPageSpanInChunks > 0 ? BitOperations.Log2((uint)splatMapPageSpanInChunks) : 0;
         ioThread = new Thread(IoThreadMain)
         {
             IsBackground = true,
@@ -650,7 +655,37 @@ internal sealed class TerrainStreamingManager : IDisposable
     public int Padding => gpuHeightArray.Padding;
 
     /// <summary>
+    /// 直接从 chunk key 计算 splatmap page key。
+    /// Splatmap 有独立的 LOD offset，因为每个 splatmap page 覆盖更大的 world 区域。
+    /// </summary>
+    private TerrainPageKey GetSplatMapPageKey(TerrainChunkKey chunkKey, out int pageOffsetX, out int pageOffsetY, out int pageTexelStride)
+    {
+        int ratio = fileReader.SplatMapResolutionRatio;
+        if (ratio <= 1)
+        {
+            // Legacy: same as heightmap
+            return GetPageKey(chunkKey, out pageOffsetX, out pageOffsetY, out pageTexelStride);
+        }
+
+        // Splatmap uses its own LOD offset calculation
+        int sourceMip = Math.Min(Math.Max(0, chunkKey.LodLevel - splatMapLodOffset), fileReader.SplatMapMipCount - 1);
+        pageTexelStride = Math.Max(1, 1 << (chunkKey.LodLevel - sourceMip) / ratio);
+
+        // Each splatmap page covers ratio * (tileSize-1) heightmap texels
+        int splatMapEffectivePageSpan = (fileReader.SplatMapHeader.TileSize - 1) * ratio;
+        int chunkSpanInSplatMapTexels = baseChunkSize * pageTexelStride;
+        int pageChunkSpanAtLod = Math.Max(1, splatMapEffectivePageSpan / Math.Max(1, chunkSpanInSplatMapTexels));
+        int pageX = Math.DivRem(chunkKey.ChunkX, pageChunkSpanAtLod, out int pageXRemainder);
+        int pageY = Math.DivRem(chunkKey.ChunkY, pageChunkSpanAtLod, out int pageYRemainder);
+        pageOffsetX = pageXRemainder * chunkSpanInSplatMapTexels / ratio;
+        pageOffsetY = pageYRemainder * chunkSpanInSplatMapTexels / ratio;
+        return new TerrainPageKey(sourceMip, pageX, pageY);
+    }
+
+    /// <summary>
     /// 将 heightmap page key 转换为对应的 splatmap page key。
+    /// 注意：这是从已知的 heightmap page key 推导，不是从 chunk key 计算。
+    /// 用于 PreloadTopLevelChunks 和 RequestPage 中已知 heightmap page key 的场景。
     /// </summary>
     private TerrainPageKey TranslateToSplatMapPageKey(TerrainPageKey heightmapKey)
     {
@@ -658,7 +693,12 @@ internal sealed class TerrainStreamingManager : IDisposable
         if (ratio <= 1)
             return heightmapKey;
 
+        // Splatmap mip level: adjust for different LOD offset
+        // heightmapKey.MipLevel is the VT mip, not terrain LOD
+        // Since splatmap has fewer mips, we clamp to available range
         int splatMip = Math.Min(heightmapKey.MipLevel, fileReader.SplatMapMipCount - 1);
+
+        // Page coordinates: splatmap has ratio times fewer pages
         int splatPageX = heightmapKey.PageX / ratio;
         int splatPageY = heightmapKey.PageY / ratio;
         return new TerrainPageKey(splatMip, splatPageX, splatPageY);
@@ -677,7 +717,8 @@ internal sealed class TerrainStreamingManager : IDisposable
 
         if (gpuSplatMapArray != null)
         {
-            TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(heightPageKey);
+            // Use direct calculation for correct LOD offset handling
+            TerrainPageKey splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
             if (!gpuSplatMapArray.IsPageResident(splatPageKey))
             {
                 splatSliceIndex = -1;
@@ -705,12 +746,8 @@ internal sealed class TerrainStreamingManager : IDisposable
             return (0, 0, heightStride);
         }
 
-        GetPageKey(chunkKey, out int heightPageOffsetX, out int heightPageOffsetY, out int heightPageTexelStride);
-
-        int splatPageOffsetX = heightPageOffsetX / ratio;
-        int splatPageOffsetY = heightPageOffsetY / ratio;
-        int splatPageTexelStride = Math.Max(1, heightPageTexelStride / ratio);
-
+        // Direct calculation with splatmap's own LOD offset
+        GetSplatMapPageKey(chunkKey, out int splatPageOffsetX, out int splatPageOffsetY, out int splatPageTexelStride);
         return (splatPageOffsetX, splatPageOffsetY, splatPageTexelStride);
     }
 
