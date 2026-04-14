@@ -594,8 +594,8 @@ public class SceneViewPanel : PanelBase
             paintEditor.ApplyStroke(
                 currentHitPoint.Value,
                 materialIndices,
-                terrainManager.HeightCacheWidth,
-                terrainManager.HeightCacheHeight,
+                materialIndices.Width,
+                materialIndices.Height,
                 terrainManager);
         }
 

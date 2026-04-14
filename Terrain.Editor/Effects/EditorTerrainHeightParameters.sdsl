@@ -56,6 +56,14 @@ namespace Terrain.Editor
             return bounds;
         }
 
+        int4 GetIndexMapSliceBounds(int sliceIndex)
+        {
+            int4 heightBounds = GetSliceBounds(sliceIndex);
+            int2 origin = int2(heightBounds.x / 2, heightBounds.y / 2);
+            int2 size = int2((heightBounds.z + 1) / 2, (heightBounds.w + 1) / 2);
+            return int4(origin.x, origin.y, max(1, size.x), max(1, size.y));
+        }
+
         bool IsInsideSlice(float2 sampleCoord, int4 bounds)
         {
             return sampleCoord.x >= (float)bounds.x
@@ -171,9 +179,30 @@ namespace Terrain.Editor
             return SampleSliceHeightLinear(localCoord, sliceIndex);
         }
 
+        int ResolveIndexMapSliceIndex(float2 sampleCoord, int preferredSliceIndex)
+        {
+            int clampedPreferred = clamp(preferredSliceIndex, 0, max(0, SliceCount - 1));
+            int4 preferredBounds = GetIndexMapSliceBounds(clampedPreferred);
+            if (IsInsideSlice(sampleCoord, preferredBounds))
+            {
+                return clampedPreferred;
+            }
+
+            if (SliceCount >= 1 && IsInsideSlice(sampleCoord, GetIndexMapSliceBounds(0))) return 0;
+            if (SliceCount >= 2 && IsInsideSlice(sampleCoord, GetIndexMapSliceBounds(1))) return 1;
+            if (SliceCount >= 3 && IsInsideSlice(sampleCoord, GetIndexMapSliceBounds(2))) return 2;
+            if (SliceCount >= 4 && IsInsideSlice(sampleCoord, GetIndexMapSliceBounds(3))) return 3;
+            if (SliceCount >= 5 && IsInsideSlice(sampleCoord, GetIndexMapSliceBounds(4))) return 4;
+            if (SliceCount >= 6 && IsInsideSlice(sampleCoord, GetIndexMapSliceBounds(5))) return 5;
+            if (SliceCount >= 7 && IsInsideSlice(sampleCoord, GetIndexMapSliceBounds(6))) return 6;
+            if (SliceCount >= 8 && IsInsideSlice(sampleCoord, GetIndexMapSliceBounds(7))) return 7;
+
+            return clampedPreferred;
+        }
+
         float4 LoadIndexMapSliceAt(int sliceIndex, int2 texelCoord)
         {
-            int4 bounds = GetSliceBounds(sliceIndex);
+            int4 bounds = GetIndexMapSliceBounds(sliceIndex);
             int2 clampedTexel = clamp(texelCoord, 0, int2(bounds.z - 1, bounds.w - 1));
             float4 result = IndexMapSlice0.Load(int3(clampedTexel, 0));
 
@@ -194,10 +223,9 @@ namespace Terrain.Editor
         float4 LoadIndexMapAtGlobal(int2 globalPixel)
         {
             // 从 heightmap 坐标转换到 splatmap 坐标（1/2 分辨率）
-            int2 splatPixel = globalPixel / 2;
-            float2 sampleCoord = float2(splatPixel);
-            int sliceIndex = ResolveSliceIndex(sampleCoord, 0);
-            int4 bounds = GetSliceBounds(sliceIndex);
+            float2 sampleCoord = float2(globalPixel);
+            int sliceIndex = ResolveIndexMapSliceIndex(sampleCoord, 0);
+            int4 bounds = GetIndexMapSliceBounds(sliceIndex);
             int2 localCoord = ComputeSliceTexelCoord(sampleCoord, bounds);
             return LoadIndexMapSliceAt(sliceIndex, localCoord);
         }

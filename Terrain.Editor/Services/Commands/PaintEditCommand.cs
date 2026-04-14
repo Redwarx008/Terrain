@@ -86,9 +86,14 @@ public sealed class PaintEditCommand : TerrainEditCommand
             var stateData = afterState ? delta.After : delta.Before;
             indexMap.SetRegionFromBytes(delta.Region.X, delta.Region.Y, delta.Region.Width, delta.Region.Height, stateData);
 
-            float centerX = delta.Region.X + delta.Region.Width * 0.5f;
-            float centerZ = delta.Region.Y + delta.Region.Height * 0.5f;
-            float radius = MathF.Max(delta.Region.Width, delta.Region.Height) * 0.5f;
+            // MaterialIndex region is in splatmap space; dirty tracking expects heightmap space.
+            float minX = delta.Region.X * 2.0f;
+            float minZ = delta.Region.Y * 2.0f;
+            float maxX = (delta.Region.X + delta.Region.Width) * 2.0f;
+            float maxZ = (delta.Region.Y + delta.Region.Height) * 2.0f;
+            float centerX = (minX + maxX) * 0.5f;
+            float centerZ = (minZ + maxZ) * 0.5f;
+            float radius = MathF.Max(maxX - minX, maxZ - minZ) * 0.5f;
             TerrainManager.MarkDataDirty(TerrainDataChannel.MaterialIndex, (int)centerX, (int)centerZ, radius);
         }
     }

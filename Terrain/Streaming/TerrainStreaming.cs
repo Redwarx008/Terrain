@@ -669,7 +669,8 @@ internal sealed class TerrainStreamingManager : IDisposable
 
         // Splatmap uses its own LOD offset calculation
         int sourceMip = Math.Min(Math.Max(0, chunkKey.LodLevel - splatMapLodOffset), fileReader.SplatMapMipCount - 1);
-        pageTexelStride = Math.Max(1, 1 << (chunkKey.LodLevel - sourceMip) / ratio);
+        int heightTexelStride = 1 << (chunkKey.LodLevel - sourceMip);
+        pageTexelStride = Math.Max(1, heightTexelStride / ratio);
 
         // Each splatmap page covers ratio * (tileSize-1) heightmap texels
         int splatMapEffectivePageSpan = (fileReader.SplatMapHeader.TileSize - 1) * ratio;
@@ -680,28 +681,6 @@ internal sealed class TerrainStreamingManager : IDisposable
         pageOffsetX = pageXRemainder * chunkSpanInSplatMapTexels / ratio;
         pageOffsetY = pageYRemainder * chunkSpanInSplatMapTexels / ratio;
         return new TerrainPageKey(sourceMip, pageX, pageY);
-    }
-
-    /// <summary>
-    /// 将 heightmap page key 转换为对应的 splatmap page key。
-    /// 注意：这是从已知的 heightmap page key 推导，不是从 chunk key 计算。
-    /// 用于 PreloadTopLevelChunks 和 RequestPage 中已知 heightmap page key 的场景。
-    /// </summary>
-    private TerrainPageKey TranslateToSplatMapPageKey(TerrainPageKey heightmapKey)
-    {
-        int ratio = fileReader.SplatMapResolutionRatio;
-        if (ratio <= 1)
-            return heightmapKey;
-
-        // Splatmap mip level: adjust for different LOD offset
-        // heightmapKey.MipLevel is the VT mip, not terrain LOD
-        // Since splatmap has fewer mips, we clamp to available range
-        int splatMip = Math.Min(heightmapKey.MipLevel, fileReader.SplatMapMipCount - 1);
-
-        // Page coordinates: splatmap has ratio times fewer pages
-        int splatPageX = heightmapKey.PageX / ratio;
-        int splatPageY = heightmapKey.PageY / ratio;
-        return new TerrainPageKey(splatMip, splatPageX, splatPageY);
     }
 
     public bool TryGetResidentPageForChunk(TerrainChunkKey chunkKey,
@@ -753,7 +732,7 @@ internal sealed class TerrainStreamingManager : IDisposable
 
     public void RequestChunk(TerrainChunkKey chunkKey, bool pinned = false)
     {
-        RequestPage(GetPageKey(chunkKey, out _, out _, out _), pinned);
+        RequestPage(chunkKey, pinned);
     }
 
     public void PreloadTopLevelChunks(CommandList commandList, TerrainMinMaxErrorMap topMap)
@@ -780,7 +759,7 @@ internal sealed class TerrainStreamingManager : IDisposable
 
                     if (splatMapPageData != null && gpuSplatMapArray != null)
                     {
-                        TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(pageKey);
+                        TerrainPageKey splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
                         if (!gpuSplatMapArray.IsPageResident(splatPageKey))
                         {
                             fileReader.ReadSplatMapPage(splatPageKey, splatMapPageData.Memory.Span);
@@ -882,7 +861,7 @@ internal sealed class TerrainStreamingManager : IDisposable
 
         if (gpuSplatMapArray != null)
         {
-            TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(pageKey);
+            TerrainPageKey splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
             if (!gpuSplatMapArray.IsPageResident(splatPageKey))
                 return false;
         }
@@ -890,8 +869,9 @@ internal sealed class TerrainStreamingManager : IDisposable
         return true;
     }
 
-    private void RequestPage(TerrainPageKey pageKey, bool pinned = false)
+    private void RequestPage(TerrainChunkKey chunkKey, bool pinned = false)
     {
+        TerrainPageKey pageKey = GetPageKey(chunkKey, out _, out _, out _);
         if (gpuHeightArray.IsPageResident(pageKey))
         {
             if (pinned)
@@ -902,7 +882,7 @@ internal sealed class TerrainStreamingManager : IDisposable
             // Also fix splat map pin status
             if (pinned && gpuSplatMapArray != null)
             {
-                TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(pageKey);
+                TerrainPageKey splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
                 if (gpuSplatMapArray.IsPageResident(splatPageKey))
                 {
                     gpuSplatMapArray.TrySetPinned(splatPageKey, pinned: true);
@@ -944,7 +924,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         // Enqueue matching splat map page request
         if (gpuSplatMapArray != null)
         {
-            TerrainPageKey splatPageKey = TranslateToSplatMapPageKey(pageKey);
+            TerrainPageKey splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
             if (!gpuSplatMapArray.IsPageResident(splatPageKey))
             {
                 if (splatMapBufferPool != null && splatMapBufferPool.TryRent(out IMemoryOwner<byte>? splatMapBuffer) && splatMapBuffer != null)
