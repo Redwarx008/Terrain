@@ -46,8 +46,8 @@ public class TomlProjectConfig
             if (terrain.HasKey("height_scale"))
             {
                 var hsNode = terrain["height_scale"];
-                config.HeightScale = hsNode.IsFloat ? (float)hsNode.AsFloat
-                    : hsNode.IsInteger ? (float)hsNode.AsInteger
+                config.HeightScale = hsNode.IsFloat ? (float)hsNode.AsFloat.Value
+                    : hsNode.IsInteger ? (float)hsNode.AsInteger.Value
                     : 100.0f;
             }
         }
