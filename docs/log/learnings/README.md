@@ -26,8 +26,9 @@
 
 | 文档 | 主题 | 最后更新 |
 |------|------|----------|
-| - | *暂无学习文档* | - |
+| [index-map-terrain](index-map-terrain.md) | Index Map 技术借鉴自 Unity IndexMapTerrain | 2026-04-07 |
+| [chunk-based-undo-redo](chunk-based-undo-redo.md) | 地形笔刷的 Chunk 化 Undo/Redo 事务模式 | 2026-04-07 |
 
 ---
 
-*最后更新: 2026-04-06*
+*最后更新: 2026-04-07*

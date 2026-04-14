@@ -28,7 +28,22 @@
       "Bash(dotnet nuget:*)",
       "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/Hexa.NET.ImGui/index.json\")",
       "Bash(curl -s \"https://api.nuget.org/v3/registration5-semver1/hexa.net.imgui/index.json\")",
-      "Bash(timeout 5 ./Terrain.Editor.exe)"
+      "Bash(timeout 5 ./Terrain.Editor.exe)",
+      "mcp__VS__debugger_status",
+      "mcp__VS__debugger_get_callstack",
+      "mcp__VS__debugger_get_locals",
+      "mcp__VS__document_active",
+      "Bash(python3 -c ':*)",
+      "Bash(node -e ':*)",
+      "Bash(node -e \"console.log\\(27153 * 25216\\); console.log\\(27153 * 25216 * 4\\); console.log\\('Int32.Max: 2147483647'\\)\")",
+      "mcp__VS__errors_list",
+      "mcp__VS__output_list_panes",
+      "mcp__VS__output_read",
+      "mcp__VS__selection_get",
+      "Bash(node -e \"console.log\\('27153 * 25216 * 4 =', 27153 * 25216 * 4\\)\")",
+      "Bash(dotnet runtimeconfig:*)",
+      "Bash(xargs grep:*)",
+      "Bash(python3 -c \" import subprocess result = subprocess.run\\(['dotnet', 'script', 'eval', '--'], capture_output=True, text=True\\) \")"
     ]
   },
   "hooks": {
@@ -37,8 +52,8 @@
         "hooks": [
           {
             "type": "command",
-            "shell": "powershell",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.ps1"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.ps1",
+            "shell": "powershell"
           }
         ]
       }
@@ -48,8 +63,8 @@
         "hooks": [
           {
             "type": "command",
-            "shell": "powershell",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop.ps1"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop.ps1",
+            "shell": "powershell"
           }
         ]
       }
@@ -60,9 +75,9 @@
         "hooks": [
           {
             "type": "command",
-            "shell": "powershell",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-commit-check.ps1",
             "if": "Bash(git commit*)",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-commit-check.ps1"
+            "shell": "powershell"
           }
         ]
       }

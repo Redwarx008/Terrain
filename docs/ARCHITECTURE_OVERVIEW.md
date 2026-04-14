@@ -50,6 +50,7 @@
 | **Undo/Redo（Chunk事务）** | ✅ 已实现 | [2026-04-07-5](log/2026/04/07/2026-04-07-5-chunk-based-undo-redo-implementation.md) |
 | **项目持久化（TOML）** | ✅ 已实现 | [2026-04-08-2](log/2026/04/08/2026-04-08-2-toml-project-persistence.md) |
 | **植被编辑** | 🚧 进行中 | [terrain-editor-design-phase-3](design/terrain-editor-design-phase-3.md) |
+| **导出系统（IExporter）** | ✅ 已实现 | - |
 
 ### 未来系统
 
@@ -113,6 +114,12 @@
 **权衡：** TOML 比 JSON 更易手写编辑，但需要额外 NuGet 依赖
 **关键：** 所有路径使用相对路径（相对于 .toml 所在目录），确保项目可移植
 
+### 7. 导出系统（IExporter 模式）
+**问题：** 编辑器中的修改无法直接导出为运行时 .terrain 文件，需依赖独立的 TerrainPreProcessor
+**方案：** IExporter 接口 + ExportManager 单例，每种导出类型实现接口并注册；TerrainExporter 从内存状态直接导出
+**权衡：** 在 Editor 内重写导出逻辑 vs 引用 TerrainPreProcessor 库；选择重写以避免跨项目依赖
+**关键：** 流式 + 分层并行（逐层 mipmap → 并行计算 tiles → 顺序写入），HeightMap padding=2, SplatMap padding=1
+
 ---
 
 ## 关键文件
@@ -138,6 +145,10 @@
 | `Terrain.Editor/Rendering/EditorTerrainEntity.cs` | 地形实体（含统一数据同步接口） |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
 | `Terrain.Editor/UI/Dialogs/NewProjectWizard.cs` | 新建项目模态弹窗 |
+| `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
+| `Terrain.Editor/Services/Export/ExportManager.cs` | 导出管理器（注册、执行、错误回滚） |
+| `Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs` | .terrain 文件导出实现 |
+| `Terrain.Editor/UI/Dialogs/ExportProgressDialog.cs` | 导出进度模态弹窗 |
 
 ### 着色器
 | 文件 | 职责 |
@@ -189,5 +200,5 @@
 
 ---
 
-*最后更新: 2026-04-08*
+*最后更新: 2026-04-15*
 *状态: 反映当前实现状态*
