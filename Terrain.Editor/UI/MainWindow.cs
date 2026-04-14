@@ -8,9 +8,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using Terrain.Editor.Platform;
 using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
+using Terrain.Editor.Services.Export;
+using Terrain.Editor.Services.Export.Exporters;
 using Terrain.Editor.UI.Controls;
 using Terrain.Editor.UI.Layout;
 using Terrain.Editor.UI.Panels;
@@ -51,6 +54,7 @@ public class MainWindow : ControlBase
     private bool shouldClose;
     private string currentTitle = "Terrain Editor";
     private readonly NewProjectWizard newProjectWizard = new();
+    private readonly ExportProgressDialog exportProgressDialog = new();
     private string? pendingIndexMapPath;
 
     public MainWindow()
@@ -70,6 +74,9 @@ public class MainWindow : ControlBase
             RightPanel = RightPanel,
             BottomPanel = new TabPanel(Assets, Console)
         };
+
+        // Register exporters
+        ExportManager.Instance.Register(new TerrainExporter());
 
         InitializeDefaultData();
     }
@@ -332,6 +339,7 @@ public class MainWindow : ControlBase
 
         // 渲染模态弹窗（在主窗口 End 之后）
         newProjectWizard.Render(GetNativeWindowHandle());
+        exportProgressDialog.Render();
 
         if (shouldClose || !open)
         {
@@ -499,6 +507,17 @@ public class MainWindow : ControlBase
                 if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S"))
                 {
                     HandleToolbarAction("SaveAs");
+                }
+
+                ImGui.Separator();
+
+                if (ImGui.BeginMenu("Export"))
+                {
+                    if (ImGui.MenuItem("Terrain..."))
+                    {
+                        HandleExportTerrain();
+                    }
+                    ImGui.EndMenu();
                 }
 
                 ImGui.Separator();
@@ -757,6 +776,34 @@ public class MainWindow : ControlBase
 
             UpdateTitle();
             Console.LogInfo($"Project saved as: {filePath}");
+        }
+    }
+
+    private void HandleExportTerrain()
+    {
+        if (Viewport.TerrainManager?.HasTerrainLoaded != true)
+        {
+            Console.LogInfo("No terrain loaded to export");
+            return;
+        }
+
+        nint hwnd = GetNativeWindowHandle();
+
+        if (FileDialog.ShowSaveDialog(hwnd, "Terrain Files (*.terrain)|*.terrain", "Export Terrain", "terrain.terrain", out string? filePath))
+        {
+            var exporter = (TerrainExporter)ExportManager.Instance.Exporters["Terrain"];
+            exporter.TerrainManager = Viewport.TerrainManager!;
+
+            exportProgressDialog.Open();
+            var progress = new Progress<ExportProgress>(exportProgressDialog.UpdateProgress);
+
+            _ = ExportManager.Instance.ExecuteAsync(
+                "Terrain", filePath, progress, exportProgressDialog.CancellationToken)
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted && t.Exception != null)
+                        exportProgressDialog.SetResult(false, t.Exception.InnerException?.Message ?? "Export failed");
+                });
         }
     }
 

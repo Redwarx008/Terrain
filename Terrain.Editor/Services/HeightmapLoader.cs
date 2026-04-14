@@ -5,6 +5,7 @@ using Stride.Core.Mathematics;
 using Stride.Graphics;
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 // Disambiguate Image type between Stride and ImageSharp
@@ -454,6 +455,18 @@ public sealed class EditorMinMaxErrorMap
         tr = x + 1 < Width && y < Height;
         bl = x < Width && y + 1 < Height;
         br = x + 1 < Width && y + 1 < Height;
+    }
+
+    /// <summary>
+    /// Write the MinMaxErrorMap data to a binary writer (for .terrain export).
+    /// Format: Width (int), Height (int), then float[] data.
+    /// </summary>
+    public void WriteTo(BinaryWriter writer)
+    {
+        writer.Write(Width);
+        writer.Write(Height);
+        ReadOnlySpan<byte> byteView = MemoryMarshal.AsBytes(data.AsSpan());
+        writer.Write(byteView);
     }
 
     public void GetGlobalMinMax(out float minHeight, out float maxHeight)
