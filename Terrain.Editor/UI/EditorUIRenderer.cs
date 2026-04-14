@@ -110,6 +110,9 @@ public class EditorUIRenderer : GameSystemBase
 
     private void SetupInput()
     {
+        // 禁用默认 imgui.ini 文件创建
+        unsafe { io.IniFilename = null; }
+
         io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
 
