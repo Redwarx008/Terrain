@@ -77,6 +77,7 @@ public class MainWindow : ControlBase
 
         // Register exporters
         ExportManager.Instance.Register(new TerrainExporter());
+        ExportManager.Instance.Register(new MaterialDescriptorExporter());
 
         InitializeDefaultData();
     }
@@ -517,6 +518,10 @@ public class MainWindow : ControlBase
                     {
                         HandleExportTerrain();
                     }
+                    if (ImGui.MenuItem("Material Descriptor..."))
+                    {
+                        HandleExportMaterialDescriptor();
+                    }
                     ImGui.EndMenu();
                 }
 
@@ -799,6 +804,35 @@ public class MainWindow : ControlBase
 
             _ = ExportManager.Instance.ExecuteAsync(
                 "Terrain", filePath, progress, exportProgressDialog.CancellationToken)
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted && t.Exception != null)
+                        exportProgressDialog.SetResult(false, t.Exception.InnerException?.Message ?? "Export failed");
+                });
+        }
+    }
+
+    private void HandleExportMaterialDescriptor()
+    {
+        var slotManager = MaterialSlotManager.Instance;
+        if (slotManager.ActiveSlotCount == 0)
+        {
+            Console.LogInfo("No material slots configured to export");
+            return;
+        }
+
+        nint hwnd = GetNativeWindowHandle();
+        string defaultName = ProjectManager.Instance.IsProjectOpen
+            ? $"{ProjectManager.Instance.ProjectName}_material_descriptor.toml"
+            : "terrain_material_descriptor.toml";
+
+        if (FileDialog.ShowSaveDialog(hwnd, "Material Descriptor Files (*.toml)|*.toml", "Export Material Descriptor", defaultName, out string? filePath))
+        {
+            exportProgressDialog.Open();
+            var progress = new Progress<ExportProgress>(exportProgressDialog.UpdateProgress);
+
+            _ = ExportManager.Instance.ExecuteAsync(
+                "Material Descriptor", filePath, progress, exportProgressDialog.CancellationToken)
                 .ContinueWith(t =>
                 {
                     if (t.IsFaulted && t.Exception != null)
