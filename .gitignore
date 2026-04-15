@@ -14,3 +14,16 @@ obj/
 Cache/
 .claude/settings.local.json
 .planning/config.json
+
+# Trellis local files (developer-specific)
+.trellis/.developer
+.trellis/.current-task
+.trellis/.ralph-state.json
+.trellis/.agents/
+.trellis/.agent-log
+.trellis/.session-id
+.trellis/tasks/**/.plan-log
+.trellis/**/*.tmp
+.trellis/**/*.new
+.trellis/**/__pycache__/
+.trellis/**/.backup-*

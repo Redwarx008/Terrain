@@ -3,8 +3,6 @@
     "allow": [
       "Bash(dotnet build:*)",
       "Bash(npx get-shit-done-cc@latest)",
-      "Skill(gsd:map-codebase)",
-      "Skill(gsd:map-codebase:*)",
       "WebSearch",
       "Bash(dotnet restore:*)",
       "Read(//c/Users/Redwa/.nuget/packages/**)",
@@ -23,7 +21,6 @@
       "Read(//tmp/**)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(node \"$GSD_TOOLS\" workstream list --raw --cwd \"$CWD\")",
       "Bash(npx get-shit-done-cc:*)",
       "Bash(dotnet nuget:*)",
       "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/Hexa.NET.ImGui/index.json\")",
@@ -43,44 +40,12 @@
       "Bash(node -e \"console.log\\('27153 * 25216 * 4 =', 27153 * 25216 * 4\\)\")",
       "Bash(dotnet runtimeconfig:*)",
       "Bash(xargs grep:*)",
-      "Bash(python3 -c \" import subprocess result = subprocess.run\\(['dotnet', 'script', 'eval', '--'], capture_output=True, text=True\\) \")"
-    ]
-  },
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.ps1",
-            "shell": "powershell"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop.ps1",
-            "shell": "powershell"
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-commit-check.ps1",
-            "if": "Bash(git commit*)",
-            "shell": "powershell"
-          }
-        ]
-      }
+      "Bash(python3 -c \" import subprocess result = subprocess.run\\(['dotnet', 'script', 'eval', '--'], capture_output=True, text=True\\) \")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm install *)",
+      "Bash(trellis init *)",
+      "Bash(python ./.trellis/scripts/get_context.py)"
     ]
   }
 }
