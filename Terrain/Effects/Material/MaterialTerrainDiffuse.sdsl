@@ -26,6 +26,8 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
         {
             stage float MaterialTilingScale;
             stage float DetailContrast;
+            stage int SplatmapTileSize;
+            stage int SplatmapTilePadding;
             stage int MaterialArraySize;
             stage int MaterialNormalArraySize;
         }
@@ -133,9 +135,9 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
 
         MaterialPixel LoadMaterialPixel(float2 splatPageLocalPos, int splatSliceIndex)
         {
-            float padding = float(HeightmapTilePadding);
+            float padding = float(SplatmapTilePadding);
             float2 paddedMin = float2(-padding, -padding);
-            float2 paddedMax = float2((float)(HeightmapTileSize - 1) + padding, (float)(HeightmapTileSize - 1) + padding);
+            float2 paddedMax = float2((float)(SplatmapTileSize - 1) + padding, (float)(SplatmapTileSize - 1) + padding);
             float2 clampedPos = clamp(splatPageLocalPos, paddedMin, paddedMax);
             int2 texelCoord = int2(clampedPos + float2(padding, padding) + 0.5f);
 

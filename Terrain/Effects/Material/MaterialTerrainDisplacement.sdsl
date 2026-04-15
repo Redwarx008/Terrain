@@ -6,7 +6,7 @@ namespace Terrain
         {
             int4 NodeInfo;
             int4 StreamInfo;
-            int4 SplatInfo;  // splatSliceIndex, splatPageOffsetX, splatPageOffsetY, splatPageTexelStride
+            float4 SplatInfo;  // splatSliceIndex, splatPageOffsetX, splatPageOffsetY, splatPageTexelStride
         };
 
         rgroup PerMaterial
@@ -69,7 +69,7 @@ namespace Terrain
             MaterialTerrainChunkNode instance = InstanceBuffer[streams.InstanceID];
             int4 nodeInfo = instance.NodeInfo;
             int4 streamInfo = instance.StreamInfo;
-            int4 splatInfo = instance.SplatInfo;
+            float4 splatInfo = instance.SplatInfo;
             int sliceIndex = streamInfo.x;
             float pageTexelStride = max(1.0f, (float)streamInfo.w);
             float lodLevel = nodeInfo.z;
@@ -87,8 +87,8 @@ namespace Terrain
             float height = SampleHeightAtLocalPos(pageLocalPos, sliceIndex);
 
             // Splatmap page-local coordinates
-            int splatSliceIndex = splatInfo.x;
-            float splatPageTexelStride = max(1.0f, (float)splatInfo.w);
+            int splatSliceIndex = (int)(splatInfo.x + 0.5f);
+            float splatPageTexelStride = max(0.0001f, splatInfo.w);
             float2 splatPageLocalPos = float2(splatInfo.y, splatInfo.z) + localPos * splatPageTexelStride;
 
             streams.TexCoord = ComputeHeightmapUv(pageLocalPos);

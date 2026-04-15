@@ -15,6 +15,7 @@ namespace Terrain.Editor.Services.Export.Exporters;
 public class TerrainExporter : IExporter
 {
     private const int HeightMapPadding = 2;
+    // Runtime must honor the splat VT header instead of assuming the heightmap padding.
     private const int SplatMapPadding = 1;
     private const int DefaultTileSize = 129;
 

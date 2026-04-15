@@ -240,7 +240,7 @@ internal sealed class TerrainQuadTree : IDisposable
         {
             NodeInfo = new Int4(chunkX, chunkY, lodLevel, (int)TerrainLodLookupNodeState.Stop),
             StreamInfo = new Int4(heightSliceIndex, pageOffsetX, pageOffsetY, pageTexelStride),
-            SplatInfo = new Int4(splatSliceIndex, splatPageOffsetX, splatPageOffsetY, splatPageTexelStride),
+            SplatInfo = new Vector4(splatSliceIndex, splatPageOffsetX, splatPageOffsetY, splatPageTexelStride),
         };
     }
 

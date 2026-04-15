@@ -26,6 +26,8 @@ namespace Terrain
         public static readonly ObjectParameterKey<SamplerState> MaterialNormalSampler = ParameterKeys.NewObject<SamplerState>();
         public static readonly ValueParameterKey<float> MaterialTilingScale = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<float> DetailContrast = ParameterKeys.NewValue<float>();
+        public static readonly ValueParameterKey<int> SplatmapTileSize = ParameterKeys.NewValue<int>();
+        public static readonly ValueParameterKey<int> SplatmapTilePadding = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> MaterialArraySize = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> MaterialNormalArraySize = ParameterKeys.NewValue<int>();
     }

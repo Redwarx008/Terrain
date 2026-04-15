@@ -28,11 +28,24 @@ public sealed class TerrainRenderObject : RenderMesh
         BoundingBox = (BoundingBoxExt)new BoundingBox(Vector3.Zero, Vector3.One);
     }
 
-    public void ReinitializeGpuResources(GraphicsDevice graphicsDevice, int baseChunkSize, int heightmapWidth, int heightmapHeight, int tileSize, int tilePadding, int maxResidentChunks, int chunkNodeCapacity, int lodLookupLevelCount, int lodLookupEntryCount)
+    public void ReinitializeGpuResources(
+        GraphicsDevice graphicsDevice,
+        int baseChunkSize,
+        int heightmapWidth,
+        int heightmapHeight,
+        int heightmapTileSize,
+        int heightmapTilePadding,
+        int splatmapTileSize,
+        int splatmapTilePadding,
+        int maxResidentChunks,
+        int chunkNodeCapacity,
+        int lodLookupLevelCount,
+        int lodLookupEntryCount)
     {
         ReleaseGpuResources();
 
-        int fullTileSize = tileSize + tilePadding * 2;
+        int fullTileSize = heightmapTileSize + heightmapTilePadding * 2;
+        int fullSplatTileSize = splatmapTileSize + splatmapTilePadding * 2;
         HeightmapArray = Texture.New2D(
             graphicsDevice,
             fullTileSize,
@@ -44,8 +57,8 @@ public sealed class TerrainRenderObject : RenderMesh
 
         SplatMapArray = Texture.New2D(
             graphicsDevice,
-            fullTileSize,
-            fullTileSize,
+            fullSplatTileSize,
+            fullSplatTileSize,
             1,
             PixelFormat.R8G8B8A8_UNorm,
             TextureFlags.ShaderResource,

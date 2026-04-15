@@ -84,6 +84,12 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal int HeightmapTilePadding;
 
     [DataMemberIgnore]
+    internal int SplatmapTileSize;
+
+    [DataMemberIgnore]
+    internal int SplatmapTilePadding;
+
+    [DataMemberIgnore]
     internal float MinHeight;
 
     [DataMemberIgnore]

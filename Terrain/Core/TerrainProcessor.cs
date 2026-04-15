@@ -151,6 +151,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
                 baseChunkSize,
                 fileReader.HeightmapHeader.TileSize,
                 fileReader.HeightmapHeader.Padding,
+                fileReader.SplatMapHeader.TileSize,
+                fileReader.SplatMapHeader.Padding,
                 maxResidentChunks,
                 minMaxErrorMaps);
             return true;
@@ -173,6 +175,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         component.BaseChunkSize = loadedData.BaseChunkSize;
         component.HeightmapTileSize = loadedData.HeightmapTileSize;
         component.HeightmapTilePadding = loadedData.HeightmapTilePadding;
+        component.SplatmapTileSize = loadedData.SplatmapTileSize;
+        component.SplatmapTilePadding = loadedData.SplatmapTilePadding;
         var lodLookupLayouts = CreateLodLookupLayouts(loadedData.MinMaxErrorMaps);
 
         renderObject.ReinitializeGpuResources(
@@ -182,6 +186,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             loadedData.Height,
             component.HeightmapTileSize,
             component.HeightmapTilePadding,
+            component.SplatmapTileSize,
+            component.SplatmapTilePadding,
             loadedData.MaxResidentChunks,
             chunkNodeCapacity,
             lodLookupLayouts.Length,
@@ -195,7 +201,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         GpuVirtualTextureArray? gpuSplatMapArray = null;
         if (renderObject.SplatMapArray != null)
         {
-            gpuSplatMapArray = new GpuVirtualTextureArray(renderObject.SplatMapArray, component.HeightmapTileSize, component.HeightmapTilePadding, loadedData.MaxResidentChunks);
+            gpuSplatMapArray = new GpuVirtualTextureArray(renderObject.SplatMapArray, component.SplatmapTileSize, component.SplatmapTilePadding, loadedData.MaxResidentChunks);
         }
 
         var streamingManager = new TerrainStreamingManager(loadedData.FileReader, gpuHeightArray, gpuSplatMapArray, component.BaseChunkSize);
@@ -325,6 +331,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         parameters.Set(MaterialTerrainDiffuseKeys.MaterialNormalSampler, graphicsDevice.SamplerStates.LinearWrap);
         parameters.Set(MaterialTerrainDiffuseKeys.MaterialTilingScale, 1.0f);
         parameters.Set(MaterialTerrainDiffuseKeys.DetailContrast, 0.5f);
+        parameters.Set(MaterialTerrainDiffuseKeys.SplatmapTileSize, component.SplatmapTileSize);
+        parameters.Set(MaterialTerrainDiffuseKeys.SplatmapTilePadding, component.SplatmapTilePadding);
 
         // Bind material texture arrays from RuntimeMaterialManager
         var materialManager = component.MaterialManager;
@@ -439,6 +447,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         int BaseChunkSize,
         int HeightmapTileSize,
         int HeightmapTilePadding,
+        int SplatmapTileSize,
+        int SplatmapTilePadding,
         int MaxResidentChunks,
         TerrainMinMaxErrorMap[] MinMaxErrorMaps);
 }
