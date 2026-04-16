@@ -88,74 +88,100 @@ public static class TerrainRaycast
         TerrainManager terrainManager,
         int maxIterations = 20)
     {
-        // If ray direction Y is near zero or positive, we can't reliably intersect terrain from above
+        // Brush projection must stay stable on steep slopes, so use a bracketed search instead of
+        // the previous Y-only Newton iteration which could skip the surface on aggressive gradients.
         if (rayDirection.Y >= 0)
             return null;
 
-        // Simple approach: walk along the ray and find where it crosses terrain surface
-        // Start from ray origin and move forward
+        const float maxDistance = 10000.0f;
+        const float convergenceThreshold = 0.05f;
+        const float sampleStep = 2.0f;
 
-        float t = 0;
-        float step = 1.0f;
+        float t = 0.0f;
 
-        // First, find a point that is inside terrain bounds
-        for (int i = 0; i < 100; i++)
+        // Skip forward until the ray footprint enters terrain XZ bounds.
+        for (int i = 0; i < 256 && t <= maxDistance; i++)
         {
             var testPoint = rayOrigin + rayDirection * t;
             if (terrainManager.IsPositionOnTerrain(testPoint.X, testPoint.Z))
                 break;
-            t += step;
-            step *= 2f;
-            if (t > 10000f)
-                return null;
+
+            t += sampleStep;
         }
 
-        // Now refine to find terrain surface
-        for (int i = 0; i < maxIterations; i++)
+        if (t > maxDistance)
+            return null;
+
+        float? lastAboveT = null;
+        float lastAboveHeight = 0.0f;
+
+        for (int i = 0; i < 8192 && t <= maxDistance; i++, t += sampleStep)
         {
             var point = rayOrigin + rayDirection * t;
-
-            // Check if point is within terrain bounds
             if (!terrainManager.IsPositionOnTerrain(point.X, point.Z))
             {
-                return null;
+                if (lastAboveT.HasValue)
+                    break;
+
+                continue;
             }
 
-            // Get terrain height at this position
             float? terrainHeight = terrainManager.GetHeightAtPosition(point.X, point.Z);
             if (terrainHeight == null)
-            {
-                return null;
-            }
+                continue;
 
             float heightDiff = point.Y - terrainHeight.Value;
-
-            // Converged to surface
-            if (MathF.Abs(heightDiff) < 0.1f)
-            {
+            if (MathF.Abs(heightDiff) <= convergenceThreshold)
                 return new Vector3(point.X, terrainHeight.Value, point.Z);
-            }
 
-            // Adjust t: since rayDirection.Y < 0 (pointing down)
-            // If heightDiff > 0 (point above terrain), we need to go forward (increase t)
-            // If heightDiff < 0 (point below terrain), we need to go backward (decrease t)
-            // The adjustment is: t -= heightDiff / rayDirection.Y
-            // Since rayDirection.Y < 0:
-            //   - heightDiff > 0 => adjustment is positive => t increases => go forward
-            //   - heightDiff < 0 => adjustment is negative => t decreases => go backward
-            t -= heightDiff / rayDirection.Y;
-        }
-
-        // Return best approximation
-        var finalPoint = rayOrigin + rayDirection * t;
-        float? finalHeight = terrainManager.GetHeightAtPosition(finalPoint.X, finalPoint.Z);
-        if (finalHeight != null && terrainManager.IsPositionOnTerrain(finalPoint.X, finalPoint.Z))
-        {
-            float finalHeightDiff = MathF.Abs(finalPoint.Y - finalHeight.Value);
-            if (finalHeightDiff < 1.0f) // Accept if within 1 meter
+            if (heightDiff > 0.0f)
             {
-                return new Vector3(finalPoint.X, finalHeight.Value, finalPoint.Z);
+                lastAboveT = t;
+                lastAboveHeight = terrainHeight.Value;
+                continue;
             }
+
+            if (!lastAboveT.HasValue)
+                continue;
+
+            float minT = lastAboveT.Value;
+            float maxT = t;
+            float resolvedHeight = terrainHeight.Value;
+            bool hasResolvedHeight = true;
+
+            for (int refine = 0; refine < maxIterations; refine++)
+            {
+                float midT = (minT + maxT) * 0.5f;
+                var midPoint = rayOrigin + rayDirection * midT;
+                float? midHeight = terrainManager.GetHeightAtPosition(midPoint.X, midPoint.Z);
+                if (midHeight == null)
+                    return null;
+
+                float midDiff = midPoint.Y - midHeight.Value;
+                resolvedHeight = midHeight.Value;
+                hasResolvedHeight = true;
+
+                if (MathF.Abs(midDiff) <= convergenceThreshold)
+                    return new Vector3(midPoint.X, midHeight.Value, midPoint.Z);
+
+                if (midDiff > 0.0f)
+                {
+                    minT = midT;
+                    lastAboveHeight = midHeight.Value;
+                }
+                else
+                {
+                    maxT = midT;
+                }
+            }
+
+            float finalT = (minT + maxT) * 0.5f;
+            var finalPoint = rayOrigin + rayDirection * finalT;
+            float? finalHeight = terrainManager.GetHeightAtPosition(finalPoint.X, finalPoint.Z);
+            if (finalHeight == null)
+                finalHeight = hasResolvedHeight ? resolvedHeight : lastAboveHeight;
+
+            return new Vector3(finalPoint.X, finalHeight.Value, finalPoint.Z);
         }
 
         return null;
