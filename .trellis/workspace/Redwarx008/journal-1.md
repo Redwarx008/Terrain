@@ -114,3 +114,56 @@
 **Date**: 2026-04-15
 **Summary**: 实现材质描述符导出，生成 .toml 配置文件。
 **Status**: [OK] Completed
+
+
+## Session 15: Add slope-based brush filter for texture painting
+
+**Date**: 2026-04-16
+**Task**: Add slope-based brush filter for texture painting
+**Branch**: `implement-tree-brush`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 变更 | 说明 |
+|------|------|
+| BrushParameters | 新增 UseSlopeFilter、MinSlopeDegrees、MaxSlopeDegrees 属性，Min/Max 双向联动 |
+| PaintEditContext | 新增坡度过滤字段及 HeightScale 用于世界空间法线计算 |
+| PaintBrushCore | 新增 ComputeSlopeMultiplier，余弦空间比较避免 acos，二值过滤 |
+| PaintEditor | 传递坡度参数和 HeightScale 到 PaintEditContext |
+| RightPanel | 新增 Slope Filter checkbox 及 Min/Max Slope 滑块（联动） |
+
+**关键设计决策**:
+- 坡度用角度 (0-90°) 直观表示，内部用余弦空间比较避免逐像素 acos
+- Splatmap→Heightmap 坐标映射 x*2（2:1 比率），HeightScale 乘高度梯度得世界空间法线
+- 二值过滤（范围内=1.0，范围外=0.0），坡度乘数叠加到 brushStrength
+- Min/Max 滑块双向联动：Min 增大自动推高 Max，Max 减小自动推低 Min
+
+**修改文件**:
+- `Terrain.Editor/Services/BrushParameters.cs`
+- `Terrain.Editor/Services/IPaintTool.cs`
+- `Terrain.Editor/Services/PaintBrushCore.cs`
+- `Terrain.Editor/Services/PaintEditor.cs`
+- `Terrain.Editor/UI/Panels/RightPanel.cs`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bd979b3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

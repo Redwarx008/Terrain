@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
-- **Last Active**: 2026-04-15
+- **Total Sessions**: 15
+- **Last Active**: 2026-04-16
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~140 | Active |
+| `journal-1.md` | ~169 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-04-16 | Add slope-based brush filter for texture painting | `bd979b3` | `implement-tree-brush` |
 | 1 | 2026-04-06 | AI 协作规范化流程引入 | - | - |
 | 2 | 2026-04-06 | 地形纹理刷规划 | - | - |
 | 3 | 2026-04-06 | 地形纹理刷实现 | - | - |
