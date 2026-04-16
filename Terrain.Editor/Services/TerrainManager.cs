@@ -10,7 +10,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Terrain.Editor.Rendering;
-using TerrainPreProcessor.Models;
 using StrideColor = Stride.Core.Mathematics.Color;
 using HeightmapImage = SixLabors.ImageSharp.Image;
 

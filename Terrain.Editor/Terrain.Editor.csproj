@@ -27,7 +27,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Terrain\Terrain.csproj" />
-    <ProjectReference Include="..\TerrainPreProcessor\TerrainPreProcessor.csproj" />
   </ItemGroup>
 
   <ItemGroup>
