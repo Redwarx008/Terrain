@@ -70,6 +70,27 @@ Log.Info($"Loaded terrain: {info.Width}x{info.Height} as 1 logical terrain with 
 
 ---
 
+## 日志节流模式
+
+在资源耗尽等可能每帧触发的场景中，使用布尔标志实现"仅警告一次"，避免日志爆炸：
+
+```csharp
+// Terrain/Streaming/TerrainStreaming.cs
+private bool hasLoggedBufferPoolExhaustion;
+
+if (!heightmapBufferPool.TryRent(out var buffer))
+{
+    if (!hasLoggedBufferPoolExhaustion)
+    {
+        Log.Warning("Heightmap buffer pool exhausted, dropping page requests");
+        hasLoggedBufferPoolExhaustion = true;
+    }
+    // ...
+}
+```
+
+---
+
 ## 反模式
 
 - **不要在 Draw/Update 热路径中打日志** — 每帧调用会产生大量日志，严重影响性能

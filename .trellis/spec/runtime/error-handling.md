@@ -119,6 +119,64 @@ Debug.Assert(renderObject.HeightmapArray != null);
 
 ---
 
+## 模式 3：资源耗尽降级
+
+当缓冲池耗尽等资源不足情况发生时，记录警告并丢弃请求，而非抛异常或阻塞：
+
+```csharp
+// Terrain/Streaming/TerrainStreaming.cs — RequestPage
+if (!heightmapBufferPool.TryRent(out var buffer))
+{
+    if (!hasLoggedBufferPoolExhaustion)
+    {
+        Log.Warning("Heightmap buffer pool exhausted, dropping page requests");
+        hasLoggedBufferPoolExhaustion = true;
+    }
+    queuedKeys.TryRemove(key, out _);
+    return;
+}
+```
+
+**"仅警告一次"模式**：使用 `hasLoggedBufferPoolExhaustion` 标志防止每帧大量重复日志，仅在首次发生时记录。
+
+---
+
+## 模式 4：纹理加载失败降级
+
+单个纹理加载失败时跳过该纹理，继续处理其他纹理：
+
+```csharp
+// Terrain/Materials/RuntimeMaterialManager.cs — Initialize
+try
+{
+    texture = textureLoader.Load(path);
+}
+catch (Exception ex)
+{
+    Log.Warning($"Failed to load texture '{path}': {ex.Message}");
+    continue; // 跳过此纹理，继续加载下一个
+}
+```
+
+---
+
+## 框架资源释放：Destroy() 模式
+
+Stride 的 `RootEffectRenderFeature` 等框架基类不使用 `IDisposable`，而是重写 `Destroy()` 方法释放资源：
+
+```csharp
+// Terrain/Rendering/TerrainRenderFeature.cs
+protected override void Destroy()
+{
+    // 释放框架级资源
+    base.Destroy();
+}
+```
+
+这是 Stride 框架的标准模式，不属于 `IDisposable` 体系。
+
+---
+
 ## 反模式
 
 - **不要在 Draw() 循环中抛异常** — 渲染是每帧调用，异常会彻底卡死

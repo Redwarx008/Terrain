@@ -133,17 +133,25 @@ Terrain.Editor/
 编辑器使用 **层级命名空间**，匹配目录结构：
 
 ```csharp
-namespace Terrain.Editor;                    // 根
-namespace Terrain.Editor.Rendering;          // Rendering/
-namespace Terrain.Editor.Rendering.Materials; // Rendering/Materials/
-namespace Terrain.Editor.Services;           // Services/
-namespace Terrain.Editor.Services.Commands;  // Services/Commands/
-namespace Terrain.Editor.Services.Export;    // Services/Export/
-namespace Terrain.Editor.Services.Export.Exporters; // Services/Export/Exporters/
-namespace Terrain.Editor.UI;                 // UI/
-namespace Terrain.Editor.UI.Controls;        // UI/Controls/
-namespace Terrain.Editor.UI.Panels;          // UI/Panels/
+namespace Terrain.Editor;                             // 根（含 Effects/ 下的着色器 Key 类）
+namespace Terrain.Editor.Input;                       // Input/
+namespace Terrain.Editor.Models;                      // Models/
+namespace Terrain.Editor.Platform;                    // Platform/
+namespace Terrain.Editor.Rendering;                   // Rendering/
+namespace Terrain.Editor.Rendering.Materials;          // Rendering/Materials/
+namespace Terrain.Editor.Services;                    // Services/
+namespace Terrain.Editor.Services.Commands;           // Services/Commands/
+namespace Terrain.Editor.Services.Export;             // Services/Export/
+namespace Terrain.Editor.Services.Export.Exporters;    // Services/Export/Exporters/
+namespace Terrain.Editor.UI;                          // UI/
+namespace Terrain.Editor.UI.Controls;                 // UI/Controls/
+namespace Terrain.Editor.UI.Dialogs;                  // UI/Dialogs/
+namespace Terrain.Editor.UI.Layout;                   // UI/Layout/
+namespace Terrain.Editor.UI.Panels;                   // UI/Panels/
+namespace Terrain.Editor.UI.Styling;                  // UI/Styling/
 ```
+
+**例外**：`Effects/` 目录下的所有文件（包括手写的 `ImGuiShaderKeys.cs` 和自动生成的 `.sdsl.cs`/`.sdfx.cs`）使用根命名空间 `Terrain.Editor`，而非 `Terrain.Editor.Effects`。这是 Stride 着色器代码生成器的固定行为，手动 Key 文件也保持一致。
 
 ---
 
