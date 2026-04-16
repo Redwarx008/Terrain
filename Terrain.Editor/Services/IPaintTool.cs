@@ -98,6 +98,29 @@ public readonly struct PaintEditContext
     /// Height of <see cref="HeightData"/> in samples.
     /// </summary>
     public int HeightDataHeight { get; init; }
+
+    // === 坡度过滤参数 ===
+
+    /// <summary>
+    /// 是否启用坡度过滤。
+    /// </summary>
+    public bool UseSlopeFilter { get; init; }
+
+    /// <summary>
+    /// 最小坡度角度 (度数，0-90)。
+    /// </summary>
+    public float MinSlopeDegrees { get; init; }
+
+    /// <summary>
+    /// 最大坡度角度 (度数，0-90)。
+    /// </summary>
+    public float MaxSlopeDegrees { get; init; }
+
+    /// <summary>
+    /// 世界空间高度缩放系数。
+    /// 用于将归一化高度梯度转换为世界空间法线以计算正确的坡度角。
+    /// </summary>
+    public float HeightScale { get; init; }
 }
 
 /// <summary>

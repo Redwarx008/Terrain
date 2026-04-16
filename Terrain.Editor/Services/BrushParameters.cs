@@ -25,6 +25,11 @@ public sealed class BrushParameters
     private float _fixedRotationDegrees = 0.0f; // 固定旋转角度
     private bool _use3DProjection = false; // 3D 投影开关
 
+    // === 坡度过滤参数 ===
+    private bool _useSlopeFilter = false;          // 坡度过滤开关
+    private float _minSlopeDegrees = 0.0f;          // 最小坡度（度）
+    private float _maxSlopeDegrees = 90.0f;         // 最大坡度（度）
+
     public float Size
     {
         get => _size;
@@ -140,6 +145,66 @@ public sealed class BrushParameters
             if (_use3DProjection != value)
             {
                 _use3DProjection = value;
+                ParametersChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 是否启用坡度过滤。
+    /// 启用后，只在坡度处于 [MinSlopeDegrees, MaxSlopeDegrees] 范围内时绘制。
+    /// </summary>
+    public bool UseSlopeFilter
+    {
+        get => _useSlopeFilter;
+        set
+        {
+            if (_useSlopeFilter != value)
+            {
+                _useSlopeFilter = value;
+                ParametersChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 最小坡度角度 (度数，0-90)。
+    /// 仅在 UseSlopeFilter = true 时使用。
+    /// 0 = 平地，90 = 垂直悬崖。
+    /// </summary>
+    public float MinSlopeDegrees
+    {
+        get => _minSlopeDegrees;
+        set
+        {
+            float clamped = Math.Clamp(value, 0.0f, 90.0f);
+            if (_minSlopeDegrees != clamped)
+            {
+                _minSlopeDegrees = clamped;
+                // 联动：Min 增大时自动推高 Max
+                if (_maxSlopeDegrees < clamped)
+                    _maxSlopeDegrees = clamped;
+                ParametersChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 最大坡度角度 (度数，0-90)。
+    /// 仅在 UseSlopeFilter = true 时使用。
+    /// </summary>
+    public float MaxSlopeDegrees
+    {
+        get => _maxSlopeDegrees;
+        set
+        {
+            float clamped = Math.Clamp(value, 0.0f, 90.0f);
+            if (_maxSlopeDegrees != clamped)
+            {
+                _maxSlopeDegrees = clamped;
+                // 联动：Max 减小时自动推低 Min
+                if (_minSlopeDegrees > clamped)
+                    _minSlopeDegrees = clamped;
                 ParametersChanged?.Invoke(this, EventArgs.Empty);
             }
         }

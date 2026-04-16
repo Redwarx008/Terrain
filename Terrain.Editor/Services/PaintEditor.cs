@@ -102,7 +102,13 @@ public sealed class PaintEditor
             RandomSeed = strokeSeed,
             HeightData = terrainManager.HeightDataCache,
             HeightDataWidth = terrainManager.HeightCacheWidth,
-            HeightDataHeight = terrainManager.HeightCacheHeight
+            HeightDataHeight = terrainManager.HeightCacheHeight,
+
+            // 坡度过滤参数
+            UseSlopeFilter = brushParams.UseSlopeFilter,
+            MinSlopeDegrees = brushParams.MinSlopeDegrees,
+            MaxSlopeDegrees = brushParams.MaxSlopeDegrees,
+            HeightScale = terrainManager.HeightScale
         };
 
         // Mark chunks before mutation so each chunk can cache its true "before" state.

@@ -391,6 +391,64 @@ internal class BrushParamsPanel
         {
             ImGui.SetTooltip("Fix texture stretching on steep cliff faces");
         }
+
+        ImGui.Spacing();
+
+        // Slope Filter toggle
+        bool useSlopeFilter = _brushParams.UseSlopeFilter;
+        if (ImGui.Checkbox("Slope Filter", ref useSlopeFilter))
+        {
+            _brushParams.UseSlopeFilter = useSlopeFilter;
+            ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "UseSlopeFilter", Value = useSlopeFilter ? 1.0f : 0.0f });
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Only apply paint where terrain slope is within the specified range");
+        }
+
+        // Slope range sliders (only when slope filter is enabled)
+        if (useSlopeFilter)
+        {
+            ImGui.Indent();
+
+            // Min Slope slider
+            ImGui.Text("Min Slope");
+            ImGui.SetNextItemWidth(-1);
+            float minSlope = _brushParams.MinSlopeDegrees;
+            if (ImGui.SliderFloat("##min_slope", ref minSlope, 0.0f, 90.0f, "%.0f°"))
+            {
+                // 联动：Min 增大时自动推高 Max
+                if (minSlope > _brushParams.MaxSlopeDegrees)
+                    _brushParams.MaxSlopeDegrees = minSlope;
+                _brushParams.MinSlopeDegrees = minSlope;
+                ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "MinSlope", Value = minSlope });
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Minimum slope angle for painting (0 = flat, 90 = vertical)");
+            }
+
+            ImGui.Spacing();
+
+            // Max Slope slider
+            ImGui.Text("Max Slope");
+            ImGui.SetNextItemWidth(-1);
+            float maxSlope = _brushParams.MaxSlopeDegrees;
+            if (ImGui.SliderFloat("##max_slope", ref maxSlope, 0.0f, 90.0f, "%.0f°"))
+            {
+                // 联动：Max 减小时自动推低 Min
+                if (maxSlope < _brushParams.MinSlopeDegrees)
+                    _brushParams.MinSlopeDegrees = maxSlope;
+                _brushParams.MaxSlopeDegrees = maxSlope;
+                ParamsChanged?.Invoke(this, new BrushParamsChangedEventArgs { Param = "MaxSlope", Value = maxSlope });
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("Maximum slope angle for painting");
+            }
+
+            ImGui.Unindent();
+        }
     }
 
     private void RenderBrushPreview()
