@@ -55,7 +55,6 @@ public sealed class InputsDataPanel : PanelBase
             return;
         }
 
-        RenderSectionHeader("Input Data");
         RenderInputSlot(
             "Heightmap",
             terrainManager?.CurrentTerrainPath);

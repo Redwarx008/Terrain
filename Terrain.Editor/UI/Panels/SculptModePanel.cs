@@ -20,8 +20,6 @@ internal sealed class SculptModePanel
 
     public void Render()
     {
-        ImGui.TextColored(ColorPalette.TextPrimary.ToVector4(), "SculptMode");
-        ImGui.Spacing();
         RenderTools();
         ImGui.Spacing();
         ImGui.Separator();
