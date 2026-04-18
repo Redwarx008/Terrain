@@ -45,7 +45,30 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(npm install *)",
       "Bash(trellis init *)",
-      "Bash(python ./.trellis/scripts/get_context.py)"
+      "Bash(python ./.trellis/scripts/get_context.py)",
+      "Bash(while read:*)",
+      "Bash(do if:*)",
+      "Bash(then echo:*)",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(python3 ./.trellis/scripts/get_context.py --mode record)",
+      "Bash(python ./.trellis/scripts/get_context.py --mode record)",
+      "Bash(python3 ./.trellis/scripts/get_context.py)",
+      "Bash(python3 ./.trellis/scripts/get_context.py --mode packages)",
+      "Bash(python ./.trellis/scripts/get_context.py --mode packages)",
+      "Bash(cat \"C:/Users/Redwa/.claude/hooks/\"*.json)",
+      "Bash(uvx --version)",
+      "Bash(uv --version)",
+      "Bash(pipx --version)",
+      "mcp__blender-mcp__get_scene_info",
+      "mcp__blender-mcp__execute_blender_code",
+      "mcp__blender-mcp__get_sketchfab_model_preview",
+      "mcp__blender-mcp__download_sketchfab_model",
+      "mcp__blender-mcp__get_polyhaven_status",
+      "WebFetch(domain:api.polyhaven.com)",
+      "Bash(curl -s \"https://api.polyhaven.com/assets/trees/fir_tree_01\")",
+      "mcp__blender-mcp__get_viewport_screenshot",
+      "mcp__blender-mcp__get_object_info"
     ]
   }
 }
