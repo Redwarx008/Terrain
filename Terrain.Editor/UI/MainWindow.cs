@@ -143,6 +143,7 @@ public class MainWindow : ControlBase
         Console.Initialize();
 
         LayoutManager.CalculateLayout();
+        InputsData.SetGraphicsResources(graphicsDevice, services.GetService<GraphicsContext>());
         SubscribeEvents();
         HandleModeChange(Toolbar.CurrentMode);
     }
@@ -200,8 +201,6 @@ public class MainWindow : ControlBase
         Toolbar.ButtonClicked += (s, e) => HandleToolbarAction(e.ButtonName);
         Toolbar.ModeChanged += (s, e) => HandleModeChange(e);
 
-        InputsData.LoadHeightmapRequested += (s, e) => RequestHeightmapLoad();
-        InputsData.LoadClimateMaskRequested += (s, e) => RequestClimateMaskLoad();
         RightPanel.RulesChanged += (s, e) => Viewport.TerrainManager?.RegenerateMaterialIndices();
         RightPanel.ClimateMaskChanged += (s, e) => Viewport.TerrainManager?.RegenerateMaterialIndices();
 
