@@ -93,6 +93,7 @@ public class EditorGame : Game
             }
 
             mainWindow.Viewport.InitializeTerrainSupport(GraphicsDevice, editorScene, Input, defaultTerrainTexture);
+            mainWindow.InputsData.SetTerrainManager(mainWindow.Viewport.TerrainManager);
             mainWindow.RightPanel.SetTerrainManager(mainWindow.Viewport.TerrainManager);
             mainWindow.Viewport.Camera = FindEditorCamera();
             mainWindow.Viewport.TextureIdProvider = ImGuiExtension.GetTextureKey;

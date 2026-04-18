@@ -2,6 +2,7 @@
 
 using System;
 using Stride.Core.Mathematics;
+using Terrain.Editor.UI.Panels;
 
 namespace Terrain.Editor.Services;
 
@@ -25,6 +26,14 @@ public enum PaintTool
     Erase
 }
 
+public enum SceneDebugViewMode
+{
+    FinalOutput,
+    ClimateMaskMap,
+    SlopeMap,
+    HeightMap
+}
+
 /// <summary>
 /// Manages the current editor state including active tool selection.
 /// Follows singleton pattern for global access.
@@ -36,7 +45,12 @@ public sealed class EditorState
     private static readonly Lazy<EditorState> _instance = new(() => new());
     private HeightTool _currentHeightTool = HeightTool.Raise;
     private PaintTool _currentPaintTool = PaintTool.Paint;
+    private EditorMode _currentEditorMode = EditorMode.Sculpt;
     private bool _hasSelectedTool = false;
+    private int _currentClimateId;
+    private int _selectedRuleIndex = -1;
+    private bool _showMaskOverlay = true;
+    private SceneDebugViewMode _currentDebugViewMode = SceneDebugViewMode.FinalOutput;
 
     /// <summary>
     /// Gets the singleton instance of EditorState.
@@ -55,6 +69,23 @@ public sealed class EditorState
             {
                 _hasSelectedTool = value;
                 ToolSelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Tracks which high-level editing workflow owns the right-side panel.
+    /// The layout switches on this value to avoid showing inactive mode tools.
+    /// </summary>
+    public EditorMode CurrentEditorMode
+    {
+        get => _currentEditorMode;
+        set
+        {
+            if (_currentEditorMode != value)
+            {
+                _currentEditorMode = value;
+                EditorModeChanged?.Invoke(this, EventArgs.Empty);
             }
         }
     }
@@ -106,6 +137,11 @@ public sealed class EditorState
     /// 当工具选择状态改变时触发（选中或取消选中）。
     /// </summary>
     public event EventHandler? ToolSelectionChanged;
+    public event EventHandler? EditorModeChanged;
+    public event EventHandler? ClimateSelectionChanged;
+    public event EventHandler? RuleSelectionChanged;
+    public event EventHandler? OverlayChanged;
+    public event EventHandler? DebugViewModeChanged;
 
     /// <summary>
     /// 向后兼容属性。
@@ -123,6 +159,58 @@ public sealed class EditorState
     {
         add => HeightToolChanged += value;
         remove => HeightToolChanged -= value;
+    }
+
+    public int CurrentClimateId
+    {
+        get => _currentClimateId;
+        set
+        {
+            if (_currentClimateId != value)
+            {
+                _currentClimateId = value;
+                ClimateSelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public int SelectedRuleIndex
+    {
+        get => _selectedRuleIndex;
+        set
+        {
+            if (_selectedRuleIndex != value)
+            {
+                _selectedRuleIndex = value;
+                RuleSelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public bool ShowMaskOverlay
+    {
+        get => _showMaskOverlay;
+        set
+        {
+            if (_showMaskOverlay != value)
+            {
+                _showMaskOverlay = value;
+                OverlayChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public SceneDebugViewMode CurrentDebugViewMode
+    {
+        get => _currentDebugViewMode;
+        set
+        {
+            if (_currentDebugViewMode != value)
+            {
+                _currentDebugViewMode = value;
+                DebugViewModeChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
 
     private EditorState() { }

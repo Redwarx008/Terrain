@@ -285,6 +285,11 @@ public class SceneViewPanel : PanelBase
         if (ImGui.Checkbox("Gizmos", ref showGizmos))
             ShowGizmos = showGizmos;
 
+        ImGui.SameLine(0.0f, EditorStyle.ScaleValue(12.0f));
+        ImGui.Text("View Mode");
+        ImGui.SameLine();
+        RenderDebugViewDropdown();
+
         // Camera speed display (right-aligned)
         RenderCameraSpeedDisplay(toolbarPos, toolbarHeight);
 
@@ -331,6 +336,27 @@ public class SceneViewPanel : PanelBase
         return $"{speed:F0} u/s";
     }
 
+    private static void RenderDebugViewDropdown()
+    {
+        var editorState = EditorState.Instance;
+        string currentLabel = GetDebugViewLabel(editorState.CurrentDebugViewMode);
+
+        if (ImGui.BeginCombo("##scene_debug_mode", currentLabel))
+        {
+            foreach (SceneDebugViewMode mode in Enum.GetValues<SceneDebugViewMode>())
+            {
+                bool selected = editorState.CurrentDebugViewMode == mode;
+                if (ImGui.Selectable(GetDebugViewLabel(mode), selected))
+                    editorState.CurrentDebugViewMode = mode;
+
+                if (selected)
+                    ImGui.SetItemDefaultFocus();
+            }
+
+            ImGui.EndCombo();
+        }
+    }
+
     private void Render3DView()
     {
         float toolbarHeight = GetToolbarHeight();
@@ -356,7 +382,7 @@ public class SceneViewPanel : PanelBase
             drawList.AddRectFilled(viewPos, new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y), ColorPalette.DarkBackground.ToUint());
         }
 
-        if (!terrainManager.HasTerrainLoaded)
+        if (terrainManager == null || !terrainManager.HasTerrainLoaded)
         {
             if (SceneRenderTarget == null && ShowGrid)
             {
@@ -390,6 +416,8 @@ public class SceneViewPanel : PanelBase
             drawList.AddRectFilled(bgMin, bgMax, new Color4(0.04f, 0.04f, 0.04f, 0.7f).ToUint(), EditorStyle.ScaleValue(4.0f));
             drawList.AddText(textPos, ColorPalette.TextPrimary.ToUint(), status);
         }
+
+        RenderDebugOverlay(drawList, viewPos, viewSize);
 
         // Register an explicit interactive item over the rendered image so the viewport can own mouse
         // hover/active state like a real control instead of relying on the surrounding window to infer it.
@@ -436,7 +464,7 @@ public class SceneViewPanel : PanelBase
             return;
 
         // Check if we have terrain loaded
-        if (!terrainManager.HasTerrainLoaded)
+        if (terrainManager == null || !terrainManager.HasTerrainLoaded)
             return;
 
         NumericsVector2 mousePos = io.MousePos;
@@ -482,7 +510,7 @@ public class SceneViewPanel : PanelBase
 
         // D-20: Tool color coding - get color from EditorState based on mode
         var toolColor = currentEditMode == EditorMode.Paint
-            ? EditorState.Instance.GetPaintToolColor()
+            ? GetSelectedClimateColor()
             : EditorState.Instance.GetToolColor();
         uint outerColor = toolColor.WithAlpha(0.5f).ToUint();
         uint innerColor = toolColor.WithAlpha(0.3f).ToUint();
@@ -525,7 +553,7 @@ public class SceneViewPanel : PanelBase
         if (isCameraInteracting)
             return;
 
-        if (!terrainManager.HasTerrainLoaded)
+        if (terrainManager == null || !terrainManager.HasTerrainLoaded)
             return;
 
         // Use currentHitPoint from RenderBrushPreview
@@ -553,7 +581,7 @@ public class SceneViewPanel : PanelBase
         if (io.MouseDown[0] && !isEditing)
         {
             isEditing = true;
-            heightEditor.BeginStroke(editorState.CurrentHeightTool.ToString(), currentHitPoint!.Value, terrainManager);
+            heightEditor.BeginStroke(editorState.CurrentHeightTool.ToString(), currentHitPoint!.Value, terrainManager!);
         }
 
         // Apply edit during drag (D-01, D-03)
@@ -561,7 +589,7 @@ public class SceneViewPanel : PanelBase
         {
             // Get delta time for frame-rate independent editing
             float deltaTime = (float)io.DeltaTime;
-            heightEditor.ApplyStroke(currentHitPoint!.Value, terrainManager, deltaTime);
+            heightEditor.ApplyStroke(currentHitPoint!.Value, terrainManager!, deltaTime);
         }
 
         // End edit on release (D-02)
@@ -575,35 +603,28 @@ public class SceneViewPanel : PanelBase
     private void UpdatePaintEditing(ImGuiIOPtr io)
     {
         var editorState = EditorState.Instance;
-        var paintEditor = PaintEditor.Instance;
-        var materialIndices = terrainManager.MaterialIndices;
-
-        if (materialIndices == null)
+        if (terrainManager?.ClimateMask == null || currentHitPoint == null)
             return;
 
-        // Check for edit start
         if (io.MouseDown[0] && !isEditing)
         {
             isEditing = true;
-            paintEditor.BeginStroke(editorState.CurrentPaintTool.ToString(), terrainManager);
         }
 
-        // Apply edit during drag
-        if (isEditing && io.MouseDown[0] && currentHitPoint != null)
+        if (isEditing && io.MouseDown[0])
         {
-            paintEditor.ApplyStroke(
+            // ClimateEdit paints the authored mask directly; the material index map is
+            // regenerated from rules instead of being hand-painted into the output.
+            ClimateEditor.Instance.ApplyStroke(
                 currentHitPoint.Value,
-                materialIndices,
-                materialIndices.Width,
-                materialIndices.Height,
-                terrainManager);
+                terrainManager.ClimateMask,
+                terrainManager,
+                (byte)Math.Clamp(editorState.CurrentClimateId, 0, byte.MaxValue));
         }
 
-        // End edit on release
         if (!io.MouseDown[0] && isEditing)
         {
             isEditing = false;
-            paintEditor.EndStroke();
         }
     }
 
@@ -805,7 +826,11 @@ public class SceneViewPanel : PanelBase
             1.0f);
 
         string mode = cameraController.IsFlyModeActive ? "Fly" : "Orbit";
-        string info = $"Mode: {mode} | Y/P: {cameraController.YawDegrees:F0}/{cameraController.PitchDegrees:F0} | Cam: {cameraController.CameraPosition.X:F0}, {cameraController.CameraPosition.Y:F0}, {cameraController.CameraPosition.Z:F0}";
+        string heightText = "Height: --";
+        if (currentHitPoint != null)
+            heightText = $"Height: {currentHitPoint.Value.Y:F1}";
+
+        string info = $"Mode: {mode} | Y/P: {cameraController.YawDegrees:F0}/{cameraController.PitchDegrees:F0} | Cam: {cameraController.CameraPosition.X:F0}, {cameraController.CameraPosition.Y:F0}, {cameraController.CameraPosition.Z:F0} | {heightText}";
         var textPos = new NumericsVector2(
             infoPos.X + EditorStyle.ScaleValue(8.0f),
             infoPos.Y + (infoHeight - ImGui.CalcTextSize(info).Y) * 0.5f);
@@ -886,6 +911,78 @@ public class SceneViewPanel : PanelBase
     {
         float width = MathF.Max(EditorStyle.ScaleValue(60.0f), ImGui.CalcTextSize(label).X + EditorStyle.ScaleValue(16.0f));
         return new NumericsVector2(width, buttonHeight);
+    }
+
+    private void RenderDebugOverlay(ImDrawListPtr drawList, NumericsVector2 viewPos, NumericsVector2 viewSize)
+    {
+        var editorState = EditorState.Instance;
+        SceneDebugViewMode debugMode = editorState.CurrentDebugViewMode;
+        bool shouldShowMaskTint = debugMode == SceneDebugViewMode.ClimateMaskMap ||
+                                  (debugMode == SceneDebugViewMode.FinalOutput && editorState.ShowMaskOverlay);
+
+        if (shouldShowMaskTint)
+        {
+            // The first pass overlays the selected climate color over the live scene so
+            // climate painting immediately communicates which authored mask id is active.
+            drawList.AddRectFilled(
+                viewPos,
+                new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y),
+                GetSelectedClimateColor().WithAlpha(debugMode == SceneDebugViewMode.ClimateMaskMap ? 0.18f : 0.08f).ToUint());
+        }
+        else if (debugMode == SceneDebugViewMode.SlopeMap || debugMode == SceneDebugViewMode.HeightMap)
+        {
+            Color4 tint = debugMode == SceneDebugViewMode.SlopeMap
+                ? new Color4(0.75f, 0.75f, 0.75f, 0.14f)
+                : new Color4(0.95f, 0.95f, 0.95f, 0.10f);
+            drawList.AddRectFilled(
+                viewPos,
+                new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y),
+                tint.ToUint());
+        }
+
+        string label = GetDebugViewLabel(debugMode);
+        NumericsVector2 textSize = ImGui.CalcTextSize(label);
+        float panelWidth = MathF.Max(EditorStyle.ScaleValue(120.0f), textSize.X + EditorStyle.ScaleValue(52.0f));
+        float panelHeight = EditorStyle.ScaleValue(34.0f);
+        var panelMin = new NumericsVector2(
+            viewPos.X + viewSize.X - panelWidth - EditorStyle.ScaleValue(10.0f),
+            viewPos.Y + EditorStyle.ScaleValue(10.0f));
+        var panelMax = new NumericsVector2(panelMin.X + panelWidth, panelMin.Y + panelHeight);
+
+        drawList.AddRectFilled(panelMin, panelMax, new Color4(0.05f, 0.05f, 0.05f, 0.82f).ToUint(), EditorStyle.ScaleValue(4.0f));
+        drawList.AddRect(panelMin, panelMax, ColorPalette.BorderLight.ToUint(), EditorStyle.ScaleValue(4.0f));
+
+        Color4 swatchColor = debugMode == SceneDebugViewMode.ClimateMaskMap || debugMode == SceneDebugViewMode.FinalOutput
+            ? GetSelectedClimateColor()
+            : debugMode == SceneDebugViewMode.SlopeMap
+                ? new Color4(0.75f, 0.75f, 0.75f, 1.0f)
+                : new Color4(0.95f, 0.95f, 0.95f, 1.0f);
+
+        var swatchMin = new NumericsVector2(panelMin.X + EditorStyle.ScaleValue(8.0f), panelMin.Y + EditorStyle.ScaleValue(6.0f));
+        var swatchMax = new NumericsVector2(swatchMin.X + EditorStyle.ScaleValue(22.0f), swatchMin.Y + EditorStyle.ScaleValue(22.0f));
+        drawList.AddRectFilled(swatchMin, swatchMax, swatchColor.ToUint(), EditorStyle.ScaleValue(3.0f));
+        drawList.AddRect(swatchMin, swatchMax, ColorPalette.Border.ToUint(), EditorStyle.ScaleValue(3.0f));
+        drawList.AddText(new NumericsVector2(swatchMax.X + EditorStyle.ScaleValue(8.0f), panelMin.Y + EditorStyle.ScaleValue(9.0f)), ColorPalette.TextPrimary.ToUint(), label);
+    }
+
+    private static string GetDebugViewLabel(SceneDebugViewMode mode)
+    {
+        return mode switch
+        {
+            SceneDebugViewMode.ClimateMaskMap => "Climate MaskMap",
+            SceneDebugViewMode.SlopeMap => "Slope Map",
+            SceneDebugViewMode.HeightMap => "Height Map",
+            _ => "Final Output"
+        };
+    }
+
+    private static Color4 GetSelectedClimateColor()
+    {
+        ClimateDefinition? climate = ClimateRuleService.Instance.FindClimate(EditorState.Instance.CurrentClimateId);
+        if (climate != null)
+            return new Color4(climate.DebugColor.X, climate.DebugColor.Y, climate.DebugColor.Z, climate.DebugColor.W);
+
+        return new Color4(0.2f, 0.8f, 0.2f, 0.5f);
     }
 
     public override void Dispose()

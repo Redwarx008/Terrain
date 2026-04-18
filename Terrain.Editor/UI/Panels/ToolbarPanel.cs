@@ -75,11 +75,9 @@ public class ToolbarPanel : PanelBase
         ImGui.SameLine(0, sectionSpacing);
 
         // Mode selection
-        RenderModeButton(EditorMode.Sculpt, Icons.Terrain, "Sculpt Mode");
+        RenderModeButton(EditorMode.Sculpt, Icons.Terrain, "SculptMode");
         ImGui.SameLine();
-        RenderModeButton(EditorMode.Paint, Icons.Brush, "Paint Mode");
-        ImGui.SameLine();
-        RenderModeButton(EditorMode.Foliage, Icons.Tree, "Foliage Mode");
+        RenderModeButton(EditorMode.Paint, Icons.Brush, "Climate Edit");
     }
 
     private void RenderButton(string name, string icon, string tooltip)

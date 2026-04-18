@@ -36,7 +36,7 @@ public class MainWindow : ControlBase
 
     public ToolbarPanel Toolbar { get; }
 
-    public ToolsPanel Tools { get; }
+    public InputsDataPanel InputsData { get; }
 
     public SceneViewPanel Viewport { get; }
 
@@ -60,7 +60,7 @@ public class MainWindow : ControlBase
     public MainWindow()
     {
         Toolbar = new ToolbarPanel();
-        Tools = new ToolsPanel();
+        InputsData = new InputsDataPanel();
         Viewport = new SceneViewPanel();
         RightPanel = new RightPanel();
         Assets = new AssetsPanel();
@@ -69,7 +69,7 @@ public class MainWindow : ControlBase
         LayoutManager = new LayoutManager
         {
             TopPanel = Toolbar,
-            LeftPanel = Tools,
+            LeftPanel = InputsData,
             CenterPanel = Viewport,
             RightPanel = RightPanel,
             BottomPanel = new TabPanel(Assets, Console)
@@ -136,7 +136,7 @@ public class MainWindow : ControlBase
         LayoutManager.Initialize();
 
         Toolbar.Initialize();
-        Tools.Initialize();
+        InputsData.Initialize();
         Viewport.Initialize();
         RightPanel.Initialize();
         Assets.Initialize();
@@ -144,6 +144,7 @@ public class MainWindow : ControlBase
 
         LayoutManager.CalculateLayout();
         SubscribeEvents();
+        HandleModeChange(Toolbar.CurrentMode);
     }
 
     private void InitializeDefaultData()
@@ -191,53 +192,28 @@ public class MainWindow : ControlBase
 
     private void SubscribeEvents()
     {
-        // 传递 TerrainManager 给 RightPanel，用于 Terrain 标签页
+        // Keep the fixed left/right panels bound to the active terrain manager so
+        // the new three-column layout always reflects the currently loaded data.
+        InputsData.SetTerrainManager(Viewport.TerrainManager);
         RightPanel.SetTerrainManager(Viewport.TerrainManager);
 
         Toolbar.ButtonClicked += (s, e) => HandleToolbarAction(e.ButtonName);
         Toolbar.ModeChanged += (s, e) => HandleModeChange(e);
 
-        // 工具选择/取消选择事件
-        Tools.ToolSelected += (s, e) =>
-        {
-            Console.LogInfo($"Tool selected: {e.Tool.Name}");
-            RightPanel.OnToolSelected();
-        };
-        Tools.ToolDeselected += (s, e) =>
-        {
-            Console.LogInfo("Tool deselected");
-            RightPanel.OnToolDeselected();
-        };
+        InputsData.LoadHeightmapRequested += (s, e) => RequestHeightmapLoad();
+        InputsData.LoadClimateMaskRequested += (s, e) => RequestClimateMaskLoad();
+        RightPanel.RulesChanged += (s, e) => Viewport.TerrainManager?.RegenerateMaterialIndices();
+        RightPanel.ClimateMaskChanged += (s, e) => Viewport.TerrainManager?.RegenerateMaterialIndices();
 
-        RightPanel.BrushSelected += (s, e) => Console.LogInfo($"Brush selected: {e.BrushName}");
-        RightPanel.BrushParamsChanged += (s, e) => Console.LogInfo($"Brush {e.Param} changed to {e.Value:F2}");
-
-        // 纹理选择/取消选择事件
         Assets.TextureSlotSelected += (s, e) =>
         {
             Console.LogInfo($"Texture slot selected: {e.SlotIndex}");
             MaterialSlotManager.Instance.SelectedSlotIndex = e.SlotIndex;
-            RightPanel.SelectedTextureSlot = e.SlotIndex;
-            RightPanel.OnTextureSelected();
-
-            // 自动切换到 Paint 模式并选择 Paint 工具
-            if (Toolbar.CurrentMode != EditorMode.Paint)
-            {
-                Toolbar.SetMode(EditorMode.Paint);
-                // HandleModeChange 通过 ModeChanged 事件自动调用
-            }
-
-            if (!EditorState.Instance.HasSelectedTool)
-            {
-                Tools.SelectTool("Paint");
-            }
         };
         Assets.TextureSlotDeselected += (s, e) =>
         {
             Console.LogInfo("Texture slot deselected");
             MaterialSlotManager.Instance.SelectedSlotIndex = 0;
-            RightPanel.SelectedTextureSlot = -1;
-            RightPanel.OnTextureDeselected();
         };
 
         Assets.TextureImportRequested += OnTextureImportRequested;
@@ -245,16 +221,13 @@ public class MainWindow : ControlBase
         Assets.FoliageSelected += (s, e) => Console.LogInfo($"Foliage selected: {e.Item.Name}");
         Assets.LayerSelected += (s, e) => Console.LogInfo($"Layer selected: {e.Layer.Name}");
 
-        // RightPanel texture inspector events
-        RightPanel.ImportNormalRequested += OnImportNormalRequested;
-        RightPanel.ClearNormalRequested += OnClearNormalRequested;
-
-        // Subscribe to terrain events
         Viewport.HeightmapLoaded += (s, path) =>
         {
             Console.LogInfo($"Heightmap loaded successfully: {path}");
+            InputsData.SetTerrainManager(Viewport.TerrainManager);
+            RightPanel.SetTerrainManager(Viewport.TerrainManager);
 
-            // 加载新建向导中选择的 index map（需在 heightmap 加载完成后）
+            // Older wizard flows can still seed an authored material index map.
             if (!string.IsNullOrEmpty(pendingIndexMapPath))
             {
                 if (Viewport.TerrainManager?.LoadIndexMap(pendingIndexMapPath) == true)
@@ -552,8 +525,8 @@ public class MainWindow : ControlBase
 
             if (ImGui.BeginMenu("View"))
             {
-                bool showTools = Tools.IsVisible;
-                if (ImGui.MenuItem("Tools Panel", "", ref showTools))
+                bool showInputs = InputsData.IsVisible;
+                if (ImGui.MenuItem("Inputs & Data Panel", "", ref showInputs))
                 {
                     LayoutManager.ToggleLeftPanel();
                 }
@@ -568,14 +541,6 @@ public class MainWindow : ControlBase
                 if (ImGui.MenuItem("Bottom Panel", "", ref showBottom))
                 {
                     LayoutManager.ToggleBottomPanel();
-                }
-
-                ImGui.Separator();
-
-                bool showTerrainTab = RightPanel.IsTerrainTabVisible;
-                if (ImGui.MenuItem("Terrain Tab", "", ref showTerrainTab))
-                {
-                    RightPanel.IsTerrainTabVisible = showTerrainTab;
                 }
 
                 ImGui.Separator();
@@ -726,7 +691,8 @@ public class MainWindow : ControlBase
     private void OpenProject()
     {
         nint hwnd = GetNativeWindowHandle();
-        if (FileDialog.ShowOpenDialog(hwnd, "TOML Files (*.toml)|*.toml", "Open Terrain Project", out string? filePath))
+        if (FileDialog.ShowOpenDialog(hwnd, "TOML Files (*.toml)|*.toml", "Open Terrain Project", out string? filePath)
+            && !string.IsNullOrEmpty(filePath))
         {
             Console.LogInfo($"Opening project: {filePath}");
             Viewport.TerrainManager?.LoadProject(filePath);
@@ -762,7 +728,8 @@ public class MainWindow : ControlBase
         var pm = ProjectManager.Instance;
         string defaultName = pm.IsProjectOpen ? pm.ProjectName + ".toml" : "terrain_project.toml";
 
-        if (FileDialog.ShowSaveDialog(hwnd, "TOML Files (*.toml)|*.toml", "Save Project As", defaultName, out string? filePath))
+        if (FileDialog.ShowSaveDialog(hwnd, "TOML Files (*.toml)|*.toml", "Save Project As", defaultName, out string? filePath)
+            && !string.IsNullOrEmpty(filePath))
         {
             // 如果当前有项目，先复制配置到新路径
             if (pm.IsProjectOpen)
@@ -843,10 +810,14 @@ public class MainWindow : ControlBase
 
     private void HandleModeChange(EditorMode mode)
     {
-        Tools.SetMode(mode);
         Assets.SetMode(mode);
         RightPanel.CurrentMode = mode;
         Viewport.SetEditMode(mode);
+        EditorState.Instance.CurrentEditorMode = mode;
+
+        // Switching modes swaps the entire right-hand workflow. Keep a tool active
+        // so brush preview and input routing stay responsive after the tab rebuild.
+        EditorState.Instance.HasSelectedTool = mode == EditorMode.Sculpt || mode == EditorMode.Paint;
 
         Console.LogInfo($"Mode changed to: {mode}");
     }
@@ -857,7 +828,8 @@ public class MainWindow : ControlBase
         string filter = "Image Files (*.dds;*.png;*.jpg;*.tga;*.bmp;*.tiff)|*.dds;*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
         string title = e.TextureType == TextureType.Albedo ? "Import Albedo Texture" : "Import Normal Texture";
 
-        if (FileDialog.ShowOpenDialog(hwnd, filter, title, out string? filePath))
+        if (FileDialog.ShowOpenDialog(hwnd, filter, title, out string? filePath)
+            && !string.IsNullOrEmpty(filePath))
         {
             var graphicsContext = services!.GetService<GraphicsContext>();
             var texture = TextureImporter.ImportFromFile(
@@ -883,13 +855,6 @@ public class MainWindow : ControlBase
 
                     Assets.SelectedTextureSlot = e.SlotIndex;
                     MaterialSlotManager.Instance.SelectedSlotIndex = e.SlotIndex;
-                    RightPanel.SelectedTextureSlot = e.SlotIndex;
-                    RightPanel.OnTextureSelected();
-                    if (Toolbar.CurrentMode != EditorMode.Paint)
-                    {
-                        Toolbar.SetMode(EditorMode.Paint);
-                    }
-                    Tools.SelectTool("Paint");
 
                     // 自动查找并导入匹配的法线贴图
                     string? normalPath = TextureImporter.FindMatchingNormalMap(filePath);
@@ -942,7 +907,8 @@ public class MainWindow : ControlBase
         nint hwnd = GetNativeWindowHandle();
         string filter = "Image Files (*.dds;*.png;*.jpg;*.tga;*.bmp;*.tiff)|*.dds;*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
 
-        if (FileDialog.ShowOpenDialog(hwnd, filter, "Import Normal Texture", out string? filePath))
+        if (FileDialog.ShowOpenDialog(hwnd, filter, "Import Normal Texture", out string? filePath)
+            && !string.IsNullOrEmpty(filePath))
         {
             var graphicsContext = services!.GetService<GraphicsContext>();
             var texture = TextureImporter.ImportFromFile(
@@ -1003,8 +969,45 @@ public class MainWindow : ControlBase
     {
         Assets.SelectedTextureSlot = -1;
         MaterialSlotManager.Instance.SelectedSlotIndex = 0;
-        RightPanel.SelectedTextureSlot = -1;
-        RightPanel.OnTextureDeselected();
+    }
+
+
+    private void RequestHeightmapLoad()
+    {
+        nint hwnd = GetNativeWindowHandle();
+        string filter = "Image Files (*.png;*.raw;*.r16;*.jpg;*.tga;*.bmp;*.tiff)|*.png;*.raw;*.r16;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
+
+        if (FileDialog.ShowOpenDialog(hwnd, filter, "Load Heightmap", out string? filePath)
+            && !string.IsNullOrEmpty(filePath))
+        {
+            Viewport.LoadHeightmap(filePath);
+            Console.LogInfo($"Loading heightmap: {filePath}");
+        }
+    }
+
+    private void RequestClimateMaskLoad()
+    {
+        if (Viewport.TerrainManager?.ClimateMask == null)
+        {
+            Console.LogWarning("Load a heightmap before importing a climate mask.");
+            return;
+        }
+
+        nint hwnd = GetNativeWindowHandle();
+        string filter = "Image Files (*.png;*.jpg;*.tga;*.bmp;*.tiff)|*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.tiff;*.tif";
+
+        if (FileDialog.ShowOpenDialog(hwnd, filter, "Load Climate Mask", out string? filePath)
+            && !string.IsNullOrEmpty(filePath))
+        {
+            if (Viewport.TerrainManager.LoadClimateMask(filePath))
+            {
+                Console.LogInfo($"Loaded climate mask: {filePath}");
+            }
+            else
+            {
+                Console.LogError($"Failed to load climate mask: {filePath}");
+            }
+        }
     }
 
 }
