@@ -15,6 +15,28 @@ internal sealed class RuleManagerPanel
     public void Render()
     {
         var rules = ClimateRuleService.Instance;
+        var state = EditorState.Instance;
+
+        // 全局季节选择器
+        ImGui.Text("Active Season");
+        ClimateSeason currentSeason = state.ActiveSeason;
+        if (ImGui.BeginCombo("##active_season", currentSeason.ToString()))
+        {
+            foreach (ClimateSeason season in Enum.GetValues<ClimateSeason>())
+            {
+                bool isSelected = season == currentSeason;
+                if (ImGui.Selectable(season.ToString(), isSelected))
+                {
+                    state.ActiveSeason = season;
+                    RulesChanged?.Invoke(this, EventArgs.Empty);
+                }
+            }
+            ImGui.EndCombo();
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
 
         if (ImGui.Button("[+] Add Rule Layer##rule_add", new Vector2(-1, EditorStyle.ScaleValue(30.0f))))
         {

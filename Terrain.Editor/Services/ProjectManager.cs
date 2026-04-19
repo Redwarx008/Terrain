@@ -178,15 +178,4 @@ public sealed class ProjectManager
             DirtyChanged?.Invoke(this, EventArgs.Empty);
         }
     }
-
-    /// <summary>
-    /// 获取材质索引图的保存路径。
-    /// </summary>
-    public string GetMaterialIndexPath(string terrainName)
-    {
-        if (!string.IsNullOrEmpty(cachedConfig?.IndexMapPath))
-            return cachedConfig.IndexMapPath;
-
-        return Path.Combine(ProjectPath, $"{terrainName}_material_index.png");
-    }
 }

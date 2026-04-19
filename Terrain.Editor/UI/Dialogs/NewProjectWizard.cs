@@ -9,13 +9,13 @@ using Terrain.Editor.UI.Styling;
 namespace Terrain.Editor.UI.Dialogs;
 
 /// <summary>
-/// 新建项目的模态弹窗向导，选择 Heightmap 和可选的 Index Map。
+/// 新建项目的模态弹窗向导，选择 Heightmap 和可选的 Climate Mask。
 /// 项目文件路径在首次 Save/SaveAs 时确定。
 /// </summary>
 public class NewProjectWizard
 {
     private string heightmapPath = "";
-    private string indexMapPath = "";
+    private string climateMaskPath = "";
 
     private bool isOpen;
     private bool heightmapPicked;
@@ -31,7 +31,7 @@ public class NewProjectWizard
     public void Open()
     {
         heightmapPath = "";
-        indexMapPath = "";
+        climateMaskPath = "";
         heightmapPicked = false;
         isOpen = true;
     }
@@ -96,35 +96,35 @@ public class NewProjectWizard
 
             ImGui.Dummy(new Vector2(0, EditorStyle.ScaleValue(4.0f)));
 
-            // Index Map (optional)
+            // Climate Mask (optional)
             ImGui.SetCursorPosX(padding);
             ImGui.AlignTextToFramePadding();
-            ImGui.Text("Index Map");
+            ImGui.Text("Climate Mask");
             ImGui.SameLine();
-            float indexInputWidth = inputWidth;
-            if (!string.IsNullOrEmpty(indexMapPath))
-                indexInputWidth -= clearButtonWidth + itemSpacing;
-            ImGui.SetNextItemWidth(indexInputWidth);
-            string indexDisplay = !string.IsNullOrEmpty(indexMapPath) ? System.IO.Path.GetFileName(indexMapPath) : "";
-            string indexHint = !string.IsNullOrEmpty(indexMapPath) ? "" : "(optional)";
+            float climateInputWidth = inputWidth;
+            if (!string.IsNullOrEmpty(climateMaskPath))
+                climateInputWidth -= clearButtonWidth + itemSpacing;
+            ImGui.SetNextItemWidth(climateInputWidth);
+            string climateDisplay = !string.IsNullOrEmpty(climateMaskPath) ? System.IO.Path.GetFileName(climateMaskPath) : "";
+            string climateHint = !string.IsNullOrEmpty(climateMaskPath) ? "" : "(optional)";
             TextInputStyle.Render(() =>
             {
-                ImGui.InputTextWithHint("##indexmap", indexHint, ref indexDisplay, 260, ImGuiInputTextFlags.ReadOnly);
+                ImGui.InputTextWithHint("##climatemask", climateHint, ref climateDisplay, 260, ImGuiInputTextFlags.ReadOnly);
             });
             ImGui.SameLine();
-            if (ImGui.Button("Browse##indexmap_browse", new Vector2(browseButtonWidth, 0)))
+            if (ImGui.Button("Browse##climatemask_browse", new Vector2(browseButtonWidth, 0)))
             {
-                if (FileDialog.ShowOpenDialog(hwnd, "PNG Files (*.png)|*.png", "Select Index Map", out string? path))
+                if (FileDialog.ShowOpenDialog(hwnd, "PNG Files (*.png)|*.png", "Select Climate Mask", out string? path))
                 {
-                    indexMapPath = path;
+                    climateMaskPath = path;
                 }
             }
             ImGui.SameLine();
-            if (!string.IsNullOrEmpty(indexMapPath))
+            if (!string.IsNullOrEmpty(climateMaskPath))
             {
-                if (ImGui.Button("X##indexmap_clear", new Vector2(clearButtonWidth, 0)))
+                if (ImGui.Button("X##climatemask_clear", new Vector2(clearButtonWidth, 0)))
                 {
-                    indexMapPath = "";
+                    climateMaskPath = "";
                 }
             }
 
@@ -162,7 +162,7 @@ public class NewProjectWizard
                 ProjectCreated?.Invoke(this, new NewProjectEventArgs
                 {
                     HeightmapPath = heightmapPath,
-                    IndexMapPath = string.IsNullOrEmpty(indexMapPath) ? null : indexMapPath,
+                    ClimateMaskPath = string.IsNullOrEmpty(climateMaskPath) ? null : climateMaskPath,
                 });
                 isOpen = false;
                 ImGui.CloseCurrentPopup();
@@ -188,5 +188,5 @@ public class NewProjectWizard
 public class NewProjectEventArgs : EventArgs
 {
     public required string HeightmapPath { get; init; }
-    public string? IndexMapPath { get; init; }
+    public string? ClimateMaskPath { get; init; }
 }

@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Stride.Core.Diagnostics;
@@ -40,21 +40,30 @@ public sealed class TerrainManager : IDisposable
     private int heightDataHeight;
 
     /// <summary>
-    /// 鏉愯川绱㈠紩鍥撅紝瀛樺偍姣忎釜鍍忕礌鐨勬潗璐ㄦЫ浣嶇储寮曘€?
+    /// 材质索引图，存储每个像素的材质槽位索引。
     /// </summary>
     public MaterialIndexMap? MaterialIndices { get; private set; }
+
+    /// <summary>
+    /// 气候蒙版，R8 格式，尺寸为高度图的 1/4。
+    /// 每个像素存储一个气候 ID，驱动规则求值生成 MaterialIndices。
+    /// </summary>
     public ClimateMask? ClimateMask { get; private set; }
+
+    private string? currentClimateMaskPath;
 
     private TerrainComponent? terrainComponent;
     private string? currentTerrainPath;
-    private string? currentClimateMaskPath;
     private string? lastLoadError;
 
     /// <summary>
-    /// 楂樺害缂╂斁绯绘暟锛屽皢 ushort (0-65535) 鍊艰浆鎹负涓栫晫绌洪棿楂樺害銆?
-    /// 涓栫晫楂樺害 = raw * (1/65535) * HeightScale銆?
+    /// 高度缩放系数，将 ushort (0-65535) 值转换为世界空间高度。
+    /// 世界高度 = raw * (1/65535) * HeightScale。
     /// </summary>
     public float HeightScale { get; private set; } = 100.0f;
+
+    public string? CurrentTerrainPath => currentTerrainPath;
+    public string? CurrentClimateMaskPath => currentClimateMaskPath;
 
     public IReadOnlyList<EditorTerrainEntity> TerrainEntities => terrainEntities;
     public bool HasTerrainLoaded => terrainEntities.Count > 0;
@@ -64,11 +73,9 @@ public sealed class TerrainManager : IDisposable
     public ushort[]? HeightDataCache => heightDataCache;
     public SplitTerrainConfig? SplitConfig => currentSplitConfig;
     public string? LastLoadError => lastLoadError;
-    public string? CurrentTerrainPath => currentTerrainPath;
-    public string? CurrentClimateMaskPath => currentClimateMaskPath;
 
     /// <summary>
-    /// 璁剧疆楂樺害缂╂斁绯绘暟锛屽疄鏃朵紶鎾埌鎵€鏈夊湴褰㈠疄浣撱€?
+    /// 设置高度缩放系数，实时传播到所有地形实体。
     /// </summary>
     public void SetHeightScale(float newScale)
     {
@@ -88,7 +95,7 @@ public sealed class TerrainManager : IDisposable
     public event EventHandler<TerrainLoadedEventArgs>? TerrainLoaded;
 
     /// <summary>
-    /// 椤圭洰鍔犺浇瀹屾垚鍚庤Е鍙戯紝閫氱煡闇€瑕佸姞杞芥潗璐ㄧ汗鐞嗐€?
+    /// 项目加载完成后触发，通知需要加载材质纹理。
     /// </summary>
     public event EventHandler? MaterialTexturesLoadRequired;
 
@@ -154,14 +161,16 @@ public sealed class TerrainManager : IDisposable
             currentHeightmapInfo = info;
             currentTerrainPath = heightmapPath;
 
-            // 鏉愯川绱㈠紩鍥句娇鐢?heightmap 鐨?1/2 鍒嗚鲸鐜?
+            // ClimateMask 使用 heightmap 的 1/4 分辨率，MaterialIndexMap 使用 1/2 分辨率
+            int climateMaskWidth = (heightDataWidth + 3) / 4;
+            int climateMaskHeight = (heightDataHeight + 3) / 4;
+            ClimateMask = new ClimateMask(climateMaskWidth, climateMaskHeight);
+
             int splatMapWidth = (heightDataWidth + 1) / 2;
             int splatMapHeight = (heightDataHeight + 1) / 2;
-            ClimateMask = new ClimateMask(splatMapWidth, splatMapHeight);
             MaterialIndices = new MaterialIndexMap(splatMapWidth, splatMapHeight);
-            RegenerateMaterialIndices();
 
-            // 璁剧疆鏉愯川绱㈠紩鏁版嵁寮曠敤鍒板疄浣?
+            // 设置材质索引数据引用到实体
             terrainEntity.MaterialIndexMap = MaterialIndices;
 
             var sceneEntity = new Entity("EditorTerrain")
@@ -215,12 +224,12 @@ public sealed class TerrainManager : IDisposable
         currentSplitConfig = null;
         terrainComponent = null;
         currentTerrainPath = null;
-        currentClimateMaskPath = null;
         heightDataCache = null;
         heightDataWidth = 0;
         heightDataHeight = 0;
-        ClimateMask = null;
         MaterialIndices = null;
+        ClimateMask = null;
+        currentClimateMaskPath = null;
     }
 
     public BoundingBox GetTerrainBounds()
@@ -246,8 +255,8 @@ public sealed class TerrainManager : IDisposable
     }
 
     /// <summary>
-    /// 鑾峰彇鎸囧畾浣嶇疆鐨勫師濮嬮珮搴﹀€?(ushort 0-65535)銆?
-    /// 鐢ㄤ簬 Flatten 绛夐渶瑕佷笌 HeightData 鏁扮粍鐩存帴姣旇緝鐨勫伐鍏枫€?
+    /// 获取指定位置的原始高度值 (ushort 0-65535)。
+    /// 用于 Flatten 等需要与 HeightData 数组直接比较的工具。
     /// </summary>
     public float? GetRawHeightAtPosition(float worldX, float worldZ)
     {
@@ -278,7 +287,7 @@ public sealed class TerrainManager : IDisposable
     }
 
     /// <summary>
-    /// 鏍囪鎸囧畾閫氶亾鐨勬暟鎹渶瑕佸悓姝ュ埌 GPU銆?
+    /// 标记指定通道的数据需要同步到 GPU。
     /// </summary>
     public void MarkDataDirty(TerrainDataChannel channel, int centerX = 0, int centerZ = 0, float radius = 0)
     {
@@ -296,101 +305,18 @@ public sealed class TerrainManager : IDisposable
         terrainEntities[0].MarkRegionDirty(TerrainDataChannel.Height, modifiedX, modifiedZ, radius);
     }
 
-    // 娉ㄦ剰锛氭暟鎹悓姝ョ幇鍦ㄧ敱 EditorTerrainProcessor.Draw() 閫氳繃缁熶竴鐨?TerrainDataChannel 鏈哄埗澶勭悊銆?
-    // 姝ゆ柟娉曚繚鐣欎綔涓哄鐢ㄥ叆鍙ｏ紝浣嗛€氬父涓嶉渶瑕佺洿鎺ヨ皟鐢ㄣ€?
+    // 注意：数据同步现在由 EditorTerrainProcessor.Draw() 通过统一的 TerrainDataChannel 机制处理。
+    // 此方法保留作为备用入口，但通常不需要直接调用。
     public void SyncToGpu(CommandList commandList)
     {
         foreach (var entity in terrainEntities)
         {
-            // 浣跨敤缁熶竴鎺ュ彛鍚屾鎵€鏈夎剰鏁版嵁
+            // 使用统一接口同步所有脏数据
             if (entity.IsDataDirty(TerrainDataChannel.Height))
                 entity.SyncDataToGpu(TerrainDataChannel.Height, commandList);
             if (entity.IsDataDirty(TerrainDataChannel.MaterialIndex))
                 entity.SyncDataToGpu(TerrainDataChannel.MaterialIndex, commandList);
         }
-    }
-
-    public bool LoadClimateMask(string path, bool markDirty = true)
-    {
-        if (ClimateMask == null || !File.Exists(path))
-            return false;
-
-        using var image = HeightmapImage.Load<Rgba32>(path);
-        if (image.Width != ClimateMask.Width || image.Height != ClimateMask.Height)
-            return false;
-
-        for (int y = 0; y < image.Height; y++)
-        {
-            for (int x = 0; x < image.Width; x++)
-            {
-                // The climate authoring map is a single-channel index map, so we
-                // read the red channel and ignore the other debug/preview channels.
-                ClimateMask.SetValue(x, y, image[x, y].R);
-            }
-        }
-
-        currentClimateMaskPath = path;
-        RegenerateMaterialIndices();
-        if (markDirty)
-            ProjectManager.Instance.MarkDirty();
-        return true;
-    }
-
-    public void RegenerateMaterialIndices()
-    {
-        if (ClimateMask == null)
-            return;
-
-        float fullRadius = MathF.Max(ClimateMask.Width, ClimateMask.Height);
-        RegenerateMaterialIndices(ClimateMask.Width * 0.5f, ClimateMask.Height * 0.5f, fullRadius);
-    }
-
-    public void RegenerateMaterialIndices(float centerX, float centerY, float radius)
-    {
-        if (ClimateMask == null || MaterialIndices == null)
-            return;
-        if (heightDataCache == null || heightDataWidth <= 0 || heightDataHeight <= 0)
-            return;
-
-        int minX = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
-            ? 0
-            : Math.Max(0, (int)MathF.Floor(centerX - radius));
-        int minY = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
-            ? 0
-            : Math.Max(0, (int)MathF.Floor(centerY - radius));
-        int maxX = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
-            ? ClimateMask.Width - 1
-            : Math.Min(ClimateMask.Width - 1, (int)MathF.Ceiling(centerX + radius));
-        int maxY = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
-            ? ClimateMask.Height - 1
-            : Math.Min(ClimateMask.Height - 1, (int)MathF.Ceiling(centerY + radius));
-
-        var climateState = ClimateRuleService.Instance;
-
-        // Rule evaluation runs on the authored climate-mask grid so climate paint,
-        // material generation, and export all resolve against the same texel space.
-        for (int y = minY; y <= maxY; y++)
-        {
-            for (int x = minX; x <= maxX; x++)
-            {
-                byte climateId = ClimateMask.GetValue(x, y);
-                float altitude = SampleAverageAltitude(x, y);
-                float slope = SampleSlopeDegrees(x, y);
-                int materialIndex = ResolveMaterialIndex(climateState, climateId, altitude, slope);
-
-                MaterialIndices.SetPixel(x, y, new MaterialPixel
-                {
-                    Index = (byte)Math.Clamp(materialIndex, 0, byte.MaxValue),
-                    Weight = 255,
-                    Projection = 0x77,
-                    Rotation = 0
-                });
-            }
-        }
-
-        // The renderer still uploads dirty regions in heightmap texel space, so
-        // convert the regenerated climate-mask area back to the 2x denser grid.
-        MarkDataDirty(TerrainDataChannel.MaterialIndex, (int)(centerX * 2.0f), (int)(centerY * 2.0f), Math.Max(1.0f, radius * 2.0f));
     }
 
     private void LoadHeightDataCache(string heightmapPath)
@@ -424,81 +350,6 @@ public sealed class TerrainManager : IDisposable
             heightDataWidth = 0;
             heightDataHeight = 0;
         }
-    }
-
-    private float SampleAverageAltitude(int maskX, int maskY)
-    {
-        int hx = maskX * 2;
-        int hy = maskY * 2;
-
-        float total = 0.0f;
-        int count = 0;
-        for (int offsetY = 0; offsetY < 2; offsetY++)
-        {
-            for (int offsetX = 0; offsetX < 2; offsetX++)
-            {
-                int sampleX = Math.Clamp(hx + offsetX, 0, heightDataWidth - 1);
-                int sampleY = Math.Clamp(hy + offsetY, 0, heightDataHeight - 1);
-                total += heightDataCache![sampleY * heightDataWidth + sampleX];
-                count++;
-            }
-        }
-
-        float rawAverage = total / Math.Max(1, count);
-        return rawAverage * HeightSampleNormalization * HeightScale;
-    }
-
-    private float SampleSlopeDegrees(int maskX, int maskY)
-    {
-        int hx = Math.Clamp(maskX * 2, 0, heightDataWidth - 1);
-        int hy = Math.Clamp(maskY * 2, 0, heightDataHeight - 1);
-
-        float left = SampleHeightNormalized(hx - 1, hy);
-        float right = SampleHeightNormalized(hx + 1, hy);
-        float up = SampleHeightNormalized(hx, hy - 1);
-        float down = SampleHeightNormalized(hx, hy + 1);
-
-        float worldNx = (left - right) * HeightScale;
-        float worldNz = (up - down) * HeightScale;
-        const float worldNy = 2.0f;
-
-        float normalLength = MathF.Sqrt(worldNx * worldNx + worldNz * worldNz + worldNy * worldNy);
-        if (normalLength <= 0.0001f)
-            return 0.0f;
-
-        float cosSlope = Math.Clamp(worldNy / normalLength, -1.0f, 1.0f);
-        return MathF.Acos(cosSlope) * (180.0f / MathF.PI);
-    }
-
-    private float SampleHeightNormalized(int x, int y)
-    {
-        int clampedX = Math.Clamp(x, 0, heightDataWidth - 1);
-        int clampedY = Math.Clamp(y, 0, heightDataHeight - 1);
-        return heightDataCache![clampedY * heightDataWidth + clampedX] * HeightSampleNormalization;
-    }
-
-    private static int ResolveMaterialIndex(ClimateRuleService climateState, byte climateId, float altitude, float slope)
-    {
-        int resolvedMaterial = 0;
-        ClimateSeason activeSeason = ClimateSeason.All;
-
-        foreach (var rule in climateState.Rules)
-        {
-            if (!rule.Enabled)
-                continue;
-            if (rule.ClimateId != climateId)
-                continue;
-            if (rule.Season != ClimateSeason.All && rule.Season != activeSeason)
-                continue;
-            if (altitude < rule.MinAltitude || altitude > rule.MaxAltitude)
-                continue;
-            if (slope > rule.MaxSlopeDegrees)
-                continue;
-
-            resolvedMaterial = rule.MaterialSlotIndex;
-        }
-
-        return resolvedMaterial;
     }
 
     private Texture GetOrCreateDefaultDiffuseTexture()
@@ -540,10 +391,166 @@ public sealed class TerrainManager : IDisposable
         heightDataCache = null;
     }
 
-    #region 椤圭洰鎸佷箙鍖?
+    #region 气候规则求值
+
+    public void RegenerateMaterialIndices()
+    {
+        if (ClimateMask == null)
+            return;
+
+        float fullRadius = MathF.Max(ClimateMask.Width, ClimateMask.Height);
+        RegenerateMaterialIndices(ClimateMask.Width * 0.5f, ClimateMask.Height * 0.5f, fullRadius);
+    }
+
+    public void RegenerateMaterialIndices(float centerX, float centerY, float radius)
+    {
+        if (ClimateMask == null || MaterialIndices == null)
+            return;
+        if (heightDataCache == null || heightDataWidth <= 0 || heightDataHeight <= 0)
+            return;
+
+        int minX = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
+            ? 0
+            : Math.Max(0, (int)MathF.Floor(centerX - radius));
+        int minY = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
+            ? 0
+            : Math.Max(0, (int)MathF.Floor(centerY - radius));
+        int maxX = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
+            ? ClimateMask.Width - 1
+            : Math.Min(ClimateMask.Width - 1, (int)MathF.Ceiling(centerX + radius));
+        int maxY = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
+            ? ClimateMask.Height - 1
+            : Math.Min(ClimateMask.Height - 1, (int)MathF.Ceiling(centerY + radius));
+
+        var climateState = ClimateRuleService.Instance;
+
+        // ClimateMask 为 1/4 高度图分辨率，MaterialIndexMap 为 1/2 分辨率，
+        // 因此 1 个 ClimateMask 像素对应 2x2 MaterialIndex 像素。
+        for (int y = minY; y <= maxY; y++)
+        {
+            for (int x = minX; x <= maxX; x++)
+            {
+                byte climateId = ClimateMask.GetValue(x, y);
+                float altitude = SampleAverageAltitude(x, y);
+                float slope = SampleSlopeDegrees(x, y);
+                int materialIndex = ResolveMaterialIndex(climateState, climateId, altitude, slope);
+
+                var pixel = new MaterialPixel
+                {
+                    Index = (byte)Math.Clamp(materialIndex, 0, byte.MaxValue),
+                    Weight = 255,
+                    Projection = 0x77,
+                    Rotation = 0
+                };
+
+                int sx = x * 2, sy = y * 2;
+                for (int dy = 0; dy < 2; dy++)
+                    for (int dx = 0; dx < 2; dx++)
+                        MaterialIndices.SetPixel(sx + dx, sy + dy, pixel);
+            }
+        }
+
+        // 将 1/4 分辨率的坐标转换为高度图全分辨率坐标（乘以 4）
+        MarkDataDirty(TerrainDataChannel.MaterialIndex, (int)(centerX * 4.0f), (int)(centerY * 4.0f), Math.Max(1.0f, radius * 4.0f));
+    }
 
     /// <summary>
-    /// 淇濆瓨椤圭洰鍒?TOML 鏂囦欢銆?
+    /// 在 4x4 高度图邻域上采样平均海拔。
+    /// maskX/maskY 为 ClimateMask 坐标（1/4 高度图），乘以 4 映射到高度图。
+    /// </summary>
+    private float SampleAverageAltitude(int maskX, int maskY)
+    {
+        int hx = maskX * 4;
+        int hy = maskY * 4;
+
+        float total = 0.0f;
+        int count = 0;
+        for (int offsetY = 0; offsetY < 4; offsetY++)
+        {
+            for (int offsetX = 0; offsetX < 4; offsetX++)
+            {
+                int sampleX = Math.Clamp(hx + offsetX, 0, heightDataWidth - 1);
+                int sampleY = Math.Clamp(hy + offsetY, 0, heightDataHeight - 1);
+                total += heightDataCache![sampleY * heightDataWidth + sampleX];
+                count++;
+            }
+        }
+
+        float rawAverage = total / Math.Max(1, count);
+        return rawAverage * HeightSampleNormalization * HeightScale;
+    }
+
+    /// <summary>
+    /// 采样地形坡度。使用中心差分法在高度图上计算法线，
+    /// worldNy = 4.0f 因为采样点间距为 4 个高度图像素（1/4 分辨率映射），
+    /// 对应 4 个世界单位水平距离。
+    /// </summary>
+    private float SampleSlopeDegrees(int maskX, int maskY)
+    {
+        int hx = Math.Clamp(maskX * 4, 0, heightDataWidth - 1);
+        int hy = Math.Clamp(maskY * 4, 0, heightDataHeight - 1);
+
+        float left = SampleHeightNormalized(hx - 1, hy);
+        float right = SampleHeightNormalized(hx + 1, hy);
+        float up = SampleHeightNormalized(hx, hy - 1);
+        float down = SampleHeightNormalized(hx, hy + 1);
+
+        float worldNx = (left - right) * HeightScale;
+        float worldNz = (up - down) * HeightScale;
+        // 2 像素间距 × 4 像素/ClimateMask 单位 = 8 世界单位水平距离
+        // 但中心差分本身就是相邻像素间距 (1 pixel)，在 1:1 heightmap→world 映射下 = 1 世界单位
+        // 左右各 1 像素，总跨度 2 世界单位
+        const float worldNy = 2.0f;
+
+        float normalLength = MathF.Sqrt(worldNx * worldNx + worldNz * worldNz + worldNy * worldNy);
+        if (normalLength <= 0.0001f)
+            return 0.0f;
+
+        float cosSlope = Math.Clamp(worldNy / normalLength, -1.0f, 1.0f);
+        return MathF.Acos(cosSlope) * (180.0f / MathF.PI);
+    }
+
+    private float SampleHeightNormalized(int x, int y)
+    {
+        int clampedX = Math.Clamp(x, 0, heightDataWidth - 1);
+        int clampedY = Math.Clamp(y, 0, heightDataHeight - 1);
+        return heightDataCache![clampedY * heightDataWidth + clampedX] * HeightSampleNormalization;
+    }
+
+    private static int ResolveMaterialIndex(ClimateRuleService climateState, byte climateId, float altitude, float slope)
+    {
+        int resolvedMaterial = 0;
+        ClimateSeason activeSeason = EditorState.Instance.ActiveSeason;
+
+        foreach (var rule in climateState.Rules)
+        {
+            if (!rule.Enabled)
+                continue;
+
+            if (rule.ClimateId != climateId)
+                continue;
+
+            if (rule.Season != ClimateSeason.All && rule.Season != activeSeason)
+                continue;
+
+            if (altitude < rule.MinAltitude || altitude > rule.MaxAltitude)
+                continue;
+
+            if (slope > rule.MaxSlopeDegrees)
+                continue;
+
+            resolvedMaterial = rule.MaterialSlotIndex;
+        }
+
+        return resolvedMaterial;
+    }
+
+    #endregion
+
+    #region 项目持久化
+
+    /// <summary>
+    /// 保存项目到 TOML 文件。
     /// </summary>
     public void SaveProject()
     {
@@ -551,7 +558,7 @@ public sealed class TerrainManager : IDisposable
         if (!projectManager.IsProjectOpen)
             return;
 
-        // 淇濆瓨鏉愯川绱㈠紩鍥惧埌 splatmaps/
+        // 保存气候蒙版（L8 PNG，1/4 高度图分辨率）
         string? climateMaskPath = null;
         if (ClimateMask != null)
         {
@@ -562,20 +569,11 @@ public sealed class TerrainManager : IDisposable
             currentClimateMaskPath = climateMaskPath;
         }
 
-        if (MaterialIndices != null)
-        {
-            string indexPath = projectManager.GetMaterialIndexPath("terrain");
-            SaveMaterialIndexMap(MaterialIndices, indexPath);
-        }
-
         var config = new TomlProjectConfig
         {
             Name = projectManager.ProjectName,
             HeightmapPath = currentTerrainPath,
             ClimateMaskPath = climateMaskPath,
-            IndexMapPath = MaterialIndices != null
-                ? projectManager.GetMaterialIndexPath("terrain")
-                : null,
             HeightScale = HeightScale,
             MaterialSlots = SaveMaterialSlotConfigs()
         };
@@ -599,34 +597,14 @@ public sealed class TerrainManager : IDisposable
         return configs;
     }
 
-    private void SaveMaterialIndexMap(MaterialIndexMap map, string path)
-    {
-        using var image = new Image<Rgba32>(map.Width, map.Height);
-        for (int y = 0; y < map.Height; y++)
-        {
-            for (int x = 0; x < map.Width; x++)
-            {
-                var pixel = map.GetPixel(x, y);
-                image[x, y] = new Rgba32(
-                    pixel.Index,
-                    pixel.Weight,
-                    pixel.Projection,
-                    pixel.Rotation
-                );
-            }
-        }
-        image.SaveAsPng(path);
-    }
-
     private static void SaveClimateMask(ClimateMask map, string path)
     {
-        using var image = new Image<Rgba32>(map.Width, map.Height);
+        using var image = new Image<L8>(map.Width, map.Height);
         for (int y = 0; y < map.Height; y++)
         {
             for (int x = 0; x < map.Width; x++)
             {
-                byte climateId = map.GetValue(x, y);
-                image[x, y] = new Rgba32(climateId, climateId, climateId, 255);
+                image[x, y] = new L8(map.GetValue(x, y));
             }
         }
 
@@ -634,11 +612,11 @@ public sealed class TerrainManager : IDisposable
     }
 
     /// <summary>
-    /// 浠?TOML 鏂囦欢鍔犺浇椤圭洰銆?
+    /// 从 TOML 文件加载项目。
     /// </summary>
     public void LoadProject(string tomlFilePath)
     {
-        // 娓呯悊鏃ч」鐩姸鎬?
+        // 清理旧项目状态
         RemoveCurrentTerrain();
         MaterialSlotManager.Instance.ClearAll();
 
@@ -650,7 +628,7 @@ public sealed class TerrainManager : IDisposable
         if (config == null)
             return;
 
-        // 鎭㈠鏉愯川妲戒綅锛堣矾寰勫凡鐢?TomlProjectConfig.ReadFrom 瑙ｆ瀽涓虹粷瀵硅矾寰勶級
+        // 恢复材质槽位（路径已由 TomlProjectConfig.ReadFrom 解析为绝对路径）
         foreach (var slotConfig in config.MaterialSlots)
         {
             var slot = MaterialSlotManager.Instance[slotConfig.Index];
@@ -662,91 +640,73 @@ public sealed class TerrainManager : IDisposable
                 slot.NormalTexturePath = slotConfig.NormalPath;
         }
 
-        // 璁剧疆 HeightScale锛堝湪鍔犺浇楂樺害鍥惧墠锛屼互渚?LoadTerrainAsync 浣跨敤锛?
+        // 设置 HeightScale（在加载高度图前，以便 LoadTerrainAsync 使用）
         HeightScale = config.HeightScale;
 
-        // 鍔犺浇楂樺害鍥?
+        // 加载高度图
         if (!string.IsNullOrEmpty(config.HeightmapPath) && File.Exists(config.HeightmapPath))
         {
             _ = LoadTerrainAsync(config.HeightmapPath);
         }
 
+        // 加载气候蒙版（异步高度图加载完成后 ClimateMask 才存在，
+        // 此处记录路径，由 HeightmapLoaded 事件触发实际加载）
         if (!string.IsNullOrEmpty(config.ClimateMaskPath) && File.Exists(config.ClimateMaskPath))
         {
-            LoadClimateMask(config.ClimateMaskPath, markDirty: false);
+            pendingClimateMaskPath = config.ClimateMaskPath;
         }
 
-        // 鍔犺浇鏉愯川绱㈠紩鍥撅紙濡傛灉瀛樺湪锛?
-        if (!string.IsNullOrEmpty(config.IndexMapPath) && File.Exists(config.IndexMapPath))
-        {
-            var loadedIndexMap = LoadMaterialIndexMap(config.IndexMapPath);
-            if (loadedIndexMap != null)
-            {
-                MaterialIndices = loadedIndexMap;
-
-                // Rebind render-side data reference after replacing MaterialIndices,
-                // otherwise paint edits update a different byte[] than the GPU upload path.
-                if (terrainEntities.Count > 0)
-                {
-                    terrainEntities[0].MaterialIndexMap = MaterialIndices;
-                }
-            }
-        }
-
-        // 閫氱煡闇€瑕佸姞杞芥潗璐ㄧ汗鐞嗭紙鐢卞閮ㄨ皟鐢?LoadMaterialTextures锛?
+        // 通知需要加载材质纹理（由外部调用 LoadMaterialTextures）
         MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
     }
 
+    // 气候蒙版加载路径暂存，等待高度图加载完成后使用
+    private string? pendingClimateMaskPath;
+
     /// <summary>
-    /// 鍔犺浇椤圭洰鍚庤皟鐢ㄦ鏂规硶鏉ュ姞杞芥潗璐ㄧ汗鐞嗗埌 GPU銆?
-    /// 闇€瑕佸湪娓叉煋绾跨▼涓皟鐢ㄣ€?
+    /// 尝试加载暂存的气候蒙版。由 HeightmapLoaded 事件调用。
+    /// </summary>
+    public bool TryLoadPendingClimateMask()
+    {
+        if (string.IsNullOrEmpty(pendingClimateMaskPath))
+            return false;
+
+        string path = pendingClimateMaskPath;
+        pendingClimateMaskPath = null;
+        return LoadClimateMask(path, markDirty: false);
+    }
+
+    /// <summary>
+    /// 加载项目后调用此方法来加载材质纹理到 GPU。
+    /// 需要在渲染线程中调用。
     /// </summary>
     public void LoadMaterialTextures(CommandList commandList)
     {
         MaterialSlotManager.Instance.LoadTexturesFromConfiguredPaths(graphicsDevice, commandList);
     }
 
-    /// <summary>
-    /// 浠?PNG 鏂囦欢鍔犺浇鏉愯川绱㈠紩鍥撅紝鏇挎崲褰撳墠鐨勭储寮曞浘銆?
-    /// </summary>
-    public bool LoadIndexMap(string path)
+    public bool LoadClimateMask(string path, bool markDirty = true)
     {
-        if (terrainEntities.Count == 0)
+        if (ClimateMask == null || !File.Exists(path))
             return false;
 
-        var loaded = LoadMaterialIndexMap(path);
-        if (loaded == null)
+        using var image = HeightmapImage.Load<L8>(path);
+        if (image.Width != ClimateMask.Width || image.Height != ClimateMask.Height)
             return false;
-
-        MaterialIndices = loaded;
-        terrainEntities[0].MaterialIndexMap = MaterialIndices;
-        return true;
-    }
-
-    private MaterialIndexMap? LoadMaterialIndexMap(string path)
-    {
-        if (!File.Exists(path))
-            return null;
-
-        using var image = HeightmapImage.Load<Rgba32>(path);
-        var map = new MaterialIndexMap(image.Width, image.Height);
 
         for (int y = 0; y < image.Height; y++)
         {
             for (int x = 0; x < image.Width; x++)
             {
-                var pixel = image[x, y];
-                map.SetPixel(x, y, new MaterialPixel
-                {
-                    Index = pixel.R,
-                    Weight = pixel.G,
-                    Projection = pixel.B,
-                    Rotation = pixel.A
-                });
+                ClimateMask.SetValue(x, y, image[x, y].PackedValue);
             }
         }
 
-        return map;
+        currentClimateMaskPath = path;
+        RegenerateMaterialIndices();
+        if (markDirty)
+            ProjectManager.Instance.MarkDirty();
+        return true;
     }
 
     #endregion
@@ -759,4 +719,3 @@ public sealed class TerrainLoadedEventArgs : EventArgs
     public required int Height { get; init; }
     public required string SourcePath { get; init; }
 }
-

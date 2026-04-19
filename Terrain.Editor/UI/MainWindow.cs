@@ -55,7 +55,7 @@ public class MainWindow : ControlBase
     private string currentTitle = "Terrain Editor";
     private readonly NewProjectWizard newProjectWizard = new();
     private readonly ExportProgressDialog exportProgressDialog = new();
-    private string? pendingIndexMapPath;
+    private string? pendingClimateMaskPath;
 
     public MainWindow()
     {
@@ -162,7 +162,7 @@ public class MainWindow : ControlBase
     private void OnNewProjectCreated(object? sender, NewProjectEventArgs e)
     {
         // 只加载高度图，不创建项目文件。用户 Save 时再确定保存路径。
-        pendingIndexMapPath = e.IndexMapPath;
+        pendingClimateMaskPath = e.ClimateMaskPath;
         Viewport.LoadHeightmap(e.HeightmapPath);
         UpdateTitle();
         Console.LogInfo($"Loaded heightmap: {e.HeightmapPath}");
@@ -226,13 +226,16 @@ public class MainWindow : ControlBase
             InputsData.SetTerrainManager(Viewport.TerrainManager);
             RightPanel.SetTerrainManager(Viewport.TerrainManager);
 
-            // Older wizard flows can still seed an authored material index map.
-            if (!string.IsNullOrEmpty(pendingIndexMapPath))
+            // 新项目向导的气候蒙版
+            if (!string.IsNullOrEmpty(pendingClimateMaskPath))
             {
-                if (Viewport.TerrainManager?.LoadIndexMap(pendingIndexMapPath) == true)
-                    Console.LogInfo($"Loaded index map: {pendingIndexMapPath}");
-                pendingIndexMapPath = null;
+                if (Viewport.TerrainManager?.LoadClimateMask(pendingClimateMaskPath, markDirty: false) == true)
+                    Console.LogInfo($"Loaded climate mask: {pendingClimateMaskPath}");
+                pendingClimateMaskPath = null;
             }
+
+            // LoadProject 的气候蒙版（异步高度图加载完成后触发）
+            Viewport.TerrainManager?.TryLoadPendingClimateMask();
         };
 
         Viewport.HeightmapLoadFailed += (s, error) =>

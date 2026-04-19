@@ -21,11 +21,11 @@ public sealed class ClimateEditor
 
     public void ApplyStroke(Vector3 worldPosition, ClimateMask mask, TerrainManager terrainManager, byte climateId)
     {
-        int pixelX = (int)MathF.Round(worldPosition.X) / 2;
-        int pixelY = (int)MathF.Round(worldPosition.Z) / 2;
+        int pixelX = (int)MathF.Round(worldPosition.X) / 4;
+        int pixelY = (int)MathF.Round(worldPosition.Z) / 4;
 
         var brush = BrushParameters.Instance;
-        float radius = MathF.Ceiling(brush.Size * 0.5f) / 2.0f;
+        float radius = MathF.Ceiling(brush.Size * 0.5f) / 4.0f;
         float innerRadius = radius * brush.EffectiveFalloff;
         int ceilRadius = (int)MathF.Ceiling(radius);
 
@@ -42,11 +42,18 @@ public sealed class ClimateEditor
                 if (distance > radius)
                     continue;
 
+                // 气候 ID 为离散值，用强度控制覆盖概率实现软边缘混合
                 float strength = PaintEditor.ComputeLinearFalloff(distance, radius, innerRadius) * brush.Strength;
-                if (strength <= 0.0f)
-                    continue;
+                if (strength > 0.0f)
+                {
+                    byte current = mask.GetValue(x, y);
+                    if (current == climateId)
+                        continue;
 
-                mask.SetValue(x, y, climateId);
+                    // 按强度概率覆盖：强度越高越可能写入新 ID
+                    if (Random.Shared.NextSingle() < strength)
+                        mask.SetValue(x, y, climateId);
+                }
             }
         }
 

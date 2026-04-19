@@ -17,7 +17,6 @@ public class TomlProjectConfig
     public string Name { get; set; } = "Untitled";
     public string? HeightmapPath { get; set; }
     public string? ClimateMaskPath { get; set; }
-    public string? IndexMapPath { get; set; }
     public float HeightScale { get; set; } = 100.0f;
     public List<TomlMaterialSlotConfig> MaterialSlots { get; set; } = new();
 
@@ -44,8 +43,6 @@ public class TomlProjectConfig
                 ? ResolvePath(terrain["heightmap"].AsString.Value, baseDir) : null;
             config.ClimateMaskPath = terrain.HasKey("climate_mask") && terrain["climate_mask"].IsString
                 ? ResolvePath(terrain["climate_mask"].AsString.Value, baseDir) : null;
-            config.IndexMapPath = terrain.HasKey("indexmap") && terrain["indexmap"].IsString
-                ? ResolvePath(terrain["indexmap"].AsString.Value, baseDir) : null;
             if (terrain.HasKey("height_scale"))
             {
                 var hsNode = terrain["height_scale"];
@@ -107,8 +104,6 @@ public class TomlProjectConfig
             terrain["heightmap"] = MakeRelative(HeightmapPath, baseDir);
         if (!string.IsNullOrEmpty(ClimateMaskPath))
             terrain["climate_mask"] = MakeRelative(ClimateMaskPath, baseDir);
-        if (!string.IsNullOrEmpty(IndexMapPath))
-            terrain["indexmap"] = MakeRelative(IndexMapPath, baseDir);
         terrain["height_scale"] = HeightScale;
         root["terrain"] = terrain;
 
