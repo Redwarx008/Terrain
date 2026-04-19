@@ -1,0 +1,134 @@
+#nullable enable
+
+using System;
+using System.Diagnostics;
+using Stride.Core.Diagnostics;
+using Stride.Core.Mathematics;
+using Stride.Graphics;
+using Stride.Rendering;
+using Stride.Rendering.ComputeEffect;
+
+namespace Terrain.Editor.Rendering;
+
+internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
+{
+    private const int ThreadCountX = 8;
+    private const int ThreadCountY = 8;
+    private static readonly ProfilingKey BuildSplatMapKey = new("EditorTerrain.BuildSplatMap");
+
+    private ComputeEffectShader? buildSplatMapEffect;
+
+    public void Initialize(RenderContext renderContext)
+    {
+        buildSplatMapEffect ??= new ComputeEffectShader(renderContext)
+        {
+            ShaderSourceName = "EditorTerrainBuildSplatMap",
+            ThreadNumbers = new Int3(ThreadCountX, ThreadCountY, 1),
+        };
+    }
+
+    public void Dispatch(RenderDrawContext drawContext, EditorTerrainRenderObject renderObject)
+    {
+        Debug.Assert(buildSplatMapEffect != null);
+
+        EditorTerrainEntity? entity = renderObject.TerrainEntity;
+        if (entity == null || !entity.HasDirtyClimateSplatMap)
+            return;
+        if (entity.ClimateMaskTexture == null || entity.ClimateRuleBuffer == null)
+            return;
+
+        CommandList commandList = drawContext.CommandList;
+
+        commandList.ResourceBarrierTransition(entity.ClimateMaskTexture, GraphicsResourceState.NonPixelShaderResource);
+        commandList.ResourceBarrierTransition(entity.ClimateRuleBuffer, GraphicsResourceState.NonPixelShaderResource);
+
+        for (int i = 0; i < entity.Slices.Count; i++)
+        {
+            EditorTerrainSlice slice = entity.Slices[i];
+            Texture? outputTexture = entity.MaterialIndexMapTextures[i];
+            if (!slice.ClimateSplatDirty || outputTexture == null)
+                continue;
+
+            int groupCountX = (outputTexture.Width + ThreadCountX - 1) / ThreadCountX;
+            int groupCountY = (outputTexture.Height + ThreadCountY - 1) / ThreadCountY;
+
+            commandList.ResourceBarrierTransition(outputTexture, GraphicsResourceState.UnorderedAccess);
+
+            using (Profiler.Begin(BuildSplatMapKey))
+            {
+                buildSplatMapEffect!.ThreadGroupCounts = new Int3(groupCountX, groupCountY, 1);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlice0, renderObject.HeightmapSliceTextures[0]!);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlice1, renderObject.HeightmapSliceTextures[1] ?? renderObject.HeightmapSliceTextures[0]!);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlice2, renderObject.HeightmapSliceTextures[2] ?? renderObject.HeightmapSliceTextures[0]!);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlice3, renderObject.HeightmapSliceTextures[3] ?? renderObject.HeightmapSliceTextures[0]!);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlice4, renderObject.HeightmapSliceTextures[4] ?? renderObject.HeightmapSliceTextures[0]!);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlice5, renderObject.HeightmapSliceTextures[5] ?? renderObject.HeightmapSliceTextures[0]!);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlice6, renderObject.HeightmapSliceTextures[6] ?? renderObject.HeightmapSliceTextures[0]!);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlice7, renderObject.HeightmapSliceTextures[7] ?? renderObject.HeightmapSliceTextures[0]!);
+
+                SetSliceBounds(buildSplatMapEffect.Parameters, entity);
+
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightScale, entity.HeightScale);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.BaseChunkSize, entity.BaseChunkSize);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.SliceCount, entity.Slices.Count);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlicePadding, 0);
+
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateMaskTexture, entity.ClimateMaskTexture);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateRules, entity.ClimateRuleBuffer);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputIndexMap, outputTexture);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.CurrentSliceIndex, i);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputWidth, outputTexture.Width);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputHeight, outputTexture.Height);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateMaskWidth, entity.ClimateMaskTexture.Width);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateMaskHeight, entity.ClimateMaskTexture.Height);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.RuleCount, entity.ClimateRuleCount);
+                buildSplatMapEffect.Draw(drawContext);
+            }
+
+            commandList.ResourceBarrierTransition(outputTexture, GraphicsResourceState.PixelShaderResource);
+            entity.ClearClimateSplatDirty(i);
+        }
+    }
+
+    private static void SetSliceBounds(ParameterCollection parameters, EditorTerrainEntity entity)
+    {
+        SetSliceBounds(parameters, 0, GetSliceBounds(entity, 0));
+        SetSliceBounds(parameters, 1, GetSliceBounds(entity, 1));
+        SetSliceBounds(parameters, 2, GetSliceBounds(entity, 2));
+        SetSliceBounds(parameters, 3, GetSliceBounds(entity, 3));
+        SetSliceBounds(parameters, 4, GetSliceBounds(entity, 4));
+        SetSliceBounds(parameters, 5, GetSliceBounds(entity, 5));
+        SetSliceBounds(parameters, 6, GetSliceBounds(entity, 6));
+        SetSliceBounds(parameters, 7, GetSliceBounds(entity, 7));
+    }
+
+    private static Int4 GetSliceBounds(EditorTerrainEntity entity, int sliceIndex)
+    {
+        if (sliceIndex >= entity.Slices.Count)
+            return new Int4(0, 0, 1, 1);
+
+        EditorTerrainSlice slice = entity.Slices[sliceIndex];
+        return new Int4(slice.StartSampleX, slice.StartSampleZ, slice.Width, slice.Height);
+    }
+
+    private static void SetSliceBounds(ParameterCollection parameters, int sliceIndex, Int4 bounds)
+    {
+        switch (sliceIndex)
+        {
+            case 0: parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSliceBounds0, bounds); break;
+            case 1: parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSliceBounds1, bounds); break;
+            case 2: parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSliceBounds2, bounds); break;
+            case 3: parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSliceBounds3, bounds); break;
+            case 4: parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSliceBounds4, bounds); break;
+            case 5: parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSliceBounds5, bounds); break;
+            case 6: parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSliceBounds6, bounds); break;
+            case 7: parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSliceBounds7, bounds); break;
+        }
+    }
+
+    public void Dispose()
+    {
+        buildSplatMapEffect?.Dispose();
+        buildSplatMapEffect = null;
+    }
+}

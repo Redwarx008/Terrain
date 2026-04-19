@@ -15,28 +15,6 @@ internal sealed class RuleManagerPanel
     public void Render()
     {
         var rules = ClimateRuleService.Instance;
-        var state = EditorState.Instance;
-
-        // 全局季节选择器
-        ImGui.Text("Active Season");
-        ClimateSeason currentSeason = state.ActiveSeason;
-        if (ImGui.BeginCombo("##active_season", currentSeason.ToString()))
-        {
-            foreach (ClimateSeason season in Enum.GetValues<ClimateSeason>())
-            {
-                bool isSelected = season == currentSeason;
-                if (ImGui.Selectable(season.ToString(), isSelected))
-                {
-                    state.ActiveSeason = season;
-                    RulesChanged?.Invoke(this, EventArgs.Empty);
-                }
-            }
-            ImGui.EndCombo();
-        }
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
 
         if (ImGui.Button("[+] Add Rule Layer##rule_add", new Vector2(-1, EditorStyle.ScaleValue(30.0f))))
         {
@@ -86,7 +64,7 @@ internal sealed class RuleManagerPanel
         drawList.AddText(
             new Vector2(rowStart.X + EditorStyle.ScaleValue(8.0f), rowStart.Y + EditorStyle.ScaleValue(9.0f)),
             ColorPalette.TextSecondary.ToUint(),
-            GetSeasonIcon(rule.Season));
+            "[R]");
         drawList.AddText(
             new Vector2(rowStart.X + EditorStyle.ScaleValue(28.0f), rowStart.Y + EditorStyle.ScaleValue(9.0f)),
             ColorPalette.TextPrimary.ToUint(),
@@ -156,23 +134,6 @@ internal sealed class RuleManagerPanel
         }
 
         ImGui.Spacing();
-        ImGui.Text("Season");
-        if (ImGui.BeginCombo("##rule_season", rule.Season.ToString()))
-        {
-            foreach (ClimateSeason season in Enum.GetValues<ClimateSeason>())
-            {
-                bool isSelected = season == rule.Season;
-                if (ImGui.Selectable(season.ToString(), isSelected))
-                {
-                    rule.Season = season;
-                    service.NotifyMutated();
-                    RulesChanged?.Invoke(this, EventArgs.Empty);
-                }
-            }
-            ImGui.EndCombo();
-        }
-
-        ImGui.Spacing();
         ImGui.Text("Altitude (m)");
         Vector2 altitudeRange = new(rule.MinAltitude, rule.MaxAltitude);
         if (ImGui.SliderFloat2("##rule_altitude", ref altitudeRange, 0.0f, 3000.0f, "%.0f"))
@@ -192,16 +153,6 @@ internal sealed class RuleManagerPanel
             service.NotifyMutated();
             RulesChanged?.Invoke(this, EventArgs.Empty);
         }
-    }
-
-    private static string GetSeasonIcon(ClimateSeason season)
-    {
-        return season switch
-        {
-            ClimateSeason.Winter => "[W]",
-            ClimateSeason.Summer => "[S]",
-            _ => "[A]",
-        };
     }
 
     private static string FormatMaterialLabel(int slotIndex)

@@ -252,30 +252,9 @@ public class SceneViewPanel : PanelBase
 
         ImGui.SetCursorScreenPos(new NumericsVector2(toolbarPos.X + paddingX, toolbarPos.Y + paddingY));
 
-        PushToolbarButtonStyle(ViewMode == SceneViewMode.Shaded);
-        if (ImGui.Button("Shaded", GetToolbarButtonSize("Shaded", buttonHeight)))
-            ViewMode = SceneViewMode.Shaded;
-        PopToolbarButtonStyle();
+        RenderViewModeDropdown();
 
-        ImGui.SameLine();
-        PushToolbarButtonStyle(ViewMode == SceneViewMode.Wireframe);
-        if (ImGui.Button("Wireframe", GetToolbarButtonSize("Wireframe", buttonHeight)))
-            ViewMode = SceneViewMode.Wireframe;
-        PopToolbarButtonStyle();
-
-        ImGui.SameLine();
-        PushToolbarButtonStyle(ViewMode == SceneViewMode.Textured);
-        if (ImGui.Button("Textured", GetToolbarButtonSize("Textured", buttonHeight)))
-            ViewMode = SceneViewMode.Textured;
-        PopToolbarButtonStyle();
-
-        ImGui.SameLine(0.0f, EditorStyle.ScaleValue(8.0f));
-        ImGui.SetCursorScreenPos(new NumericsVector2(ImGui.GetCursorScreenPos().X, toolbarPos.Y + (toolbarHeight - ImGui.CalcTextSize("|").Y) * 0.5f));
-        ImGui.Text("|");
-
-        ImGui.SameLine(0.0f, EditorStyle.ScaleValue(8.0f));
-        ImGui.SetCursorScreenPos(new NumericsVector2(ImGui.GetCursorScreenPos().X, toolbarPos.Y + paddingY));
-
+        ImGui.SameLine(0.0f, EditorStyle.ScaleValue(12.0f));
         bool showGrid = ShowGrid;
         if (ImGui.Checkbox("Grid", ref showGrid))
             ShowGrid = showGrid;
@@ -284,11 +263,6 @@ public class SceneViewPanel : PanelBase
         bool showGizmos = ShowGizmos;
         if (ImGui.Checkbox("Gizmos", ref showGizmos))
             ShowGizmos = showGizmos;
-
-        ImGui.SameLine(0.0f, EditorStyle.ScaleValue(12.0f));
-        ImGui.Text("View Mode");
-        ImGui.SameLine();
-        RenderDebugViewDropdown();
 
         // Camera speed display (right-aligned)
         RenderCameraSpeedDisplay(toolbarPos, toolbarHeight);
@@ -336,24 +310,96 @@ public class SceneViewPanel : PanelBase
         return $"{speed:F0} u/s";
     }
 
-    private static void RenderDebugViewDropdown()
+    private void RenderViewModeDropdown()
     {
         var editorState = EditorState.Instance;
-        string currentLabel = GetDebugViewLabel(editorState.CurrentDebugViewMode);
+        string currentLabel = GetCombinedViewModeLabel(editorState.CurrentDebugViewMode, ViewMode);
+        float comboWidth = EditorStyle.ScaleValue(150.0f);
 
+        ImGui.SetNextItemWidth(comboWidth);
         if (ImGui.BeginCombo("##scene_debug_mode", currentLabel))
         {
-            foreach (SceneDebugViewMode mode in Enum.GetValues<SceneDebugViewMode>())
+            foreach (CombinedViewMode mode in Enum.GetValues<CombinedViewMode>())
             {
-                bool selected = editorState.CurrentDebugViewMode == mode;
-                if (ImGui.Selectable(GetDebugViewLabel(mode), selected))
-                    editorState.CurrentDebugViewMode = mode;
+                bool selected = IsCombinedViewModeSelected(mode, editorState.CurrentDebugViewMode, ViewMode);
+                if (ImGui.Selectable(GetCombinedViewModeLabel(mode), selected))
+                    ApplyCombinedViewMode(mode, editorState);
 
                 if (selected)
                     ImGui.SetItemDefaultFocus();
             }
 
             ImGui.EndCombo();
+        }
+    }
+
+    private static bool IsCombinedViewModeSelected(CombinedViewMode mode, SceneDebugViewMode debugMode, SceneViewMode sceneViewMode)
+    {
+        bool isFinalOutputMode = debugMode == SceneDebugViewMode.FinalOutput &&
+                                 sceneViewMode != SceneViewMode.Wireframe;
+
+        return mode switch
+        {
+            CombinedViewMode.FinalOutput => isFinalOutputMode,
+            CombinedViewMode.Wireframe => debugMode == SceneDebugViewMode.FinalOutput && sceneViewMode == SceneViewMode.Wireframe,
+            CombinedViewMode.ClimateMaskMap => debugMode == SceneDebugViewMode.ClimateMaskMap,
+            CombinedViewMode.SlopeMap => debugMode == SceneDebugViewMode.SlopeMap,
+            CombinedViewMode.HeightMap => debugMode == SceneDebugViewMode.HeightMap,
+            _ => false
+        };
+    }
+
+    private static string GetCombinedViewModeLabel(SceneDebugViewMode debugMode, SceneViewMode sceneViewMode)
+    {
+        if (debugMode == SceneDebugViewMode.FinalOutput)
+        {
+            return sceneViewMode switch
+            {
+                SceneViewMode.Wireframe => "Wireframe",
+                _ => "Final Output"
+            };
+        }
+
+        return GetDebugViewLabel(debugMode);
+    }
+
+    private static string GetCombinedViewModeLabel(CombinedViewMode mode)
+    {
+        return mode switch
+        {
+            CombinedViewMode.FinalOutput => "Final Output",
+            CombinedViewMode.Wireframe => "Wireframe",
+            CombinedViewMode.ClimateMaskMap => "Climate MaskMap",
+            CombinedViewMode.SlopeMap => "Slope Map",
+            CombinedViewMode.HeightMap => "Height Map",
+            _ => "Final Output"
+        };
+    }
+
+    private void ApplyCombinedViewMode(CombinedViewMode mode, EditorState editorState)
+    {
+        switch (mode)
+        {
+            case CombinedViewMode.FinalOutput:
+                ViewMode = SceneViewMode.Shaded;
+                editorState.CurrentDebugViewMode = SceneDebugViewMode.FinalOutput;
+                break;
+            case CombinedViewMode.Wireframe:
+                ViewMode = SceneViewMode.Wireframe;
+                editorState.CurrentDebugViewMode = SceneDebugViewMode.FinalOutput;
+                break;
+            case CombinedViewMode.ClimateMaskMap:
+                ViewMode = SceneViewMode.Shaded;
+                editorState.CurrentDebugViewMode = SceneDebugViewMode.ClimateMaskMap;
+                break;
+            case CombinedViewMode.SlopeMap:
+                ViewMode = SceneViewMode.Shaded;
+                editorState.CurrentDebugViewMode = SceneDebugViewMode.SlopeMap;
+                break;
+            case CombinedViewMode.HeightMap:
+                ViewMode = SceneViewMode.Shaded;
+                editorState.CurrentDebugViewMode = SceneDebugViewMode.HeightMap;
+                break;
         }
     }
 
@@ -917,8 +963,7 @@ public class SceneViewPanel : PanelBase
     {
         var editorState = EditorState.Instance;
         SceneDebugViewMode debugMode = editorState.CurrentDebugViewMode;
-        bool shouldShowMaskTint = debugMode == SceneDebugViewMode.ClimateMaskMap ||
-                                  (debugMode == SceneDebugViewMode.FinalOutput && editorState.ShowMaskOverlay);
+        bool shouldShowMaskTint = debugMode == SceneDebugViewMode.ClimateMaskMap;
 
         if (shouldShowMaskTint)
         {
@@ -927,7 +972,7 @@ public class SceneViewPanel : PanelBase
             drawList.AddRectFilled(
                 viewPos,
                 new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y),
-                GetSelectedClimateColor().WithAlpha(debugMode == SceneDebugViewMode.ClimateMaskMap ? 0.18f : 0.08f).ToUint());
+                GetSelectedClimateColor().WithAlpha(0.18f).ToUint());
         }
         else if (debugMode == SceneDebugViewMode.SlopeMap || debugMode == SceneDebugViewMode.HeightMap)
         {
@@ -939,30 +984,6 @@ public class SceneViewPanel : PanelBase
                 new NumericsVector2(viewPos.X + viewSize.X, viewPos.Y + viewSize.Y),
                 tint.ToUint());
         }
-
-        string label = GetDebugViewLabel(debugMode);
-        NumericsVector2 textSize = ImGui.CalcTextSize(label);
-        float panelWidth = MathF.Max(EditorStyle.ScaleValue(120.0f), textSize.X + EditorStyle.ScaleValue(52.0f));
-        float panelHeight = EditorStyle.ScaleValue(34.0f);
-        var panelMin = new NumericsVector2(
-            viewPos.X + viewSize.X - panelWidth - EditorStyle.ScaleValue(10.0f),
-            viewPos.Y + EditorStyle.ScaleValue(10.0f));
-        var panelMax = new NumericsVector2(panelMin.X + panelWidth, panelMin.Y + panelHeight);
-
-        drawList.AddRectFilled(panelMin, panelMax, new Color4(0.05f, 0.05f, 0.05f, 0.82f).ToUint(), EditorStyle.ScaleValue(4.0f));
-        drawList.AddRect(panelMin, panelMax, ColorPalette.BorderLight.ToUint(), EditorStyle.ScaleValue(4.0f));
-
-        Color4 swatchColor = debugMode == SceneDebugViewMode.ClimateMaskMap || debugMode == SceneDebugViewMode.FinalOutput
-            ? GetSelectedClimateColor()
-            : debugMode == SceneDebugViewMode.SlopeMap
-                ? new Color4(0.75f, 0.75f, 0.75f, 1.0f)
-                : new Color4(0.95f, 0.95f, 0.95f, 1.0f);
-
-        var swatchMin = new NumericsVector2(panelMin.X + EditorStyle.ScaleValue(8.0f), panelMin.Y + EditorStyle.ScaleValue(6.0f));
-        var swatchMax = new NumericsVector2(swatchMin.X + EditorStyle.ScaleValue(22.0f), swatchMin.Y + EditorStyle.ScaleValue(22.0f));
-        drawList.AddRectFilled(swatchMin, swatchMax, swatchColor.ToUint(), EditorStyle.ScaleValue(3.0f));
-        drawList.AddRect(swatchMin, swatchMax, ColorPalette.Border.ToUint(), EditorStyle.ScaleValue(3.0f));
-        drawList.AddText(new NumericsVector2(swatchMax.X + EditorStyle.ScaleValue(8.0f), panelMin.Y + EditorStyle.ScaleValue(9.0f)), ColorPalette.TextPrimary.ToUint(), label);
     }
 
     private static string GetDebugViewLabel(SceneDebugViewMode mode)
@@ -1001,4 +1022,13 @@ public enum SceneViewMode
     Shaded,
     Wireframe,
     Textured
+}
+
+public enum CombinedViewMode
+{
+    FinalOutput,
+    Wireframe,
+    ClimateMaskMap,
+    SlopeMap,
+    HeightMap
 }

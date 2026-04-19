@@ -71,8 +71,14 @@ public sealed class EditorTerrainEntity : IDisposable
     /// 与高度图切片使用相同的 SplitConfig 切分。
     /// </summary>
     public Texture?[] MaterialIndexMapTextures { get; private set; } = Array.Empty<Texture?>();
+    public Texture? ClimateMaskTexture { get; private set; }
+    public Buffer? ClimateRuleBuffer { get; private set; }
+    public int ClimateRuleCount { get; private set; }
 
     private MaterialIndexMap? materialIndexMap;
+    private ClimateMask? climateMask;
+    private bool climateMaskTextureDirty;
+    private bool climateRulesDirty;
 
     /// <summary>
     /// 材质索引图引用，由 TerrainManager 设置。
@@ -91,6 +97,10 @@ public sealed class EditorTerrainEntity : IDisposable
             }
         }
     }
+
+    public bool HasDirtyClimateMaskTexture => climateMaskTextureDirty;
+    public bool HasDirtyClimateRules => climateRulesDirty;
+    public bool HasDirtyClimateSplatMap => slices.Exists(static s => s.ClimateSplatDirty);
 
     /// <summary>
     /// 标记指定通道的数据为脏，需要在渲染时同步到 GPU。
@@ -222,8 +232,130 @@ public sealed class EditorTerrainEntity : IDisposable
                 indexMapWidth,
                 indexMapHeight,
                 PixelFormat.R8G8B8A8_UNorm,
+                TextureFlags.ShaderResource | TextureFlags.UnorderedAccess);
+        }
+    }
+
+    public void SetClimateMask(GraphicsDevice graphicsDevice, ClimateMask? mask)
+    {
+        climateMask = mask;
+
+        ClimateMaskTexture?.Dispose();
+        ClimateMaskTexture = null;
+
+        if (mask != null)
+        {
+            ClimateMaskTexture = Texture.New2D(
+                graphicsDevice,
+                mask.Width,
+                mask.Height,
+                PixelFormat.R8_UNorm,
                 TextureFlags.ShaderResource);
         }
+
+        climateMaskTextureDirty = mask != null;
+        climateRulesDirty = true;
+        MarkAllClimateSplatDirty();
+    }
+
+    public void MarkClimateMaskDirty()
+    {
+        if (climateMask == null)
+            return;
+
+        climateMaskTextureDirty = true;
+    }
+
+    public void MarkClimateRulesDirty()
+    {
+        climateRulesDirty = true;
+    }
+
+    public void MarkClimateSplatDirty(int centerX = 0, int centerZ = 0, float radius = 0)
+    {
+        if (radius <= 0.0f)
+        {
+            MarkAllClimateSplatDirty();
+            return;
+        }
+
+        int minX = Math.Max(0, (int)MathF.Floor(centerX - radius));
+        int minZ = Math.Max(0, (int)MathF.Floor(centerZ - radius));
+        int maxX = Math.Min(HeightmapWidth - 1, (int)MathF.Ceiling(centerX + radius));
+        int maxZ = Math.Min(HeightmapHeight - 1, (int)MathF.Ceiling(centerZ + radius));
+
+        foreach (var slice in slices)
+        {
+            if (slice.Intersects(minX, minZ, maxX, maxZ))
+                slice.ClimateSplatDirty = true;
+        }
+    }
+
+    public void MarkAllClimateSplatDirty()
+    {
+        foreach (var slice in slices)
+            slice.ClimateSplatDirty = true;
+    }
+
+    public void ClearClimateSplatDirty(int sliceIndex)
+    {
+        if ((uint)sliceIndex >= (uint)slices.Count)
+            return;
+
+        slices[sliceIndex].ClimateSplatDirty = false;
+    }
+
+    public void SyncClimateResourcesToGpu(GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        if (climateMaskTextureDirty && climateMask != null && ClimateMaskTexture != null)
+        {
+            ClimateMaskTexture.SetData(commandList, climateMask.GetRawData());
+            climateMaskTextureDirty = false;
+        }
+
+        if (climateRulesDirty)
+        {
+            UploadClimateRuleBuffer(graphicsDevice, commandList);
+            climateRulesDirty = false;
+        }
+    }
+
+    private void UploadClimateRuleBuffer(GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        IReadOnlyList<ClimateRuleLayer> sourceRules = ClimateRuleService.Instance.Rules;
+        ClimateSplatRuleGpu[] rules = new ClimateSplatRuleGpu[Math.Max(1, sourceRules.Count)];
+
+        for (int i = 0; i < sourceRules.Count; i++)
+        {
+            ClimateRuleLayer rule = sourceRules[i];
+            rules[i] = new ClimateSplatRuleGpu
+            {
+                ClimateId = rule.ClimateId,
+                MaterialSlotIndex = rule.MaterialSlotIndex,
+                Enabled = rule.Enabled ? 1 : 0,
+                Reserved = 0,
+                MinAltitude = rule.MinAltitude,
+                MaxAltitude = rule.MaxAltitude,
+                MinSlopeDegrees = rule.MinSlopeDegrees,
+                MaxSlopeDegrees = rule.MaxSlopeDegrees,
+                BlendRange = rule.BlendRange,
+                Padding0 = 0.0f,
+                Padding1 = 0.0f,
+                Padding2 = 0.0f,
+            };
+        }
+
+        if (ClimateRuleBuffer == null || ClimateRuleCount != rules.Length)
+        {
+            ClimateRuleBuffer?.Dispose();
+            ClimateRuleBuffer = Buffer.Structured.New(graphicsDevice, rules);
+        }
+        else
+        {
+            ClimateRuleBuffer.SetData(commandList, rules);
+        }
+
+        ClimateRuleCount = rules.Length;
     }
 
     /// <summary>
@@ -747,6 +879,13 @@ public sealed class EditorTerrainEntity : IDisposable
             MaterialIndexMapTextures = Array.Empty<Texture?>();
         }
 
+        ClimateMaskTexture?.Dispose();
+        ClimateMaskTexture = null;
+
+        ClimateRuleBuffer?.Dispose();
+        ClimateRuleBuffer = null;
+        ClimateRuleCount = 0;
+
         MaterialAlbedoArray?.Dispose();
         MaterialAlbedoArray = null;
 
@@ -842,6 +981,7 @@ public sealed class EditorTerrainSlice
     public SplitTerrainSliceInfo Info { get; }
     public Texture Texture { get; }
     public DirtyRegionTracker Dirty;
+    public bool ClimateSplatDirty;
 
     public int Index => Info.Index;
     public int StartSampleX => Info.StartSampleX;
@@ -855,6 +995,23 @@ public sealed class EditorTerrainSlice
     {
         return minX <= EndSampleX && maxX >= StartSampleX && minZ <= EndSampleZ && maxZ >= StartSampleZ;
     }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct ClimateSplatRuleGpu
+{
+    public int ClimateId;
+    public int MaterialSlotIndex;
+    public int Enabled;
+    public int Reserved;
+    public float MinAltitude;
+    public float MaxAltitude;
+    public float MinSlopeDegrees;
+    public float MaxSlopeDegrees;
+    public float BlendRange;
+    public float Padding0;
+    public float Padding1;
+    public float Padding2;
 }
 
 [StructLayout(LayoutKind.Sequential)]

@@ -1,0 +1,139 @@
+namespace Terrain.Editor
+{
+    shader EditorTerrainBuildSplatMap : ComputeShaderBase, EditorTerrainHeightParameters
+    {
+        struct ClimateSplatRuleGpu
+        {
+            int ClimateId;
+            int MaterialSlotIndex;
+            int Enabled;
+            int Reserved;
+            float MinAltitude;
+            float MaxAltitude;
+            float MinSlopeDegrees;
+            float MaxSlopeDegrees;
+            float BlendRange;
+            float Padding0;
+            float Padding1;
+            float Padding2;
+        };
+
+        stage Texture2D<float> ClimateMaskTexture;
+        stage StructuredBuffer<ClimateSplatRuleGpu> ClimateRules;
+        stage RWTexture2D<float4> OutputIndexMap;
+        stage int CurrentSliceIndex;
+        stage int OutputWidth;
+        stage int OutputHeight;
+        stage int ClimateMaskWidth;
+        stage int ClimateMaskHeight;
+        stage int RuleCount;
+
+        int2 ClampClimateCoord(int2 coord)
+        {
+            return int2(
+                clamp(coord.x, 0, max(ClimateMaskWidth - 1, 0)),
+                clamp(coord.y, 0, max(ClimateMaskHeight - 1, 0)));
+        }
+
+        int LoadClimateId(int2 coord)
+        {
+            int2 clamped = ClampClimateCoord(coord);
+            return (int)(ClimateMaskTexture.Load(int3(clamped, 0)).x * 255.0f + 0.5f);
+        }
+
+        float SampleAverageAltitude(int2 climateCoord)
+        {
+            int hx = climateCoord.x * 4;
+            int hy = climateCoord.y * 4;
+            float total = 0.0f;
+
+            [unroll]
+            for (int offsetY = 0; offsetY < 4; offsetY++)
+            {
+                [unroll]
+                for (int offsetX = 0; offsetX < 4; offsetX++)
+                {
+                    total += SampleHeightAt(int2(hx + offsetX, hy + offsetY), CurrentSliceIndex);
+                }
+            }
+
+            return total * (1.0f / 16.0f);
+        }
+
+        float SampleSlopeDegrees(int2 climateCoord)
+        {
+            int hx = climateCoord.x * 4;
+            int hy = climateCoord.y * 4;
+
+            float left = SampleHeightAt(int2(hx - 1, hy), CurrentSliceIndex);
+            float right = SampleHeightAt(int2(hx + 1, hy), CurrentSliceIndex);
+            float up = SampleHeightAt(int2(hx, hy - 1), CurrentSliceIndex);
+            float down = SampleHeightAt(int2(hx, hy + 1), CurrentSliceIndex);
+
+            float worldNx = left - right;
+            float worldNz = up - down;
+            const float worldNy = 2.0f;
+
+            float normalLength = sqrt(worldNx * worldNx + worldNz * worldNz + worldNy * worldNy);
+            if (normalLength <= 0.0001f)
+                return 0.0f;
+
+            float cosSlope = clamp(worldNy / normalLength, -1.0f, 1.0f);
+            return acos(cosSlope) * (180.0f / 3.14159265359f);
+        }
+
+        bool RuleMatches(ClimateSplatRuleGpu rule, int climateId, float altitude, float slope)
+        {
+            if (rule.Enabled == 0)
+                return false;
+
+            if (rule.ClimateId != climateId)
+                return false;
+
+            if (altitude < rule.MinAltitude || altitude > rule.MaxAltitude)
+                return false;
+
+            if (slope < rule.MinSlopeDegrees || slope > rule.MaxSlopeDegrees)
+                return false;
+
+            return true;
+        }
+
+        float4 EncodeMaterialPixel(int materialIndex)
+        {
+            return float4(
+                (float)materialIndex / 255.0f,
+                1.0f,
+                119.0f / 255.0f,
+                0.0f);
+        }
+
+        override void Compute()
+        {
+            uint texelX = streams.DispatchThreadId.x;
+            uint texelY = streams.DispatchThreadId.y;
+            if (texelX >= (uint)OutputWidth || texelY >= (uint)OutputHeight)
+                return;
+
+            int4 sliceBounds = GetIndexMapSliceBounds(CurrentSliceIndex);
+            int globalX = sliceBounds.x + (int)texelX;
+            int globalY = sliceBounds.y + (int)texelY;
+            int2 climateCoord = int2(globalX >> 1, globalY >> 1);
+
+            int climateId = LoadClimateId(climateCoord);
+            float altitude = SampleAverageAltitude(climateCoord);
+            float slope = SampleSlopeDegrees(climateCoord);
+
+            int resolvedMaterial = 0;
+            [loop]
+            for (int i = 0; i < RuleCount; i++)
+            {
+                ClimateSplatRuleGpu rule = ClimateRules[i];
+                if (RuleMatches(rule, climateId, altitude, slope))
+                    resolvedMaterial = rule.MaterialSlotIndex;
+            }
+
+            OutputIndexMap[int2(texelX, texelY)] = EncodeMaterialPixel(resolvedMaterial);
+        }
+    };
+}

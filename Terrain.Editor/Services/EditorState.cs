@@ -51,7 +51,6 @@ public sealed class EditorState
     private int _selectedRuleIndex = -1;
     private bool _showMaskOverlay = true;
     private SceneDebugViewMode _currentDebugViewMode = SceneDebugViewMode.FinalOutput;
-    private ClimateSeason _activeSeason = ClimateSeason.All;
 
     /// <summary>
     /// Gets the singleton instance of EditorState.
@@ -143,7 +142,6 @@ public sealed class EditorState
     public event EventHandler? RuleSelectionChanged;
     public event EventHandler? OverlayChanged;
     public event EventHandler? DebugViewModeChanged;
-    public event EventHandler? ActiveSeasonChanged;
 
     /// <summary>
     /// 向后兼容属性。
@@ -211,22 +209,6 @@ public sealed class EditorState
             {
                 _currentDebugViewMode = value;
                 DebugViewModeChanged?.Invoke(this, EventArgs.Empty);
-            }
-        }
-    }
-
-    /// <summary>
-    /// 当前活跃季节，影响规则求值中 Season 相关的过滤。
-    /// </summary>
-    public ClimateSeason ActiveSeason
-    {
-        get => _activeSeason;
-        set
-        {
-            if (_activeSeason != value)
-            {
-                _activeSeason = value;
-                ActiveSeasonChanged?.Invoke(this, EventArgs.Empty);
             }
         }
     }

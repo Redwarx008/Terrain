@@ -172,6 +172,7 @@ public sealed class TerrainManager : IDisposable
 
             // 设置材质索引数据引用到实体
             terrainEntity.MaterialIndexMap = MaterialIndices;
+            terrainEntity.SetClimateMask(graphicsDevice, ClimateMask);
 
             var sceneEntity = new Entity("EditorTerrain")
             {
@@ -295,6 +296,9 @@ public sealed class TerrainManager : IDisposable
             return;
 
         terrainEntities[0].MarkDataDirty(channel, centerX, centerZ, radius);
+
+        if (channel == TerrainDataChannel.Height)
+            terrainEntities[0].MarkClimateSplatDirty(centerX, centerZ, radius);
     }
 
     public void UpdateHeightData(int modifiedX, int modifiedZ, float radius)
@@ -395,63 +399,33 @@ public sealed class TerrainManager : IDisposable
 
     public void RegenerateMaterialIndices()
     {
-        if (ClimateMask == null)
-            return;
-
-        float fullRadius = MathF.Max(ClimateMask.Width, ClimateMask.Height);
-        RegenerateMaterialIndices(ClimateMask.Width * 0.5f, ClimateMask.Height * 0.5f, fullRadius);
+        foreach (var terrainEntity in terrainEntities)
+        {
+            terrainEntity.MarkClimateRulesDirty();
+            terrainEntity.MarkAllClimateSplatDirty();
+        }
     }
 
     public void RegenerateMaterialIndices(float centerX, float centerY, float radius)
     {
-        if (ClimateMask == null || MaterialIndices == null)
-            return;
-        if (heightDataCache == null || heightDataWidth <= 0 || heightDataHeight <= 0)
+        if (ClimateMask == null)
             return;
 
-        int minX = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
-            ? 0
-            : Math.Max(0, (int)MathF.Floor(centerX - radius));
-        int minY = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
-            ? 0
-            : Math.Max(0, (int)MathF.Floor(centerY - radius));
-        int maxX = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
-            ? ClimateMask.Width - 1
-            : Math.Min(ClimateMask.Width - 1, (int)MathF.Ceiling(centerX + radius));
-        int maxY = radius >= MathF.Max(ClimateMask.Width, ClimateMask.Height)
-            ? ClimateMask.Height - 1
-            : Math.Min(ClimateMask.Height - 1, (int)MathF.Ceiling(centerY + radius));
+        int centerSampleX = (int)(centerX * 4.0f);
+        int centerSampleZ = (int)(centerY * 4.0f);
+        float sampleRadius = Math.Max(1.0f, radius * 4.0f);
 
-        var climateState = ClimateRuleService.Instance;
+        foreach (var terrainEntity in terrainEntities)
+            terrainEntity.MarkClimateSplatDirty(centerSampleX, centerSampleZ, sampleRadius);
+    }
 
-        // ClimateMask 为 1/4 高度图分辨率，MaterialIndexMap 为 1/2 分辨率，
-        // 因此 1 个 ClimateMask 像素对应 2x2 MaterialIndex 像素。
-        for (int y = minY; y <= maxY; y++)
+    public void MarkClimateMaskDirty()
+    {
+        foreach (var terrainEntity in terrainEntities)
         {
-            for (int x = minX; x <= maxX; x++)
-            {
-                byte climateId = ClimateMask.GetValue(x, y);
-                float altitude = SampleAverageAltitude(x, y);
-                float slope = SampleSlopeDegrees(x, y);
-                int materialIndex = ResolveMaterialIndex(climateState, climateId, altitude, slope);
-
-                var pixel = new MaterialPixel
-                {
-                    Index = (byte)Math.Clamp(materialIndex, 0, byte.MaxValue),
-                    Weight = 255,
-                    Projection = 0x77,
-                    Rotation = 0
-                };
-
-                int sx = x * 2, sy = y * 2;
-                for (int dy = 0; dy < 2; dy++)
-                    for (int dx = 0; dx < 2; dx++)
-                        MaterialIndices.SetPixel(sx + dx, sy + dy, pixel);
-            }
+            terrainEntity.MarkClimateMaskDirty();
+            terrainEntity.MarkAllClimateSplatDirty();
         }
-
-        // 将 1/4 分辨率的坐标转换为高度图全分辨率坐标（乘以 4）
-        MarkDataDirty(TerrainDataChannel.MaterialIndex, (int)(centerX * 4.0f), (int)(centerY * 4.0f), Math.Max(1.0f, radius * 4.0f));
     }
 
     /// <summary>
@@ -520,23 +494,19 @@ public sealed class TerrainManager : IDisposable
     private static int ResolveMaterialIndex(ClimateRuleService climateState, byte climateId, float altitude, float slope)
     {
         int resolvedMaterial = 0;
-        ClimateSeason activeSeason = EditorState.Instance.ActiveSeason;
 
-        foreach (var rule in climateState.Rules)
+        // Rule stack semantics:
+        // if multiple rules overlap on altitude / slope within the same climate,
+        // later rules override earlier ones as long as the full condition set matches.
+        foreach (var rule in climateState.GetRulesForClimate(climateId))
         {
             if (!rule.Enabled)
-                continue;
-
-            if (rule.ClimateId != climateId)
-                continue;
-
-            if (rule.Season != ClimateSeason.All && rule.Season != activeSeason)
                 continue;
 
             if (altitude < rule.MinAltitude || altitude > rule.MaxAltitude)
                 continue;
 
-            if (slope > rule.MaxSlopeDegrees)
+            if (slope < rule.MinSlopeDegrees || slope > rule.MaxSlopeDegrees)
                 continue;
 
             resolvedMaterial = rule.MaterialSlotIndex;
@@ -575,7 +545,9 @@ public sealed class TerrainManager : IDisposable
             HeightmapPath = currentTerrainPath,
             ClimateMaskPath = climateMaskPath,
             HeightScale = HeightScale,
-            MaterialSlots = SaveMaterialSlotConfigs()
+            MaterialSlots = SaveMaterialSlotConfigs(),
+            Climates = SaveClimateConfigs(),
+            ClimateRules = SaveClimateRuleConfigs()
         };
 
         projectManager.SaveConfig(config);
@@ -595,6 +567,74 @@ public sealed class TerrainManager : IDisposable
             });
         }
         return configs;
+    }
+
+    private static List<TomlClimateDefinitionConfig> SaveClimateConfigs()
+    {
+        var configs = new List<TomlClimateDefinitionConfig>();
+        foreach (var climate in ClimateRuleService.Instance.Climates)
+        {
+            configs.Add(new TomlClimateDefinitionConfig
+            {
+                Id = climate.Id,
+                Name = climate.Name,
+                DebugColorR = climate.DebugColor.X,
+                DebugColorG = climate.DebugColor.Y,
+                DebugColorB = climate.DebugColor.Z,
+                DebugColorA = climate.DebugColor.W,
+            });
+        }
+        return configs;
+    }
+
+    private static List<TomlClimateRuleConfig> SaveClimateRuleConfigs()
+    {
+        var configs = new List<TomlClimateRuleConfig>();
+        foreach (var rule in ClimateRuleService.Instance.Rules)
+        {
+            configs.Add(new TomlClimateRuleConfig
+            {
+                ClimateId = rule.ClimateId,
+                Name = rule.Name,
+                Enabled = rule.Enabled,
+                MinAltitude = rule.MinAltitude,
+                MaxAltitude = rule.MaxAltitude,
+                MinSlopeDegrees = rule.MinSlopeDegrees,
+                MaxSlopeDegrees = rule.MaxSlopeDegrees,
+                BlendRange = rule.BlendRange,
+                MaterialSlotIndex = rule.MaterialSlotIndex,
+            });
+        }
+        return configs;
+    }
+
+    private static void RestoreClimateData(TomlProjectConfig config)
+    {
+        var climateState = ClimateRuleService.Instance;
+        climateState.ClearAll();
+
+        foreach (var climateConfig in config.Climates)
+        {
+            climateState.AddClimateFromConfig(
+                climateConfig.Id,
+                climateConfig.Name,
+                new System.Numerics.Vector4(
+                    climateConfig.DebugColorR,
+                    climateConfig.DebugColorG,
+                    climateConfig.DebugColorB,
+                    climateConfig.DebugColorA));
+        }
+
+        foreach (var ruleConfig in config.ClimateRules)
+        {
+            climateState.AddRuleFromConfig(
+                ruleConfig.ClimateId, ruleConfig.Name, ruleConfig.Enabled,
+                ruleConfig.MinAltitude, ruleConfig.MaxAltitude,
+                ruleConfig.MinSlopeDegrees, ruleConfig.MaxSlopeDegrees,
+                ruleConfig.BlendRange, ruleConfig.MaterialSlotIndex);
+        }
+
+        climateState.NotifyMutated();
     }
 
     private static void SaveClimateMask(ClimateMask map, string path)
@@ -639,6 +679,9 @@ public sealed class TerrainManager : IDisposable
             if (!string.IsNullOrEmpty(slotConfig.NormalPath))
                 slot.NormalTexturePath = slotConfig.NormalPath;
         }
+
+        // 恢复气候定义和规则
+        RestoreClimateData(config);
 
         // 设置 HeightScale（在加载高度图前，以便 LoadTerrainAsync 使用）
         HeightScale = config.HeightScale;
@@ -703,6 +746,7 @@ public sealed class TerrainManager : IDisposable
         }
 
         currentClimateMaskPath = path;
+        MarkClimateMaskDirty();
         RegenerateMaterialIndices();
         if (markDirty)
             ProjectManager.Instance.MarkDirty();

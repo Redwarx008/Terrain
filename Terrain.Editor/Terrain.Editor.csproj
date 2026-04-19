@@ -33,6 +33,20 @@
     <Compile Include="..\Shared\VirtualTextureLayout.cs" Link="Shared\VirtualTextureLayout.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Update="Effects\EditorTerrainBuildSplatMap.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Effects\EditorTerrainBuildSplatMap.sdsl">
+      <LastGenOutput>EditorTerrainBuildSplatMap.sdsl.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+
   <!--<ItemGroup>
     <Compile Update="Effects\EditorTerrainDiffuse.sdsl.cs">
       <DesignTime>True</DesignTime>

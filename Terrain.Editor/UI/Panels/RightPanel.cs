@@ -2,8 +2,11 @@
 
 using Hexa.NET.ImGui;
 using System;
+using System.Linq;
 using System.Numerics;
 using Terrain.Editor.Services;
+using Terrain.Editor.UI.Controls;
+using Terrain.Editor.UI.Styling;
 
 namespace Terrain.Editor.UI.Panels;
 
@@ -14,8 +17,8 @@ namespace Terrain.Editor.UI.Panels;
 public sealed class RightPanel : PanelBase
 {
     private readonly SculptModePanel sculptModePanel = new();
-    private readonly ClimateManagerPanel climateManagerPanel = new();
-    private readonly RuleManagerPanel ruleManagerPanel = new();
+    private readonly ClimateGradientBar climateGradientBar = new();
+    private readonly RuleInspectorPanel ruleInspectorPanel = new();
 
     private TerrainManager? terrainManager;
 
@@ -29,8 +32,8 @@ public sealed class RightPanel : PanelBase
         Title = "Inspector";
         ShowTitleBar = false;
 
-        climateManagerPanel.ClimateMaskChanged += (s, e) => ClimateMaskChanged?.Invoke(this, EventArgs.Empty);
-        ruleManagerPanel.RulesChanged += (s, e) => RulesChanged?.Invoke(this, EventArgs.Empty);
+        climateGradientBar.RuleSelected += (s, e) => RulesChanged?.Invoke(this, EventArgs.Empty);
+        ruleInspectorPanel.RulesChanged += (s, e) => RulesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetTerrainManager(TerrainManager? manager)
@@ -54,7 +57,7 @@ public sealed class RightPanel : PanelBase
                 break;
 
             case EditorMode.Paint:
-                RenderClimateTabs();
+                RenderClimatePanel();
                 break;
 
             default:
@@ -79,23 +82,66 @@ public sealed class RightPanel : PanelBase
         }
     }
 
-    private void RenderClimateTabs()
+    private void RenderClimatePanel()
     {
-        if (ImGui.BeginTabBar("##mode_tabs_climate", ImGuiTabBarFlags.None))
+        EnsureClimateSelection();
+        RenderClimateSelector();
+        ImGui.Spacing();
+        climateGradientBar.Render();
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        ruleInspectorPanel.Render();
+    }
+
+    private static void RenderClimateSelector()
+    {
+        var climateState = ClimateRuleService.Instance;
+        var state = EditorState.Instance;
+
+        var currentClimate = climateState.FindClimate(state.CurrentClimateId);
+        string climateLabel = currentClimate?.Name ?? "Select Climate";
+
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextColored(ColorPalette.TextSecondary.ToVector4(), "CLIMATE:");
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(MathF.Max(EditorStyle.ScaleValue(180.0f), ImGui.GetContentRegionAvail().X));
+
+        if (ImGui.BeginCombo("##climate_select", climateLabel))
         {
-            if (ImGui.BeginTabItem("Climate Manager"))
+            foreach (var climate in climateState.Climates)
             {
-                climateManagerPanel.Render();
-                ImGui.EndTabItem();
+                bool isSelected = climate.Id == state.CurrentClimateId;
+                if (ImGui.Selectable($"{climate.Name}##climate_{climate.Id}", isSelected))
+                {
+                    state.CurrentClimateId = climate.Id;
+                    var firstRule = climateState.GetRulesForClimate(climate.Id).FirstOrDefault();
+                    state.SelectedRuleIndex = climateState.GetRuleGlobalIndex(firstRule);
+                    state.HasSelectedTool = true;
+                }
+                if (isSelected)
+                    ImGui.SetItemDefaultFocus();
             }
+            ImGui.EndCombo();
+        }
+    }
 
-            if (ImGui.BeginTabItem("Rule Manager"))
-            {
-                ruleManagerPanel.Render();
-                ImGui.EndTabItem();
-            }
+    private static void EnsureClimateSelection()
+    {
+        var climateState = ClimateRuleService.Instance;
+        var state = EditorState.Instance;
 
-            ImGui.EndTabBar();
+        if (climateState.Climates.Count == 0)
+            return;
+
+        if (climateState.FindClimate(state.CurrentClimateId) == null)
+            state.CurrentClimateId = climateState.Climates[0].Id;
+
+        ClimateRuleLayer? selectedRule = climateState.GetRuleByGlobalIndex(state.SelectedRuleIndex);
+        if (selectedRule == null || selectedRule.ClimateId != state.CurrentClimateId)
+        {
+            var firstRule = climateState.GetRulesForClimate(state.CurrentClimateId).FirstOrDefault();
+            state.SelectedRuleIndex = climateState.GetRuleGlobalIndex(firstRule);
         }
     }
 }

@@ -167,3 +167,65 @@
 ### Next Steps
 
 - None - task complete
+
+---
+
+## 2026-04-19 ClimateMask R8 重构与 Season 实现
+
+### Context
+将 ClimateMask 从 1/2 高度图分辨率 Rgba32 格式改造为 1/4 高度图分辨率 R8 (L8) 格式，并实现 Season 过滤功能。
+
+### Changes
+- ClimateMask 尺寸 1/2 → 1/4（`(h+3)/4`），MaterialIndexMap 保持 1/2
+- RegenerateMaterialIndices：1 ClimateMask 像素 → 2x2 MaterialIndex 像素
+- 采样函数 SampleAverageAltitude/SampleSlopeDegrees 坐标缩放 ×4
+- ClimateEditor 笔刷概率性混合（强度→覆盖概率，软边缘）
+- 替换 IndexMap 工作流为 ClimateMask：NewProjectWizard、MainWindow、TomlProjectConfig
+- 修复 LoadProject 竞态：pendingClimateMaskPath + TryLoadPendingClimateMask
+- 修复 TerrainManager.cs mojibake 编码（从 master 恢复）
+- 实现 Season 功能：EditorState.ActiveSeason → ResolveMaterialIndex 规则过滤
+- RuleManagerPanel 添加全局季节选择器
+
+### Commits
+- `8a61e5b` Refactor ClimateMask to R8 1/4 heightmap resolution and implement season filtering
+
+### Status
+[OK] **Completed**
+
+---
+
+## 2026-04-20 Climate 编辑器重构与 GPU SplatMap
+
+### Context
+按新交互方案重做 ClimateEdit 右侧面板与场景视图模式，并将 SplatMap / MaterialIndexMapTextures 生成从 CPU 迁到 compute shader。规则求值改为后写覆盖前写，移除 Season 过滤。
+
+### Changes
+- 右侧 Climate 面板改为 climate 下拉 + 固定尺寸 rule button 条 + 单 rule inspector
+- `Height Range` / `Slope Range` 收敛为更紧凑的双头 range bar 展示，减少窄面板挤压
+- Scene 视图顶部模式合并为单一下拉，去掉重复的 `Textured`，`Final Output` 不再叠加整屏 tint，也移除了右上角 badge
+- 规则系统移除 Season，默认新 rule 使用 full height，重叠规则统一按列表顺序覆盖
+- 新增 `EditorTerrainBuildSplatMap` compute shader，直接写入 `MaterialIndexMapTextures`
+- `TerrainManager` 的 `RegenerateMaterialIndices` 改为脏标记驱动，climate mask / rule / height 改动只触发 GPU 重建
+- `EditorTerrainRenderFeature` 在绘制前同步 climate 资源并 dispatch splat compute，render-only，无 CPU 回读
+
+### Modified Files
+- `Terrain.Editor/Effects/EditorTerrainBuildSplatMap.sdsl`
+- `Terrain.Editor/Rendering/EditorTerrainEntity.cs`
+- `Terrain.Editor/Rendering/EditorTerrainRenderFeature.cs`
+- `Terrain.Editor/Rendering/EditorTerrainSplatMapComputeDispatcher.cs`
+- `Terrain.Editor/Services/ClimateEditor.cs`
+- `Terrain.Editor/Services/ClimateRuleService.cs`
+- `Terrain.Editor/Services/EditorState.cs`
+- `Terrain.Editor/Services/TerrainManager.cs`
+- `Terrain.Editor/Services/TomlProjectConfig.cs`
+- `Terrain.Editor/UI/Controls/ClimateGradientBar.cs`
+- `Terrain.Editor/UI/Panels/RightPanel.cs`
+- `Terrain.Editor/UI/Panels/RuleInspectorPanel.cs`
+- `Terrain.Editor/UI/Panels/RuleManagerPanel.cs`
+- `Terrain.Editor/UI/Panels/SceneViewPanel.cs`
+
+### Testing
+- `dotnet build Terrain.Editor\\Terrain.Editor.csproj /p:UseAppHost=false`
+
+### Status
+[OK] **Completed**

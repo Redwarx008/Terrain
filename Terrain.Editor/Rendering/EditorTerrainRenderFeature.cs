@@ -59,6 +59,7 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
     private ShadowMeshPipelineProcessor? shadowParaboloidPipelineProcessor;
     private ShadowMeshPipelineProcessor? shadowCubeMapPipelineProcessor;
     private readonly EditorTerrainComputeDispatcher computeDispatcher = new();
+    private readonly EditorTerrainSplatMapComputeDispatcher splatMapComputeDispatcher = new();
     private bool rebuildingManagedRenderFeatures;
 
     [DataMember]
@@ -97,6 +98,7 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
         RenderFeatures.CollectionChanged -= RenderFeatures_CollectionChanged;
         descriptorSets.Dispose();
         computeDispatcher.Dispose();
+        splatMapComputeDispatcher.Dispose();
 
         emptyBuffer?.Dispose();
         emptyBuffer = null;
@@ -151,6 +153,7 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
         using var _ = Profiler.Begin(PrepareKey);
 
         computeDispatcher.Initialize(context.RenderContext);
+        splatMapComputeDispatcher.Initialize(context.RenderContext);
         base.Prepare(context);
 
         foreach (var renderFeature in RenderFeatures)
@@ -201,6 +204,8 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
             descriptorSetsLocal = descriptorSets.Value = new DescriptorSet[EffectDescriptorSetSlotCount];
         }
 
+        var rebuiltTerrainEntities = new HashSet<EditorTerrainEntity>();
+
         MeshDraw? currentDrawData = null;
         int emptyBufferSlot = -1;
         for (int index = startIndex; index < endIndex; index++)
@@ -220,6 +225,12 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
             // Terrain is drawn by multiple RenderViews in the same frame, and shadow views do not share
             // the main camera frustum, so chunk selection must happen against the view being drawn now.
             PrepareEditorTerrainDraw(context, renderMesh, renderView);
+
+            if (renderMesh.TerrainEntity != null && rebuiltTerrainEntities.Add(renderMesh.TerrainEntity))
+            {
+                renderMesh.TerrainEntity.SyncClimateResourcesToGpu(Context.GraphicsDevice, commandList);
+                splatMapComputeDispatcher.Dispatch(context, renderMesh);
+            }
 
             if (!ReferenceEquals(currentDrawData, drawData))
             {

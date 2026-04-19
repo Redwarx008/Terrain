@@ -57,6 +57,7 @@ public sealed class ClimateEditor
             }
         }
 
+        terrainManager.MarkClimateMaskDirty();
         // Regenerate only the touched region so the climate workflow stays responsive.
         terrainManager.RegenerateMaterialIndices(pixelX, pixelY, radius);
     }
