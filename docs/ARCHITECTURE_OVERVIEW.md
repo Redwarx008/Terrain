@@ -43,6 +43,8 @@
 | **高度编辑** | ✅ 已实现 | [terrain-editor-design-phase-2](design/terrain-editor-design-phase-2.md) |
 | **笔刷系统** | ✅ 已实现 | [terrain-editor-design-phase-2](design/terrain-editor-design-phase-2.md) |
 | **ImGui UI** | ✅ 已实现 | [terrain-editor-design-phase-2](design/terrain-editor-design-phase-2.md) |
+| **气候蒙版（ClimateMask）** | ✅ 已实现 | R8 格式，1/4 高度图分辨率，规则驱动材质索引 |
+| **季节过滤（Season）** | ✅ 已实现 | EditorState.ActiveSeason 驱动规则求值 |
 | **纹理刷** | ✅ 已实现 | [2026-04-06-3](log/2026/04/06/2026-04-06-3-terrain-texture-brush-implementation.md) |
 | **纹理导入增强** | ✅ 已实现 | [texture-auto-normal-import-and-inspector](design/texture-auto-normal-import-and-inspector.md) |
 | **数据同步机制** | ✅ 已实现 | [2026-04-07-1](log/2026/04/07/2026-04-07-1-unified-terrain-data-sync.md) |
@@ -82,6 +84,12 @@
 - 3D 投影解决悬崖纹理拉伸
 - 随机旋转打破平铺重复
 
+### 1.5 气候蒙版驱动材质索引 (R8, 1/4 高度图)
+**问题：** 直接绘制材质索引图效率低、难以表达海拔/坡度/季节规则
+**方案：** ClimateMask（R8, 1/4 高度图分辨率）存储气候 ID，通过规则栈（海拔/坡度/季节）求值生成 MaterialIndexMap（1/2 分辨率）
+**权衡：** 间接映射 vs 直接绘制 — 间接映射更适合程序化规则，1/4 分辨率节省内存
+**关键：** 1 个 ClimateMask 像素映射到 2x2 MaterialIndex 像素，坐标转换均需 ×4（ClimateMask→Heightmap）或 ×2（ClimateMask→MaterialIndex）
+
 ### 2. 四叉树 LOD
 **问题：** 大地形需要不同细节级别
 **方案：** 四叉树分割，GPU 选择 LOD
@@ -110,7 +118,7 @@
 
 ### 6. TOML 项目持久化
 **问题：** 编辑器没有真正的 Open/Save 流程，用户无法保存和恢复工作状态
-**方案：** 使用 .toml 文件作为项目配置（Tommy 库），存储 heightmap/indexmap 路径和 material slot 纹理路径
+**方案：** 使用 .toml 文件作为项目配置（Tommy 库），存储 heightmap/climate_mask 路径和 material slot 纹理路径
 **权衡：** TOML 比 JSON 更易手写编辑，但需要额外 NuGet 依赖
 **关键：** 所有路径使用相对路径（相对于 .toml 所在目录），确保项目可移植
 
@@ -143,6 +151,9 @@
 | `Terrain.Editor/Services/TerrainManager.cs` | 地形管理服务 |
 | `Terrain.Editor/Services/HeightEditor.cs` | 高度编辑服务 |
 | `Terrain.Editor/Services/PaintEditor.cs` | 材质绘制服务 |
+| `Terrain.Editor/Services/ClimateEditor.cs` | 气候蒙版笔刷服务 |
+| `Terrain.Editor/Services/ClimateMask.cs` | 气候蒙版数据（R8, 1/4 高度图） |
+| `Terrain.Editor/Services/ClimateRuleService.cs` | 气候定义和规则栈管理 |
 | `Terrain.Editor/Services/Commands/HistoryManager.cs` | Undo/Redo 历史事务管理 |
 | `Terrain.Editor/Services/Commands/StrokeChunkTracker.cs` | 笔触 Chunk 跟踪与去重 |
 | `Terrain.Editor/Services/MaterialSlotManager.cs` | 材质槽位管理 |
@@ -207,5 +218,5 @@
 
 ---
 
-*最后更新: 2026-04-15*
+*最后更新: 2026-04-20*
 *状态: 反映当前实现状态*

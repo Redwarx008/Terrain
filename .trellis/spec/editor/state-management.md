@@ -14,14 +14,16 @@ private static readonly Lazy<EditorState> _instance = new(() => new());
 public static EditorState Instance => _instance.Value;
 ```
 
-当前使用的 7 个单例服务：
+当前使用的单例服务：
 
 | 服务 | 职责 |
 |------|------|
-| `EditorState` | 当前工具选择状态 |
+| `EditorState` | 当前工具状态、气候选择、活跃季节（ActiveSeason） |
 | `BrushParameters` | 画笔参数（大小、强度、衰减） |
 | `HeightEditor` | 高度编辑逻辑（BeginStroke/ApplyStroke/EndStroke） |
 | `PaintEditor` | 绘制编辑逻辑 |
+| `ClimateEditor` | 气候蒙版笔刷（ApplyStroke 写入 ClimateMask） |
+| `ClimateRuleService` | 气候定义和规则栈管理 |
 | `HistoryManager` | 撤销/重做栈管理 |
 | `MaterialSlotManager` | 256 材质槽 + GPU 数组 |
 | `ProjectManager` | TOML 项目文件 I/O |

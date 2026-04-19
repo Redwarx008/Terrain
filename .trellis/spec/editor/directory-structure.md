@@ -54,8 +54,11 @@ Terrain.Editor/
 
   Services/                               -- 核心业务逻辑
     BrushParameters.cs                    -- 单例：画笔参数
+    ClimateEditor.cs                      -- 单例：气候蒙版笔刷服务
+    ClimateMask.cs                        -- 气候蒙版数据（R8, 1/4 高度图）
+    ClimateRuleService.cs                 -- 单例：气候定义和规则栈管理
     EditorPreferences.cs                  -- 用户偏好设置
-    EditorState.cs                        -- 单例：当前工具状态
+    EditorState.cs                        -- 单例：当前工具状态（含 ActiveSeason）
     EraseTool.cs                          -- IPaintTool 实现
     HeightEditor.cs                       -- 单例：高度编辑逻辑
     HeightmapLoader.cs                    -- 高度图加载/校验
@@ -99,9 +102,9 @@ Terrain.Editor/
     Layout/
       LayoutManager.cs
     Panels/                               -- 面板（组合 UI 单元）
-      AssetsPanel.cs, ConsolePanel.cs, GridTileRenderer.cs,
-      PanelBase.cs, RightPanel.cs, SceneViewPanel.cs, ToolsPanel.cs,
-      ToolbarPanel.cs, TextureInspectorPanel.cs
+      AssetsPanel.cs, ClimateManagerPanel.cs, ConsolePanel.cs, GridTileRenderer.cs,
+      InputsDataPanel.cs, PanelBase.cs, RightPanel.cs, RuleManagerPanel.cs,
+      SceneViewPanel.cs, SculptModePanel.cs, ToolbarPanel.cs
     Styling/
       EditorStyle.cs, ColorPalette.cs, FontManager.cs, ...
     EditorUIRenderer.cs
