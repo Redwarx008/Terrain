@@ -66,8 +66,7 @@ public sealed class EditorTerrainEntity : IDisposable
     public Buffer? PatchIndexBuffer { get; private set; }
 
     /// <summary>
-    /// 材质索引图切片纹理数组 (R8G8B8A8_UNorm)，每个切片对应一个纹理。
-    /// R: 材质索引, G: 权重, B: 投影方向, A: 旋转角度。
+    /// 材质索引图切片纹理数组 (R8_UNorm)，每个切片对应一个纹理。
     /// 与高度图切片使用相同的 SplitConfig 切分。
     /// </summary>
     public Texture?[] MaterialIndexMapTextures { get; private set; } = Array.Empty<Texture?>();
@@ -230,7 +229,7 @@ public sealed class EditorTerrainEntity : IDisposable
                 graphicsDevice,
                 indexMapWidth,
                 indexMapHeight,
-                PixelFormat.R8G8B8A8_UNorm,
+                PixelFormat.R8_UNorm,
                 TextureFlags.ShaderResource | TextureFlags.UnorderedAccess);
         }
     }
@@ -363,8 +362,6 @@ public sealed class EditorTerrainEntity : IDisposable
     /// </summary>
     public void SyncMaterialIndexMapToGpu(CommandList commandList, Services.MaterialIndexMap indexMap)
     {
-        var rawData = indexMap.GetRawData(); // uint[]
-
         for (int i = 0; i < MaterialIndexMapTextures.Length; i++)
         {
             var texture = MaterialIndexMapTextures[i];

@@ -5,9 +5,6 @@ namespace Terrain.Editor
         struct MaterialPixel
         {
             uint index;
-            float weight;
-            float3 projDir;
-            float rotation;
         };
 
         rgroup PerMaterial
@@ -46,26 +43,6 @@ namespace Terrain.Editor
             return normalize(float3(left - right, 2.0f, up - down));
         }
 
-        float3 DecodeProjectionDirection(float encoded)
-        {
-            float proj = floor(encoded * 255.0f + 0.5f);
-            float encX = frac(proj / 16.0f) * 16.0f;
-            float encZ = floor(proj / 16.0f);
-            float projDX = (encX - 7.0f) / 7.0f;
-            float projDZ = (encZ - 7.0f) / 7.0f;
-            return normalize(float3(projDX, 0.5f, projDZ));
-        }
-
-        MaterialPixel DecodeMaterialPixel(float4 raw)
-        {
-            MaterialPixel p;
-            p.index = (uint)(raw.r * 255.0f + 0.5f);
-            p.weight = raw.g;
-            p.projDir = DecodeProjectionDirection(raw.b);
-            p.rotation = raw.a * 6.28318530718f;
-            return p;
-        }
-
         int2 ClampIndexPixel(int2 pixel)
         {
             int maxX = (int)HeightmapDimensionsInSamples.x - 1;
@@ -78,8 +55,9 @@ namespace Terrain.Editor
         MaterialPixel LoadMaterialPixel(int2 pixel)
         {
             int2 clampedPixel = ClampIndexPixel(pixel);
-            float4 raw = LoadIndexMapAtGlobal(clampedPixel);
-            return DecodeMaterialPixel(raw);
+            MaterialPixel p;
+            p.index = (uint)(LoadIndexMapAtGlobal(clampedPixel) * 255.0f + 0.5f);
+            return p;
         }
 
         uint ResolveAlbedoIndex(uint materialIndex)
@@ -92,78 +70,6 @@ namespace Terrain.Editor
         {
             int maxIndex = max(MaterialNormalArraySize - 1, 0);
             return (uint)min((int)materialIndex, maxIndex);
-        }
-
-        void BuildProjectionBasis(float3 projDir, float rotation, out float3 projU, out float3 projV)
-        {
-            float rx = sin(rotation);
-            float ry = cos(rotation);
-            float2 rot = normalize(float2(rx, ry));
-            projU = normalize(cross(projDir, float3(rot.x, 0.0f, rot.y)));
-            projV = normalize(cross(projU, projDir));
-        }
-
-        float2 GetProjectedUV(float3 worldPos, float3 projDir, float rotation)
-        {
-            float3 projU;
-            float3 projV;
-            BuildProjectionBasis(projDir, rotation, projU, projV);
-            float scale = 0.0625f * MaterialTilingScale;
-            return float2(dot(projU, worldPos), dot(projV, worldPos)) * scale;
-        }
-
-        float3 BuildProjectedNormalWS(float3 normalTS, float3 projDir, float rotation)
-        {
-            float3 projU;
-            float3 projV;
-            BuildProjectionBasis(projDir, rotation, projU, projV);
-
-            float3 mappedNormalWS =
-                normalTS.x * projU +
-                normalTS.y * projV +
-                normalTS.z * projDir;
-
-            float len2 = dot(mappedNormalWS, mappedNormalWS);
-            bool invalid =
-                len2 < 0.000001f ||
-                !(mappedNormalWS.x == mappedNormalWS.x) ||
-                !(mappedNormalWS.y == mappedNormalWS.y) ||
-                !(mappedNormalWS.z == mappedNormalWS.z);
-            return invalid ? projDir : normalize(mappedNormalWS);
-        }
-
-        float3 BuildDetailNormalWS(float3 normalTS, float3 geomNormalWS, float3 projDir, float rotation)
-        {
-            float3 projU;
-            float3 projV;
-            BuildProjectionBasis(projDir, rotation, projU, projV);
-
-            float3 detailU = projU - geomNormalWS * dot(projU, geomNormalWS);
-            float detailULen2 = dot(detailU, detailU);
-            if (detailULen2 < 0.000001f)
-            {
-                float3 fallbackAxis = abs(geomNormalWS.y) < 0.999f ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
-                detailU = cross(fallbackAxis, geomNormalWS);
-                detailULen2 = dot(detailU, detailU);
-                if (detailULen2 < 0.000001f)
-                    return geomNormalWS;
-            }
-
-            detailU = normalize(detailU);
-            float3 detailV = normalize(cross(geomNormalWS, detailU));
-
-            float3 blendedNormal =
-                normalTS.x * detailU +
-                normalTS.y * detailV +
-                normalTS.z * geomNormalWS;
-
-            float len2 = dot(blendedNormal, blendedNormal);
-            bool invalid =
-                len2 < 0.000001f ||
-                !(blendedNormal.x == blendedNormal.x) ||
-                !(blendedNormal.y == blendedNormal.y) ||
-                !(blendedNormal.z == blendedNormal.z);
-            return invalid ? geomNormalWS : normalize(blendedNormal);
         }
 
         float Hash11(float n)
@@ -193,7 +99,7 @@ namespace Terrain.Editor
             out float3 color,
             out float3 normalWS)
         {
-            float2 tiledUV = GetProjectedUV(worldPos, pixel.projDir, pixel.rotation);
+            float2 tiledUV = worldPos.xz * (0.0625f * MaterialTilingScale);
 
             float4 colorSample;
             if (MaterialArraySize == 0)
@@ -213,7 +119,17 @@ namespace Terrain.Editor
                 uint resolvedNormalIndex = ResolveNormalIndex(pixel.index);
                 float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)resolvedNormalIndex));
                 float3 normalTS = normalize(normalSample.xyz * 2.0f - 1.0f);
-                normalWS = BuildDetailNormalWS(normalTS, geomNormalWS, pixel.projDir, pixel.rotation);
+                float3 detailU = float3(1.0f, 0.0f, 0.0f) - geomNormalWS * dot(float3(1.0f, 0.0f, 0.0f), geomNormalWS);
+                float detailULen2 = dot(detailU, detailU);
+                if (detailULen2 < 0.000001f)
+                    detailU = cross(float3(0.0f, 0.0f, 1.0f), geomNormalWS);
+                detailU = normalize(detailU);
+                float3 detailV = normalize(cross(geomNormalWS, detailU));
+                float3 blendedNormal =
+                    normalTS.x * detailU +
+                    normalTS.y * detailV +
+                    normalTS.z * geomNormalWS;
+                normalWS = normalize(blendedNormal);
             }
         }
 

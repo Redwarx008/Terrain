@@ -40,7 +40,7 @@ public class TerrainExporter : IExporter
         int leafNodeSize = tm.SplitConfig?.BaseChunkSize ?? SplitTerrainConfig.DefaultBaseChunkSize;
 
         // Get SplatMap raw data (zero-copy, direct reference to internal uint[])
-        uint[] splatData = splatMap.GetRawData();
+        byte[] splatData = splatMap.GetRawData();
         int splatW = splatMap.Width;
         int splatH = splatMap.Height;
 
@@ -76,7 +76,7 @@ public class TerrainExporter : IExporter
         string outputPath,
         int width, int height,
         ushort[] heightData,
-        uint[] splatData, int splatW, int splatH,
+        byte[] splatData, int splatW, int splatH,
         EditorMinMaxErrorMap[] minMaxErrorMaps,
         int leafNodeSize,
         int heightMapMipLevels,
@@ -98,7 +98,7 @@ public class TerrainExporter : IExporter
             TileSize = DefaultTileSize,
             Padding = HeightMapPadding,
             HeightMapMipLevels = heightMapMipLevels,
-            SplatMapFormat = (int)VTFormat.Rgba32,
+            SplatMapFormat = (int)VTFormat.R8,
             SplatMapMipLevels = splatMapMipLevels,
             SplatMapResolutionRatio = 1,
         };
@@ -135,11 +135,11 @@ public class TerrainExporter : IExporter
             Height = splatH,
             TileSize = DefaultTileSize,
             Padding = SplatMapPadding,
-            BytesPerPixel = 4, // Rgba32
+            BytesPerPixel = 1, // R8
             Mipmaps = splatMapMipLevels,
         };
         WriteStruct(writer, ref splatVTHeader);
-        StreamMipLevels<uint>(writer, splatData, splatW, splatH,
+        StreamMipLevels<byte>(writer, splatData, splatW, splatH,
             DefaultTileSize, SplatMapPadding, ct);
     }
 

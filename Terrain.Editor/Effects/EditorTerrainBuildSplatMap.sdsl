@@ -20,7 +20,7 @@ namespace Terrain.Editor
 
         stage Texture2D<float> ClimateMaskTexture;
         stage StructuredBuffer<ClimateSplatRuleGpu> ClimateRules;
-        stage RWTexture2D<float4> OutputIndexMap;
+        stage RWTexture2D<float> OutputIndexMap;
         stage int CurrentSliceIndex;
         stage int OutputWidth;
         stage int OutputHeight;
@@ -111,13 +111,9 @@ namespace Terrain.Editor
             return altitudeWeight * slopeWeight;
         }
 
-        float4 EncodeMaterialPixel(int materialIndex, float materialWeight)
+        float EncodeMaterialPixel(int materialIndex, float materialWeight)
         {
-            return float4(
-                (float)materialIndex / 255.0f,
-                saturate(materialWeight),
-                119.0f / 255.0f,
-                0.0f);
+            return (float)materialIndex / 255.0f;
         }
 
         override void Compute()

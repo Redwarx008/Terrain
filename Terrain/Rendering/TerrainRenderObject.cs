@@ -60,7 +60,7 @@ public sealed class TerrainRenderObject : RenderMesh
             fullSplatTileSize,
             fullSplatTileSize,
             1,
-            PixelFormat.R8G8B8A8_UNorm,
+            PixelFormat.R8_UNorm,
             TextureFlags.ShaderResource,
             maxResidentChunks);
 
