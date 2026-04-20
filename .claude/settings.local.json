@@ -44,18 +44,6 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(npm install *)",
-      "Bash(trellis init *)",
-      "Bash(python ./.trellis/scripts/get_context.py)",
-      "Bash(while read:*)",
-      "Bash(do if:*)",
-      "Bash(then echo:*)",
-      "Bash(fi)",
-      "Bash(done)",
-      "Bash(python3 ./.trellis/scripts/get_context.py --mode record)",
-      "Bash(python ./.trellis/scripts/get_context.py --mode record)",
-      "Bash(python3 ./.trellis/scripts/get_context.py)",
-      "Bash(python3 ./.trellis/scripts/get_context.py --mode packages)",
-      "Bash(python ./.trellis/scripts/get_context.py --mode packages)",
       "Bash(cat \"C:/Users/Redwa/.claude/hooks/\"*.json)",
       "Bash(uvx --version)",
       "Bash(uv --version)",
@@ -68,7 +56,11 @@
       "WebFetch(domain:api.polyhaven.com)",
       "Bash(curl -s \"https://api.polyhaven.com/assets/trees/fir_tree_01\")",
       "mcp__blender-mcp__get_viewport_screenshot",
-      "mcp__blender-mcp__get_object_info"
+      "mcp__blender-mcp__get_object_info",
+      "Bash(git checkout *)",
+      "Bash(xxd -l 4 Terrain.Editor/Services/TerrainManager.cs)",
+      "Bash(git status *)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }
