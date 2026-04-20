@@ -613,6 +613,7 @@ public sealed class TerrainManager : IDisposable
                 ruleConfig.BlendRange, ruleConfig.MaterialSlotIndex);
         }
 
+        climateState.NormalizeAllRanges();
         climateState.NotifyMutated();
     }
 

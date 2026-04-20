@@ -39,7 +39,7 @@ internal sealed class RuleInspectorPanel
         ImGui.Spacing();
         RenderHeightRangeRow(rule, state.SelectedRuleIndex, service);
         ImGui.Spacing();
-        RenderSlopeRangeRow(rule, service);
+        RenderSlopeRangeRow(rule, state.SelectedRuleIndex, service);
         ImGui.Spacing();
         RenderBlendRow(rule, service);
         ImGui.Spacing();
@@ -159,7 +159,6 @@ internal sealed class RuleInspectorPanel
         if (RenderDualHandleSlider("height_range", ref minValue, ref maxValue, sliderMin, sliderMax, contentWidth))
         {
             service.SetRuleAltitude(selectedRuleIndex, minValue, maxValue);
-            service.NotifyMutated();
             RulesChanged?.Invoke(this, EventArgs.Empty);
         }
 
@@ -168,7 +167,7 @@ internal sealed class RuleInspectorPanel
             $"Range: {rule.MinAltitude:0.##} - {rule.MaxAltitude:0.##}");
     }
 
-    private void RenderSlopeRangeRow(ClimateRuleLayer rule, ClimateRuleService service)
+    private void RenderSlopeRangeRow(ClimateRuleLayer rule, int selectedRuleIndex, ClimateRuleService service)
     {
         RenderFieldLabel("Slope Range");
         ImGui.Spacing();
@@ -178,9 +177,7 @@ internal sealed class RuleInspectorPanel
         float maxValue = rule.MaxSlopeDegrees;
         if (RenderDualHandleSlider("slope_range", ref minValue, ref maxValue, 0.0f, 90.0f, contentWidth))
         {
-            rule.MinSlopeDegrees = minValue;
-            rule.MaxSlopeDegrees = maxValue;
-            service.NotifyMutated();
+            service.SetRuleSlope(selectedRuleIndex, minValue, maxValue);
             RulesChanged?.Invoke(this, EventArgs.Empty);
         }
 

@@ -127,6 +127,7 @@ public sealed class ClimateRuleService
                 MaterialSlotIndex = 0
             };
             rules.Add(firstRule);
+            NormalizeClimateRanges(climateId);
             OnStateChanged();
             return firstRule;
         }
@@ -169,6 +170,7 @@ public sealed class ClimateRuleService
         ClimateRuleLayer rule = rules[fromIndex];
         rules.RemoveAt(fromIndex);
         rules.Insert(toIndex, rule);
+        NormalizeClimateRanges(rule.ClimateId);
         OnStateChanged();
     }
 
@@ -230,17 +232,72 @@ public sealed class ClimateRuleService
             return;
 
         var rule = rules[ruleIndex];
+        var sameClimateRules = GetRulesForClimate(rule.ClimateId);
+        int localRuleIndex = GetLocalRuleIndex(sameClimateRules, rule);
+
+        if (localRuleIndex < 0)
+            return;
+
+        ClimateRuleLayer? previousRule = localRuleIndex > 0 ? sameClimateRules[localRuleIndex - 1] : null;
+        ClimateRuleLayer? nextRule = localRuleIndex < sameClimateRules.Count - 1 ? sameClimateRules[localRuleIndex + 1] : null;
 
         if (newMin.HasValue)
         {
             float upperBound = newMax ?? rule.MaxAltitude;
-            rule.MinAltitude = Math.Clamp(newMin.Value, MinHeight, upperBound);
+            float clampedMin = Math.Clamp(newMin.Value, MinHeight, upperBound);
+            rule.MinAltitude = clampedMin;
+
+            if (previousRule != null)
+                previousRule.MaxAltitude = clampedMin;
         }
 
         if (newMax.HasValue)
         {
             float lowerBound = newMin ?? rule.MinAltitude;
-            rule.MaxAltitude = MathF.Max(newMax.Value, lowerBound);
+            float clampedMax = MathF.Max(newMax.Value, lowerBound);
+            rule.MaxAltitude = clampedMax;
+
+            if (nextRule != null)
+                nextRule.MinAltitude = clampedMax;
+        }
+
+        NormalizeClimateRanges(rule.ClimateId);
+        OnStateChanged();
+    }
+
+    public void SetRuleSlope(int ruleIndex, float? newMin, float? newMax)
+    {
+        if (ruleIndex < 0 || ruleIndex >= rules.Count)
+            return;
+
+        var rule = rules[ruleIndex];
+        var sameClimateRules = GetRulesForClimate(rule.ClimateId);
+        int localRuleIndex = GetLocalRuleIndex(sameClimateRules, rule);
+
+        if (localRuleIndex < 0)
+            return;
+
+        ClimateRuleLayer? previousRule = localRuleIndex > 0 ? sameClimateRules[localRuleIndex - 1] : null;
+        ClimateRuleLayer? nextRule = localRuleIndex < sameClimateRules.Count - 1 ? sameClimateRules[localRuleIndex + 1] : null;
+
+        if (newMin.HasValue)
+        {
+            float upperBound = newMax ?? rule.MaxSlopeDegrees;
+            float clampedMin = Math.Clamp(newMin.Value, 0.0f, upperBound);
+            rule.MinSlopeDegrees = clampedMin;
+
+            if (previousRule != null)
+                previousRule.MaxSlopeDegrees = clampedMin;
+        }
+
+        if (newMax.HasValue)
+        {
+            float lowerBound = newMin ?? rule.MinSlopeDegrees;
+            float clampedMax = Math.Clamp(newMax.Value, lowerBound, 90.0f);
+            rule.MaxSlopeDegrees = clampedMax;
+
+            if (nextRule != null)
+                nextRule.MinSlopeDegrees = clampedMax;
         }
 
         NormalizeClimateRanges(rule.ClimateId);
@@ -297,19 +354,41 @@ public sealed class ClimateRuleService
         if (sameClimateRules.Count == 0)
             return;
 
-        foreach (ClimateRuleLayer climateRule in sameClimateRules)
+        for (int i = 0; i < sameClimateRules.Count; i++)
         {
+            ClimateRuleLayer climateRule = sameClimateRules[i];
+
             climateRule.MinAltitude = MathF.Max(climateRule.MinAltitude, MinHeight);
             climateRule.MaxAltitude = MathF.Max(climateRule.MaxAltitude, climateRule.MinAltitude);
             climateRule.MinSlopeDegrees = Math.Clamp(climateRule.MinSlopeDegrees, 0.0f, 90.0f);
             climateRule.MaxSlopeDegrees = Math.Clamp(climateRule.MaxSlopeDegrees, climateRule.MinSlopeDegrees, 90.0f);
             climateRule.BlendRange = Math.Clamp(climateRule.BlendRange, 0.0f, 1.0f);
+
+            if (i == 0)
+                continue;
+
+            ClimateRuleLayer previousRule = sameClimateRules[i - 1];
+            climateRule.MinAltitude = previousRule.MaxAltitude;
+            climateRule.MaxAltitude = MathF.Max(climateRule.MaxAltitude, climateRule.MinAltitude);
+            climateRule.MinSlopeDegrees = previousRule.MaxSlopeDegrees;
+            climateRule.MaxSlopeDegrees = Math.Clamp(climateRule.MaxSlopeDegrees, climateRule.MinSlopeDegrees, 90.0f);
         }
     }
 
     public void NotifyMutated()
     {
         OnStateChanged();
+    }
+
+    private int GetLocalRuleIndex(IReadOnlyList<ClimateRuleLayer> sameClimateRules, ClimateRuleLayer rule)
+    {
+        for (int i = 0; i < sameClimateRules.Count; i++)
+        {
+            if (ReferenceEquals(sameClimateRules[i], rule))
+                return i;
+        }
+
+        return -1;
     }
 
     private void OnStateChanged()
