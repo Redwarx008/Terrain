@@ -60,7 +60,8 @@
       "Bash(git checkout *)",
       "Bash(xxd -l 4 Terrain.Editor/Services/TerrainManager.cs)",
       "Bash(git status *)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(powershell -Command \"New-NetFirewallRule -DisplayName 'Block WorldCreator Network Access' -Direction Outbound -Program 'G:\\\\BaiduNetdiskDownload2\\\\World Creator\\\\02 - Extract WC Folder\\\\WorldCreator_2026_1\\\\WorldCreator.exe' -Action Block -Protocol Any\")"
     ]
   }
 }
