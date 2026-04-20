@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "skills": {
+    "easysdd": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "374c1dba0055bec62738f4889eec67ae4e1b26eba4073e0cb7daf58e4b01acf8"
+    },
+    "easysdd-architecture-check": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "09a47a301871dcfeb826795fad60354bb59d92f9e1ce1b0a796a62315e036696"
+    },
+    "easysdd-architecture-gen": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "8bf422efc4a7fc012c7eb287182142fe11738de7a24ab505211251243cbe9c8c"
+    },
+    "easysdd-decisions": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "129b3dc391a82bfde6227ac376f4f03eef73dbe599cdb922c6c2e3d2027bc836"
+    },
+    "easysdd-explore": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "69897da84d8a5c504a505e8f3f840783805c809cd3aacb930eaf647cc3490ebb"
+    },
+    "easysdd-feature": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "1f2783652fd4864527d83c10e6d95e2b4c0d7d432e8e3e708f114efe94e689a6"
+    },
+    "easysdd-feature-acceptance": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "2de339d6afaf7283e8fd5fcaee0419dfaa622689315824c6a41fca98b323c995"
+    },
+    "easysdd-feature-brainstorm": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "a69fe85296b1ef7b668fc2290416de271b834a2c4f2097a944eb2422f3f2fd5c"
+    },
+    "easysdd-feature-design": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "a8f76fd99ddb7f95c1edee7a3037e6a0a50c0e9449a05dfde0f5c3b749156718"
+    },
+    "easysdd-feature-fastforward": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "30f3f8a7f2bfe27129ed56e0c99115a9010c57ed10b75bd7ac88c194622e1af6"
+    },
+    "easysdd-feature-implement": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "8dd5bf171294642b89d31e373a368a23cb7c170a79129573d6e2029a0fa34820"
+    },
+    "easysdd-guidedoc": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "3a139676c5a3e8beaa07fa51d9fde14b1ba83405f721749b3b78d21649221c28"
+    },
+    "easysdd-issue": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "c7c2517d46fd22744b12e231bd0a0b652d84a244f3c3ecf5d5b8ec1c8ae305f4"
+    },
+    "easysdd-issue-analyze": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "7abf0850f43696e22441170fc3e0075bef9bb2820e1adf6b2b321928bd4fc69a"
+    },
+    "easysdd-issue-fix": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "23b84879f757803c940b3d9125ac90eacf20911befbce7d93885c6e227ecf950"
+    },
+    "easysdd-issue-report": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "5aab5c7918407ba9084e67a7ac2b32ab1cbcf3a89a5ce703352e17d1b8c939d2"
+    },
+    "easysdd-learning": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "facc23139ec95e904d11b67e47000e24bebc4e9f8d7c8519d457fa821e0bde1b"
+    },
+    "easysdd-libdoc": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "bd0265797d3f57733a14f9f679c9975c06373f1ccf5106da9eb91e283f896b7e"
+    },
+    "easysdd-onboarding": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "e08fd08b3307941d20eef80c37278fbcd368d071c66a1003c769deb29f372cbc"
+    },
+    "easysdd-tricks": {
+      "source": "liuzhengdongfortest/easysdd",
+      "sourceType": "github",
+      "computedHash": "62fc2829f7cf61e9a037f742b525b55796f546e7a80b633aedffcf8907f38eff"
+    }
+  }
+}
