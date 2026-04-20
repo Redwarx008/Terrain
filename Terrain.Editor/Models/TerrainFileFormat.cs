@@ -30,7 +30,7 @@ public struct TerrainFileHeader
     public int HeightMapMipLevels;
     public int SplatMapFormat;     // VTFormat enum value
     public int SplatMapMipLevels;
-    public int SplatMapResolutionRatio;  // 1 = same, 2 = half
+    public int SplatMapResolutionRatio;  // 1 = same as heightmap
     public int Reserved2;
     public int Reserved3;
     public int Reserved4;

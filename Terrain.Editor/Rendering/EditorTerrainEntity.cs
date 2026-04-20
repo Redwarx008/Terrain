@@ -216,7 +216,7 @@ public sealed class EditorTerrainEntity : IDisposable
     /// <summary>
     /// 初始化材质相关 GPU 资源。
     /// 为每个高度图切片创建对应的材质索引图纹理。
-    /// IndexMap 纹理使用 heightmap 切片的 1/2 分辨率。
+    /// IndexMap 纹理与 heightmap 切片保持 1:1 分辨率。
     /// </summary>
     public void InitializeMaterialResources(GraphicsDevice graphicsDevice)
     {
@@ -224,9 +224,8 @@ public sealed class EditorTerrainEntity : IDisposable
         for (int i = 0; i < SplitConfig.TotalSliceCount; i++)
         {
             var sliceInfo = SplitConfig.Slices[i];
-            // IndexMap 纹理使用 heightmap 切片的 1/2 分辨率
-            int indexMapWidth = (sliceInfo.Width + 1) / 2;
-            int indexMapHeight = (sliceInfo.Height + 1) / 2;
+            int indexMapWidth = sliceInfo.Width;
+            int indexMapHeight = sliceInfo.Height;
             MaterialIndexMapTextures[i] = Texture.New2D(
                 graphicsDevice,
                 indexMapWidth,
@@ -360,11 +359,10 @@ public sealed class EditorTerrainEntity : IDisposable
 
     /// <summary>
     /// 同步材质索引图到 GPU。
-    /// IndexMap 使用 heightmap 的 1/2 分辨率，需要坐标转换。
+    /// IndexMap 与 heightmap 保持 1:1 分辨率。
     /// </summary>
     public void SyncMaterialIndexMapToGpu(CommandList commandList, Services.MaterialIndexMap indexMap)
     {
-        // IndexMap 是 heightmap 的 1/2 分辨率
         var rawData = indexMap.GetRawData(); // uint[]
 
         for (int i = 0; i < MaterialIndexMapTextures.Length; i++)
@@ -377,21 +375,19 @@ public sealed class EditorTerrainEntity : IDisposable
             if (!slice.Dirty.IsChannelDirty(TerrainDataChannel.MaterialIndex))
                 continue;
 
-            // heightmap 切片区域 → splatmap 区域（坐标 /2）
-            int splatSliceWidth = (slice.Width + 1) / 2;
-            int splatSliceHeight = (slice.Height + 1) / 2;
+            int splatSliceWidth = slice.Width;
+            int splatSliceHeight = slice.Height;
 
             // splatmap 中该切片的起始位置（相对于 splatmap 原点）
-            int splatStartX = slice.StartSampleX / 2;
-            int splatStartZ = slice.StartSampleZ / 2;
+            int splatStartX = slice.StartSampleX;
+            int splatStartZ = slice.StartSampleZ;
 
             if (slice.Dirty.HasRegion)
             {
-                // 将 heightmap 脏区域转换为 splatmap 区域
-                int regionLeft = Math.Max(0, slice.Dirty.MinX / 2);
-                int regionTop = Math.Max(0, slice.Dirty.MinZ / 2);
-                int regionRight = Math.Min(splatSliceWidth - 1, (slice.Dirty.MaxX + 1) / 2);
-                int regionBottom = Math.Min(splatSliceHeight - 1, (slice.Dirty.MaxZ + 1) / 2);
+                int regionLeft = Math.Max(0, slice.Dirty.MinX);
+                int regionTop = Math.Max(0, slice.Dirty.MinZ);
+                int regionRight = Math.Min(splatSliceWidth - 1, slice.Dirty.MaxX);
+                int regionBottom = Math.Min(splatSliceHeight - 1, slice.Dirty.MaxZ);
                 int regionWidth = regionRight - regionLeft + 1;
                 int regionHeight = regionBottom - regionTop + 1;
 

@@ -41,34 +41,18 @@ namespace Terrain.Editor
             return (int)(ClimateMaskTexture.Load(int3(clamped, 0)).x * 255.0f + 0.5f);
         }
 
-        float SampleAverageAltitude(int2 climateCoord)
+        float SampleAverageAltitude(int2 heightCoord)
         {
-            int hx = climateCoord.x * 4;
-            int hy = climateCoord.y * 4;
-            float total = 0.0f;
-
-            [unroll]
-            for (int offsetY = 0; offsetY < 4; offsetY++)
-            {
-                [unroll]
-                for (int offsetX = 0; offsetX < 4; offsetX++)
-                {
-                    total += SampleHeightAt(int2(hx + offsetX, hy + offsetY), CurrentSliceIndex);
-                }
-            }
-
-            return total * (1.0f / 16.0f);
+            return SampleHeightLinear(float2(heightCoord), CurrentSliceIndex);
         }
 
-        float SampleSlopeDegrees(int2 climateCoord)
+        float SampleSlopeDegrees(int2 heightCoord)
         {
-            int hx = climateCoord.x * 4;
-            int hy = climateCoord.y * 4;
-
-            float left = SampleHeightAt(int2(hx - 1, hy), CurrentSliceIndex);
-            float right = SampleHeightAt(int2(hx + 1, hy), CurrentSliceIndex);
-            float up = SampleHeightAt(int2(hx, hy - 1), CurrentSliceIndex);
-            float down = SampleHeightAt(int2(hx, hy + 1), CurrentSliceIndex);
+            float2 center = float2(heightCoord);
+            float left = SampleHeightLinear(center + float2(-1.0f, 0.0f), CurrentSliceIndex);
+            float right = SampleHeightLinear(center + float2(1.0f, 0.0f), CurrentSliceIndex);
+            float up = SampleHeightLinear(center + float2(0.0f, -1.0f), CurrentSliceIndex);
+            float down = SampleHeightLinear(center + float2(0.0f, 1.0f), CurrentSliceIndex);
 
             float worldNx = left - right;
             float worldNz = up - down;
@@ -99,11 +83,39 @@ namespace Terrain.Editor
             return true;
         }
 
-        float4 EncodeMaterialPixel(int materialIndex)
+        float ComputeRangeWeight(float value, float minValue, float maxValue, float blendRange)
+        {
+            if (value < minValue || value > maxValue)
+                return 0.0f;
+
+            if (blendRange <= 0.0001f)
+                return 1.0f;
+
+            float rangeSpan = max(maxValue - minValue, 0.0001f);
+            float actualBlendRange = min(rangeSpan * blendRange * 0.5f, rangeSpan * 0.5f);
+            if (actualBlendRange <= 0.0001f)
+                return 1.0f;
+
+            float lowerWeight = smoothstep(minValue, minValue + actualBlendRange, value);
+            float upperWeight = 1.0f - smoothstep(maxValue - actualBlendRange, maxValue, value);
+            return saturate(min(lowerWeight, upperWeight));
+        }
+
+        float ComputeRuleWeight(ClimateSplatRuleGpu rule, int climateId, float altitude, float slope)
+        {
+            if (rule.Enabled == 0 || rule.ClimateId != climateId)
+                return 0.0f;
+
+            float altitudeWeight = ComputeRangeWeight(altitude, rule.MinAltitude, rule.MaxAltitude, rule.BlendRange);
+            float slopeWeight = ComputeRangeWeight(slope, rule.MinSlopeDegrees, rule.MaxSlopeDegrees, rule.BlendRange);
+            return altitudeWeight * slopeWeight;
+        }
+
+        float4 EncodeMaterialPixel(int materialIndex, float materialWeight)
         {
             return float4(
                 (float)materialIndex / 255.0f,
-                1.0f,
+                saturate(materialWeight),
                 119.0f / 255.0f,
                 0.0f);
         }
@@ -118,22 +130,28 @@ namespace Terrain.Editor
             int4 sliceBounds = GetIndexMapSliceBounds(CurrentSliceIndex);
             int globalX = sliceBounds.x + (int)texelX;
             int globalY = sliceBounds.y + (int)texelY;
-            int2 climateCoord = int2(globalX >> 1, globalY >> 1);
+            int2 climateCoord = int2(globalX, globalY);
+            int2 heightCoord = int2(globalX, globalY);
 
             int climateId = LoadClimateId(climateCoord);
-            float altitude = SampleAverageAltitude(climateCoord);
-            float slope = SampleSlopeDegrees(climateCoord);
+            float altitude = SampleAverageAltitude(heightCoord);
+            float slope = SampleSlopeDegrees(heightCoord);
 
             int resolvedMaterial = 0;
+            float bestWeight = 0.0f;
             [loop]
             for (int i = 0; i < RuleCount; i++)
             {
                 ClimateSplatRuleGpu rule = ClimateRules[i];
-                if (RuleMatches(rule, climateId, altitude, slope))
+                float ruleWeight = ComputeRuleWeight(rule, climateId, altitude, slope);
+                if (ruleWeight >= bestWeight && ruleWeight > 0.0f)
+                {
                     resolvedMaterial = rule.MaterialSlotIndex;
+                    bestWeight = ruleWeight;
+                }
             }
 
-            OutputIndexMap[int2(texelX, texelY)] = EncodeMaterialPixel(resolvedMaterial);
+            OutputIndexMap[int2(texelX, texelY)] = EncodeMaterialPixel(resolvedMaterial, max(bestWeight, 0.0001f));
         }
     };
 }

@@ -68,9 +68,8 @@ namespace Terrain.Editor
 
         int2 ClampIndexPixel(int2 pixel)
         {
-            // IndexMap 使用 heightmap 的 1/2 分辨率
-            int maxX = (int)((HeightmapDimensionsInSamples.x + 0.5f) * 0.5f);
-            int maxY = (int)((HeightmapDimensionsInSamples.y + 0.5f) * 0.5f);
+            int maxX = (int)HeightmapDimensionsInSamples.x - 1;
+            int maxY = (int)HeightmapDimensionsInSamples.y - 1;
             return int2(
                 clamp(pixel.x, 0, maxX),
                 clamp(pixel.y, 0, maxY));
@@ -167,43 +166,48 @@ namespace Terrain.Editor
             return invalid ? geomNormalWS : normalize(blendedNormal);
         }
 
-        float ApplyDetailContrast(float weight, float detail)
+        float Hash11(float n)
         {
-            float detailContrast = max(DetailContrast, 0.0f);
-            float result = max(
-                0.1f * weight,
-                detailContrast * (weight + detail) + 1.0f - (detail + detailContrast));
-            return pow(result, 4.0f);
+            return frac(sin(n) * 43758.5453123f);
         }
 
-        // Accumulate one neighbor sample using both bilinear weight and material blend weight.
-        void AccumulateMaterialSample(
+        float2 Hash22(float2 p)
+        {
+            float n = dot(p, float2(127.1f, 311.7f));
+            return float2(
+                Hash11(n),
+                Hash11(n + 74.7f));
+        }
+
+        float2 ApplySplatUvJitter(float2 indexPixels, float2 worldPosXZ)
+        {
+            // Keep the offset stable in world space and small enough to only soften the grid pattern.
+            float2 noise = Hash22(floor(worldPosXZ * 0.125f)) * 2.0f - 1.0f;
+            return indexPixels + noise * 0.2f;
+        }
+
+        void SampleMaterialSurface(
             MaterialPixel pixel,
-            float bilinearWeight,
             float3 worldPos,
             float3 geomNormalWS,
-            inout float3 colorSum,
-            inout float3 normalSum,
-            inout float totalWeight)
+            out float3 color,
+            out float3 normalWS)
         {
-            if (bilinearWeight <= 0.0f)
-                return;
-
-            float sampleWeight = bilinearWeight;
-            float weightMod = pixel.weight * pixel.weight + 0.1f;
             float2 tiledUV = GetProjectedUV(worldPos, pixel.projDir, pixel.rotation);
-            float4 color;
+
+            float4 colorSample;
             if (MaterialArraySize == 0)
             {
-                color = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, worldPos.xz / DiffuseWorldRepeatSize);
+                colorSample = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, worldPos.xz / DiffuseWorldRepeatSize);
             }
             else
             {
                 uint resolvedAlbedoIndex = ResolveAlbedoIndex(pixel.index);
-                color = MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)resolvedAlbedoIndex));
+                colorSample = MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)resolvedAlbedoIndex));
             }
+            color = colorSample.rgb;
 
-            float3 normalWS = geomNormalWS;
+            normalWS = geomNormalWS;
             if (MaterialNormalArraySize > 0)
             {
                 uint resolvedNormalIndex = ResolveNormalIndex(pixel.index);
@@ -211,16 +215,6 @@ namespace Terrain.Editor
                 float3 normalTS = normalize(normalSample.xyz * 2.0f - 1.0f);
                 normalWS = BuildDetailNormalWS(normalTS, geomNormalWS, pixel.projDir, pixel.rotation);
             }
-
-            float projWeight = saturate(dot(pixel.projDir, geomNormalWS));
-            sampleWeight *= (projWeight * projWeight + 0.0001f);
-
-            float detail = color.a;
-            sampleWeight = ApplyDetailContrast(sqrt(max(0.0f, sampleWeight * weightMod)), detail);
-
-            colorSum += color.rgb * sampleWeight;
-            normalSum += normalWS * sampleWeight;
-            totalWeight += sampleWeight;
         }
 
         override void Compute()
@@ -242,8 +236,7 @@ namespace Terrain.Editor
             }
 
             // Mirror-neighbor sampling stabilizes edges and derivative behavior near index-map borders.
-            // IndexMap 使用 heightmap 的 1/2 分辨率
-            float2 indexPixels = sampleCoord * 0.5;
+            float2 indexPixels = ApplySplatUvJitter(sampleCoord, streams.PositionWS.xz);
             float2 index00Pixel = floor(indexPixels);
 
             float2 mirror00 = frac(index00Pixel * 0.5f) * 2.0f;
@@ -268,26 +261,30 @@ namespace Terrain.Editor
             float w10 = weights1.x * weights0.y;
             float w11 = weights1.x * weights1.y;
 
-            float3 colorSum = float3(0.0f, 0.0f, 0.0f);
-            float3 normalSum = float3(0.0f, 0.0f, 0.0f);
-            float totalWeight = 0.0f;
-            AccumulateMaterialSample(m00, w00, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
-            AccumulateMaterialSample(m01, w01, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
-            AccumulateMaterialSample(m10, w10, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
-            AccumulateMaterialSample(m11, w11, streams.PositionWS.xyz, worldNormal, colorSum, normalSum, totalWeight);
+            float3 c00;
+            float3 c01;
+            float3 c10;
+            float3 c11;
+            float3 n00;
+            float3 n01;
+            float3 n10;
+            float3 n11;
+            SampleMaterialSurface(m00, streams.PositionWS.xyz, worldNormal, c00, n00);
+            SampleMaterialSurface(m01, streams.PositionWS.xyz, worldNormal, c01, n01);
+            SampleMaterialSurface(m10, streams.PositionWS.xyz, worldNormal, c10, n10);
+            SampleMaterialSurface(m11, streams.PositionWS.xyz, worldNormal, c11, n11);
 
-            if (totalWeight <= 0.0f)
-            {
-                float4 baseColor = DefaultDiffuseTexture.Sample(TerrainDiffuseRepeatSampler, uv) * BaseColor;
-                streams.matDiffuse = baseColor;
-                streams.matColorBase = baseColor;
-                streams.normalWS = worldNormal;
-                return;
-            }
+            float3 finalColor =
+                c00 * w00 +
+                c01 * w01 +
+                c10 * w10 +
+                c11 * w11;
 
-            float invWeight = 1.0f / totalWeight;
-            float3 finalColor = colorSum * invWeight;
-            float3 normalAverage = normalSum * invWeight;
+            float3 normalAverage =
+                n00 * w00 +
+                n01 * w01 +
+                n10 * w10 +
+                n11 * w11;
 
             float normalLen2 = dot(normalAverage, normalAverage);
             bool invalidNormal =

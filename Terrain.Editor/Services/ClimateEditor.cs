@@ -21,11 +21,11 @@ public sealed class ClimateEditor
 
     public void ApplyStroke(Vector3 worldPosition, ClimateMask mask, TerrainManager terrainManager, byte climateId)
     {
-        int pixelX = (int)MathF.Round(worldPosition.X) / 4;
-        int pixelY = (int)MathF.Round(worldPosition.Z) / 4;
+        int pixelX = (int)MathF.Round(worldPosition.X);
+        int pixelY = (int)MathF.Round(worldPosition.Z);
 
         var brush = BrushParameters.Instance;
-        float radius = MathF.Ceiling(brush.Size * 0.5f) / 4.0f;
+        float radius = MathF.Ceiling(brush.Size * 0.5f);
         float innerRadius = radius * brush.EffectiveFalloff;
         int ceilRadius = (int)MathF.Ceiling(radius);
 

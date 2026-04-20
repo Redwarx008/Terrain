@@ -100,7 +100,7 @@ public class TerrainExporter : IExporter
             HeightMapMipLevels = heightMapMipLevels,
             SplatMapFormat = (int)VTFormat.Rgba32,
             SplatMapMipLevels = splatMapMipLevels,
-            SplatMapResolutionRatio = splatW == width ? 1 : 2,
+            SplatMapResolutionRatio = 1,
         };
         WriteStruct(writer, ref header);
 

@@ -45,7 +45,7 @@ public sealed class TerrainManager : IDisposable
     public MaterialIndexMap? MaterialIndices { get; private set; }
 
     /// <summary>
-    /// 气候蒙版，R8 格式，尺寸为高度图的 1/4。
+    /// 气候蒙版，R8 格式，尺寸为高度图的 1:1。
     /// 每个像素存储一个气候 ID，驱动规则求值生成 MaterialIndices。
     /// </summary>
     public ClimateMask? ClimateMask { get; private set; }
@@ -161,13 +161,13 @@ public sealed class TerrainManager : IDisposable
             currentHeightmapInfo = info;
             currentTerrainPath = heightmapPath;
 
-            // ClimateMask 使用 heightmap 的 1/4 分辨率，MaterialIndexMap 使用 1/2 分辨率
-            int climateMaskWidth = (heightDataWidth + 3) / 4;
-            int climateMaskHeight = (heightDataHeight + 3) / 4;
+            // ClimateMask 与 MaterialIndexMap 都使用 heightmap 的 1:1 分辨率
+            int climateMaskWidth = heightDataWidth;
+            int climateMaskHeight = heightDataHeight;
             ClimateMask = new ClimateMask(climateMaskWidth, climateMaskHeight);
 
-            int splatMapWidth = (heightDataWidth + 1) / 2;
-            int splatMapHeight = (heightDataHeight + 1) / 2;
+            int splatMapWidth = heightDataWidth;
+            int splatMapHeight = heightDataHeight;
             MaterialIndices = new MaterialIndexMap(splatMapWidth, splatMapHeight);
 
             // 设置材质索引数据引用到实体
@@ -411,9 +411,9 @@ public sealed class TerrainManager : IDisposable
         if (ClimateMask == null)
             return;
 
-        int centerSampleX = (int)(centerX * 4.0f);
-        int centerSampleZ = (int)(centerY * 4.0f);
-        float sampleRadius = Math.Max(1.0f, radius * 4.0f);
+        int centerSampleX = (int)centerX;
+        int centerSampleZ = (int)centerY;
+        float sampleRadius = Math.Max(1.0f, radius);
 
         foreach (var terrainEntity in terrainEntities)
             terrainEntity.MarkClimateSplatDirty(centerSampleX, centerSampleZ, sampleRadius);
@@ -429,40 +429,22 @@ public sealed class TerrainManager : IDisposable
     }
 
     /// <summary>
-    /// 在 4x4 高度图邻域上采样平均海拔。
-    /// maskX/maskY 为 ClimateMask 坐标（1/4 高度图），乘以 4 映射到高度图。
+    /// 在当前 ClimateMask texel 对应的高度图位置采样海拔。
     /// </summary>
     private float SampleAverageAltitude(int maskX, int maskY)
     {
-        int hx = maskX * 4;
-        int hy = maskY * 4;
-
-        float total = 0.0f;
-        int count = 0;
-        for (int offsetY = 0; offsetY < 4; offsetY++)
-        {
-            for (int offsetX = 0; offsetX < 4; offsetX++)
-            {
-                int sampleX = Math.Clamp(hx + offsetX, 0, heightDataWidth - 1);
-                int sampleY = Math.Clamp(hy + offsetY, 0, heightDataHeight - 1);
-                total += heightDataCache![sampleY * heightDataWidth + sampleX];
-                count++;
-            }
-        }
-
-        float rawAverage = total / Math.Max(1, count);
-        return rawAverage * HeightSampleNormalization * HeightScale;
+        int hx = Math.Clamp(maskX, 0, heightDataWidth - 1);
+        int hy = Math.Clamp(maskY, 0, heightDataHeight - 1);
+        return heightDataCache![hy * heightDataWidth + hx] * HeightSampleNormalization * HeightScale;
     }
 
     /// <summary>
-    /// 采样地形坡度。使用中心差分法在高度图上计算法线，
-    /// worldNy = 4.0f 因为采样点间距为 4 个高度图像素（1/4 分辨率映射），
-    /// 对应 4 个世界单位水平距离。
+    /// 采样地形坡度。使用中心差分法在高度图上计算法线。
     /// </summary>
     private float SampleSlopeDegrees(int maskX, int maskY)
     {
-        int hx = Math.Clamp(maskX * 4, 0, heightDataWidth - 1);
-        int hy = Math.Clamp(maskY * 4, 0, heightDataHeight - 1);
+        int hx = Math.Clamp(maskX, 0, heightDataWidth - 1);
+        int hy = Math.Clamp(maskY, 0, heightDataHeight - 1);
 
         float left = SampleHeightNormalized(hx - 1, hy);
         float right = SampleHeightNormalized(hx + 1, hy);
@@ -471,9 +453,6 @@ public sealed class TerrainManager : IDisposable
 
         float worldNx = (left - right) * HeightScale;
         float worldNz = (up - down) * HeightScale;
-        // 2 像素间距 × 4 像素/ClimateMask 单位 = 8 世界单位水平距离
-        // 但中心差分本身就是相邻像素间距 (1 pixel)，在 1:1 heightmap→world 映射下 = 1 世界单位
-        // 左右各 1 像素，总跨度 2 世界单位
         const float worldNy = 2.0f;
 
         float normalLength = MathF.Sqrt(worldNx * worldNx + worldNz * worldNz + worldNy * worldNy);
@@ -528,7 +507,7 @@ public sealed class TerrainManager : IDisposable
         if (!projectManager.IsProjectOpen)
             return;
 
-        // 保存气候蒙版（L8 PNG，1/4 高度图分辨率）
+        // 保存气候蒙版（L8 PNG，1:1 高度图分辨率）
         string? climateMaskPath = null;
         if (ClimateMask != null)
         {

@@ -63,18 +63,18 @@ public sealed class PaintEditor
         int pixelX = (int)MathF.Round(worldPosition.X);
         int pixelZ = (int)MathF.Round(worldPosition.Z);
 
-        // 缩放到 splatmap 坐标空间（splatmap 是 heightmap 的 1/2）
-        int splatPixelX = pixelX / 2;
-        int splatPixelZ = pixelZ / 2;
+        // 1:1 splatmap 直接使用 heightmap 像素坐标
+        int splatPixelX = pixelX;
+        int splatPixelZ = pixelZ;
 
         // 获取笔刷参数
         var brushParams = BrushParameters.Instance;
         float brushRadius = brushParams.Size * 0.5f;
         float brushInnerRadius = brushRadius * brushParams.EffectiveFalloff;
 
-        // 缩放笔刷半径到 splatmap 空间
-        float splatBrushRadius = MathF.Ceiling(brushRadius) / 2.0f;
-        float splatBrushInnerRadius = MathF.Ceiling(brushInnerRadius) / 2.0f;
+        // 1:1 splatmap 下笔刷半径无需缩放
+        float splatBrushRadius = MathF.Ceiling(brushRadius);
+        float splatBrushInnerRadius = MathF.Ceiling(brushInnerRadius);
 
         // 获取目标材质索引
         byte targetIndex = ResolveTargetMaterialIndex();

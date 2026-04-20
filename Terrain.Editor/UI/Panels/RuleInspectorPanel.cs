@@ -194,13 +194,12 @@ internal sealed class RuleInspectorPanel
         RenderFieldLabel("Blend Range");
         ImGui.Spacing();
         float contentWidth = MathF.Max(EditorStyle.ScaleValue(120.0f), ImGui.GetContentRegionAvail().X);
-        float maxBlend = MathF.Max(rule.MaxAltitude - rule.MinAltitude, 0.15f);
 
         float blend = rule.BlendRange;
         ImGui.PushItemWidth(contentWidth);
-        if (ImGui.SliderFloat("##blend_range", ref blend, 0.0f, maxBlend, "%.2f"))
+        if (ImGui.SliderFloat("##blend_range", ref blend, 0.0f, 1.0f, "%.2f"))
         {
-            rule.BlendRange = Math.Clamp(blend, 0.0f, maxBlend);
+            rule.BlendRange = Math.Clamp(blend, 0.0f, 1.0f);
             service.NotifyMutated();
             RulesChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -208,7 +207,7 @@ internal sealed class RuleInspectorPanel
 
         ImGui.TextColored(
             ColorPalette.TextPrimary.ToVector4(),
-            $"Blend (Softness): {rule.BlendRange:0.00}");
+            $"Blend (Softness): {rule.BlendRange * 100.0f:0}%");
     }
 
     private void RenderRuleOptionsRow(ClimateRuleLayer rule, ClimateRuleService service)
