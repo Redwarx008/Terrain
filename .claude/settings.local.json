@@ -61,7 +61,12 @@
       "Bash(xxd -l 4 Terrain.Editor/Services/TerrainManager.cs)",
       "Bash(git status *)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(powershell -Command \"New-NetFirewallRule -DisplayName 'Block WorldCreator Network Access' -Direction Outbound -Program 'G:\\\\BaiduNetdiskDownload2\\\\World Creator\\\\02 - Extract WC Folder\\\\WorldCreator_2026_1\\\\WorldCreator.exe' -Action Block -Protocol Any\")"
+      "Bash(npx skills *)",
+      "Bash(cp -rf .agents/skills/easysdd-onboarding/tools/. easysdd/tools/)",
+      "Bash(cp -rf .agents/skills/easysdd-onboarding/reference/. easysdd/reference/)",
+      "Bash(gh repo *)",
+      "Bash(rm -rf \"e:/Stride Projects/Terrain/.claude/skills/easysdd-onboarding\")",
+      "Bash(cp -r /tmp/EasySDD/easysdd-onboarding \"e:/Stride Projects/Terrain/.claude/skills/easysdd-onboarding\")"
     ]
   }
 }
