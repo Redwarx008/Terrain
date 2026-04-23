@@ -62,11 +62,9 @@
       "Bash(git status *)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(npx skills *)",
-      "Bash(cp -rf .agents/skills/easysdd-onboarding/tools/. easysdd/tools/)",
-      "Bash(cp -rf .agents/skills/easysdd-onboarding/reference/. easysdd/reference/)",
       "Bash(gh repo *)",
-      "Bash(rm -rf \"e:/Stride Projects/Terrain/.claude/skills/easysdd-onboarding\")",
-      "Bash(cp -r /tmp/EasySDD/easysdd-onboarding \"e:/Stride Projects/Terrain/.claude/skills/easysdd-onboarding\")"
+      "Bash(git submodule *)",
+      "Bash(git subtree *)"
     ]
   }
 }
