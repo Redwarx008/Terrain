@@ -2,106 +2,143 @@ namespace Terrain
 {
 shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturing, NormalStream, Transformation, TerrainHeightStream, TerrainHeightParameters
     {
-        struct MaterialPixel
-        {
-            uint index;
-        };
-
         rgroup PerMaterial
         {
-            stage Texture2DArray IndexMapArray;
+            stage Texture2DArray DetailIndexMapArray;
+            stage Texture2DArray DetailWeightMapArray;
             stage SamplerState MaterialIndexSampler;
 
-            stage Texture2DArray MaterialAlbedoArray;
+            stage Texture2DArray MaterialDiffuseHeightArray;
             stage SamplerState MaterialAlbedoSampler;
 
             stage Texture2DArray MaterialNormalArray;
             stage SamplerState MaterialNormalSampler;
+
+            stage Texture2DArray MaterialPropertiesArray;
+            stage SamplerState MaterialPropertiesSampler;
         }
 
         cbuffer PerMaterial
         {
             stage float MaterialTilingScale;
-            stage float DetailContrast;
+            stage float DetailBlendRange;
             stage int SplatmapTileSize;
             stage int SplatmapTilePadding;
             stage int MaterialArraySize;
             stage int MaterialNormalArraySize;
+            stage int MaterialPropertiesArraySize;
         }
 
-        float Hash11(float n)
+        int2 ClampIndexPixel(int2 pixel)
         {
-            return frac(sin(n) * 43758.5453123f);
+            int maxIndex = (int)(SplatmapTileSize - 1);
+            return int2(clamp(pixel.x, 0, maxIndex), clamp(pixel.y, 0, maxIndex));
         }
 
-        float2 Hash22(float2 p)
+        uint ResolveAlbedoIndex(uint materialIndex)
         {
-            float n = dot(p, float2(127.1f, 311.7f));
-            return float2(
-                Hash11(n),
-                Hash11(n + 74.7f));
+            return (uint)min((int)materialIndex, max(MaterialArraySize - 1, 0));
         }
 
-        float2 ApplySplatUvJitter(float2 indexPixels, float2 worldPosXZ)
+        uint ResolveNormalIndex(uint materialIndex)
         {
-            // Keep the offset stable in world space and small enough to only soften the grid pattern.
-            float2 noise = Hash22(floor(worldPosXZ * 0.125f)) * 2.0f - 1.0f;
-            return indexPixels + noise * 0.2f;
+            return (uint)min((int)materialIndex, max(MaterialNormalArraySize - 1, 0));
         }
 
-        MaterialPixel LoadMaterialPixel(float2 splatPageLocalPos, int splatSliceIndex)
+        float4 LoadIndexPixel(int2 pixel, int sliceIndex)
         {
-            float padding = float(SplatmapTilePadding);
-            float2 paddedMin = float2(-padding, -padding);
-            float2 paddedMax = float2((float)(SplatmapTileSize - 1) + padding, (float)(SplatmapTileSize - 1) + padding);
-            float2 clampedPos = clamp(splatPageLocalPos, paddedMin, paddedMax);
-            int2 texelCoord = int2(clampedPos + float2(padding, padding) + 0.5f);
+            int padding = SplatmapTilePadding;
+            int2 texelCoord = ClampIndexPixel(pixel) + int2(padding, padding);
+            return DetailIndexMapArray.Load(int4(texelCoord, sliceIndex, 0));
+        }
 
-            MaterialPixel p;
-            p.index = (uint)(IndexMapArray.Load(int4(texelCoord, splatSliceIndex, 0)).r * 255.0f + 0.5f);
-            return p;
+        float4 LoadWeightPixel(int2 pixel, int sliceIndex)
+        {
+            int padding = SplatmapTilePadding;
+            int2 texelCoord = ClampIndexPixel(pixel) + int2(padding, padding);
+            return DetailWeightMapArray.Load(int4(texelCoord, sliceIndex, 0));
+        }
+
+        float4 CalcHeightBlendFactors(float4 materialHeights, float4 materialFactors, float blendRange)
+        {
+            float4 mat = materialHeights + materialFactors;
+            float blendStart = max(max(mat.x, mat.y), max(mat.z, mat.w)) - max(blendRange, 0.0f);
+            float4 matBlend = max(mat - float4(blendStart, blendStart, blendStart, blendStart), float4(0.0f, 0.0f, 0.0f, 0.0f));
+            float epsilon = 0.00001f;
+            return matBlend / (dot(matBlend, float4(1.0f, 1.0f, 1.0f, 1.0f)) + epsilon);
         }
 
         void SampleMaterialSurface(
-            MaterialPixel pixel,
+            uint materialIndex,
             float3 worldPos,
             float3 geomNormalWS,
-            out float3 color,
+            out float4 diffuseHeight,
             out float3 normalWS)
         {
             float2 tiledUV = worldPos.xz * (0.0625f * MaterialTilingScale);
 
-            uint resolvedAlbedoIndex = (uint)min((int)pixel.index, max(MaterialArraySize - 1, 0));
-            float4 colorSample = MaterialAlbedoArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)resolvedAlbedoIndex));
-            color = colorSample.rgb;
+            if (MaterialArraySize == 0)
+            {
+                diffuseHeight = float4(0.5f, 0.5f, 0.5f, 1.0f);
+                normalWS = geomNormalWS;
+                return;
+            }
+
+            uint resolvedAlbedoIndex = ResolveAlbedoIndex(materialIndex);
+            diffuseHeight = MaterialDiffuseHeightArray.Sample(MaterialAlbedoSampler, float3(tiledUV, (float)resolvedAlbedoIndex));
 
             normalWS = geomNormalWS;
             if (MaterialNormalArraySize > 0)
             {
-                uint resolvedNormalIndex = (uint)min((int)pixel.index, max(MaterialNormalArraySize - 1, 0));
+                uint resolvedNormalIndex = ResolveNormalIndex(materialIndex);
                 float4 normalSample = MaterialNormalArray.Sample(MaterialNormalSampler, float3(tiledUV, (float)resolvedNormalIndex));
                 float3 normalTS = normalize(normalSample.xyz * 2.0f - 1.0f);
                 float3 detailU = float3(1.0f, 0.0f, 0.0f) - geomNormalWS * dot(float3(1.0f, 0.0f, 0.0f), geomNormalWS);
-                float detailULen2 = dot(detailU, detailU);
-                if (detailULen2 < 0.000001f)
+                if (dot(detailU, detailU) < 0.000001f)
                     detailU = cross(float3(0.0f, 0.0f, 1.0f), geomNormalWS);
                 detailU = normalize(detailU);
                 float3 detailV = normalize(cross(geomNormalWS, detailU));
-                float3 blendedNormal =
-                    normalTS.x * detailU +
-                    normalTS.y * detailV +
-                    normalTS.z * geomNormalWS;
-                normalWS = normalize(blendedNormal);
+                normalWS = normalize(normalTS.x * detailU + normalTS.y * detailV + normalTS.z * geomNormalWS);
             }
         }
 
-        float3 CaculateNormal(float2 pageLocalPos, int sliceIndex, float pageTexelStride, float sampleSpacing)
+        void AccumulateMaterial(
+            inout int4 uniqueIndices,
+            inout float4 uniqueWeights,
+            int materialIndex,
+            float materialWeight)
+        {
+            if (materialWeight <= 0.0f || materialIndex < 0 || materialIndex > 254)
+                return;
+
+            if (uniqueIndices.x == materialIndex || uniqueIndices.x < 0) { uniqueIndices.x = materialIndex; uniqueWeights.x += materialWeight; return; }
+            if (uniqueIndices.y == materialIndex || uniqueIndices.y < 0) { uniqueIndices.y = materialIndex; uniqueWeights.y += materialWeight; return; }
+            if (uniqueIndices.z == materialIndex || uniqueIndices.z < 0) { uniqueIndices.z = materialIndex; uniqueWeights.z += materialWeight; return; }
+            if (uniqueIndices.w == materialIndex || uniqueIndices.w < 0) { uniqueIndices.w = materialIndex; uniqueWeights.w += materialWeight; return; }
+        }
+
+        void AccumulateControlTexel(
+            inout int4 uniqueIndices,
+            inout float4 uniqueWeights,
+            int2 pixel,
+            int sliceIndex,
+            float texelFactor)
+        {
+            float4 indices = LoadIndexPixel(pixel, sliceIndex) * 255.0f;
+            float4 weights = LoadWeightPixel(pixel, sliceIndex) * texelFactor;
+            AccumulateMaterial(uniqueIndices, uniqueWeights, (int)(indices.x + 0.5f), weights.x);
+            AccumulateMaterial(uniqueIndices, uniqueWeights, (int)(indices.y + 0.5f), weights.y);
+            AccumulateMaterial(uniqueIndices, uniqueWeights, (int)(indices.z + 0.5f), weights.z);
+            AccumulateMaterial(uniqueIndices, uniqueWeights, (int)(indices.w + 0.5f), weights.w);
+        }
+
+        float3 CalculateNormal(float2 pageLocalPos, int sliceIndex, float pageTexelStride, float sampleSpacing)
         {
             float left = SampleHeightAtLocalPosLinear(pageLocalPos + float2(-1.0f, 0.0f), sliceIndex);
             float right = SampleHeightAtLocalPosLinear(pageLocalPos + float2(1.0f, 0.0f), sliceIndex);
             float up = SampleHeightAtLocalPosLinear(pageLocalPos + float2(0.0f, -1.0f), sliceIndex);
             float down = SampleHeightAtLocalPosLinear(pageLocalPos + float2(0.0f, 1.0f), sliceIndex);
-            float sourceSampleSpacing = sampleSpacing / pageTexelStride;
+            float sourceSampleSpacing = sampleSpacing / max(pageTexelStride, 1.0f);
             return normalize(float3(left - right, sourceSampleSpacing * 2.0f, up - down));
         }
 
@@ -113,77 +150,56 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
             float2 splatPageLocalPos = streams.TerrainSplatPageLocalPos;
             float pageTexelStride = max(1.0f, streams.TerrainPageTexelStride);
             float sampleSpacing = max(1.0f, streams.TerrainSampleSpacing);
-            float3 localNormal = CaculateNormal(pageLocalPos, sliceIndex, pageTexelStride, sampleSpacing);
+
+            float3 localNormal = CalculateNormal(pageLocalPos, sliceIndex, pageTexelStride, sampleSpacing);
             float3 worldNormal = normalize(mul(localNormal, (float3x3)WorldInverseTranspose));
             streams.meshNormal = localNormal;
             streams.meshNormalWS = worldNormal;
             streams.normalWS = worldNormal;
 
-            // Mirror-neighbor sampling stabilizes edges
-            float2 indexPixels = ApplySplatUvJitter(splatPageLocalPos, streams.PositionWS.xz);
+            float2 indexPixels = splatPageLocalPos;
             float2 index00Pixel = floor(indexPixels);
-
-            float2 mirror00 = frac(index00Pixel * 0.5f) * 2.0f;
-            float2 mirror11 = 1.0f - mirror00;
-
             float2 weights1 = saturate(indexPixels - index00Pixel);
-            weights1 = lerp(weights1, 1.0f - weights1, mirror00);
             float2 weights0 = 1.0f - weights1;
 
-            int2 p00 = int2(index00Pixel + mirror00);
-            int2 p01 = int2(index00Pixel + float2(mirror00.x, mirror11.y));
-            int2 p10 = int2(index00Pixel + float2(mirror11.x, mirror00.y));
-            int2 p11 = int2(index00Pixel + mirror11);
+            int4 uniqueIndices = int4(-1, -1, -1, -1);
+            float4 uniqueWeights = float4(0.0f, 0.0f, 0.0f, 0.0f);
 
-            MaterialPixel m00 = LoadMaterialPixel(float2(p00), splatSliceIndex);
-            MaterialPixel m01 = LoadMaterialPixel(float2(p01), splatSliceIndex);
-            MaterialPixel m10 = LoadMaterialPixel(float2(p10), splatSliceIndex);
-            MaterialPixel m11 = LoadMaterialPixel(float2(p11), splatSliceIndex);
+            AccumulateControlTexel(uniqueIndices, uniqueWeights, int2(index00Pixel), splatSliceIndex, weights0.x * weights0.y);
+            AccumulateControlTexel(uniqueIndices, uniqueWeights, int2(index00Pixel + float2(1.0f, 0.0f)), splatSliceIndex, weights1.x * weights0.y);
+            AccumulateControlTexel(uniqueIndices, uniqueWeights, int2(index00Pixel + float2(0.0f, 1.0f)), splatSliceIndex, weights0.x * weights1.y);
+            AccumulateControlTexel(uniqueIndices, uniqueWeights, int2(index00Pixel + float2(1.0f, 1.0f)), splatSliceIndex, weights1.x * weights1.y);
 
-            float w00 = weights0.x * weights0.y;
-            float w01 = weights0.x * weights1.y;
-            float w10 = weights1.x * weights0.y;
-            float w11 = weights1.x * weights1.y;
+            float totalControlWeight = max(dot(uniqueWeights, float4(1.0f, 1.0f, 1.0f, 1.0f)), 0.0001f);
+            float4 controlWeights = uniqueWeights / totalControlWeight;
 
-            float3 c00;
-            float3 c01;
-            float3 c10;
-            float3 c11;
-            float3 n00;
-            float3 n01;
-            float3 n10;
-            float3 n11;
-            SampleMaterialSurface(m00, streams.PositionWS.xyz, worldNormal, c00, n00);
-            SampleMaterialSurface(m01, streams.PositionWS.xyz, worldNormal, c01, n01);
-            SampleMaterialSurface(m10, streams.PositionWS.xyz, worldNormal, c10, n10);
-            SampleMaterialSurface(m11, streams.PositionWS.xyz, worldNormal, c11, n11);
+            float4 d0; float4 d1; float4 d2; float4 d3;
+            float3 n0; float3 n1; float3 n2; float3 n3;
+            SampleMaterialSurface((uint)max(uniqueIndices.x, 0), streams.PositionWS.xyz, worldNormal, d0, n0);
+            SampleMaterialSurface((uint)max(uniqueIndices.y, 0), streams.PositionWS.xyz, worldNormal, d1, n1);
+            SampleMaterialSurface((uint)max(uniqueIndices.z, 0), streams.PositionWS.xyz, worldNormal, d2, n2);
+            SampleMaterialSurface((uint)max(uniqueIndices.w, 0), streams.PositionWS.xyz, worldNormal, d3, n3);
+
+            float4 blendFactors = CalcHeightBlendFactors(float4(d0.a, d1.a, d2.a, d3.a), controlWeights, DetailBlendRange);
 
             float3 finalColor =
-                c00 * w00 +
-                c01 * w01 +
-                c10 * w10 +
-                c11 * w11;
+                d0.rgb * blendFactors.x +
+                d1.rgb * blendFactors.y +
+                d2.rgb * blendFactors.z +
+                d3.rgb * blendFactors.w;
 
             float3 normalAverage =
-                n00 * w00 +
-                n01 * w01 +
-                n10 * w10 +
-                n11 * w11;
+                n0 * blendFactors.x +
+                n1 * blendFactors.y +
+                n2 * blendFactors.z +
+                n3 * blendFactors.w;
 
             float normalLen2 = dot(normalAverage, normalAverage);
-            bool invalidNormal =
-                normalLen2 < 0.000001f ||
-                !(normalAverage.x == normalAverage.x) ||
-                !(normalAverage.y == normalAverage.y) ||
-                !(normalAverage.z == normalAverage.z);
-            float3 blendedNormal = invalidNormal ? worldNormal : normalize(normalAverage);
+            float3 blendedNormal = normalLen2 < 0.000001f ? worldNormal : normalize(normalAverage);
 
             streams.matDiffuse = float4(finalColor, 1.0f);
             streams.matColorBase = float4(finalColor, 1.0f);
-            float3 mappedNormalWS = normalize(blendedNormal);
-            if (dot(mappedNormalWS, worldNormal) < 0.0f)
-                mappedNormalWS = -mappedNormalWS;
-            streams.normalWS = mappedNormalWS;
+            streams.normalWS = blendedNormal;
         }
     };
 }

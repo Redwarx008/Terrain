@@ -31,6 +31,11 @@ public sealed class MaterialSlot
     public string? NormalTexturePath { get; set; }
 
     /// <summary>
+    /// Properties 纹理文件路径（相对或绝对）。
+    /// </summary>
+    public string? PropertiesTexturePath { get; set; }
+
+    /// <summary>
     /// GPU Albedo 纹理引用（用于预览渲染）。
     /// </summary>
     internal Texture? AlbedoTexture { get; set; }
@@ -39,6 +44,11 @@ public sealed class MaterialSlot
     /// GPU Normal 纹理引用（用于预览渲染）。
     /// </summary>
     internal Texture? NormalTexture { get; set; }
+
+    /// <summary>
+    /// GPU Properties 纹理引用（用于预览渲染）。
+    /// </summary>
+    internal Texture? PropertiesTexture { get; set; }
 
     /// <summary>
     /// 纹理导入尺寸。
@@ -62,16 +72,20 @@ public sealed class MaterialSlot
     {
         AlbedoTexturePath = null;
         NormalTexturePath = null;
+        PropertiesTexturePath = null;
         Name = $"Texture {Index}";
 
         // 先置空引用，再释放资源，避免 Dispose 异常导致状态不一致
         var albedo = AlbedoTexture;
         var normal = NormalTexture;
+        var properties = PropertiesTexture;
         AlbedoTexture = null;
         NormalTexture = null;
+        PropertiesTexture = null;
 
         albedo?.Dispose();
         normal?.Dispose();
+        properties?.Dispose();
         TilingScale = 1.0f;
     }
 }

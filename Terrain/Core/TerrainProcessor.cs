@@ -198,13 +198,18 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         Debug.Assert(renderObject.HeightmapArray != null);
 
         var gpuHeightArray = new GpuVirtualTextureArray(renderObject.HeightmapArray!, component.HeightmapTileSize, component.HeightmapTilePadding, loadedData.MaxResidentChunks);
-        GpuVirtualTextureArray? gpuSplatMapArray = null;
-        if (renderObject.SplatMapArray != null)
+        GpuVirtualTextureArray? gpuDetailIndexArray = null;
+        if (renderObject.DetailIndexMapArray != null)
         {
-            gpuSplatMapArray = new GpuVirtualTextureArray(renderObject.SplatMapArray, component.SplatmapTileSize, component.SplatmapTilePadding, loadedData.MaxResidentChunks);
+            gpuDetailIndexArray = new GpuVirtualTextureArray(renderObject.DetailIndexMapArray, component.SplatmapTileSize, component.SplatmapTilePadding, loadedData.MaxResidentChunks);
         }
 
-        var streamingManager = new TerrainStreamingManager(loadedData.FileReader, gpuHeightArray, gpuSplatMapArray, component.BaseChunkSize);
+        var streamingManager = new TerrainStreamingManager(
+            loadedData.FileReader,
+            gpuHeightArray,
+            gpuDetailIndexArray,
+            renderObject.DetailWeightMapArray,
+            component.BaseChunkSize);
         streamingManager.PreloadTopLevelChunks(commandList, loadedData.MinMaxErrorMaps[loadedData.MaxLod]);
 
         component.HeightmapWidth = loadedData.Width;
@@ -325,12 +330,14 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         parameters.Set(MaterialTerrainDisplacementKeys.HeightmapDimensionsInSamples, dimensionsInSamples);
 
         // IndexMap / material shader parameters
-        parameters.Set(MaterialTerrainDiffuseKeys.IndexMapArray, renderObject.SplatMapArray);
+        parameters.Set(MaterialTerrainDiffuseKeys.DetailIndexMapArray, renderObject.DetailIndexMapArray);
+        parameters.Set(MaterialTerrainDiffuseKeys.DetailWeightMapArray, renderObject.DetailWeightMapArray);
         parameters.Set(MaterialTerrainDiffuseKeys.MaterialIndexSampler, graphicsDevice.SamplerStates.PointClamp);
         parameters.Set(MaterialTerrainDiffuseKeys.MaterialAlbedoSampler, graphicsDevice.SamplerStates.LinearWrap);
         parameters.Set(MaterialTerrainDiffuseKeys.MaterialNormalSampler, graphicsDevice.SamplerStates.LinearWrap);
+        parameters.Set(MaterialTerrainDiffuseKeys.MaterialPropertiesSampler, graphicsDevice.SamplerStates.LinearWrap);
         parameters.Set(MaterialTerrainDiffuseKeys.MaterialTilingScale, 1.0f);
-        parameters.Set(MaterialTerrainDiffuseKeys.DetailContrast, 0.5f);
+        parameters.Set(MaterialTerrainDiffuseKeys.DetailBlendRange, 0.5f);
         parameters.Set(MaterialTerrainDiffuseKeys.SplatmapTileSize, component.SplatmapTileSize);
         parameters.Set(MaterialTerrainDiffuseKeys.SplatmapTilePadding, component.SplatmapTilePadding);
 
@@ -338,15 +345,18 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         var materialManager = component.MaterialManager;
         if (materialManager != null)
         {
-            parameters.Set(MaterialTerrainDiffuseKeys.MaterialAlbedoArray, materialManager.AlbedoArray);
+            parameters.Set(MaterialTerrainDiffuseKeys.MaterialDiffuseHeightArray, materialManager.DiffuseHeightArray);
             parameters.Set(MaterialTerrainDiffuseKeys.MaterialNormalArray, materialManager.NormalArray);
-            parameters.Set(MaterialTerrainDiffuseKeys.MaterialArraySize, materialManager.AlbedoArray?.ArraySize ?? 0);
+            parameters.Set(MaterialTerrainDiffuseKeys.MaterialPropertiesArray, materialManager.PropertiesArray);
+            parameters.Set(MaterialTerrainDiffuseKeys.MaterialArraySize, materialManager.DiffuseHeightArray?.ArraySize ?? 0);
             parameters.Set(MaterialTerrainDiffuseKeys.MaterialNormalArraySize, materialManager.NormalArray?.ArraySize ?? 0);
+            parameters.Set(MaterialTerrainDiffuseKeys.MaterialPropertiesArraySize, materialManager.PropertiesArray?.ArraySize ?? 0);
         }
         else
         {
             parameters.Set(MaterialTerrainDiffuseKeys.MaterialArraySize, 0);
             parameters.Set(MaterialTerrainDiffuseKeys.MaterialNormalArraySize, 0);
+            parameters.Set(MaterialTerrainDiffuseKeys.MaterialPropertiesArraySize, 0);
         }
     }
 

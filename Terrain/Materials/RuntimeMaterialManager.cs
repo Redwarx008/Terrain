@@ -22,10 +22,13 @@ public sealed class RuntimeMaterialManager : IDisposable
 
     private Texture? albedoArray;
     private Texture? normalArray;
+    private Texture? propertiesArray;
     private int materialCount;
 
     public Texture? AlbedoArray => albedoArray;
+    public Texture? DiffuseHeightArray => albedoArray;
     public Texture? NormalArray => normalArray;
+    public Texture? PropertiesArray => propertiesArray;
     public int MaterialCount => materialCount;
 
     /// <summary>
@@ -40,10 +43,11 @@ public sealed class RuntimeMaterialManager : IDisposable
     /// <summary>
     /// Reads material slot paths from a TOML project file.
     /// Paths in the TOML are resolved relative to the TOML file's directory.
+    /// Material height always comes from albedo alpha.
     /// </summary>
-    public static List<(int index, string albedoPath, string? normalPath)> ReadMaterialSlots(string tomlFilePath)
+    public static List<(int index, string albedoPath, string? normalPath, string? propertiesPath)> ReadMaterialSlots(string tomlFilePath)
     {
-        var result = new List<(int index, string albedoPath, string? normalPath)>();
+        var result = new List<(int index, string albedoPath, string? normalPath, string? propertiesPath)>();
         string baseDir = Path.GetDirectoryName(Path.GetFullPath(tomlFilePath)) ?? "";
 
         using var reader = File.OpenText(tomlFilePath);
@@ -71,8 +75,11 @@ public sealed class RuntimeMaterialManager : IDisposable
             string? normalPath = slotNode.HasKey("normal") && slotNode["normal"].IsString
                 ? ResolvePath(slotNode["normal"].AsString.Value, baseDir)
                 : null;
+            string? propertiesPath = slotNode.HasKey("properties") && slotNode["properties"].IsString
+                ? ResolvePath(slotNode["properties"].AsString.Value, baseDir)
+                : null;
 
-            result.Add((index, albedoPath ?? "", normalPath));
+            result.Add((index, albedoPath ?? "", normalPath, propertiesPath));
         }
 
         return result;
@@ -94,7 +101,7 @@ public sealed class RuntimeMaterialManager : IDisposable
     public void Initialize(
         GraphicsDevice graphicsDevice,
         CommandList commandList,
-        IReadOnlyList<(int index, string albedoPath, string? normalPath)> slots)
+        IReadOnlyList<(int index, string albedoPath, string? normalPath, string? propertiesPath)> slots)
     {
         Dispose();
 
@@ -105,7 +112,7 @@ public sealed class RuntimeMaterialManager : IDisposable
         }
 
         int maxSlotIndex = 0;
-        foreach (var (index, _, _) in slots)
+        foreach (var (index, _, _, _) in slots)
         {
             maxSlotIndex = Math.Max(maxSlotIndex, index);
         }
@@ -116,8 +123,9 @@ public sealed class RuntimeMaterialManager : IDisposable
         // Load individual textures
         var albedoTextures = new Texture?[capacity];
         var normalTextures = new Texture?[capacity];
+        var propertiesTextures = new Texture?[capacity];
 
-        foreach (var (index, albedoPath, normalPath) in slots)
+        foreach (var (index, albedoPath, normalPath, propertiesPath) in slots)
         {
             if (index >= capacity)
                 continue;
@@ -145,11 +153,24 @@ public sealed class RuntimeMaterialManager : IDisposable
                     Log.Warning($"Failed to load normal texture '{normalPath}': {ex.Message}");
                 }
             }
+
+            if (!string.IsNullOrEmpty(propertiesPath) && File.Exists(propertiesPath))
+            {
+                try
+                {
+                    propertiesTextures[index] = LoadTexture(graphicsDevice, propertiesPath);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning($"Failed to load properties texture '{propertiesPath}': {ex.Message}");
+                }
+            }
         }
 
         // Find template texture for array creation
         Texture? albedoTemplate = null;
         Texture? normalTemplate = null;
+        Texture? propertiesTemplate = null;
         foreach (var tex in albedoTextures)
         {
             if (tex != null) { albedoTemplate = tex; break; }
@@ -157,6 +178,10 @@ public sealed class RuntimeMaterialManager : IDisposable
         foreach (var tex in normalTextures)
         {
             if (tex != null) { normalTemplate = tex; break; }
+        }
+        foreach (var tex in propertiesTextures)
+        {
+            if (tex != null) { propertiesTemplate = tex; break; }
         }
 
         // Build albedo array
@@ -213,6 +238,27 @@ public sealed class RuntimeMaterialManager : IDisposable
 
             defaultNormal.Dispose();
         }
+
+        if (propertiesTemplate != null)
+        {
+            propertiesArray = Texture.New2D(
+                graphicsDevice,
+                propertiesTemplate.Width,
+                propertiesTemplate.Height,
+                propertiesTemplate.MipLevelCount,
+                propertiesTemplate.Format,
+                TextureFlags.ShaderResource,
+                arraySize: capacity);
+
+            for (int i = 0; i < capacity; i++)
+            {
+                if (propertiesTextures[i] != null)
+                {
+                    CopyTextureToArraySlice(propertiesTextures[i]!, propertiesArray, i, commandList);
+                    propertiesTextures[i]?.Dispose();
+                }
+            }
+        }
     }
 
     private static Texture LoadTexture(GraphicsDevice graphicsDevice, string path)
@@ -260,6 +306,8 @@ public sealed class RuntimeMaterialManager : IDisposable
         albedoArray = null;
         normalArray?.Dispose();
         normalArray = null;
+        propertiesArray?.Dispose();
+        propertiesArray = null;
         materialCount = 0;
     }
 }

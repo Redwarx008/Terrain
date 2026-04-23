@@ -2,31 +2,76 @@ namespace Terrain.Editor
 {
     shader EditorTerrainBuildSplatMap : ComputeShaderBase, EditorTerrainHeightParameters
     {
-        struct ClimateSplatRuleGpu
+        struct BiomeGpu
         {
-            int ClimateId;
-            int MaterialSlotIndex;
-            int Enabled;
+            int BiomeId;
+            int LayerStartIndex;
+            int LayerCount;
             int Reserved;
-            float MinAltitude;
-            float MaxAltitude;
-            float MinSlopeDegrees;
-            float MaxSlopeDegrees;
-            float BlendRange;
-            float Padding0;
-            float Padding1;
-            float Padding2;
+            float4 DebugColor;
         };
 
+        struct LayerGpu
+        {
+            int LayerId;
+            int BiomeId;
+            int MaterialSlotIndex;
+            int Enabled;
+            int Visible;
+            int PriorityOrder;
+            int ModifierStartIndex;
+            int ModifierCount;
+        };
+
+        struct ModifierGpu
+        {
+            int ModifierType;
+            int BlendMode;
+            int Enabled;
+            int TextureMaskChannel;
+            float Opacity;
+            float Min;
+            float Max;
+            float MinFalloff;
+            float MaxFalloff;
+            float Radius;
+            float AngleDegrees;
+            float AngleRangeDegrees;
+            float Scale;
+            float OffsetX;
+            float OffsetY;
+            float Seed;
+            float Octaves;
+            float Invert;
+        };
+
+        static const int ModifierTypeHeightRange = 0;
+        static const int ModifierTypeSlopeRange = 1;
+        static const int ModifierTypeCurvatureRange = 2;
+        static const int ModifierTypeDirectionRange = 3;
+        static const int ModifierTypeNoise = 4;
+        static const int ModifierTypeTextureMask = 5;
+
+        static const int BlendModeMultiply = 0;
+        static const int BlendModeAdd = 1;
+        static const int BlendModeSubtract = 2;
+        static const int BlendModeMin = 3;
+        static const int BlendModeMax = 4;
+
         stage Texture2D<float> ClimateMaskTexture;
-        stage StructuredBuffer<ClimateSplatRuleGpu> ClimateRules;
-        stage RWTexture2D<float> OutputIndexMap;
+        stage StructuredBuffer<BiomeGpu> Biomes;
+        stage StructuredBuffer<LayerGpu> Layers;
+        stage StructuredBuffer<ModifierGpu> Modifiers;
+        stage RWTexture2D<float4> OutputIndexMap;
+        stage RWTexture2D<float4> OutputWeightMap;
         stage int CurrentSliceIndex;
         stage int OutputWidth;
         stage int OutputHeight;
         stage int ClimateMaskWidth;
         stage int ClimateMaskHeight;
-        stage int RuleCount;
+        stage int BiomeCount;
+        stage int LayerCount;
+        stage int ModifierCount;
 
         int2 ClampClimateCoord(int2 coord)
         {
@@ -39,11 +84,6 @@ namespace Terrain.Editor
         {
             int2 clamped = ClampClimateCoord(coord);
             return (int)(ClimateMaskTexture.Load(int3(clamped, 0)).x * 255.0f + 0.5f);
-        }
-
-        float SampleAverageAltitude(int2 heightCoord)
-        {
-            return SampleHeightLinear(float2(heightCoord), CurrentSliceIndex);
         }
 
         float SampleSlopeDegrees(int2 heightCoord)
@@ -66,54 +106,126 @@ namespace Terrain.Editor
             return acos(cosSlope) * (180.0f / 3.14159265359f);
         }
 
-        bool RuleMatches(ClimateSplatRuleGpu rule, int climateId, float altitude, float slope)
+        float SampleCurvature(int2 heightCoord)
         {
-            if (rule.Enabled == 0)
-                return false;
-
-            if (rule.ClimateId != climateId)
-                return false;
-
-            if (altitude < rule.MinAltitude || altitude > rule.MaxAltitude)
-                return false;
-
-            if (slope < rule.MinSlopeDegrees || slope > rule.MaxSlopeDegrees)
-                return false;
-
-            return true;
+            float center = SampleHeightLinear(float2(heightCoord), CurrentSliceIndex);
+            float left = SampleHeightLinear(float2(heightCoord) + float2(-1.0f, 0.0f), CurrentSliceIndex);
+            float right = SampleHeightLinear(float2(heightCoord) + float2(1.0f, 0.0f), CurrentSliceIndex);
+            float up = SampleHeightLinear(float2(heightCoord) + float2(0.0f, -1.0f), CurrentSliceIndex);
+            float down = SampleHeightLinear(float2(heightCoord) + float2(0.0f, 1.0f), CurrentSliceIndex);
+            return ((left + right + up + down) * 0.25f - center);
         }
 
-        float ComputeRangeWeight(float value, float minValue, float maxValue, float blendRange)
+        float SampleDirectionDegrees(int2 heightCoord)
+        {
+            float left = SampleHeightLinear(float2(heightCoord) + float2(-1.0f, 0.0f), CurrentSliceIndex);
+            float right = SampleHeightLinear(float2(heightCoord) + float2(1.0f, 0.0f), CurrentSliceIndex);
+            float up = SampleHeightLinear(float2(heightCoord) + float2(0.0f, -1.0f), CurrentSliceIndex);
+            float down = SampleHeightLinear(float2(heightCoord) + float2(0.0f, 1.0f), CurrentSliceIndex);
+            float2 gradient = float2(right - left, down - up);
+            return atan2(gradient.y, gradient.x) * (180.0f / 3.14159265359f);
+        }
+
+        float Hash11(float n)
+        {
+            return frac(sin(n) * 43758.5453123f);
+        }
+
+        float Noise2D(float2 p, float seed)
+        {
+            float2 i = floor(p);
+            float2 f = frac(p);
+            float a = Hash11(dot(i, float2(127.1f, 311.7f)) + seed);
+            float b = Hash11(dot(i + float2(1.0f, 0.0f), float2(127.1f, 311.7f)) + seed);
+            float c = Hash11(dot(i + float2(0.0f, 1.0f), float2(127.1f, 311.7f)) + seed);
+            float d = Hash11(dot(i + float2(1.0f, 1.0f), float2(127.1f, 311.7f)) + seed);
+            float2 u = f * f * (3.0f - 2.0f * f);
+            return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+        }
+
+        float ComputeRangeModifier(float value, float minValue, float maxValue, float minFalloff, float maxFalloff)
         {
             if (value < minValue || value > maxValue)
                 return 0.0f;
 
-            if (blendRange <= 0.0001f)
-                return 1.0f;
-
-            float rangeSpan = max(maxValue - minValue, 0.0001f);
-            float actualBlendRange = min(rangeSpan * blendRange * 0.5f, rangeSpan * 0.5f);
-            if (actualBlendRange <= 0.0001f)
-                return 1.0f;
-
-            float lowerWeight = smoothstep(minValue, minValue + actualBlendRange, value);
-            float upperWeight = 1.0f - smoothstep(maxValue - actualBlendRange, maxValue, value);
-            return saturate(min(lowerWeight, upperWeight));
+            float lower = 1.0f;
+            float upper = 1.0f;
+            if (minFalloff > 0.0001f)
+                lower = saturate((value - minValue) / minFalloff);
+            if (maxFalloff > 0.0001f)
+                upper = saturate((maxValue - value) / maxFalloff);
+            return saturate(min(lower, upper));
         }
 
-        float ComputeRuleWeight(ClimateSplatRuleGpu rule, int climateId, float altitude, float slope)
+        float ApplyBlendMode(float baseWeight, float modifierValue, int blendMode)
         {
-            if (rule.Enabled == 0 || rule.ClimateId != climateId)
-                return 0.0f;
-
-            float altitudeWeight = ComputeRangeWeight(altitude, rule.MinAltitude, rule.MaxAltitude, rule.BlendRange);
-            float slopeWeight = ComputeRangeWeight(slope, rule.MinSlopeDegrees, rule.MaxSlopeDegrees, rule.BlendRange);
-            return altitudeWeight * slopeWeight;
+            float result = baseWeight;
+            switch (blendMode)
+            {
+                case BlendModeMultiply: result = baseWeight * modifierValue; break;
+                case BlendModeAdd: result = saturate(baseWeight + modifierValue); break;
+                case BlendModeSubtract: result = saturate(baseWeight - modifierValue); break;
+                case BlendModeMin: result = min(baseWeight, modifierValue); break;
+                case BlendModeMax: result = max(baseWeight, modifierValue); break;
+            }
+            return saturate(result);
         }
 
-        float EncodeMaterialPixel(int materialIndex, float materialWeight)
+        float EvaluateModifier(ModifierGpu modifier, int2 heightCoord, float altitude, float slope, float curvature, float directionDegrees)
         {
-            return (float)materialIndex / 255.0f;
+            switch (modifier.ModifierType)
+            {
+                case ModifierTypeHeightRange:
+                    return ComputeRangeModifier(altitude, modifier.Min, modifier.Max, modifier.MinFalloff, modifier.MaxFalloff);
+                case ModifierTypeSlopeRange:
+                    return ComputeRangeModifier(slope, modifier.Min, modifier.Max, modifier.MinFalloff, modifier.MaxFalloff);
+                case ModifierTypeCurvatureRange:
+                    return ComputeRangeModifier(curvature, modifier.Min, modifier.Max, modifier.MinFalloff, modifier.MaxFalloff);
+                case ModifierTypeDirectionRange:
+                {
+                    float delta = abs(directionDegrees - modifier.AngleDegrees);
+                    delta = min(delta, 360.0f - delta);
+                    return 1.0f - saturate(delta / max(modifier.AngleRangeDegrees, 0.0001f));
+                }
+                case ModifierTypeNoise:
+                {
+                    float noise = Noise2D(float2(heightCoord) * max(modifier.Scale, 0.0001f) + float2(modifier.OffsetX, modifier.OffsetY), modifier.Seed);
+                    return saturate(noise);
+                }
+                case ModifierTypeTextureMask:
+                    return modifier.Invert > 0.5f ? 0.0f : 1.0f;
+            }
+
+            return 1.0f;
+        }
+
+        void PushTop4(inout int4 bestIndices, inout float4 bestWeights, int materialIndex, float weight)
+        {
+            if (weight <= 0.0f)
+                return;
+
+            if (weight > bestWeights.x)
+            {
+                bestWeights.w = bestWeights.z; bestIndices.w = bestIndices.z;
+                bestWeights.z = bestWeights.y; bestIndices.z = bestIndices.y;
+                bestWeights.y = bestWeights.x; bestIndices.y = bestIndices.x;
+                bestWeights.x = weight; bestIndices.x = materialIndex;
+            }
+            else if (weight > bestWeights.y)
+            {
+                bestWeights.w = bestWeights.z; bestIndices.w = bestIndices.z;
+                bestWeights.z = bestWeights.y; bestIndices.z = bestIndices.y;
+                bestWeights.y = weight; bestIndices.y = materialIndex;
+            }
+            else if (weight > bestWeights.z)
+            {
+                bestWeights.w = bestWeights.z; bestIndices.w = bestIndices.z;
+                bestWeights.z = weight; bestIndices.z = materialIndex;
+            }
+            else if (weight > bestWeights.w)
+            {
+                bestWeights.w = weight; bestIndices.w = materialIndex;
+            }
         }
 
         override void Compute()
@@ -126,28 +238,50 @@ namespace Terrain.Editor
             int4 sliceBounds = GetIndexMapSliceBounds(CurrentSliceIndex);
             int globalX = sliceBounds.x + (int)texelX;
             int globalY = sliceBounds.y + (int)texelY;
-            int2 climateCoord = int2(globalX, globalY);
-            int2 heightCoord = int2(globalX, globalY);
+            int2 sampleCoord = int2(globalX, globalY);
 
-            int climateId = LoadClimateId(climateCoord);
-            float altitude = SampleAverageAltitude(heightCoord);
-            float slope = SampleSlopeDegrees(heightCoord);
+            int biomeId = LoadClimateId(sampleCoord);
+            float altitude = SampleHeightLinear(float2(sampleCoord), CurrentSliceIndex);
+            float slope = SampleSlopeDegrees(sampleCoord);
+            float curvature = SampleCurvature(sampleCoord);
+            float directionDegrees = SampleDirectionDegrees(sampleCoord);
 
-            int resolvedMaterial = 0;
-            float bestWeight = 0.0f;
+            int4 bestIndices = int4(0, 255, 255, 255);
+            float4 bestWeights = float4(0.0f, 0.0f, 0.0f, 0.0f);
+
             [loop]
-            for (int i = 0; i < RuleCount; i++)
+            for (int layerIndex = 0; layerIndex < LayerCount; layerIndex++)
             {
-                ClimateSplatRuleGpu rule = ClimateRules[i];
-                float ruleWeight = ComputeRuleWeight(rule, climateId, altitude, slope);
-                if (ruleWeight >= bestWeight && ruleWeight > 0.0f)
+                LayerGpu layer = Layers[layerIndex];
+                if (layer.Enabled == 0 || layer.Visible == 0 || layer.BiomeId != biomeId)
+                    continue;
+
+                float weight = 1.0f;
+                [loop]
+                for (int modifierOffset = 0; modifierOffset < layer.ModifierCount; modifierOffset++)
                 {
-                    resolvedMaterial = rule.MaterialSlotIndex;
-                    bestWeight = ruleWeight;
+                    int modifierIndex = layer.ModifierStartIndex + modifierOffset;
+                    if (modifierIndex < 0 || modifierIndex >= ModifierCount)
+                        continue;
+
+                    ModifierGpu modifier = Modifiers[modifierIndex];
+                    if (modifier.Enabled == 0)
+                        continue;
+
+                    float modifierValue = EvaluateModifier(modifier, sampleCoord, altitude, slope, curvature, directionDegrees);
+                    float blended = ApplyBlendMode(weight, modifierValue, modifier.BlendMode);
+                    weight = lerp(weight, blended, saturate(modifier.Opacity));
                 }
+
+                PushTop4(bestIndices, bestWeights, layer.MaterialSlotIndex, weight);
             }
 
-            OutputIndexMap[int2(texelX, texelY)] = EncodeMaterialPixel(resolvedMaterial, max(bestWeight, 0.0001f));
+            float totalWeight = max(dot(bestWeights, float4(1.0f, 1.0f, 1.0f, 1.0f)), 0.0001f);
+            float4 normalizedWeights = saturate(bestWeights / totalWeight);
+            float4 encodedIndices = float4(bestIndices) / 255.0f;
+
+            OutputIndexMap[int2(texelX, texelY)] = encodedIndices;
+            OutputWeightMap[int2(texelX, texelY)] = normalizedWeights;
         }
     };
 }

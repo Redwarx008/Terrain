@@ -4,6 +4,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Stride.Core.Mathematics;
 using Stride.Graphics;
@@ -24,9 +25,19 @@ public enum TerrainDataChannel
     Height,
 
     /// <summary>
-    /// 材质索引图。
+    /// 细节控制图：材质索引。
     /// </summary>
-    MaterialIndex
+    DetailIndex,
+
+    /// <summary>
+    /// 细节控制图：材质权重。
+    /// </summary>
+    DetailWeight,
+
+    /// <summary>
+    /// 兼容旧名称。
+    /// </summary>
+    MaterialIndex = DetailIndex
 }
 
 /// <summary>
@@ -65,14 +76,15 @@ public sealed class EditorTerrainEntity : IDisposable
     public Buffer? PatchVertexBuffer { get; private set; }
     public Buffer? PatchIndexBuffer { get; private set; }
 
-    /// <summary>
-    /// 材质索引图切片纹理数组 (R8_UNorm)，每个切片对应一个纹理。
-    /// 与高度图切片使用相同的 SplitConfig 切分。
-    /// </summary>
-    public Texture?[] MaterialIndexMapTextures { get; private set; } = Array.Empty<Texture?>();
+    public Texture?[] DetailIndexMapTextures { get; private set; } = Array.Empty<Texture?>();
+    public Texture?[] DetailWeightMapTextures { get; private set; } = Array.Empty<Texture?>();
     public Texture? ClimateMaskTexture { get; private set; }
-    public Buffer? ClimateRuleBuffer { get; private set; }
-    public int ClimateRuleCount { get; private set; }
+    public Buffer? BiomeBuffer { get; private set; }
+    public Buffer? LayerBuffer { get; private set; }
+    public Buffer? ModifierBuffer { get; private set; }
+    public int BiomeCount { get; private set; }
+    public int LayerCount { get; private set; }
+    public int ModifierCount { get; private set; }
 
     private MaterialIndexMap? materialIndexMap;
     private ClimateMask? climateMask;
@@ -92,7 +104,10 @@ public sealed class EditorTerrainEntity : IDisposable
             if (value != null)
             {
                 foreach (var slice in slices)
-                    slice.Dirty.MarkFullDirty(TerrainDataChannel.MaterialIndex);
+                {
+                    slice.Dirty.MarkFullDirty(TerrainDataChannel.DetailIndex);
+                    slice.Dirty.MarkFullDirty(TerrainDataChannel.DetailWeight);
+                }
             }
         }
     }
@@ -125,7 +140,8 @@ public sealed class EditorTerrainEntity : IDisposable
         return channel switch
         {
             TerrainDataChannel.Height => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.Height)),
-            TerrainDataChannel.MaterialIndex => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.MaterialIndex)),
+            TerrainDataChannel.DetailIndex => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.DetailIndex)),
+            TerrainDataChannel.DetailWeight => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.DetailWeight)),
             _ => false
         };
     }
@@ -141,9 +157,10 @@ public sealed class EditorTerrainEntity : IDisposable
                 if (HasAnyDirtySlice)
                     SyncToGpu(commandList);
                 break;
-            case TerrainDataChannel.MaterialIndex:
-                if (slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.MaterialIndex)) && MaterialIndexMap != null)
-                    SyncMaterialIndexMapToGpu(commandList, MaterialIndexMap);
+            case TerrainDataChannel.DetailIndex:
+            case TerrainDataChannel.DetailWeight:
+                if (MaterialIndexMap != null)
+                    SyncDetailControlMapsToGpu(commandList, MaterialIndexMap);
                 break;
         }
     }
@@ -214,22 +231,28 @@ public sealed class EditorTerrainEntity : IDisposable
 
     /// <summary>
     /// 初始化材质相关 GPU 资源。
-    /// 为每个高度图切片创建对应的材质索引图纹理。
-    /// IndexMap 纹理与 heightmap 切片保持 1:1 分辨率。
+    /// 为每个高度图切片创建对应的 detail index / detail weight 控制图纹理。
     /// </summary>
     public void InitializeMaterialResources(GraphicsDevice graphicsDevice)
     {
-        MaterialIndexMapTextures = new Texture[SplitConfig.TotalSliceCount];
+        DetailIndexMapTextures = new Texture[SplitConfig.TotalSliceCount];
+        DetailWeightMapTextures = new Texture[SplitConfig.TotalSliceCount];
         for (int i = 0; i < SplitConfig.TotalSliceCount; i++)
         {
             var sliceInfo = SplitConfig.Slices[i];
             int indexMapWidth = sliceInfo.Width;
             int indexMapHeight = sliceInfo.Height;
-            MaterialIndexMapTextures[i] = Texture.New2D(
+            DetailIndexMapTextures[i] = Texture.New2D(
                 graphicsDevice,
                 indexMapWidth,
                 indexMapHeight,
-                PixelFormat.R8_UNorm,
+                PixelFormat.R8G8B8A8_UNorm,
+                TextureFlags.ShaderResource | TextureFlags.UnorderedAccess);
+            DetailWeightMapTextures[i] = Texture.New2D(
+                graphicsDevice,
+                indexMapWidth,
+                indexMapHeight,
+                PixelFormat.R8G8B8A8_UNorm,
                 TextureFlags.ShaderResource | TextureFlags.UnorderedAccess);
         }
     }
@@ -313,63 +336,92 @@ public sealed class EditorTerrainEntity : IDisposable
 
         if (climateRulesDirty)
         {
-            UploadClimateRuleBuffer(graphicsDevice, commandList);
+            UploadBiomeBuffers(graphicsDevice, commandList);
             climateRulesDirty = false;
         }
     }
 
-    private void UploadClimateRuleBuffer(GraphicsDevice graphicsDevice, CommandList commandList)
+    private void UploadBiomeBuffers(GraphicsDevice graphicsDevice, CommandList commandList)
     {
-        IReadOnlyList<ClimateRuleLayer> sourceRules = ClimateRuleService.Instance.Rules;
-        ClimateSplatRuleGpu[] rules = new ClimateSplatRuleGpu[Math.Max(1, sourceRules.Count)];
+        IReadOnlyList<ClimateDefinition> biomes = ClimateRuleService.Instance.Climates;
+        IReadOnlyList<ClimateRuleLayer> layers = ClimateRuleService.Instance.Rules;
 
-        for (int i = 0; i < sourceRules.Count; i++)
+        BiomeGpu[] biomeData = new BiomeGpu[Math.Max(1, biomes.Count)];
+        LayerGpu[] layerData = new LayerGpu[Math.Max(1, layers.Count)];
+        var modifierList = new List<ModifierGpu>(Math.Max(1, layers.Sum(static layer => layer.Modifiers.Count)));
+
+        for (int i = 0; i < biomes.Count; i++)
         {
-            ClimateRuleLayer rule = sourceRules[i];
-            rules[i] = new ClimateSplatRuleGpu
+            ClimateDefinition biome = biomes[i];
+            biomeData[i] = new BiomeGpu
             {
-                ClimateId = rule.ClimateId,
-                MaterialSlotIndex = rule.MaterialSlotIndex,
-                Enabled = rule.Enabled ? 1 : 0,
-                Reserved = 0,
-                MinAltitude = rule.MinAltitude,
-                MaxAltitude = rule.MaxAltitude,
-                MinSlopeDegrees = rule.MinSlopeDegrees,
-                MaxSlopeDegrees = rule.MaxSlopeDegrees,
-                BlendRange = rule.BlendRange,
-                Padding0 = 0.0f,
-                Padding1 = 0.0f,
-                Padding2 = 0.0f,
+                BiomeId = biome.Id,
+                LayerStartIndex = FindFirstLayerIndexForBiome(layers, biome.Id),
+                LayerCount = CountLayersForBiome(layers, biome.Id),
+                DebugColor = new Vector4(biome.DebugColor.X, biome.DebugColor.Y, biome.DebugColor.Z, biome.DebugColor.W),
             };
         }
 
-        if (ClimateRuleBuffer == null || ClimateRuleCount != rules.Length)
+        for (int i = 0; i < layers.Count; i++)
         {
-            ClimateRuleBuffer?.Dispose();
-            ClimateRuleBuffer = Buffer.Structured.New(graphicsDevice, rules);
-        }
-        else
-        {
-            ClimateRuleBuffer.SetData(commandList, rules);
+            ClimateRuleLayer layer = layers[i];
+            int modifierStartIndex = modifierList.Count;
+            foreach (BiomeModifier modifier in layer.Modifiers)
+            {
+                modifierList.Add(ModifierGpu.FromModifier(modifier));
+            }
+
+            layerData[i] = new LayerGpu
+            {
+                LayerId = layer.Id,
+                BiomeId = layer.ClimateId,
+                MaterialSlotIndex = layer.MaterialSlotIndex,
+                Enabled = layer.Enabled ? 1 : 0,
+                Visible = layer.Visible ? 1 : 0,
+                PriorityOrder = layer.PriorityOrder,
+                ModifierStartIndex = modifierStartIndex,
+                ModifierCount = layer.Modifiers.Count,
+            };
         }
 
-        ClimateRuleCount = rules.Length;
+        ModifierGpu[] modifierData = modifierList.Count > 0 ? modifierList.ToArray() : [default];
+
+        int biomeCount = BiomeCount;
+        int layerCount = LayerCount;
+        int modifierCount = ModifierCount;
+        Buffer? biomeBuffer = BiomeBuffer;
+        Buffer? layerBuffer = LayerBuffer;
+        Buffer? modifierBuffer = ModifierBuffer;
+
+        UpdateStructuredBuffer(ref biomeBuffer, ref biomeCount, graphicsDevice, commandList, biomeData);
+        UpdateStructuredBuffer(ref layerBuffer, ref layerCount, graphicsDevice, commandList, layerData);
+        UpdateStructuredBuffer(ref modifierBuffer, ref modifierCount, graphicsDevice, commandList, modifierData);
+
+        BiomeBuffer = biomeBuffer;
+        LayerBuffer = layerBuffer;
+        ModifierBuffer = modifierBuffer;
+        BiomeCount = biomeCount;
+        LayerCount = layerCount;
+        ModifierCount = modifierCount;
     }
 
     /// <summary>
     /// 同步材质索引图到 GPU。
     /// IndexMap 与 heightmap 保持 1:1 分辨率。
     /// </summary>
-    public void SyncMaterialIndexMapToGpu(CommandList commandList, Services.MaterialIndexMap indexMap)
+    public void SyncDetailControlMapsToGpu(CommandList commandList, Services.MaterialIndexMap indexMap)
     {
-        for (int i = 0; i < MaterialIndexMapTextures.Length; i++)
+        for (int i = 0; i < DetailIndexMapTextures.Length; i++)
         {
-            var texture = MaterialIndexMapTextures[i];
-            if (texture == null)
+            Texture? indexTexture = DetailIndexMapTextures[i];
+            Texture? weightTexture = DetailWeightMapTextures[i];
+            if (indexTexture == null || weightTexture == null)
                 continue;
 
             var slice = slices[i];
-            if (!slice.Dirty.IsChannelDirty(TerrainDataChannel.MaterialIndex))
+            bool indexDirty = slice.Dirty.IsChannelDirty(TerrainDataChannel.DetailIndex);
+            bool weightDirty = slice.Dirty.IsChannelDirty(TerrainDataChannel.DetailWeight);
+            if (!indexDirty && !weightDirty)
                 continue;
 
             int splatSliceWidth = slice.Width;
@@ -390,17 +442,20 @@ public sealed class EditorTerrainEntity : IDisposable
 
                 if (regionWidth <= 0 || regionHeight <= 0)
                 {
-                    slice.Dirty.ClearChannel(TerrainDataChannel.MaterialIndex);
+                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailIndex);
+                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailWeight);
                     continue;
                 }
 
-                int regionByteSize = regionWidth * regionHeight * Services.MaterialIndexMap.BytesPerPixel;
-                byte[] uploadBuffer = ArrayPool<byte>.Shared.Rent(regionByteSize);
+                int regionIndexByteSize = regionWidth * regionHeight * Services.MaterialIndexMap.IndicesBytesPerPixel;
+                int regionWeightByteSize = regionWidth * regionHeight * Services.MaterialIndexMap.WeightsBytesPerPixel;
+                byte[] indexUploadBuffer = ArrayPool<byte>.Shared.Rent(regionIndexByteSize);
+                byte[] weightUploadBuffer = ArrayPool<byte>.Shared.Rent(regionWeightByteSize);
                 try
                 {
-                    CopyMatIndexRegionDataAt(
+                    CopyDetailRegionDataAt(
                         indexMap, splatStartX + regionLeft, splatStartZ + regionTop,
-                        regionWidth, regionHeight, uploadBuffer);
+                        regionWidth, regionHeight, indexUploadBuffer, weightUploadBuffer);
 
                     var region = new ResourceRegion(
                         left: regionLeft,
@@ -410,31 +465,42 @@ public sealed class EditorTerrainEntity : IDisposable
                         bottom: regionTop + regionHeight,
                         back: 1);
 
-                    texture.SetData(commandList, uploadBuffer.AsSpan(0, regionByteSize), arrayIndex: 0, mipLevel: 0, region);
-                    slice.Dirty.ClearChannel(TerrainDataChannel.MaterialIndex);
+                    if (indexDirty)
+                        indexTexture.SetData(commandList, indexUploadBuffer.AsSpan(0, regionIndexByteSize), arrayIndex: 0, mipLevel: 0, region);
+                    if (weightDirty)
+                        weightTexture.SetData(commandList, weightUploadBuffer.AsSpan(0, regionWeightByteSize), arrayIndex: 0, mipLevel: 0, region);
+                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailIndex);
+                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailWeight);
                 }
                 finally
                 {
-                    ArrayPool<byte>.Shared.Return(uploadBuffer);
+                    ArrayPool<byte>.Shared.Return(indexUploadBuffer);
+                    ArrayPool<byte>.Shared.Return(weightUploadBuffer);
                 }
             }
             else
             {
-                // Full slice upload
-                int byteSize = splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.BytesPerPixel;
-                byte[] uploadBuffer = ArrayPool<byte>.Shared.Rent(byteSize);
+                int indexByteSize = splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.IndicesBytesPerPixel;
+                int weightByteSize = splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.WeightsBytesPerPixel;
+                byte[] indexUploadBuffer = ArrayPool<byte>.Shared.Rent(indexByteSize);
+                byte[] weightUploadBuffer = ArrayPool<byte>.Shared.Rent(weightByteSize);
                 try
                 {
-                    CopyMatIndexRegionDataAt(
+                    CopyDetailRegionDataAt(
                         indexMap, splatStartX, splatStartZ,
-                        splatSliceWidth, splatSliceHeight, uploadBuffer);
+                        splatSliceWidth, splatSliceHeight, indexUploadBuffer, weightUploadBuffer);
 
-                    texture.SetData(commandList, uploadBuffer.AsSpan(0, byteSize));
-                    slice.Dirty.ClearChannel(TerrainDataChannel.MaterialIndex);
+                    if (indexDirty)
+                        indexTexture.SetData(commandList, indexUploadBuffer.AsSpan(0, indexByteSize));
+                    if (weightDirty)
+                        weightTexture.SetData(commandList, weightUploadBuffer.AsSpan(0, weightByteSize));
+                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailIndex);
+                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailWeight);
                 }
                 finally
                 {
-                    ArrayPool<byte>.Shared.Return(uploadBuffer);
+                    ArrayPool<byte>.Shared.Return(indexUploadBuffer);
+                    ArrayPool<byte>.Shared.Return(weightUploadBuffer);
                 }
             }
         }
@@ -444,17 +510,136 @@ public sealed class EditorTerrainEntity : IDisposable
     /// 从 MaterialIndexMap 的指定全局位置复制区域数据到 byte 数组。
     /// 直接在 splatmap 坐标空间操作。
     /// </summary>
-    private static void CopyMatIndexRegionDataAt(
+    private static void CopyDetailRegionDataAt(
         Services.MaterialIndexMap indexMap,
         int startX, int startZ,
         int regionWidth, int regionHeight,
-        byte[] destination)
+        byte[] indexDestination,
+        byte[] weightDestination)
     {
         for (int row = 0; row < regionHeight; row++)
         {
-            var srcSpan = indexMap.GetSliceBytesPerRow(startX, startZ + row, 0, regionWidth);
-            int dstOffset = row * regionWidth * Services.MaterialIndexMap.BytesPerPixel;
-            srcSpan.CopyTo(destination.AsSpan(dstOffset));
+            ReadOnlySpan<byte> indexSpan = indexMap.GetIndexSliceBytesPerRow(startX, startZ + row, 0, regionWidth);
+            ReadOnlySpan<byte> weightSpan = indexMap.GetWeightSliceBytesPerRow(startX, startZ + row, 0, regionWidth);
+            int indexOffset = row * regionWidth * Services.MaterialIndexMap.IndicesBytesPerPixel;
+            int weightOffset = row * regionWidth * Services.MaterialIndexMap.WeightsBytesPerPixel;
+            indexSpan.CopyTo(indexDestination.AsSpan(indexOffset));
+            weightSpan.CopyTo(weightDestination.AsSpan(weightOffset));
+        }
+    }
+
+    private static int FindFirstLayerIndexForBiome(IReadOnlyList<ClimateRuleLayer> layers, int biomeId)
+    {
+        for (int i = 0; i < layers.Count; i++)
+        {
+            if (layers[i].ClimateId == biomeId)
+                return i;
+        }
+
+        return 0;
+    }
+
+    private static int CountLayersForBiome(IReadOnlyList<ClimateRuleLayer> layers, int biomeId)
+    {
+        int count = 0;
+        for (int i = 0; i < layers.Count; i++)
+        {
+            if (layers[i].ClimateId == biomeId)
+                count++;
+        }
+
+        return count;
+    }
+
+    private static void UpdateStructuredBuffer<T>(
+        ref Buffer? buffer,
+        ref int count,
+        GraphicsDevice graphicsDevice,
+        CommandList commandList,
+        T[] data)
+        where T : unmanaged
+    {
+        if (buffer == null || count != data.Length)
+        {
+            buffer?.Dispose();
+            buffer = Buffer.Structured.New(graphicsDevice, data);
+        }
+        else
+        {
+            buffer.SetData(commandList, data);
+        }
+
+        count = data.Length;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BiomeGpu
+    {
+        public int BiomeId;
+        public int LayerStartIndex;
+        public int LayerCount;
+        public int Reserved;
+        public Vector4 DebugColor;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LayerGpu
+    {
+        public int LayerId;
+        public int BiomeId;
+        public int MaterialSlotIndex;
+        public int Enabled;
+        public int Visible;
+        public int PriorityOrder;
+        public int ModifierStartIndex;
+        public int ModifierCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ModifierGpu
+    {
+        public int ModifierType;
+        public int BlendMode;
+        public int Enabled;
+        public int TextureMaskChannel;
+        public float Opacity;
+        public float Min;
+        public float Max;
+        public float MinFalloff;
+        public float MaxFalloff;
+        public float Radius;
+        public float AngleDegrees;
+        public float AngleRangeDegrees;
+        public float Scale;
+        public float OffsetX;
+        public float OffsetY;
+        public float Seed;
+        public float Octaves;
+        public float Invert;
+
+        public static ModifierGpu FromModifier(BiomeModifier modifier)
+        {
+            return new ModifierGpu
+            {
+                ModifierType = (int)modifier.Type,
+                BlendMode = (int)modifier.BlendMode,
+                Enabled = modifier.Enabled ? 1 : 0,
+                TextureMaskChannel = modifier.TextureMaskChannel,
+                Opacity = modifier.Opacity,
+                Min = modifier.Min,
+                Max = modifier.Max,
+                MinFalloff = modifier.MinFalloff,
+                MaxFalloff = modifier.MaxFalloff,
+                Radius = modifier.Radius,
+                AngleDegrees = modifier.AngleDegrees,
+                AngleRangeDegrees = modifier.AngleRangeDegrees,
+                Scale = modifier.Scale,
+                OffsetX = modifier.OffsetX,
+                OffsetY = modifier.OffsetY,
+                Seed = modifier.Seed,
+                Octaves = modifier.Octaves,
+                Invert = modifier.Invert,
+            };
         }
     }
 
@@ -865,19 +1050,34 @@ public sealed class EditorTerrainEntity : IDisposable
         PatchIndexBuffer?.Dispose();
         PatchIndexBuffer = null;
 
-        if (MaterialIndexMapTextures != null)
+        if (DetailIndexMapTextures != null)
         {
-            foreach (var tex in MaterialIndexMapTextures)
+            foreach (var tex in DetailIndexMapTextures)
                 tex?.Dispose();
-            MaterialIndexMapTextures = Array.Empty<Texture?>();
+            DetailIndexMapTextures = Array.Empty<Texture?>();
+        }
+
+        if (DetailWeightMapTextures != null)
+        {
+            foreach (var tex in DetailWeightMapTextures)
+                tex?.Dispose();
+            DetailWeightMapTextures = Array.Empty<Texture?>();
         }
 
         ClimateMaskTexture?.Dispose();
         ClimateMaskTexture = null;
 
-        ClimateRuleBuffer?.Dispose();
-        ClimateRuleBuffer = null;
-        ClimateRuleCount = 0;
+        BiomeBuffer?.Dispose();
+        BiomeBuffer = null;
+        BiomeCount = 0;
+
+        LayerBuffer?.Dispose();
+        LayerBuffer = null;
+        LayerCount = 0;
+
+        ModifierBuffer?.Dispose();
+        ModifierBuffer = null;
+        ModifierCount = 0;
 
         MaterialAlbedoArray?.Dispose();
         MaterialAlbedoArray = null;

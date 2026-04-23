@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFrameworks>net10.0-windows</TargetFrameworks>
@@ -32,5 +32,19 @@
     <None Update="Resources\Grid_Gray_128x128.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>-->
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Effects\Material\MaterialTerrainDiffuse.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Effects\Material\MaterialTerrainDiffuse.sdsl">
+      <LastGenOutput>MaterialTerrainDiffuse.sdsl.cs</LastGenOutput>
+    </None>
   </ItemGroup>
 </Project>

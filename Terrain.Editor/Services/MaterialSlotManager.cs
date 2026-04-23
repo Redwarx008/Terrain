@@ -29,6 +29,7 @@ public sealed class MaterialSlotManager
     private readonly MaterialSlot[] slots = new MaterialSlot[256];
     private Texture? cachedMaterialAlbedoArray;
     private Texture? cachedMaterialNormalArray;
+    private Texture? cachedMaterialPropertiesArray;
     private Texture? cachedDefaultNormalTexture;
     private TextureSignature? cachedDefaultNormalSignature;
 
@@ -68,6 +69,8 @@ public sealed class MaterialSlotManager
         cachedMaterialAlbedoArray = null;
         cachedMaterialNormalArray?.Dispose();
         cachedMaterialNormalArray = null;
+        cachedMaterialPropertiesArray?.Dispose();
+        cachedMaterialPropertiesArray = null;
     }
 
     public bool TrySetAlbedoTexture(
@@ -122,12 +125,43 @@ public sealed class MaterialSlotManager
         return true;
     }
 
+    public bool TrySetPropertiesTexture(
+        int slotIndex,
+        Texture texture,
+        string path,
+        GraphicsDevice graphicsDevice,
+        CommandList commandList,
+        out string? error)
+    {
+        if (!TryValidateTextureCompatibility(slotIndex, texture, isNormalMap: false, out error))
+        {
+            texture.Dispose();
+            return false;
+        }
+
+        var slot = slots[slotIndex];
+        slot.PropertiesTexture?.Dispose();
+        slot.PropertiesTexture = texture;
+        slot.PropertiesTexturePath = path;
+        RebuildMaterialArrays(graphicsDevice, commandList);
+        return true;
+    }
+
     public void ClearNormalTexture(int slotIndex, GraphicsDevice graphicsDevice, CommandList commandList)
     {
         var slot = slots[slotIndex];
         slot.NormalTexture?.Dispose();
         slot.NormalTexture = null;
         slot.NormalTexturePath = null;
+        RebuildMaterialArrays(graphicsDevice, commandList);
+    }
+
+    public void ClearPropertiesTexture(int slotIndex, GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        var slot = slots[slotIndex];
+        slot.PropertiesTexture?.Dispose();
+        slot.PropertiesTexture = null;
+        slot.PropertiesTexturePath = null;
         RebuildMaterialArrays(graphicsDevice, commandList);
     }
 
@@ -155,9 +189,19 @@ public sealed class MaterialSlotManager
         return cachedMaterialAlbedoArray;
     }
 
+    public Texture? GetMaterialDiffuseHeightArray()
+    {
+        return cachedMaterialAlbedoArray;
+    }
+
     public Texture? GetMaterialNormalArray()
     {
         return cachedMaterialNormalArray;
+    }
+
+    public Texture? GetMaterialPropertiesArray()
+    {
+        return cachedMaterialPropertiesArray;
     }
 
     public void LoadTexturesFromConfiguredPaths(GraphicsDevice graphicsDevice, CommandList commandList)
@@ -197,6 +241,23 @@ public sealed class MaterialSlotManager
                     }
                 }
             }
+
+            if (!string.IsNullOrEmpty(slot.PropertiesTexturePath) && File.Exists(slot.PropertiesTexturePath) && slot.PropertiesTexture == null)
+            {
+                var texture = TextureImporter.ImportFromFile(
+                    slot.PropertiesTexturePath,
+                    graphicsDevice,
+                    commandList,
+                    slot.ImportSize,
+                    isNormalMap: false);
+                if (texture != null)
+                {
+                    if (!TrySetPropertiesTexture(slot.Index, texture, slot.PropertiesTexturePath, graphicsDevice, commandList, out string? error))
+                    {
+                        Log.Warning($"Skipped properties texture for slot {slot.Index}: {error}");
+                    }
+                }
+            }
         }
 
         RebuildMaterialArrays(graphicsDevice, commandList);
@@ -227,6 +288,7 @@ public sealed class MaterialSlotManager
 
         cachedMaterialAlbedoArray = BuildAlbedoArrayTexture(requiredCapacity, graphicsDevice, commandList);
         cachedMaterialNormalArray = BuildNormalArrayTexture(requiredCapacity, graphicsDevice, commandList);
+        cachedMaterialPropertiesArray = BuildPropertiesArrayTexture(requiredCapacity, graphicsDevice, commandList);
     }
 
     private Texture? BuildAlbedoArrayTexture(int requiredCapacity, GraphicsDevice graphicsDevice, CommandList commandList)
@@ -315,6 +377,41 @@ public sealed class MaterialSlotManager
             }
 
             CopyTextureToArraySlice(sourceTexture, arrayTexture, slot.Index, commandList);
+        }
+
+        return arrayTexture;
+    }
+
+    private Texture? BuildPropertiesArrayTexture(int requiredCapacity, GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        Texture? templateTexture = slots
+            .Select(static slot => slot.PropertiesTexture)
+            .FirstOrDefault(static texture => texture != null);
+
+        if (templateTexture == null)
+            return null;
+
+        var arrayTexture = Texture.New2D(
+            graphicsDevice,
+            templateTexture.Width,
+            templateTexture.Height,
+            templateTexture.MipLevelCount,
+            templateTexture.Format,
+            TextureFlags.ShaderResource,
+            arraySize: requiredCapacity);
+
+        foreach (var slot in slots)
+        {
+            if (slot.IsEmpty || slot.PropertiesTexture == null)
+                continue;
+
+            if (!IsCompatible(slot.PropertiesTexture, templateTexture))
+            {
+                Log.Warning($"Encountered incompatible properties texture in slot {slot.Index} during array rebuild.");
+                continue;
+            }
+
+            CopyTextureToArraySlice(slot.PropertiesTexture, arrayTexture, slot.Index, commandList);
         }
 
         return arrayTexture;

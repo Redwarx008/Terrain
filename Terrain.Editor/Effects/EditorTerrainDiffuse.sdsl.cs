@@ -24,6 +24,7 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<Color4> BaseColor = ParameterKeys.NewValue<Color4>();
         public static readonly ValueParameterKey<Vector2> HeightmapDimensionsInSamples = ParameterKeys.NewValue<Vector2>();
         public static readonly ValueParameterKey<float> DetailContrast = ParameterKeys.NewValue<float>();
+        public static readonly ValueParameterKey<float> DetailBlendRange = ParameterKeys.NewValue<float>();
 
         // 材质索引图采样器（IndexMapSlice 纹理定义在 EditorTerrainHeightParametersKeys 中）
         public static readonly ObjectParameterKey<SamplerState> MaterialIndexSampler = ParameterKeys.NewObject<SamplerState>();
@@ -38,5 +39,8 @@ namespace Terrain.Editor
         public static readonly ObjectParameterKey<Texture> MaterialNormalArray = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<SamplerState> MaterialNormalSampler = ParameterKeys.NewObject<SamplerState>();
         public static readonly ValueParameterKey<int> MaterialNormalArraySize = ParameterKeys.NewValue<int>();
+        public static readonly ObjectParameterKey<Texture> MaterialPropertiesArray = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> MaterialPropertiesSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ValueParameterKey<int> MaterialPropertiesArraySize = ParameterKeys.NewValue<int>();
     }
 }

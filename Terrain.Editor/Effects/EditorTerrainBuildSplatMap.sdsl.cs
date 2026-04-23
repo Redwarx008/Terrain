@@ -19,13 +19,18 @@ namespace Terrain.Editor
     public static partial class EditorTerrainBuildSplatMapKeys
     {
         public static readonly ObjectParameterKey<Texture> ClimateMaskTexture = ParameterKeys.NewObject<Texture>();
-        public static readonly ObjectParameterKey<Buffer> ClimateRules = ParameterKeys.NewObject<Buffer>();
+        public static readonly ObjectParameterKey<Buffer> Biomes = ParameterKeys.NewObject<Buffer>();
+        public static readonly ObjectParameterKey<Buffer> Layers = ParameterKeys.NewObject<Buffer>();
+        public static readonly ObjectParameterKey<Buffer> Modifiers = ParameterKeys.NewObject<Buffer>();
         public static readonly ObjectParameterKey<Texture> OutputIndexMap = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> OutputWeightMap = ParameterKeys.NewObject<Texture>();
         public static readonly ValueParameterKey<int> CurrentSliceIndex = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> OutputWidth = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> OutputHeight = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> ClimateMaskWidth = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> ClimateMaskHeight = ParameterKeys.NewValue<int>();
-        public static readonly ValueParameterKey<int> RuleCount = ParameterKeys.NewValue<int>();
+        public static readonly ValueParameterKey<int> BiomeCount = ParameterKeys.NewValue<int>();
+        public static readonly ValueParameterKey<int> LayerCount = ParameterKeys.NewValue<int>();
+        public static readonly ValueParameterKey<int> ModifierCount = ParameterKeys.NewValue<int>();
     }
 }

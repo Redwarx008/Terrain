@@ -31,7 +31,16 @@ public enum SceneDebugViewMode
     FinalOutput,
     ClimateMaskMap,
     SlopeMap,
-    HeightMap
+    HeightMap,
+    LayerHeatmap,
+    DetailIndexMap,
+    DetailWeightMap
+}
+
+public enum TerrainPainterTab
+{
+    Layers,
+    Settings
 }
 
 /// <summary>
@@ -51,6 +60,10 @@ public sealed class EditorState
     private int _selectedRuleIndex = -1;
     private bool _showMaskOverlay = true;
     private SceneDebugViewMode _currentDebugViewMode = SceneDebugViewMode.FinalOutput;
+    private TerrainPainterTab _terrainPainterTab = TerrainPainterTab.Layers;
+    private int _selectedModifierIndex = -1;
+    private bool _heatmapEnabled;
+    private bool _editLayerMode = true;
 
     /// <summary>
     /// Gets the singleton instance of EditorState.
@@ -142,6 +155,10 @@ public sealed class EditorState
     public event EventHandler? RuleSelectionChanged;
     public event EventHandler? OverlayChanged;
     public event EventHandler? DebugViewModeChanged;
+    public event EventHandler? TerrainPainterTabChanged;
+    public event EventHandler? ModifierSelectionChanged;
+    public event EventHandler? HeatmapChanged;
+    public event EventHandler? EditLayerModeChanged;
 
     /// <summary>
     /// 向后兼容属性。
@@ -209,6 +226,58 @@ public sealed class EditorState
             {
                 _currentDebugViewMode = value;
                 DebugViewModeChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public TerrainPainterTab CurrentTerrainPainterTab
+    {
+        get => _terrainPainterTab;
+        set
+        {
+            if (_terrainPainterTab != value)
+            {
+                _terrainPainterTab = value;
+                TerrainPainterTabChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public int SelectedModifierIndex
+    {
+        get => _selectedModifierIndex;
+        set
+        {
+            if (_selectedModifierIndex != value)
+            {
+                _selectedModifierIndex = value;
+                ModifierSelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public bool HeatmapEnabled
+    {
+        get => _heatmapEnabled;
+        set
+        {
+            if (_heatmapEnabled != value)
+            {
+                _heatmapEnabled = value;
+                HeatmapChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public bool EditLayerMode
+    {
+        get => _editLayerMode;
+        set
+        {
+            if (_editLayerMode != value)
+            {
+                _editLayerMode = value;
+                EditLayerModeChanged?.Invoke(this, EventArgs.Empty);
             }
         }
     }

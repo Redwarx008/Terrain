@@ -13,14 +13,23 @@ namespace Terrain.Editor
             stage Texture2D<float> HeightmapSlice6;
             stage Texture2D<float> HeightmapSlice7;
 
-            stage Texture2D<float> IndexMapSlice0;
-            stage Texture2D<float> IndexMapSlice1;
-            stage Texture2D<float> IndexMapSlice2;
-            stage Texture2D<float> IndexMapSlice3;
-            stage Texture2D<float> IndexMapSlice4;
-            stage Texture2D<float> IndexMapSlice5;
-            stage Texture2D<float> IndexMapSlice6;
-            stage Texture2D<float> IndexMapSlice7;
+            stage Texture2D<float4> IndexMapSlice0;
+            stage Texture2D<float4> IndexMapSlice1;
+            stage Texture2D<float4> IndexMapSlice2;
+            stage Texture2D<float4> IndexMapSlice3;
+            stage Texture2D<float4> IndexMapSlice4;
+            stage Texture2D<float4> IndexMapSlice5;
+            stage Texture2D<float4> IndexMapSlice6;
+            stage Texture2D<float4> IndexMapSlice7;
+
+            stage Texture2D<float4> WeightMapSlice0;
+            stage Texture2D<float4> WeightMapSlice1;
+            stage Texture2D<float4> WeightMapSlice2;
+            stage Texture2D<float4> WeightMapSlice3;
+            stage Texture2D<float4> WeightMapSlice4;
+            stage Texture2D<float4> WeightMapSlice5;
+            stage Texture2D<float4> WeightMapSlice6;
+            stage Texture2D<float4> WeightMapSlice7;
         }
 
         cbuffer PerMaterial
@@ -197,33 +206,62 @@ namespace Terrain.Editor
             return clampedPreferred;
         }
 
-        float LoadIndexMapSliceAt(int sliceIndex, int2 texelCoord)
+        float4 LoadIndexMapSliceAt(int sliceIndex, int2 texelCoord)
         {
             int4 bounds = GetIndexMapSliceBounds(sliceIndex);
             int2 clampedTexel = clamp(texelCoord, 0, int2(bounds.z - 1, bounds.w - 1));
-            float result = IndexMapSlice0.Load(int3(clampedTexel, 0)).x;
+            float4 result = IndexMapSlice0.Load(int3(clampedTexel, 0));
 
             switch (sliceIndex)
             {
-                case 1: result = IndexMapSlice1.Load(int3(clampedTexel, 0)).x; break;
-                case 2: result = IndexMapSlice2.Load(int3(clampedTexel, 0)).x; break;
-                case 3: result = IndexMapSlice3.Load(int3(clampedTexel, 0)).x; break;
-                case 4: result = IndexMapSlice4.Load(int3(clampedTexel, 0)).x; break;
-                case 5: result = IndexMapSlice5.Load(int3(clampedTexel, 0)).x; break;
-                case 6: result = IndexMapSlice6.Load(int3(clampedTexel, 0)).x; break;
-                case 7: result = IndexMapSlice7.Load(int3(clampedTexel, 0)).x; break;
+                case 1: result = IndexMapSlice1.Load(int3(clampedTexel, 0)); break;
+                case 2: result = IndexMapSlice2.Load(int3(clampedTexel, 0)); break;
+                case 3: result = IndexMapSlice3.Load(int3(clampedTexel, 0)); break;
+                case 4: result = IndexMapSlice4.Load(int3(clampedTexel, 0)); break;
+                case 5: result = IndexMapSlice5.Load(int3(clampedTexel, 0)); break;
+                case 6: result = IndexMapSlice6.Load(int3(clampedTexel, 0)); break;
+                case 7: result = IndexMapSlice7.Load(int3(clampedTexel, 0)); break;
             }
 
             return result;
         }
 
-        float LoadIndexMapAtGlobal(int2 globalPixel)
+        float4 LoadIndexMapAtGlobal(int2 globalPixel)
         {
             float2 sampleCoord = float2(globalPixel);
             int sliceIndex = ResolveIndexMapSliceIndex(sampleCoord, 0);
             int4 bounds = GetIndexMapSliceBounds(sliceIndex);
             int2 localCoord = ComputeSliceTexelCoord(sampleCoord, bounds);
             return LoadIndexMapSliceAt(sliceIndex, localCoord);
+        }
+
+        float4 LoadWeightMapSliceAt(int sliceIndex, int2 texelCoord)
+        {
+            int4 bounds = GetIndexMapSliceBounds(sliceIndex);
+            int2 clampedTexel = clamp(texelCoord, 0, int2(bounds.z - 1, bounds.w - 1));
+            float4 result = WeightMapSlice0.Load(int3(clampedTexel, 0));
+
+            switch (sliceIndex)
+            {
+                case 1: result = WeightMapSlice1.Load(int3(clampedTexel, 0)); break;
+                case 2: result = WeightMapSlice2.Load(int3(clampedTexel, 0)); break;
+                case 3: result = WeightMapSlice3.Load(int3(clampedTexel, 0)); break;
+                case 4: result = WeightMapSlice4.Load(int3(clampedTexel, 0)); break;
+                case 5: result = WeightMapSlice5.Load(int3(clampedTexel, 0)); break;
+                case 6: result = WeightMapSlice6.Load(int3(clampedTexel, 0)); break;
+                case 7: result = WeightMapSlice7.Load(int3(clampedTexel, 0)); break;
+            }
+
+            return result;
+        }
+
+        float4 LoadWeightMapAtGlobal(int2 globalPixel)
+        {
+            float2 sampleCoord = float2(globalPixel);
+            int sliceIndex = ResolveIndexMapSliceIndex(sampleCoord, 0);
+            int4 bounds = GetIndexMapSliceBounds(sliceIndex);
+            int2 localCoord = ComputeSliceTexelCoord(sampleCoord, bounds);
+            return LoadWeightMapSliceAt(sliceIndex, localCoord);
         }
     };
 }

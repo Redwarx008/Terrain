@@ -8,6 +8,7 @@ using Stride.Graphics;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Terrain.Editor.Rendering;
 using StrideColor = Stride.Core.Mathematics.Color;
@@ -526,7 +527,9 @@ public sealed class TerrainManager : IDisposable
             HeightScale = HeightScale,
             MaterialSlots = SaveMaterialSlotConfigs(),
             Climates = SaveClimateConfigs(),
-            ClimateRules = SaveClimateRuleConfigs()
+            ClimateRules = SaveClimateRuleConfigs(),
+            BiomeLayers = SaveBiomeLayerConfigs(),
+            BiomeModifiers = SaveBiomeModifierConfigs(),
         };
 
         projectManager.SaveConfig(config);
@@ -543,6 +546,7 @@ public sealed class TerrainManager : IDisposable
                 Name = slot.Name,
                 AlbedoPath = slot.AlbedoTexturePath,
                 NormalPath = slot.NormalTexturePath,
+                PropertiesPath = slot.PropertiesTexturePath,
             });
         }
         return configs;
@@ -587,6 +591,65 @@ public sealed class TerrainManager : IDisposable
         return configs;
     }
 
+    private static List<TomlBiomeLayerConfig> SaveBiomeLayerConfigs()
+    {
+        var configs = new List<TomlBiomeLayerConfig>();
+        foreach (ClimateRuleLayer layer in ClimateRuleService.Instance.Rules)
+        {
+            configs.Add(new TomlBiomeLayerConfig
+            {
+                Id = layer.Id,
+                ClimateId = layer.ClimateId,
+                Name = layer.Name,
+                Enabled = layer.Enabled,
+                Visible = layer.Visible,
+                MaterialSlotIndex = layer.MaterialSlotIndex,
+                PriorityOrder = layer.PriorityOrder,
+            });
+        }
+
+        return configs;
+    }
+
+    private static List<TomlBiomeModifierConfig> SaveBiomeModifierConfigs()
+    {
+        var configs = new List<TomlBiomeModifierConfig>();
+        foreach (ClimateRuleLayer layer in ClimateRuleService.Instance.Rules)
+        {
+            foreach (BiomeModifier modifier in layer.Modifiers)
+            {
+                configs.Add(new TomlBiomeModifierConfig
+                {
+                    Id = modifier.Id,
+                    LayerId = layer.Id,
+                    Name = modifier.Name,
+                    Type = modifier.Type.ToString(),
+                    BlendMode = modifier.BlendMode.ToString(),
+                    Enabled = modifier.Enabled,
+                    Visible = modifier.Visible,
+                    Opacity = modifier.Opacity,
+                    Min = modifier.Min,
+                    Max = modifier.Max,
+                    MinFalloff = modifier.MinFalloff,
+                    MaxFalloff = modifier.MaxFalloff,
+                    Radius = modifier.Radius,
+                    AngleDegrees = modifier.AngleDegrees,
+                    AngleRangeDegrees = modifier.AngleRangeDegrees,
+                    Scale = modifier.Scale,
+                    OffsetX = modifier.OffsetX,
+                    OffsetY = modifier.OffsetY,
+                    Seed = modifier.Seed,
+                    Octaves = modifier.Octaves,
+                    Invert = modifier.Invert,
+                    TextureMaskPath = modifier.TextureMaskPath,
+                    TextureMaskChannel = modifier.TextureMaskChannel,
+                });
+            }
+        }
+
+        return configs;
+    }
+
     private static void RestoreClimateData(TomlProjectConfig config)
     {
         var climateState = ClimateRuleService.Instance;
@@ -604,13 +667,73 @@ public sealed class TerrainManager : IDisposable
                     climateConfig.DebugColorA));
         }
 
-        foreach (var ruleConfig in config.ClimateRules)
+        if (config.BiomeLayers.Count > 0)
         {
-            climateState.AddRuleFromConfig(
-                ruleConfig.ClimateId, ruleConfig.Name, ruleConfig.Enabled,
-                ruleConfig.MinAltitude, ruleConfig.MaxAltitude,
-                ruleConfig.MinSlopeDegrees, ruleConfig.MaxSlopeDegrees,
-                ruleConfig.BlendRange, ruleConfig.MaterialSlotIndex);
+            var layerLookup = new Dictionary<int, ClimateRuleLayer>();
+            foreach (TomlBiomeLayerConfig layerConfig in config.BiomeLayers.OrderBy(static entry => entry.PriorityOrder))
+            {
+                ClimateRuleLayer layer = climateState.AddLayer(layerConfig.ClimateId);
+                layer.Id = layerConfig.Id;
+                layer.Name = layerConfig.Name;
+                layer.Enabled = layerConfig.Enabled;
+                layer.Visible = layerConfig.Visible;
+                layer.MaterialSlotIndex = layerConfig.MaterialSlotIndex;
+                layer.PriorityOrder = layerConfig.PriorityOrder;
+                layer.Modifiers.Clear();
+                layerLookup[layer.Id] = layer;
+            }
+
+            foreach (TomlBiomeModifierConfig modifierConfig in config.BiomeModifiers)
+            {
+                if (!layerLookup.TryGetValue(modifierConfig.LayerId, out ClimateRuleLayer? layer))
+                    continue;
+
+                if (!Enum.TryParse(modifierConfig.Type, ignoreCase: true, out BiomeModifierType modifierType))
+                    modifierType = BiomeModifierType.HeightRange;
+
+                if (!Enum.TryParse(modifierConfig.BlendMode, ignoreCase: true, out BiomeModifierBlendMode blendMode))
+                    blendMode = BiomeModifierBlendMode.Multiply;
+
+                layer.Modifiers.Add(new BiomeModifier
+                {
+                    Id = modifierConfig.Id,
+                    Name = modifierConfig.Name,
+                    Type = modifierType,
+                    BlendMode = blendMode,
+                    Enabled = modifierConfig.Enabled,
+                    Visible = modifierConfig.Visible,
+                    Opacity = modifierConfig.Opacity,
+                    Min = modifierConfig.Min,
+                    Max = modifierConfig.Max,
+                    MinFalloff = modifierConfig.MinFalloff,
+                    MaxFalloff = modifierConfig.MaxFalloff,
+                    Radius = modifierConfig.Radius,
+                    AngleDegrees = modifierConfig.AngleDegrees,
+                    AngleRangeDegrees = modifierConfig.AngleRangeDegrees,
+                    Scale = modifierConfig.Scale,
+                    OffsetX = modifierConfig.OffsetX,
+                    OffsetY = modifierConfig.OffsetY,
+                    Seed = modifierConfig.Seed,
+                    Octaves = modifierConfig.Octaves,
+                    Invert = modifierConfig.Invert,
+                    TextureMaskPath = modifierConfig.TextureMaskPath,
+                    TextureMaskChannel = modifierConfig.TextureMaskChannel,
+                });
+            }
+
+            foreach (ClimateRuleLayer layer in layerLookup.Values)
+                layer.EnsureLegacyModifiers();
+        }
+        else
+        {
+            foreach (var ruleConfig in config.ClimateRules)
+            {
+                climateState.AddRuleFromConfig(
+                    ruleConfig.ClimateId, ruleConfig.Name, ruleConfig.Enabled,
+                    ruleConfig.MinAltitude, ruleConfig.MaxAltitude,
+                    ruleConfig.MinSlopeDegrees, ruleConfig.MaxSlopeDegrees,
+                    ruleConfig.BlendRange, ruleConfig.MaterialSlotIndex);
+            }
         }
 
         climateState.NormalizeAllRanges();
@@ -658,6 +781,8 @@ public sealed class TerrainManager : IDisposable
                 slot.AlbedoTexturePath = slotConfig.AlbedoPath;
             if (!string.IsNullOrEmpty(slotConfig.NormalPath))
                 slot.NormalTexturePath = slotConfig.NormalPath;
+            if (!string.IsNullOrEmpty(slotConfig.PropertiesPath))
+                slot.PropertiesTexturePath = slotConfig.PropertiesPath;
         }
 
         // 恢复气候定义和规则

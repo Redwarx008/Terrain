@@ -7,6 +7,25 @@ using System.Numerics;
 
 namespace Terrain.Editor.Services;
 
+public enum BiomeModifierType
+{
+    HeightRange = 0,
+    SlopeRange = 1,
+    CurvatureRange = 2,
+    DirectionRange = 3,
+    Noise = 4,
+    TextureMask = 5,
+}
+
+public enum BiomeModifierBlendMode
+{
+    Multiply = 0,
+    Add = 1,
+    Subtract = 2,
+    Min = 3,
+    Max = 4,
+}
+
 public sealed class ClimateDefinition
 {
     public int Id { get; set; }
@@ -14,22 +33,185 @@ public sealed class ClimateDefinition
     public Vector4 DebugColor { get; set; } = new(0.3f, 0.8f, 0.3f, 1.0f);
 }
 
+public sealed class BiomeModifier
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public BiomeModifierType Type { get; set; }
+    public BiomeModifierBlendMode BlendMode { get; set; } = BiomeModifierBlendMode.Multiply;
+    public bool Enabled { get; set; } = true;
+    public bool Visible { get; set; } = true;
+    public float Opacity { get; set; } = 1.0f;
+
+    public float Min { get; set; }
+    public float Max { get; set; } = 1.0f;
+    public float MinFalloff { get; set; }
+    public float MaxFalloff { get; set; }
+    public float Radius { get; set; } = 1.0f;
+    public float AngleDegrees { get; set; }
+    public float AngleRangeDegrees { get; set; } = 180.0f;
+    public float Scale { get; set; } = 1.0f;
+    public float OffsetX { get; set; }
+    public float OffsetY { get; set; }
+    public float Seed { get; set; }
+    public float Octaves { get; set; } = 4.0f;
+    public float Invert { get; set; }
+    public string? TextureMaskPath { get; set; }
+    public int TextureMaskChannel { get; set; }
+
+    public BiomeModifier Clone()
+    {
+        return (BiomeModifier)MemberwiseClone();
+    }
+}
+
 public sealed class ClimateRuleLayer
 {
-    public string Name { get; set; } = "Rule";
+    private BiomeModifier? legacyHeightModifier;
+    private BiomeModifier? legacySlopeModifier;
+
+    public int Id { get; set; }
+    public string Name { get; set; } = "Layer";
     public bool Enabled { get; set; } = true;
+    public bool Visible { get; set; } = true;
     public int ClimateId { get; set; }
-    public float MinAltitude { get; set; } = 0.0f;
-    public float MaxAltitude { get; set; } = 1000.0f;
-    public float MinSlopeDegrees { get; set; } = 0.0f;
-    public float MaxSlopeDegrees { get; set; } = 45.0f;
-    public float BlendRange { get; set; } = 0.0f;
     public int MaterialSlotIndex { get; set; }
+    public int PriorityOrder { get; set; }
+    public List<BiomeModifier> Modifiers { get; } = new();
+
+    // Compatibility with the previous rule-based UI/persistence.
+    public float MinAltitude
+    {
+        get => GetOrCreateLegacyHeightModifier().Min;
+        set => GetOrCreateLegacyHeightModifier().Min = value;
+    }
+
+    public float MaxAltitude
+    {
+        get => GetOrCreateLegacyHeightModifier().Max;
+        set => GetOrCreateLegacyHeightModifier().Max = value;
+    }
+
+    public float MinSlopeDegrees
+    {
+        get => GetOrCreateLegacySlopeModifier().Min;
+        set => GetOrCreateLegacySlopeModifier().Min = value;
+    }
+
+    public float MaxSlopeDegrees
+    {
+        get => GetOrCreateLegacySlopeModifier().Max;
+        set => GetOrCreateLegacySlopeModifier().Max = value;
+    }
+
+    public float BlendRange
+    {
+        get => MathF.Max(GetOrCreateLegacyHeightModifier().MinFalloff, GetOrCreateLegacyHeightModifier().MaxFalloff);
+        set
+        {
+            float clamped = Math.Clamp(value, 0.0f, 1.0f);
+            BiomeModifier height = GetOrCreateLegacyHeightModifier();
+            height.MinFalloff = clamped;
+            height.MaxFalloff = clamped;
+
+            BiomeModifier slope = GetOrCreateLegacySlopeModifier();
+            slope.MinFalloff = clamped;
+            slope.MaxFalloff = clamped;
+        }
+    }
+
+    public BiomeModifier GetOrCreateLegacyHeightModifier()
+    {
+        if (legacyHeightModifier != null)
+            return legacyHeightModifier;
+
+        legacyHeightModifier = Modifiers.FirstOrDefault(static modifier => modifier.Type == BiomeModifierType.HeightRange)
+            ?? CreateDefaultModifier(BiomeModifierType.HeightRange, "Height range");
+
+        if (!Modifiers.Contains(legacyHeightModifier))
+            Modifiers.Insert(0, legacyHeightModifier);
+
+        return legacyHeightModifier;
+    }
+
+    public BiomeModifier GetOrCreateLegacySlopeModifier()
+    {
+        if (legacySlopeModifier != null)
+            return legacySlopeModifier;
+
+        legacySlopeModifier = Modifiers.FirstOrDefault(static modifier => modifier.Type == BiomeModifierType.SlopeRange)
+            ?? CreateDefaultModifier(BiomeModifierType.SlopeRange, "Slope range");
+
+        if (!Modifiers.Contains(legacySlopeModifier))
+            Modifiers.Add(legacySlopeModifier);
+
+        return legacySlopeModifier;
+    }
+
+    public void EnsureLegacyModifiers()
+    {
+        _ = GetOrCreateLegacyHeightModifier();
+        _ = GetOrCreateLegacySlopeModifier();
+    }
+
+    public static BiomeModifier CreateDefaultModifier(BiomeModifierType type, string? name = null)
+    {
+        return type switch
+        {
+            BiomeModifierType.HeightRange => new BiomeModifier
+            {
+                Type = type,
+                Name = name ?? "Height range",
+                Min = ClimateRuleService.MinHeight,
+                Max = ClimateRuleService.DefaultMaxHeight,
+            },
+            BiomeModifierType.SlopeRange => new BiomeModifier
+            {
+                Type = type,
+                Name = name ?? "Slope range",
+                Min = 0.0f,
+                Max = 90.0f,
+            },
+            BiomeModifierType.CurvatureRange => new BiomeModifier
+            {
+                Type = type,
+                Name = name ?? "Curvature range",
+                Min = -1.0f,
+                Max = 1.0f,
+                Radius = 2.0f,
+            },
+            BiomeModifierType.DirectionRange => new BiomeModifier
+            {
+                Type = type,
+                Name = name ?? "Direction range",
+                Min = -180.0f,
+                Max = 180.0f,
+                AngleRangeDegrees = 90.0f,
+            },
+            BiomeModifierType.Noise => new BiomeModifier
+            {
+                Type = type,
+                Name = name ?? "Noise",
+                Scale = 0.05f,
+                Octaves = 4.0f,
+                Max = 1.0f,
+            },
+            BiomeModifierType.TextureMask => new BiomeModifier
+            {
+                Type = type,
+                Name = name ?? "Texture mask",
+                Max = 1.0f,
+            },
+            _ => new BiomeModifier { Type = type, Name = name ?? type.ToString() }
+        };
+    }
 }
 
 /// <summary>
-/// Keeps the new Climate/Rule editor UI state in one place so both the viewport
-/// and the side panels can react to the same source of truth.
+/// Keeps the terrain texturing authoring state in one place so compute generation,
+/// viewport previews, and inspector UI react to the same source of truth.
+/// Historical "Climate" naming is retained in the type for compatibility, but the
+/// workflow semantics now map to Biome -> Layer -> Modifier Stack.
 /// </summary>
 public sealed class ClimateRuleService
 {
@@ -40,51 +222,38 @@ public sealed class ClimateRuleService
 
     private readonly List<ClimateDefinition> climates = new();
     private readonly List<ClimateRuleLayer> rules = new();
+    private int nextLayerId = 1;
+    private int nextModifierId = 1;
 
     public static ClimateRuleService Instance => InstanceFactory.Value;
 
     public IReadOnlyList<ClimateDefinition> Climates => climates;
+    public IReadOnlyList<ClimateDefinition> Biomes => climates;
     public IReadOnlyList<ClimateRuleLayer> Rules => rules;
+    public IReadOnlyList<ClimateRuleLayer> Layers => rules;
 
     public event EventHandler? StateChanged;
 
     private ClimateRuleService()
     {
-        climates.Add(new ClimateDefinition
-        {
-            Id = 0,
-            Name = "Default Climate",
-            DebugColor = new Vector4(0.27f, 0.80f, 0.31f, 1.0f)
-        });
-
-        rules.Add(new ClimateRuleLayer
-        {
-            Name = "Default Base",
-            ClimateId = 0,
-            MinAltitude = MinHeight,
-            MaxAltitude = DefaultMaxHeight,
-            MaxSlopeDegrees = 60.0f,
-            MaterialSlotIndex = 0
-        });
+        ClimateDefinition biome = AddClimateCore("Default Biome");
+        ClimateRuleLayer layer = AddRuleCore(biome.Id, "Default Base");
+        layer.MaterialSlotIndex = 0;
+        layer.MaxSlopeDegrees = 60.0f;
     }
 
     public ClimateDefinition AddClimate()
     {
-        int nextId = climates.Count == 0 ? 0 : climates[^1].Id + 1;
-        var climate = new ClimateDefinition
-        {
-            Id = nextId,
-            Name = $"Climate {nextId}",
-            DebugColor = BuildDebugColor(nextId)
-        };
-        climates.Add(climate);
+        ClimateDefinition climate = AddClimateCore();
         OnStateChanged();
         return climate;
     }
 
+    public ClimateDefinition AddBiome() => AddClimate();
+
     public bool CanRemoveClimate(int climateId)
     {
-        foreach (var rule in rules)
+        foreach (ClimateRuleLayer rule in rules)
         {
             if (rule.ClimateId == climateId)
                 return false;
@@ -98,7 +267,7 @@ public sealed class ClimateRuleService
         if (!CanRemoveClimate(climateId))
             return false;
 
-        int index = climates.FindIndex(climate => climate.Id >= 0 && climate.Id == climateId);
+        int index = climates.FindIndex(climate => climate.Id == climateId);
         if (index < 0)
             return false;
 
@@ -114,47 +283,20 @@ public sealed class ClimateRuleService
 
     public ClimateRuleLayer AddRule(int climateId)
     {
-        var existingRules = GetRulesForClimate(climateId);
-
-        if (existingRules.Count == 0)
-        {
-            var firstRule = new ClimateRuleLayer
-            {
-                Name = "Rule 1",
-                ClimateId = climateId,
-                MinAltitude = MinHeight,
-                MaxAltitude = DefaultMaxHeight,
-                MaterialSlotIndex = 0
-            };
-            rules.Add(firstRule);
-            NormalizeClimateRanges(climateId);
-            OnStateChanged();
-            return firstRule;
-        }
-
-        var rule = new ClimateRuleLayer
-        {
-            Name = $"Rule {existingRules.Count + 1}",
-            ClimateId = climateId,
-            MinAltitude = MinHeight,
-            MaxAltitude = DefaultMaxHeight,
-            MaterialSlotIndex = 0
-        };
-
-        rules.Add(rule);
-        NormalizeClimateRanges(climateId);
+        ClimateRuleLayer layer = AddRuleCore(climateId);
         OnStateChanged();
-        return rule;
+        return layer;
     }
+
+    public ClimateRuleLayer AddLayer(int biomeId) => AddRule(biomeId);
 
     public void RemoveRuleAt(int index)
     {
         if (index < 0 || index >= rules.Count)
             return;
 
-        ClimateRuleLayer removedRule = rules[index];
         rules.RemoveAt(index);
-        NormalizeClimateRanges(removedRule.ClimateId);
+        RecomputePriorities();
         OnStateChanged();
     }
 
@@ -170,13 +312,50 @@ public sealed class ClimateRuleService
         ClimateRuleLayer rule = rules[fromIndex];
         rules.RemoveAt(fromIndex);
         rules.Insert(toIndex, rule);
-        NormalizeClimateRanges(rule.ClimateId);
+        RecomputePriorities();
+        OnStateChanged();
+    }
+
+    public BiomeModifier AddModifier(ClimateRuleLayer layer, BiomeModifierType type)
+    {
+        ArgumentNullException.ThrowIfNull(layer);
+
+        BiomeModifier modifier = ClimateRuleLayer.CreateDefaultModifier(type);
+        modifier.Id = nextModifierId++;
+        layer.Modifiers.Add(modifier);
+        layer.EnsureLegacyModifiers();
+        OnStateChanged();
+        return modifier;
+    }
+
+    public void RemoveModifier(ClimateRuleLayer layer, int modifierIndex)
+    {
+        ArgumentNullException.ThrowIfNull(layer);
+
+        if ((uint)modifierIndex >= (uint)layer.Modifiers.Count)
+            return;
+
+        layer.Modifiers.RemoveAt(modifierIndex);
+        layer.EnsureLegacyModifiers();
+        OnStateChanged();
+    }
+
+    public void MoveModifier(ClimateRuleLayer layer, int fromIndex, int toIndex)
+    {
+        ArgumentNullException.ThrowIfNull(layer);
+
+        if ((uint)fromIndex >= (uint)layer.Modifiers.Count || (uint)toIndex >= (uint)layer.Modifiers.Count || fromIndex == toIndex)
+            return;
+
+        BiomeModifier modifier = layer.Modifiers[fromIndex];
+        layer.Modifiers.RemoveAt(fromIndex);
+        layer.Modifiers.Insert(toIndex, modifier);
         OnStateChanged();
     }
 
     public ClimateDefinition? FindClimate(int climateId)
     {
-        foreach (var climate in climates)
+        foreach (ClimateDefinition climate in climates)
         {
             if (climate.Id == climateId)
                 return climate;
@@ -185,12 +364,14 @@ public sealed class ClimateRuleService
         return null;
     }
 
+    public ClimateDefinition? FindBiome(int biomeId) => FindClimate(biomeId);
+
     public IReadOnlyList<ClimateRuleLayer> GetRulesForClimate(int climateId)
     {
-        return rules
-            .Where(r => r.ClimateId == climateId)
-            .ToList();
+        return rules.Where(r => r.ClimateId == climateId).ToList();
     }
+
+    public IReadOnlyList<ClimateRuleLayer> GetLayersForBiome(int biomeId) => GetRulesForClimate(biomeId);
 
     public ClimateRuleLayer? GetRuleByGlobalIndex(int index)
     {
@@ -216,7 +397,7 @@ public sealed class ClimateRuleService
         if (rule == null)
             return -1;
 
-        var sameClimateRules = GetRulesForClimate(rule.ClimateId);
+        IReadOnlyList<ClimateRuleLayer> sameClimateRules = GetRulesForClimate(rule.ClimateId);
         for (int i = 0; i < sameClimateRules.Count; i++)
         {
             if (ReferenceEquals(sameClimateRules[i], rule))
@@ -231,37 +412,13 @@ public sealed class ClimateRuleService
         if (ruleIndex < 0 || ruleIndex >= rules.Count)
             return;
 
-        var rule = rules[ruleIndex];
-        var sameClimateRules = GetRulesForClimate(rule.ClimateId);
-        int localRuleIndex = GetLocalRuleIndex(sameClimateRules, rule);
+        ClimateRuleLayer rule = rules[ruleIndex];
+        BiomeModifier modifier = rule.GetOrCreateLegacyHeightModifier();
 
-        if (localRuleIndex < 0)
-            return;
-
-        ClimateRuleLayer? previousRule = localRuleIndex > 0 ? sameClimateRules[localRuleIndex - 1] : null;
-        ClimateRuleLayer? nextRule = localRuleIndex < sameClimateRules.Count - 1 ? sameClimateRules[localRuleIndex + 1] : null;
-
-        if (newMin.HasValue)
-        {
-            float upperBound = newMax ?? rule.MaxAltitude;
-            float clampedMin = Math.Clamp(newMin.Value, MinHeight, upperBound);
-            rule.MinAltitude = clampedMin;
-
-            if (previousRule != null)
-                previousRule.MaxAltitude = clampedMin;
-        }
-
-        if (newMax.HasValue)
-        {
-            float lowerBound = newMin ?? rule.MinAltitude;
-            float clampedMax = MathF.Max(newMax.Value, lowerBound);
-            rule.MaxAltitude = clampedMax;
-
-            if (nextRule != null)
-                nextRule.MinAltitude = clampedMax;
-        }
-
-        NormalizeClimateRanges(rule.ClimateId);
+        float minValue = newMin ?? modifier.Min;
+        float maxValue = newMax ?? modifier.Max;
+        modifier.Min = Math.Clamp(MathF.Min(minValue, maxValue), MinHeight, DefaultMaxHeight);
+        modifier.Max = Math.Clamp(MathF.Max(minValue, maxValue), modifier.Min, DefaultMaxHeight);
         OnStateChanged();
     }
 
@@ -270,37 +427,13 @@ public sealed class ClimateRuleService
         if (ruleIndex < 0 || ruleIndex >= rules.Count)
             return;
 
-        var rule = rules[ruleIndex];
-        var sameClimateRules = GetRulesForClimate(rule.ClimateId);
-        int localRuleIndex = GetLocalRuleIndex(sameClimateRules, rule);
+        ClimateRuleLayer rule = rules[ruleIndex];
+        BiomeModifier modifier = rule.GetOrCreateLegacySlopeModifier();
 
-        if (localRuleIndex < 0)
-            return;
-
-        ClimateRuleLayer? previousRule = localRuleIndex > 0 ? sameClimateRules[localRuleIndex - 1] : null;
-        ClimateRuleLayer? nextRule = localRuleIndex < sameClimateRules.Count - 1 ? sameClimateRules[localRuleIndex + 1] : null;
-
-        if (newMin.HasValue)
-        {
-            float upperBound = newMax ?? rule.MaxSlopeDegrees;
-            float clampedMin = Math.Clamp(newMin.Value, 0.0f, upperBound);
-            rule.MinSlopeDegrees = clampedMin;
-
-            if (previousRule != null)
-                previousRule.MaxSlopeDegrees = clampedMin;
-        }
-
-        if (newMax.HasValue)
-        {
-            float lowerBound = newMin ?? rule.MinSlopeDegrees;
-            float clampedMax = Math.Clamp(newMax.Value, lowerBound, 90.0f);
-            rule.MaxSlopeDegrees = clampedMax;
-
-            if (nextRule != null)
-                nextRule.MinSlopeDegrees = clampedMax;
-        }
-
-        NormalizeClimateRanges(rule.ClimateId);
+        float minValue = newMin ?? modifier.Min;
+        float maxValue = newMax ?? modifier.Max;
+        modifier.Min = Math.Clamp(MathF.Min(minValue, maxValue), 0.0f, 90.0f);
+        modifier.Max = Math.Clamp(MathF.Max(minValue, maxValue), modifier.Min, 90.0f);
         OnStateChanged();
     }
 
@@ -308,87 +441,119 @@ public sealed class ClimateRuleService
     {
         climates.Clear();
         rules.Clear();
+        nextLayerId = 1;
+        nextModifierId = 1;
     }
 
     public void AddClimateFromConfig(int id, string name, Vector4 debugColor)
     {
-        var climate = new ClimateDefinition
+        ClimateDefinition climate = new()
         {
             Id = id,
             Name = name,
-            DebugColor = debugColor
+            DebugColor = debugColor,
         };
         climates.Add(climate);
     }
 
-    public void AddRuleFromConfig(int climateId, string name, bool enabled,
-        float minAltitude, float maxAltitude, float minSlopeDegrees, float maxSlopeDegrees,
-        float blendRange, int materialSlotIndex)
+    public void AddRuleFromConfig(
+        int climateId,
+        string name,
+        bool enabled,
+        float minAltitude,
+        float maxAltitude,
+        float minSlopeDegrees,
+        float maxSlopeDegrees,
+        float blendRange,
+        int materialSlotIndex)
     {
-        var rule = new ClimateRuleLayer
-        {
-            ClimateId = climateId,
-            Name = name,
-            Enabled = enabled,
-            MinAltitude = minAltitude,
-            MaxAltitude = maxAltitude,
-            MinSlopeDegrees = minSlopeDegrees,
-            MaxSlopeDegrees = maxSlopeDegrees,
-            BlendRange = blendRange,
-            MaterialSlotIndex = materialSlotIndex
-        };
-        rules.Add(rule);
+        ClimateRuleLayer layer = AddRuleCore(climateId, name);
+        layer.Enabled = enabled;
+        layer.MaterialSlotIndex = materialSlotIndex;
+        layer.MinAltitude = minAltitude;
+        layer.MaxAltitude = maxAltitude;
+        layer.MinSlopeDegrees = minSlopeDegrees;
+        layer.MaxSlopeDegrees = maxSlopeDegrees;
+        layer.BlendRange = blendRange;
     }
 
     public void NormalizeAllRanges()
     {
-        foreach (int climateId in climates.Select(static climate => climate.Id))
+        foreach (ClimateRuleLayer rule in rules)
         {
-            NormalizeClimateRanges(climateId);
+            rule.MinAltitude = Math.Clamp(rule.MinAltitude, MinHeight, DefaultMaxHeight);
+            rule.MaxAltitude = Math.Clamp(rule.MaxAltitude, rule.MinAltitude, DefaultMaxHeight);
+            rule.MinSlopeDegrees = Math.Clamp(rule.MinSlopeDegrees, 0.0f, 90.0f);
+            rule.MaxSlopeDegrees = Math.Clamp(rule.MaxSlopeDegrees, rule.MinSlopeDegrees, 90.0f);
+            rule.BlendRange = Math.Clamp(rule.BlendRange, 0.0f, 1.0f);
         }
+
+        RecomputePriorities();
     }
 
     public void NormalizeClimateRanges(int climateId)
     {
-        var sameClimateRules = GetRulesForClimate(climateId).ToList();
-        if (sameClimateRules.Count == 0)
-            return;
-
-        for (int i = 0; i < sameClimateRules.Count; i++)
+        foreach (ClimateRuleLayer rule in rules.Where(static rule => rule.Enabled))
         {
-            ClimateRuleLayer climateRule = sameClimateRules[i];
-
-            climateRule.MinAltitude = MathF.Max(climateRule.MinAltitude, MinHeight);
-            climateRule.MaxAltitude = MathF.Max(climateRule.MaxAltitude, climateRule.MinAltitude);
-            climateRule.MinSlopeDegrees = Math.Clamp(climateRule.MinSlopeDegrees, 0.0f, 90.0f);
-            climateRule.MaxSlopeDegrees = Math.Clamp(climateRule.MaxSlopeDegrees, climateRule.MinSlopeDegrees, 90.0f);
-            climateRule.BlendRange = Math.Clamp(climateRule.BlendRange, 0.0f, 1.0f);
-
-            if (i == 0)
+            if (rule.ClimateId != climateId)
                 continue;
 
-            ClimateRuleLayer previousRule = sameClimateRules[i - 1];
-            climateRule.MinAltitude = previousRule.MaxAltitude;
-            climateRule.MaxAltitude = MathF.Max(climateRule.MaxAltitude, climateRule.MinAltitude);
-            climateRule.MinSlopeDegrees = previousRule.MaxSlopeDegrees;
-            climateRule.MaxSlopeDegrees = Math.Clamp(climateRule.MaxSlopeDegrees, climateRule.MinSlopeDegrees, 90.0f);
+            rule.MinAltitude = Math.Clamp(rule.MinAltitude, MinHeight, DefaultMaxHeight);
+            rule.MaxAltitude = Math.Clamp(rule.MaxAltitude, rule.MinAltitude, DefaultMaxHeight);
+            rule.MinSlopeDegrees = Math.Clamp(rule.MinSlopeDegrees, 0.0f, 90.0f);
+            rule.MaxSlopeDegrees = Math.Clamp(rule.MaxSlopeDegrees, rule.MinSlopeDegrees, 90.0f);
         }
     }
 
     public void NotifyMutated()
     {
+        RecomputePriorities();
         OnStateChanged();
     }
 
-    private int GetLocalRuleIndex(IReadOnlyList<ClimateRuleLayer> sameClimateRules, ClimateRuleLayer rule)
+    private ClimateDefinition AddClimateCore(string? explicitName = null)
     {
-        for (int i = 0; i < sameClimateRules.Count; i++)
+        int nextId = climates.Count == 0 ? 0 : climates[^1].Id + 1;
+        ClimateDefinition climate = new()
         {
-            if (ReferenceEquals(sameClimateRules[i], rule))
-                return i;
-        }
+            Id = nextId,
+            Name = explicitName ?? $"Biome {nextId}",
+            DebugColor = BuildDebugColor(nextId),
+        };
+        climates.Add(climate);
+        return climate;
+    }
 
-        return -1;
+    private ClimateRuleLayer AddRuleCore(int climateId, string? explicitName = null)
+    {
+        ClimateRuleLayer layer = new()
+        {
+            Id = nextLayerId++,
+            Name = explicitName ?? $"Layer {rules.Count(r => r.ClimateId == climateId) + 1}",
+            ClimateId = climateId,
+            PriorityOrder = rules.Count,
+            MaterialSlotIndex = 0,
+        };
+
+        BiomeModifier height = ClimateRuleLayer.CreateDefaultModifier(BiomeModifierType.HeightRange, "Height range");
+        height.Id = nextModifierId++;
+        height.Min = MinHeight;
+        height.Max = DefaultMaxHeight;
+        layer.Modifiers.Add(height);
+
+        BiomeModifier slope = ClimateRuleLayer.CreateDefaultModifier(BiomeModifierType.SlopeRange, "Slope range");
+        slope.Id = nextModifierId++;
+        layer.Modifiers.Add(slope);
+
+        layer.EnsureLegacyModifiers();
+        rules.Add(layer);
+        return layer;
+    }
+
+    private void RecomputePriorities()
+    {
+        for (int i = 0; i < rules.Count; i++)
+            rules[i].PriorityOrder = i;
     }
 
     private void OnStateChanged()

@@ -13,7 +13,7 @@ namespace Terrain.Editor.Services;
 /// </summary>
 public class TomlProjectConfig
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public string Name { get; set; } = "Untitled";
     public string? HeightmapPath { get; set; }
     public string? ClimateMaskPath { get; set; }
@@ -21,6 +21,8 @@ public class TomlProjectConfig
     public List<TomlMaterialSlotConfig> MaterialSlots { get; set; } = new();
     public List<TomlClimateDefinitionConfig> Climates { get; set; } = new();
     public List<TomlClimateRuleConfig> ClimateRules { get; set; } = new();
+    public List<TomlBiomeLayerConfig> BiomeLayers { get; set; } = new();
+    public List<TomlBiomeModifierConfig> BiomeModifiers { get; set; } = new();
 
     /// <summary>
     /// 从 .toml 文件读取配置。路径自动解析为绝对路径。
@@ -81,6 +83,9 @@ public class TomlProjectConfig
                         : null,
                     NormalPath = slotNode.HasKey("normal") && slotNode["normal"].IsString
                         ? ResolvePath(slotNode["normal"].AsString.Value, baseDir)
+                        : null,
+                    PropertiesPath = slotNode.HasKey("properties") && slotNode["properties"].IsString
+                        ? ResolvePath(slotNode["properties"].AsString.Value, baseDir)
                         : null,
                 };
                 config.MaterialSlots.Add(slot);
@@ -169,6 +174,66 @@ public class TomlProjectConfig
             }
         }
 
+        if (root.HasKey("biome_layers") && root["biome_layers"].IsArray)
+        {
+            foreach (TomlNode layerNode in root["biome_layers"].AsArray)
+            {
+                if (!layerNode.IsTable)
+                    continue;
+
+                config.BiomeLayers.Add(new TomlBiomeLayerConfig
+                {
+                    Id = layerNode.HasKey("id") && layerNode["id"].IsInteger ? (int)layerNode["id"].AsInteger : 0,
+                    ClimateId = layerNode.HasKey("biome_id") && layerNode["biome_id"].IsInteger ? (int)layerNode["biome_id"].AsInteger : 0,
+                    Name = layerNode.HasKey("name") && layerNode["name"].IsString ? layerNode["name"].AsString.Value : "Layer",
+                    Enabled = layerNode.HasKey("enabled") && layerNode["enabled"].IsBoolean ? layerNode["enabled"].AsBoolean.Value : true,
+                    Visible = layerNode.HasKey("visible") && layerNode["visible"].IsBoolean ? layerNode["visible"].AsBoolean.Value : true,
+                    MaterialSlotIndex = layerNode.HasKey("material_slot") && layerNode["material_slot"].IsInteger ? (int)layerNode["material_slot"].AsInteger : 0,
+                    PriorityOrder = layerNode.HasKey("priority") && layerNode["priority"].IsInteger ? (int)layerNode["priority"].AsInteger : 0,
+                });
+            }
+        }
+
+        if (root.HasKey("biome_modifiers") && root["biome_modifiers"].IsArray)
+        {
+            foreach (TomlNode modifierNode in root["biome_modifiers"].AsArray)
+            {
+                if (!modifierNode.IsTable)
+                    continue;
+
+                config.BiomeModifiers.Add(new TomlBiomeModifierConfig
+                {
+                    Id = modifierNode.HasKey("id") && modifierNode["id"].IsInteger ? (int)modifierNode["id"].AsInteger : 0,
+                    LayerId = modifierNode.HasKey("layer_id") && modifierNode["layer_id"].IsInteger ? (int)modifierNode["layer_id"].AsInteger : 0,
+                    Name = modifierNode.HasKey("name") && modifierNode["name"].IsString ? modifierNode["name"].AsString.Value : "Modifier",
+                    Type = modifierNode.HasKey("type") && modifierNode["type"].IsString ? modifierNode["type"].AsString.Value : "HeightRange",
+                    BlendMode = modifierNode.HasKey("blend_mode") && modifierNode["blend_mode"].IsString ? modifierNode["blend_mode"].AsString.Value : "Multiply",
+                    Enabled = modifierNode.HasKey("enabled") && modifierNode["enabled"].IsBoolean ? modifierNode["enabled"].AsBoolean.Value : true,
+                    Visible = modifierNode.HasKey("visible") && modifierNode["visible"].IsBoolean ? modifierNode["visible"].AsBoolean.Value : true,
+                    Opacity = ReadFloat(modifierNode, "opacity", 1.0f),
+                    Min = ReadFloat(modifierNode, "min", 0.0f),
+                    Max = ReadFloat(modifierNode, "max", 1.0f),
+                    MinFalloff = ReadFloat(modifierNode, "min_falloff", 0.0f),
+                    MaxFalloff = ReadFloat(modifierNode, "max_falloff", 0.0f),
+                    Radius = ReadFloat(modifierNode, "radius", 1.0f),
+                    AngleDegrees = ReadFloat(modifierNode, "angle_degrees", 0.0f),
+                    AngleRangeDegrees = ReadFloat(modifierNode, "angle_range_degrees", 180.0f),
+                    Scale = ReadFloat(modifierNode, "scale", 1.0f),
+                    OffsetX = ReadFloat(modifierNode, "offset_x", 0.0f),
+                    OffsetY = ReadFloat(modifierNode, "offset_y", 0.0f),
+                    Seed = ReadFloat(modifierNode, "seed", 0.0f),
+                    Octaves = ReadFloat(modifierNode, "octaves", 4.0f),
+                    Invert = ReadFloat(modifierNode, "invert", 0.0f),
+                    TextureMaskPath = modifierNode.HasKey("texture_mask") && modifierNode["texture_mask"].IsString
+                        ? ResolvePath(modifierNode["texture_mask"].AsString.Value, baseDir)
+                        : null,
+                    TextureMaskChannel = modifierNode.HasKey("texture_mask_channel") && modifierNode["texture_mask_channel"].IsInteger
+                        ? (int)modifierNode["texture_mask_channel"].AsInteger
+                        : 0,
+                });
+            }
+        }
+
         return config;
     }
 
@@ -203,6 +268,8 @@ public class TomlProjectConfig
                     slotTable["albedo"] = MakeRelative(slot.AlbedoPath, baseDir);
                 if (!string.IsNullOrEmpty(slot.NormalPath))
                     slotTable["normal"] = MakeRelative(slot.NormalPath, baseDir);
+                if (!string.IsNullOrEmpty(slot.PropertiesPath))
+                    slotTable["properties"] = MakeRelative(slot.PropertiesPath, baseDir);
                 slotsArray.Add(slotTable);
             }
             root["material_slots"] = slotsArray;
@@ -245,6 +312,59 @@ public class TomlProjectConfig
             root["climate_rules"] = rulesArray;
         }
 
+        if (BiomeLayers.Count > 0)
+        {
+            var layersArray = new TomlArray();
+            foreach (TomlBiomeLayerConfig layer in BiomeLayers)
+            {
+                var layerTable = new TomlTable();
+                layerTable["id"] = layer.Id;
+                layerTable["biome_id"] = layer.ClimateId;
+                layerTable["name"] = layer.Name;
+                layerTable["enabled"] = layer.Enabled;
+                layerTable["visible"] = layer.Visible;
+                layerTable["material_slot"] = layer.MaterialSlotIndex;
+                layerTable["priority"] = layer.PriorityOrder;
+                layersArray.Add(layerTable);
+            }
+            root["biome_layers"] = layersArray;
+        }
+
+        if (BiomeModifiers.Count > 0)
+        {
+            var modifiersArray = new TomlArray();
+            foreach (TomlBiomeModifierConfig modifier in BiomeModifiers)
+            {
+                var modifierTable = new TomlTable();
+                modifierTable["id"] = modifier.Id;
+                modifierTable["layer_id"] = modifier.LayerId;
+                modifierTable["name"] = modifier.Name;
+                modifierTable["type"] = modifier.Type;
+                modifierTable["blend_mode"] = modifier.BlendMode;
+                modifierTable["enabled"] = modifier.Enabled;
+                modifierTable["visible"] = modifier.Visible;
+                modifierTable["opacity"] = modifier.Opacity;
+                modifierTable["min"] = modifier.Min;
+                modifierTable["max"] = modifier.Max;
+                modifierTable["min_falloff"] = modifier.MinFalloff;
+                modifierTable["max_falloff"] = modifier.MaxFalloff;
+                modifierTable["radius"] = modifier.Radius;
+                modifierTable["angle_degrees"] = modifier.AngleDegrees;
+                modifierTable["angle_range_degrees"] = modifier.AngleRangeDegrees;
+                modifierTable["scale"] = modifier.Scale;
+                modifierTable["offset_x"] = modifier.OffsetX;
+                modifierTable["offset_y"] = modifier.OffsetY;
+                modifierTable["seed"] = modifier.Seed;
+                modifierTable["octaves"] = modifier.Octaves;
+                modifierTable["invert"] = modifier.Invert;
+                modifierTable["texture_mask_channel"] = modifier.TextureMaskChannel;
+                if (!string.IsNullOrEmpty(modifier.TextureMaskPath))
+                    modifierTable["texture_mask"] = MakeRelative(modifier.TextureMaskPath, baseDir);
+                modifiersArray.Add(modifierTable);
+            }
+            root["biome_modifiers"] = modifiersArray;
+        }
+
         // 确保目录存在
 
         using var writer = File.CreateText(tomlFilePath);
@@ -283,6 +403,19 @@ public class TomlProjectConfig
 
         return Path.GetFullPath(Path.Combine(baseDir, relativeOrAbsolute.Replace('/', Path.DirectorySeparatorChar)));
     }
+
+    private static float ReadFloat(TomlNode node, string key, float fallback)
+    {
+        if (!node.HasKey(key))
+            return fallback;
+
+        TomlNode value = node[key];
+        if (value.IsFloat)
+            return (float)value.AsFloat.Value;
+        if (value.IsInteger)
+            return (float)value.AsInteger.Value;
+        return fallback;
+    }
 }
 
 /// <summary>
@@ -294,6 +427,7 @@ public class TomlMaterialSlotConfig
     public string Name { get; set; } = "";
     public string? AlbedoPath { get; set; }
     public string? NormalPath { get; set; }
+    public string? PropertiesPath { get; set; }
 }
 
 public class TomlClimateDefinitionConfig
@@ -317,4 +451,42 @@ public class TomlClimateRuleConfig
     public float MaxSlopeDegrees { get; set; } = 45.0f;
     public float BlendRange { get; set; }
     public int MaterialSlotIndex { get; set; }
+}
+
+public class TomlBiomeLayerConfig
+{
+    public int Id { get; set; }
+    public int ClimateId { get; set; }
+    public string Name { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+    public bool Visible { get; set; } = true;
+    public int MaterialSlotIndex { get; set; }
+    public int PriorityOrder { get; set; }
+}
+
+public class TomlBiomeModifierConfig
+{
+    public int Id { get; set; }
+    public int LayerId { get; set; }
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "";
+    public string BlendMode { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+    public bool Visible { get; set; } = true;
+    public float Opacity { get; set; } = 1.0f;
+    public float Min { get; set; }
+    public float Max { get; set; } = 1.0f;
+    public float MinFalloff { get; set; }
+    public float MaxFalloff { get; set; }
+    public float Radius { get; set; } = 1.0f;
+    public float AngleDegrees { get; set; }
+    public float AngleRangeDegrees { get; set; } = 180.0f;
+    public float Scale { get; set; } = 1.0f;
+    public float OffsetX { get; set; }
+    public float OffsetY { get; set; }
+    public float Seed { get; set; }
+    public float Octaves { get; set; } = 4.0f;
+    public float Invert { get; set; }
+    public string? TextureMaskPath { get; set; }
+    public int TextureMaskChannel { get; set; }
 }

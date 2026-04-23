@@ -34,25 +34,29 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
         EditorTerrainEntity? entity = renderObject.TerrainEntity;
         if (entity == null || !entity.HasDirtyClimateSplatMap)
             return;
-        if (entity.ClimateMaskTexture == null || entity.ClimateRuleBuffer == null)
+        if (entity.ClimateMaskTexture == null || entity.BiomeBuffer == null || entity.LayerBuffer == null || entity.ModifierBuffer == null)
             return;
 
         CommandList commandList = drawContext.CommandList;
 
         commandList.ResourceBarrierTransition(entity.ClimateMaskTexture, GraphicsResourceState.NonPixelShaderResource);
-        commandList.ResourceBarrierTransition(entity.ClimateRuleBuffer, GraphicsResourceState.NonPixelShaderResource);
+        commandList.ResourceBarrierTransition(entity.BiomeBuffer, GraphicsResourceState.NonPixelShaderResource);
+        commandList.ResourceBarrierTransition(entity.LayerBuffer, GraphicsResourceState.NonPixelShaderResource);
+        commandList.ResourceBarrierTransition(entity.ModifierBuffer, GraphicsResourceState.NonPixelShaderResource);
 
         for (int i = 0; i < entity.Slices.Count; i++)
         {
             EditorTerrainSlice slice = entity.Slices[i];
-            Texture? outputTexture = entity.MaterialIndexMapTextures[i];
-            if (!slice.ClimateSplatDirty || outputTexture == null)
+            Texture? outputIndexTexture = entity.DetailIndexMapTextures[i];
+            Texture? outputWeightTexture = entity.DetailWeightMapTextures[i];
+            if (!slice.ClimateSplatDirty || outputIndexTexture == null || outputWeightTexture == null)
                 continue;
 
-            int groupCountX = (outputTexture.Width + ThreadCountX - 1) / ThreadCountX;
-            int groupCountY = (outputTexture.Height + ThreadCountY - 1) / ThreadCountY;
+            int groupCountX = (outputIndexTexture.Width + ThreadCountX - 1) / ThreadCountX;
+            int groupCountY = (outputIndexTexture.Height + ThreadCountY - 1) / ThreadCountY;
 
-            commandList.ResourceBarrierTransition(outputTexture, GraphicsResourceState.UnorderedAccess);
+            commandList.ResourceBarrierTransition(outputIndexTexture, GraphicsResourceState.UnorderedAccess);
+            commandList.ResourceBarrierTransition(outputWeightTexture, GraphicsResourceState.UnorderedAccess);
 
             using (Profiler.Begin(BuildSplatMapKey))
             {
@@ -74,18 +78,24 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlicePadding, 0);
 
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateMaskTexture, entity.ClimateMaskTexture);
-                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateRules, entity.ClimateRuleBuffer);
-                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputIndexMap, outputTexture);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.Biomes, entity.BiomeBuffer);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.Layers, entity.LayerBuffer);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.Modifiers, entity.ModifierBuffer);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputIndexMap, outputIndexTexture);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputWeightMap, outputWeightTexture);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.CurrentSliceIndex, i);
-                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputWidth, outputTexture.Width);
-                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputHeight, outputTexture.Height);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputWidth, outputIndexTexture.Width);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputHeight, outputIndexTexture.Height);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateMaskWidth, entity.ClimateMaskTexture.Width);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateMaskHeight, entity.ClimateMaskTexture.Height);
-                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.RuleCount, entity.ClimateRuleCount);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.BiomeCount, entity.BiomeCount);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.LayerCount, entity.LayerCount);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ModifierCount, entity.ModifierCount);
                 buildSplatMapEffect.Draw(drawContext);
             }
 
-            commandList.ResourceBarrierTransition(outputTexture, GraphicsResourceState.PixelShaderResource);
+            commandList.ResourceBarrierTransition(outputIndexTexture, GraphicsResourceState.PixelShaderResource);
+            commandList.ResourceBarrierTransition(outputWeightTexture, GraphicsResourceState.PixelShaderResource);
             entity.ClearClimateSplatDirty(i);
         }
     }

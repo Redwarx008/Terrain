@@ -202,12 +202,13 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         // Match the reference fixed-strength behavior for height-like blend contrast.
         parameters.Set(EditorTerrainDiffuseKeys.DetailContrast, 2.0f);
 
-        // Set material index map slice textures
+        // Set detail control map slice textures
         SetIndexMapSliceTextures(parameters, entity);
+        SetWeightMapSliceTextures(parameters, entity);
         parameters.Set(EditorTerrainDiffuseKeys.MaterialIndexSampler, graphicsDevice.SamplerStates.PointClamp);
 
         // Set material texture array parameters
-        var albedoArray = MaterialSlotManager.Instance.GetMaterialAlbedoArray();
+        var albedoArray = MaterialSlotManager.Instance.GetMaterialDiffuseHeightArray();
         if (albedoArray != null)
         {
             parameters.Set(EditorTerrainDiffuseKeys.MaterialAlbedoArray, albedoArray);
@@ -232,7 +233,20 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
             parameters.Set(EditorTerrainDiffuseKeys.MaterialNormalArraySize, 0);
         }
 
+        var propertiesArray = MaterialSlotManager.Instance.GetMaterialPropertiesArray();
+        if (propertiesArray != null)
+        {
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialPropertiesArray, propertiesArray);
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialPropertiesSampler, graphicsDevice.SamplerStates.LinearWrap);
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialPropertiesArraySize, propertiesArray.ArraySize);
+        }
+        else
+        {
+            parameters.Set(EditorTerrainDiffuseKeys.MaterialPropertiesArraySize, 0);
+        }
+
         parameters.Set(EditorTerrainDiffuseKeys.MaterialTilingScale, 1.0f);
+        parameters.Set(EditorTerrainDiffuseKeys.DetailBlendRange, 0.25f);
     }
 
     private static void SetSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity, EditorTerrainRenderObject renderObject)
@@ -301,13 +315,25 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
 
     private static void SetIndexMapSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity)
     {
-        var textures = entity.MaterialIndexMapTextures;
+        var textures = entity.DetailIndexMapTextures;
         var fallback = textures.Length > 0 ? textures[0] : null;
 
         for (int i = 0; i < 8; i++)
         {
             var texture = i < textures.Length ? textures[i] : fallback;
             SetIndexMapSliceTexture(parameters, i, texture);
+        }
+    }
+
+    private static void SetWeightMapSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity)
+    {
+        var textures = entity.DetailWeightMapTextures;
+        var fallback = textures.Length > 0 ? textures[0] : null;
+
+        for (int i = 0; i < 8; i++)
+        {
+            var texture = i < textures.Length ? textures[i] : fallback;
+            SetWeightMapSliceTexture(parameters, i, texture);
         }
     }
 
@@ -326,6 +352,24 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
             case 5: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice5, texture); break;
             case 6: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice6, texture); break;
             case 7: parameters.Set(EditorTerrainHeightParametersKeys.IndexMapSlice7, texture); break;
+        }
+    }
+
+    private static void SetWeightMapSliceTexture(ParameterCollection parameters, int sliceIndex, Texture? texture)
+    {
+        if (texture == null)
+            return;
+
+        switch (sliceIndex)
+        {
+            case 0: parameters.Set(EditorTerrainHeightParametersKeys.WeightMapSlice0, texture); break;
+            case 1: parameters.Set(EditorTerrainHeightParametersKeys.WeightMapSlice1, texture); break;
+            case 2: parameters.Set(EditorTerrainHeightParametersKeys.WeightMapSlice2, texture); break;
+            case 3: parameters.Set(EditorTerrainHeightParametersKeys.WeightMapSlice3, texture); break;
+            case 4: parameters.Set(EditorTerrainHeightParametersKeys.WeightMapSlice4, texture); break;
+            case 5: parameters.Set(EditorTerrainHeightParametersKeys.WeightMapSlice5, texture); break;
+            case 6: parameters.Set(EditorTerrainHeightParametersKeys.WeightMapSlice6, texture); break;
+            case 7: parameters.Set(EditorTerrainHeightParametersKeys.WeightMapSlice7, texture); break;
         }
     }
 }

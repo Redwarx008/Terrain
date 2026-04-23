@@ -56,6 +56,11 @@ public class MaterialDescriptorExporter : IExporter
                 else
                     slotTable["normal"] = "";
 
+                if (!string.IsNullOrEmpty(slot.PropertiesTexturePath))
+                    slotTable["properties"] = TomlProjectConfig.MakeRelative(slot.PropertiesTexturePath, outputDir);
+                else
+                    slotTable["properties"] = "";
+
                 slotsArray.Add(slotTable);
             }
 

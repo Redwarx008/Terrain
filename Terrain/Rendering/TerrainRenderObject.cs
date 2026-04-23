@@ -13,13 +13,16 @@ namespace Terrain;
 public sealed class TerrainRenderObject : RenderMesh
 {
     public Texture? HeightmapArray;
-    public Texture? SplatMapArray;
+    public Texture? DetailIndexMapArray;
+    public Texture? DetailWeightMapArray;
     public Buffer? ChunkNodeBuffer;
     public Buffer? LodLookupBuffer;
     public Buffer? LodLookupLayoutBuffer;
     public Texture? LodMapTexture;
     public Buffer? PatchVertexBuffer;
     public Buffer? PatchIndexBuffer;
+
+    public Texture? SplatMapArray => DetailIndexMapArray;
 
     public TerrainRenderObject()
     {
@@ -55,12 +58,21 @@ public sealed class TerrainRenderObject : RenderMesh
             TextureFlags.ShaderResource,
             maxResidentChunks);
 
-        SplatMapArray = Texture.New2D(
+        DetailIndexMapArray = Texture.New2D(
             graphicsDevice,
             fullSplatTileSize,
             fullSplatTileSize,
             1,
-            PixelFormat.R8_UNorm,
+            PixelFormat.R8G8B8A8_UNorm,
+            TextureFlags.ShaderResource,
+            maxResidentChunks);
+
+        DetailWeightMapArray = Texture.New2D(
+            graphicsDevice,
+            fullSplatTileSize,
+            fullSplatTileSize,
+            1,
+            PixelFormat.R8G8B8A8_UNorm,
             TextureFlags.ShaderResource,
             maxResidentChunks);
 
@@ -255,8 +267,11 @@ public sealed class TerrainRenderObject : RenderMesh
         HeightmapArray?.Dispose();
         HeightmapArray = null;
 
-        SplatMapArray?.Dispose();
-        SplatMapArray = null;
+        DetailIndexMapArray?.Dispose();
+        DetailIndexMapArray = null;
+
+        DetailWeightMapArray?.Dispose();
+        DetailWeightMapArray = null;
 
         ChunkNodeBuffer?.Dispose();
         ChunkNodeBuffer = null;

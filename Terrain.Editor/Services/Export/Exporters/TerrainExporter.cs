@@ -35,21 +35,21 @@ public class TerrainExporter : IExporter
             ?? throw new InvalidOperationException("No height data loaded");
         int width = tm.HeightCacheWidth;
         int height = tm.HeightCacheHeight;
-        var splatMap = tm.MaterialIndices
+        var detailControlMaps = tm.MaterialIndices
             ?? throw new InvalidOperationException("No material index map loaded");
         int leafNodeSize = tm.SplitConfig?.BaseChunkSize ?? SplitTerrainConfig.DefaultBaseChunkSize;
 
-        // Get SplatMap raw data (zero-copy, direct reference to internal uint[])
-        byte[] splatData = splatMap.GetRawData();
-        int splatW = splatMap.Width;
-        int splatH = splatMap.Height;
+        byte[] detailIndexData = detailControlMaps.GetIndexRawData();
+        byte[] detailWeightData = detailControlMaps.GetWeightRawData();
+        int splatW = detailControlMaps.Width;
+        int splatH = detailControlMaps.Height;
 
         await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
 
             // 1. Generate MinMaxErrorMaps (reuse existing Editor logic)
-            progress.Report(ExportProgress.Running(0, 5, "Generating MinMaxErrorMap..."));
+            progress.Report(ExportProgress.Running(0, 6, "Generating MinMaxErrorMap..."));
             var minMaxErrorMaps = HeightmapLoader.GenerateMinMaxErrorMaps(
                 heightData, width, height, leafNodeSize);
             ct.ThrowIfCancellationRequested();
@@ -59,11 +59,11 @@ public class TerrainExporter : IExporter
             int splatMapMipLevels = VirtualTextureLayout.GetMipCount(splatW, splatH, DefaultTileSize);
 
             // 4. Write the .terrain file
-            progress.Report(ExportProgress.Running(1, 5, "Writing .terrain file..."));
+            progress.Report(ExportProgress.Running(1, 6, "Writing .terrain file..."));
 
             WriteTerrainFile(
                 outputPath, width, height,
-                heightData, splatData, splatW, splatH,
+                heightData, detailIndexData, detailWeightData, splatW, splatH,
                 minMaxErrorMaps, leafNodeSize,
                 heightMapMipLevels, splatMapMipLevels,
                 progress, ct);
@@ -76,7 +76,9 @@ public class TerrainExporter : IExporter
         string outputPath,
         int width, int height,
         ushort[] heightData,
-        byte[] splatData, int splatW, int splatH,
+        byte[] detailIndexData,
+        byte[] detailWeightData,
+        int splatW, int splatH,
         EditorMinMaxErrorMap[] minMaxErrorMaps,
         int leafNodeSize,
         int heightMapMipLevels,
@@ -98,14 +100,16 @@ public class TerrainExporter : IExporter
             TileSize = DefaultTileSize,
             Padding = HeightMapPadding,
             HeightMapMipLevels = heightMapMipLevels,
-            SplatMapFormat = (int)VTFormat.R8,
+            SplatMapFormat = (int)VTFormat.Rgba32,
             SplatMapMipLevels = splatMapMipLevels,
             SplatMapResolutionRatio = 1,
+            Reserved2 = (int)VTFormat.Rgba32,
+            Reserved3 = splatMapMipLevels,
         };
         WriteStruct(writer, ref header);
 
         // Write MinMaxErrorMap data
-        progress.Report(ExportProgress.Running(2, 5, "Writing MinMaxErrorMap data..."));
+        progress.Report(ExportProgress.Running(2, 6, "Writing MinMaxErrorMap data..."));
         writer.Write(minMaxErrorMaps.Length);
         foreach (var map in minMaxErrorMaps)
         {
@@ -113,7 +117,7 @@ public class TerrainExporter : IExporter
         }
 
         // Write HeightMap VT data
-        progress.Report(ExportProgress.Running(3, 5, "Writing HeightMap VT data..."));
+        progress.Report(ExportProgress.Running(3, 6, "Writing HeightMap VT data..."));
         var heightVTHeader = new VTHeader
         {
             Width = width,
@@ -128,7 +132,7 @@ public class TerrainExporter : IExporter
             DefaultTileSize, HeightMapPadding, ct);
 
         // Write SplatMap VT data
-        progress.Report(ExportProgress.Running(4, 5, "Writing SplatMap VT data..."));
+        progress.Report(ExportProgress.Running(4, 6, "Writing DetailIndex VT data..."));
         var splatVTHeader = new VTHeader
         {
             Width = splatW,
@@ -139,7 +143,21 @@ public class TerrainExporter : IExporter
             Mipmaps = splatMapMipLevels,
         };
         WriteStruct(writer, ref splatVTHeader);
-        StreamMipLevels<byte>(writer, splatData, splatW, splatH,
+        StreamMipLevels<byte>(writer, detailIndexData, splatW, splatH,
+            DefaultTileSize, SplatMapPadding, ct);
+
+        progress.Report(ExportProgress.Running(5, 6, "Writing DetailWeight VT data..."));
+        var detailWeightVTHeader = new VTHeader
+        {
+            Width = splatW,
+            Height = splatH,
+            TileSize = DefaultTileSize,
+            Padding = SplatMapPadding,
+            BytesPerPixel = 4,
+            Mipmaps = splatMapMipLevels,
+        };
+        WriteStruct(writer, ref detailWeightVTHeader);
+        StreamMipLevels<byte>(writer, detailWeightData, splatW, splatH,
             DefaultTileSize, SplatMapPadding, ct);
     }
 
