@@ -66,7 +66,14 @@
       "Bash(git submodule *)",
       "Bash(git subtree *)",
       "Bash(trellis init *)",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(python3 ./.trellis/scripts/get_context.py --mode packages)",
+      "Bash(python3 ./.trellis/scripts/task.py create \"brainstorm: Terrain Editor GUI - Windows 8 Metro风格\" --slug terrain-editor-gui)",
+      "Bash(python3 ./.trellis/scripts/task.py create \"Terrain Editor GUI\" --slug terrain-editor-gui)",
+      "Bash(python3 ./.trellis/scripts/task.py --help)",
+      "Bash(python3 ./.trellis/scripts/task.py)",
+      "Bash(python3 -c \"from .trellis.scripts import task; task.main\\(\\)\" -- --help)",
+      "Bash(python ./.trellis/scripts/get_context.py)"
     ]
   }
 }

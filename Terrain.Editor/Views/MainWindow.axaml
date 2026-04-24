@@ -4,175 +4,590 @@
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
   xmlns:controls="clr-namespace:Terrain.Editor.Views.Controls"
   Title="{Binding Title}"
-  Width="1440"
-  Height="900"
-  MinWidth="1100"
-  MinHeight="720">
+  Width="1920"
+  Height="1080"
+  MinWidth="1280"
+  MinHeight="780"
+  SystemDecorations="None">
   <DockPanel LastChildFill="True">
-    <Menu DockPanel.Dock="Top">
-      <MenuItem Header="_File">
-        <MenuItem Header="_New" Command="{Binding NewProjectCommand}" />
-        <MenuItem Header="_Open..." Command="{Binding OpenProjectCommand}" />
-        <Separator />
-        <MenuItem Header="_Save" Command="{Binding SaveProjectCommand}" />
-        <MenuItem Header="Save _As..." Command="{Binding SaveProjectAsCommand}" />
-        <Separator />
-        <MenuItem Header="_Export Terrain..." Command="{Binding ExportTerrainCommand}" />
-        <MenuItem Header="Export _Material Descriptor..." Command="{Binding ExportMaterialDescriptorCommand}" />
-        <Separator />
-        <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
-      </MenuItem>
-      <MenuItem Header="_Edit">
-        <MenuItem Header="{Binding UndoLabel}" Command="{Binding UndoCommand}" />
-        <MenuItem Header="{Binding RedoLabel}" Command="{Binding RedoCommand}" />
-      </MenuItem>
-      <MenuItem Header="_View">
-        <MenuItem Header="Reset Layout" Command="{Binding ResetLayoutCommand}" />
-        <Separator />
-        <MenuItem Header="Show Mask Overlay" IsChecked="{Binding ShowMaskOverlay}" />
-        <MenuItem Header="Heatmap Overlay" IsChecked="{Binding HeatmapEnabled}" />
-      </MenuItem>
+    <Border DockPanel.Dock="Top" Classes="titleBar" PointerPressed="TitleBar_OnPointerPressed">
+      <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Border Width="18" Height="18" Background="{DynamicResource EditorAppIconBackgroundBrush}" BorderBrush="{DynamicResource EditorAppIconBorderBrush}" BorderThickness="1">
+            <Grid ColumnDefinitions="*,*" RowDefinitions="*,*">
+              <Border Background="{DynamicResource EditorAppIconBlueBrush}" Margin="2,2,1,1" />
+              <Border Grid.Column="1" Background="{DynamicResource EditorAppIconGreenBrush}" Margin="1,2,2,1" />
+              <Border Grid.Row="1" Background="{DynamicResource EditorAppIconGreenBrush}" Margin="2,1,1,2" />
+              <Border Grid.Row="1" Grid.Column="1" Background="{DynamicResource EditorAppIconBlueBrush}" Margin="1,1,2,2" />
+            </Grid>
+          </Border>
+        </StackPanel>
+
+        <TextBlock Grid.ColumnSpan="3" Classes="titleBarText" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding Title}" />
+
+        <Grid Grid.Column="2" ColumnDefinitions="46,46,46">
+          <Button Grid.Column="0" Classes="windowButton" Click="MinimizeButton_OnClick">
+            <TextBlock Classes="windowButtonIcon" Text="&#xE921;" />
+          </Button>
+          <Button Grid.Column="1" Classes="windowButton" Click="MaximizeButton_OnClick">
+            <TextBlock Classes="windowButtonIcon" Text="&#xE922;" />
+          </Button>
+          <Button Grid.Column="2" Classes="windowButton,closeButton" Click="CloseButton_OnClick">
+            <TextBlock Classes="windowButtonIcon" Text="&#xE8BB;" />
+          </Button>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <Menu DockPanel.Dock="Top" Classes="mainMenu">
+      <MenuItem Header="_File" />
+      <MenuItem Header="_Edit" />
+      <MenuItem Header="_View" />
+      <MenuItem Header="_Tools" Classes="highlightMenu" />
+      <MenuItem Header="_Window" />
+      <MenuItem Header="_Help" />
     </Menu>
 
-    <Border DockPanel.Dock="Top" Classes="editorPanel" Padding="8" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto">
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-          <Button Classes="toolbarButton" Content="Sculpt" Command="{Binding SelectModeCommand}" CommandParameter="Sculpt" />
-          <Button Classes="toolbarButton" Content="Paint" Command="{Binding SelectModeCommand}" CommandParameter="Paint" />
-          <Button Classes="toolbarButton" Content="Foliage" Command="{Binding SelectModeCommand}" CommandParameter="Foliage" />
-          <Button Classes="toolbarButton" Content="Climate" Command="{Binding SelectModeCommand}" CommandParameter="Climate" />
-        </StackPanel>
-        <TextBlock
-          Grid.Column="1"
-          HorizontalAlignment="Center"
-          VerticalAlignment="Center"
-          Text="{Binding ProjectName}" />
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
-          <Button Content="{Binding UndoLabel}" Command="{Binding UndoCommand}" />
-          <Button Content="{Binding RedoLabel}" Command="{Binding RedoCommand}" />
-          <TextBlock VerticalAlignment="Center" Text="{Binding IsDirty, StringFormat='Dirty: {0}'}" />
+    <Border DockPanel.Dock="Top" Classes="commandBar">
+      <Grid ColumnDefinitions="Auto,14,1,14,Auto,14,1,14,Auto,14,1,14,Auto,*,Auto" RowDefinitions="Auto">
+        <Border Grid.Column="0" Classes="commandGroup">
+          <Grid ColumnDefinitions="Auto,Auto,Auto">
+            <Button Grid.Column="0" Classes="commandButton" Command="{Binding NewProjectCommand}">
+              <StackPanel HorizontalAlignment="Center" Spacing="4">
+                <TextBlock Classes="toolbarIcon" Text="&#xE710;" />
+                <TextBlock Classes="toolbarText" Text="New" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="1" Classes="commandButton" Command="{Binding OpenProjectCommand}">
+              <StackPanel HorizontalAlignment="Center" Spacing="4">
+                <TextBlock Classes="toolbarIcon" Text="&#xE8B7;" />
+                <TextBlock Classes="toolbarText" Text="Open" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Classes="commandButton" Command="{Binding SaveProjectCommand}">
+              <StackPanel HorizontalAlignment="Center" Spacing="4">
+                <TextBlock Classes="toolbarIcon" Text="&#xE74E;" />
+                <TextBlock Classes="toolbarText" Text="Save" />
+              </StackPanel>
+            </Button>
+          </Grid>
+        </Border>
+
+        <Border Grid.Column="2" Classes="commandDivider" />
+
+        <Border Grid.Column="4" Classes="commandGroup">
+          <Grid ColumnDefinitions="Auto,Auto">
+            <Button Grid.Column="0" Classes="commandButton" Command="{Binding UndoCommand}">
+              <StackPanel HorizontalAlignment="Center" Spacing="4">
+                <TextBlock Classes="toolbarIcon" Text="&#xE7A7;" />
+                <TextBlock Classes="toolbarText" Text="Undo" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="1" Classes="commandButton" Command="{Binding RedoCommand}">
+              <StackPanel HorizontalAlignment="Center" Spacing="4">
+                <TextBlock Classes="toolbarIcon" Text="&#xE7A6;" />
+                <TextBlock Classes="toolbarText" Text="Redo" />
+              </StackPanel>
+            </Button>
+          </Grid>
+        </Border>
+
+        <Border Grid.Column="6" Classes="commandDivider" />
+
+        <Border Grid.Column="8" Classes="commandGroup">
+          <Grid ColumnDefinitions="Auto,Auto">
+            <Button Grid.Column="0" Classes="commandButton" Command="{Binding ImportAssetsCommand}">
+              <StackPanel HorizontalAlignment="Center" Spacing="4">
+                <TextBlock Classes="toolbarIcon" Text="&#xE8B5;" />
+                <TextBlock Classes="toolbarText" Text="Import" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="1" Classes="commandButton" Command="{Binding ExportTerrainCommand}">
+              <StackPanel HorizontalAlignment="Center" Spacing="4">
+                <TextBlock Classes="toolbarIcon" Text="&#xEDE1;" />
+                <TextBlock Classes="toolbarText" Text="Export" />
+              </StackPanel>
+            </Button>
+          </Grid>
+        </Border>
+
+        <Border Grid.Column="10" Classes="commandDivider" />
+
+        <Border Grid.Column="12" Classes="commandGroup">
+          <Grid ColumnDefinitions="Auto,Auto">
+            <Button Grid.Column="0" Classes="commandButton" Command="{Binding OpenSettingsCommand}">
+              <StackPanel HorizontalAlignment="Center" Spacing="4">
+                <TextBlock Classes="toolbarIcon" Text="&#xE713;" />
+                <TextBlock Classes="toolbarText" Text="Settings" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="1" Classes="commandButton" Command="{Binding OpenHelpCommand}">
+              <StackPanel HorizontalAlignment="Center" Spacing="4">
+                <TextBlock Classes="toolbarIcon" Text="&#xE897;" />
+                <TextBlock Classes="toolbarText" Text="Help" />
+              </StackPanel>
+            </Button>
+          </Grid>
+        </Border>
+
+        <StackPanel Grid.Column="14" Orientation="Horizontal" Spacing="12" VerticalAlignment="Top" Margin="0,8,0,0">
+          <TextBlock Classes="panelHint" Text="{Binding ProjectName}" />
+          <TextBlock Classes="panelHint" Text="{Binding IsDirty, StringFormat='Dirty: {0}'}" />
         </StackPanel>
       </Grid>
     </Border>
 
-    <Grid ColumnDefinitions="280,*,320" RowDefinitions="*,240">
-      <Border Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" Classes="editorPanel" Margin="8,8,4,8">
-        <Grid RowDefinitions="Auto,*,Auto">
-          <TextBlock Classes="sectionTitle" Text="Tools" />
-          <ItemsControl Grid.Row="1" ItemsSource="{Binding Tools}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Button
-                  Classes="toolButton"
-                  Margin="0,0,0,6"
-                  Command="{Binding DataContext.SelectToolCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                  CommandParameter="{Binding}">
-                  <StackPanel>
-                    <TextBlock Text="{Binding Label}" />
-                    <TextBlock FontSize="11" Foreground="{DynamicResource EditorTextSecondaryBrush}" Text="{Binding Description}" />
-                  </StackPanel>
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          <StackPanel Grid.Row="2" Spacing="6">
-            <TextBlock Foreground="{DynamicResource EditorTextSecondaryBrush}" Text="{Binding SelectedToolName, StringFormat='Selected: {0}'}" />
-            <ComboBox
-              ItemsSource="{Binding SceneViewModes}"
-              SelectedItem="{Binding SelectedSceneViewMode}"
-              HorizontalAlignment="Stretch" />
-          </StackPanel>
-        </Grid>
-      </Border>
-
-      <Border Grid.Row="0" Grid.Column="1" Classes="editorPanel" Margin="4,8">
+    <Grid RowDefinitions="*,198,32" ColumnDefinitions="124,*,344" Margin="8,8,8,0">
+      <Border Grid.Row="0" Grid.Column="0" Classes="editorPanel,modePanel" Margin="0,0,8,8">
         <Grid RowDefinitions="Auto,*">
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Classes="sectionTitle" Text="Viewport" />
-            <TextBlock
-              Grid.Column="1"
-              Foreground="{DynamicResource EditorTextSecondaryBrush}"
-              Text="{Binding Viewport.Status}" />
+          <Grid ColumnDefinitions="*,Auto" Margin="2,0,2,4">
+            <TextBlock Classes="sectionTitle" Text="Mode" />
+            <TextBlock Grid.Column="1" Classes="modeCloseGlyph" VerticalAlignment="Center" Text="&#xE711;" />
           </Grid>
-          <controls:NativeStrideViewportControl
+
+          <ListBox
             Grid.Row="1"
-            ViewportHost="{Binding Viewport.ViewportHost}"
-            Background="{DynamicResource EditorViewportBackgroundBrush}"
-            MinHeight="320" />
+            Classes="modeList"
+            ItemsSource="{Binding Modes}"
+            SelectedItem="{Binding SelectedModeOption}">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="20,*" MinHeight="34" ColumnSpacing="8">
+                  <TextBlock Classes="modeIcon" VerticalAlignment="Center" Text="{Binding Glyph}" />
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0">
+                    <TextBlock Classes="modeLabel" Text="{Binding Label}" />
+                  </StackPanel>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
         </Grid>
       </Border>
 
-      <Border Grid.Row="0" Grid.Column="2" Classes="editorPanel" Margin="4,8,8,4">
-        <TabControl>
-          <TabItem Header="Brush">
-            <StackPanel Spacing="8">
-              <TextBlock Classes="sectionTitle" Text="Brush Parameters" />
-              <TextBlock Text="{Binding SelectedMode, StringFormat='Mode: {0}'}" />
-              <TextBlock Text="{Binding SelectedToolName, StringFormat='Tool: {0}'}" />
+      <Border Grid.Row="0" Grid.Column="1" Classes="editorPanel,viewportPanel" Margin="0,0,8,8">
+        <Grid RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="Auto,*,Auto,168,24" Margin="0,0,0,2">
+            <TextBlock Classes="sectionTitle" VerticalAlignment="Center" Text="Viewport" />
+            <TextBlock Grid.Column="2" Classes="fieldLabel" VerticalAlignment="Center" Margin="0,0,6,0" Text="View:" />
+            <ComboBox
+              Grid.Column="3"
+              Classes="metroCombo"
+              HorizontalAlignment="Stretch"
+              ItemsSource="{Binding SceneViewModes}"
+              SelectedItem="{Binding SelectedSceneViewMode}" />
+            <Button Grid.Column="4" Classes="iconSquareButton" Margin="4,0,0,0">
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="2">
+                <TextBlock Classes="cubeIcon" Text="&#xF158;" />
+                <TextBlock Classes="chevronIcon" Text="&#xE70D;" />
+              </StackPanel>
+            </Button>
+          </Grid>
 
-              <Grid ColumnDefinitions="*,60" RowDefinitions="Auto">
-                <TextBlock VerticalAlignment="Center" Text="Size" />
-                <TextBlock Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Text="{Binding BrushParams.Size, StringFormat='{}{0:F0}'}" />
-              </Grid>
-              <Slider Minimum="1" Maximum="200" Value="{Binding BrushParams.Size}" />
+          <Grid Grid.Row="1" ClipToBounds="True">
+            <Border
+              Background="{DynamicResource EditorViewportDarkBackgroundBrush}"
+              BorderBrush="{DynamicResource EditorViewportDarkBorderBrush}"
+              BorderThickness="0"
+              MinHeight="420" />
 
-              <Grid ColumnDefinitions="*,60" RowDefinitions="Auto">
-                <TextBlock VerticalAlignment="Center" Text="Strength" />
-                <TextBlock Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Text="{Binding BrushParams.Strength, StringFormat='{}{0:P0}'}" />
-              </Grid>
-              <Slider Minimum="0" Maximum="1" Value="{Binding BrushParams.Strength}" />
-
-              <Grid ColumnDefinitions="*,60" RowDefinitions="Auto">
-                <TextBlock VerticalAlignment="Center" Text="Falloff" />
-                <TextBlock Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Text="{Binding BrushParams.Falloff, StringFormat='{}{0:P0}'}" />
-              </Grid>
-              <Slider Minimum="0" Maximum="1" Value="{Binding BrushParams.Falloff}" />
-
-              <CheckBox Content="Slope Filter" IsChecked="{Binding BrushParams.UseSlopeFilter}" />
-              <Grid ColumnDefinitions="*,60" RowDefinitions="Auto" IsEnabled="{Binding BrushParams.UseSlopeFilter}">
-                <TextBlock VerticalAlignment="Center" Text="Min Slope" />
-                <TextBlock Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Text="{Binding BrushParams.MinSlopeDegrees, StringFormat='{}{0:F0}°'}" />
-              </Grid>
-              <Slider Minimum="0" Maximum="90" Value="{Binding BrushParams.MinSlopeDegrees}"
-                      IsEnabled="{Binding BrushParams.UseSlopeFilter}" />
-              <Grid ColumnDefinitions="*,60" RowDefinitions="Auto" IsEnabled="{Binding BrushParams.UseSlopeFilter}">
-                <TextBlock VerticalAlignment="Center" Text="Max Slope" />
-                <TextBlock Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Text="{Binding BrushParams.MaxSlopeDegrees, StringFormat='{}{0:F0}°'}" />
-              </Grid>
-              <Slider Minimum="0" Maximum="90" Value="{Binding BrushParams.MaxSlopeDegrees}"
-                      IsEnabled="{Binding BrushParams.UseSlopeFilter}" />
-            </StackPanel>
-          </TabItem>
-          <TabItem Header="View">
-            <StackPanel Spacing="8">
-              <TextBlock Classes="sectionTitle" Text="View Options" />
-              <CheckBox Content="Show Mask Overlay" IsChecked="{Binding ShowMaskOverlay}" />
-              <CheckBox Content="Heatmap Overlay" IsChecked="{Binding HeatmapEnabled}" />
-            </StackPanel>
-          </TabItem>
-        </TabControl>
+            <Canvas IsHitTestVisible="False" ClipToBounds="True">
+              <StackPanel Canvas.Left="20" Canvas.Bottom="20" Spacing="2">
+                <TextBlock Classes="axisZ" Text="Z" />
+                <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="10">
+                  <TextBlock Classes="axisY" Text="Y" />
+                  <TextBlock Grid.Column="1" Classes="axisX" Text="X" />
+                </Grid>
+              </StackPanel>
+            </Canvas>
+          </Grid>
+        </Grid>
       </Border>
 
-      <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Classes="editorPanel" Margin="4,4,8,8">
-        <TabControl>
-          <TabItem Header="Console">
-            <ListBox ItemsSource="{Binding ConsoleEntries}">
+      <Border Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Classes="editorPanel,inspectorPanel" Margin="0,0,0,8" ClipToBounds="True">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="10">
+            <StackPanel Spacing="4">
+              <TextBlock Classes="sectionTitle" Text="Inspector" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Classes="inspectorLabel" Text="Current Tool" />
+              <ListBox
+                Classes="toolList"
+                ItemsSource="{Binding Tools}"
+                SelectedItem="{Binding SelectedTool}">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <StackPanel Width="64" Spacing="4">
+                      <TextBlock Classes="toolIcon" HorizontalAlignment="Center" Text="{Binding Glyph}" />
+                      <TextBlock Classes="toolLabel" HorizontalAlignment="Center" Text="{Binding Label}" TextAlignment="Center" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </StackPanel>
+
+            <StackPanel IsVisible="{Binding IsSculptMode}" Spacing="8">
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="12">
+                  <TextBlock Classes="inspectorLabel" Text="Brush" />
+                  <Grid ColumnDefinitions="*,72" ColumnSpacing="12">
+                    <StackPanel Spacing="10">
+                      <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                        <TextBlock VerticalAlignment="Center" Text="Brush Size" />
+                        <Slider Grid.Column="1" Minimum="1" Maximum="200" Value="{Binding BrushParams.Size}" />
+                        <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Size, StringFormat='{}{0:F0}'}" />
+                      </Grid>
+                      <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                        <TextBlock VerticalAlignment="Center" Text="Strength" />
+                        <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding BrushParams.Strength}" />
+                        <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Strength, StringFormat='{}{0:F2}'}" />
+                      </Grid>
+                      <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                        <TextBlock VerticalAlignment="Center" Text="Falloff" />
+                        <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding BrushParams.Falloff}" />
+                        <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Falloff, StringFormat='{}{0:F2}'}" />
+                      </Grid>
+                    </StackPanel>
+
+                    <Border Grid.Column="1" Classes="brushPreviewFrame">
+                      <Ellipse Width="48" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Ellipse.Fill>
+                          <RadialGradientBrush Center="0.5,0.5" GradientOrigin="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
+                            <GradientStop Color="#FF000000" Offset="0.0" />
+                            <GradientStop Color="#FF6D6D6D" Offset="0.42" />
+                            <GradientStop Color="#FFF2F2F2" Offset="1.0" />
+                          </RadialGradientBrush>
+                        </Ellipse.Fill>
+                      </Ellipse>
+                    </Border>
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="inspectorLabel" Text="Height" />
+                  <Grid ColumnDefinitions="80,*,54,16" ColumnSpacing="8">
+                    <TextBlock VerticalAlignment="Center" Text="Min Height" />
+                    <Slider Grid.Column="1" Minimum="-500" Maximum="4000" Value="-200" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="-200" />
+                    <TextBlock Grid.Column="3" Classes="unitText" VerticalAlignment="Center" Text="m" />
+                  </Grid>
+                  <Grid ColumnDefinitions="80,*,54,16" ColumnSpacing="8">
+                    <TextBlock VerticalAlignment="Center" Text="Max Height" />
+                    <Slider Grid.Column="1" Minimum="-500" Maximum="4000" Value="2300" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="2300" />
+                    <TextBlock Grid.Column="3" Classes="unitText" VerticalAlignment="Center" Text="m" />
+                  </Grid>
+                  <Grid ColumnDefinitions="80,*,74" ColumnSpacing="8">
+                    <TextBlock VerticalAlignment="Center" Text="Height Range" />
+                    <TextBlock Grid.Column="2" Classes="valueText" VerticalAlignment="Center" Text="2500 m" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="inspectorLabel" Text="Advanced" />
+                  <CheckBox Content="Affect Only Visible Area" IsChecked="True" />
+                  <CheckBox Content="Preserve Selected Area" IsChecked="True" />
+                  <CheckBox Content="Show Brush" IsChecked="True" />
+                  <CheckBox Content="Show Wireframe" IsChecked="False" />
+                  <CheckBox Content="Show Boundaries" IsChecked="True" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <StackPanel IsVisible="{Binding IsPaintMode}" Spacing="8">
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="12">
+                  <TextBlock Classes="inspectorLabel" Text="Brush" />
+                  <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Brush Size" />
+                    <Slider Grid.Column="1" Minimum="1" Maximum="200" Value="{Binding BrushParams.Size}" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Size, StringFormat='{}{0:F0}'}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Strength" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding BrushParams.Strength}" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Strength, StringFormat='{}{0:F2}'}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Falloff" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding BrushParams.Falloff}" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Falloff, StringFormat='{}{0:F2}'}" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="inspectorLabel" Text="Material" />
+                  <Border Classes="materialPreviewCard">
+                    <Grid ColumnDefinitions="52,*" ColumnSpacing="10">
+                      <Border Classes="materialSwatch" Background="{DynamicResource EditorAccentSoftBrush}" />
+                      <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock Text="Grass_01" />
+                        <TextBlock Classes="panelHint" Text="Current material preview" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                  <ComboBox Classes="metroCombo" SelectedIndex="0">
+                    <ComboBoxItem Content="Material Slot 0 - Grass_01" />
+                    <ComboBoxItem Content="Material Slot 1 - Rock_01" />
+                    <ComboBoxItem Content="Material Slot 2 - Dirt_01" />
+                  </ComboBox>
+                  <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                    <Button Content="Add Material" />
+                    <Button Grid.Column="1" Content="Replace Material" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="inspectorLabel" Text="Layer Blend" />
+                  <Grid ColumnDefinitions="80,*,54" ColumnSpacing="8">
+                    <TextBlock VerticalAlignment="Center" Text="Opacity" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="0.75" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="0.75" />
+                  </Grid>
+                  <ComboBox Classes="metroCombo" SelectedIndex="0">
+                    <ComboBoxItem Content="Blend Mode: Normal" />
+                    <ComboBoxItem Content="Blend Mode: Overlay" />
+                    <ComboBoxItem Content="Blend Mode: Multiply" />
+                  </ComboBox>
+                  <CheckBox Content="Use Height Blend" IsChecked="True" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <StackPanel IsVisible="{Binding IsFoliageMode}" Spacing="8">
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="12">
+                  <TextBlock Classes="inspectorLabel" Text="Brush" />
+                  <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Brush Size" />
+                    <Slider Grid.Column="1" Minimum="1" Maximum="200" Value="{Binding BrushParams.Size}" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Size, StringFormat='{}{0:F0}'}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Density" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="0.65" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="0.65" />
+                  </Grid>
+                  <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Randomness" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="0.30" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="0.30" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="inspectorLabel" Text="Foliage Set" />
+                  <ComboBox Classes="metroCombo" SelectedIndex="0">
+                    <ComboBoxItem Content="Tree - Pine_Tree_01" />
+                    <ComboBoxItem Content="Bush - Bush_01" />
+                    <ComboBoxItem Content="Grass - Grass_Clump_A" />
+                  </ComboBox>
+                  <Button Content="Add Foliage Asset" />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="inspectorLabel" Text="Placement" />
+                  <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Min Scale" />
+                    <Slider Grid.Column="1" Minimum="0.2" Maximum="2" Value="0.75" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="0.75" />
+                  </Grid>
+                  <Grid ColumnDefinitions="74,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Max Scale" />
+                    <Slider Grid.Column="1" Minimum="0.2" Maximum="3" Value="1.40" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="1.40" />
+                  </Grid>
+                  <CheckBox Content="Align To Normal" IsChecked="True" />
+                  <CheckBox Content="Random Rotation" IsChecked="True" />
+                </StackPanel>
+              </Border>
+
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="inspectorLabel" Text="Preview / Debug" />
+                  <CheckBox Content="Show Placement Radius" IsChecked="True" />
+                  <CheckBox Content="Show Instances" IsChecked="True" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <StackPanel IsVisible="{Binding IsRoadsMode}" Spacing="8">
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="inspectorLabel" Text="Road Shape" />
+                  <Grid ColumnDefinitions="82,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Width" />
+                    <Slider Grid.Column="1" Minimum="2" Maximum="24" Value="6" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="6" />
+                  </Grid>
+                  <Grid ColumnDefinitions="82,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Shoulder Width" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="8" Value="1.5" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="1.5" />
+                  </Grid>
+                  <Grid ColumnDefinitions="82,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Smoothness" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="0.55" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="0.55" />
+                  </Grid>
+                  <Grid ColumnDefinitions="82,*,50" ColumnSpacing="7">
+                    <TextBlock VerticalAlignment="Center" Text="Height Offset" />
+                    <Slider Grid.Column="1" Minimum="-2" Maximum="2" Value="0.15" />
+                    <TextBox Grid.Column="2" Classes="valueBox" IsReadOnly="True" Text="0.15" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="inspectorLabel" Text="Road Material" />
+                  <ComboBox Classes="metroCombo" SelectedIndex="0">
+                    <ComboBoxItem Content="Road Material Slot - Asphalt_Primary" />
+                    <ComboBoxItem Content="Road Material Slot - Dirt_Secondary" />
+                  </ComboBox>
+                  <ComboBox Classes="metroCombo" SelectedIndex="0">
+                    <ComboBoxItem Content="Edge Material Slot - Gravel_Edge" />
+                    <ComboBoxItem Content="Edge Material Slot - Soil_Edge" />
+                  </ComboBox>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="inspectorSection">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="inspectorLabel" Text="Path Options" />
+                  <CheckBox Content="Snap To Terrain" IsChecked="True" />
+                  <CheckBox Content="Flatten Under Road" IsChecked="True" />
+                  <CheckBox Content="Auto Generate Intersections" IsChecked="True" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Classes="editorPanel,assetBrowserPanel" Margin="0,0,8,8" ClipToBounds="True">
+        <Grid RowDefinitions="Auto,Auto,*" ColumnDefinitions="160,*" ClipToBounds="True">
+          <TextBlock Classes="sectionTitle" Grid.ColumnSpan="2" Text="Asset Browser" />
+
+          <Grid Grid.Row="1" Grid.ColumnSpan="2" ColumnDefinitions="220,118,136,*,24,24,24" ColumnSpacing="6" Margin="0,0,0,8">
+            <TextBox Classes="searchBox" Watermark="Search assets..." />
+            <ComboBox Grid.Column="1" Classes="metroCombo" SelectedIndex="0">
+              <ComboBoxItem Content="All Types" />
+              <ComboBoxItem Content="Materials" />
+              <ComboBoxItem Content="Brushes" />
+              <ComboBoxItem Content="Foliage" />
+            </ComboBox>
+            <ComboBox Grid.Column="2" Classes="metroCombo" SelectedIndex="0">
+              <ComboBoxItem Content="Sort: Name" />
+              <ComboBoxItem Content="Sort: Recent" />
+              <ComboBoxItem Content="Sort: Type" />
+            </ComboBox>
+            <Border Grid.Column="3" />
+            <Button Grid.Column="4" Classes="iconSquareButton" Command="{Binding SetGridViewCommand}">
+              <TextBlock Classes="viewToggleIcon" Text="&#xECA5;" />
+            </Button>
+            <Button Grid.Column="5" Classes="iconSquareButton" Command="{Binding SetListViewCommand}">
+              <TextBlock Classes="viewToggleIcon" Text="&#xE14C;" />
+            </Button>
+            <Button Grid.Column="6" Classes="iconSquareButton">
+              <TextBlock Classes="viewToggleIcon" Text="&#xE700;" />
+            </Button>
+          </Grid>
+
+          <ListBox
+            Grid.Row="2"
+            Classes="assetCategoryList"
+            ItemsSource="{Binding AssetCategories}"
+            SelectedItem="{Binding SelectedAssetCategory}"
+            ClipToBounds="True">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="8">
+                  <TextBlock Classes="assetCategoryIcon" VerticalAlignment="Center" Text="&#xE8B7;" />
+                  <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <Grid Grid.Row="2" Grid.Column="1" ClipToBounds="True">
+            <ListBox IsVisible="{Binding IsGridView}" Classes="assetTileList" ItemsSource="{Binding AssetItems}" ClipToBounds="True">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
               <ListBox.ItemTemplate>
                 <DataTemplate>
-                  <Grid ColumnDefinitions="80,*" Margin="0,2">
-                    <TextBlock Foreground="{DynamicResource EditorTextSecondaryBrush}" Text="{Binding Level}" />
-                    <TextBlock Grid.Column="1" Text="{Binding Message}" />
+                  <Border Classes="assetTile">
+                    <Grid RowDefinitions="84,Auto">
+                      <Border Classes="assetPreview" Background="{Binding PreviewBackground}">
+                        <Grid>
+                          <TextBlock Classes="assetPreviewGlyph" Foreground="{Binding PreviewForeground}" Text="{Binding PreviewGlyph}" />
+                        </Grid>
+                      </Border>
+                      <StackPanel Grid.Row="1" Margin="0,7,0,0" Spacing="2">
+                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                        <TextBlock Classes="panelHint" Text="{Binding Kind}" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <ListBox IsVisible="{Binding IsListView}" Classes="assetListView" ItemsSource="{Binding AssetItems}" ClipToBounds="True">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="40,*,74" Margin="0,0,0,5" ColumnSpacing="8">
+                    <Border Classes="assetListPreview" Background="{Binding PreviewBackground}">
+                      <TextBlock Classes="assetListGlyph" Foreground="{Binding PreviewForeground}" Text="{Binding PreviewGlyph}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="2">
+                      <TextBlock Text="{Binding Name}" />
+                      <TextBlock Classes="panelHint" Text="{Binding Kind}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="2" Classes="panelHint" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{Binding Category}" />
                   </Grid>
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
-          </TabItem>
-        </TabControl>
+          </Grid>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="2" Grid.ColumnSpan="3" Classes="statusBar" Margin="0,0,0,8">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+          <TextBlock Text="Ready" />
+          <Border Grid.Column="1" />
+          <TextBlock Grid.Column="2" Classes="panelHint" Text="X: 1256.4" />
+          <TextBlock Grid.Column="3" Classes="panelHint" Text="Y: 68.3" />
+          <TextBlock Grid.Column="4" Classes="panelHint" Text="Z: -82.37" />
+          <TextBlock Grid.Column="5" Classes="panelHint" Text="Height: 342.1 m" />
+          <TextBlock Grid.Column="6" Classes="panelHint" Text="Slope: 18°" />
+          <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="8">
+            <TextBlock Classes="panelHint" Text="Zoom: 1.00x" />
+            <Ellipse Width="10" Height="10" Fill="{DynamicResource EditorStatusGreenBrush}" VerticalAlignment="Center" />
+          </StackPanel>
+        </Grid>
       </Border>
     </Grid>
   </DockPanel>

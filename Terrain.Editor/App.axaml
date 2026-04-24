@@ -3,7 +3,7 @@
   xmlns="https://github.com/avaloniaui"
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
   xmlns:simple="clr-namespace:Avalonia.Themes.Simple;assembly=Avalonia.Themes.Simple"
-  RequestedThemeVariant="Dark">
+  RequestedThemeVariant="Light">
   <Application.Styles>
     <simple:SimpleTheme />
     <StyleInclude Source="avares://Terrain.Editor/Styles/EditorTheme.axaml" />

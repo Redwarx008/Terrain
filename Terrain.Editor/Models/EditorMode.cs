@@ -7,12 +7,12 @@ public enum EditorMode
     Sculpt,
     Paint,
     Foliage,
-    Climate,
+    Roads,
 }
 
 public enum SceneViewMode
 {
-    Shaded,
+    Perspective,
     Wireframe,
     Textured,
 }

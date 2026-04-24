@@ -36,10 +36,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private EditorMode _selectedMode;
 
     [ObservableProperty]
-    private SceneViewMode _selectedSceneViewMode = SceneViewMode.Shaded;
+    private ModeOptionViewModel? _selectedModeOption;
+
+    [ObservableProperty]
+    private SceneViewMode _selectedSceneViewMode = SceneViewMode.Perspective;
 
     [ObservableProperty]
     private string _selectedToolName = "Raise";
+
+    [ObservableProperty]
+    private ToolOptionViewModel? _selectedTool;
 
     [ObservableProperty]
     private bool _canUndo;
@@ -59,17 +65,39 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _heatmapEnabled;
 
+    [ObservableProperty]
+    private string _selectedAssetCategory = "Materials";
+
+    [ObservableProperty]
+    private bool _isGridView = true;
+
     public NativeStrideViewportViewModel Viewport { get; }
 
     public BrushParametersViewModel BrushParams { get; }
 
+    public ObservableCollection<ModeOptionViewModel> Modes { get; } = new();
+
     public ObservableCollection<ToolOptionViewModel> Tools { get; } = new();
+
+    public ObservableCollection<string> AssetCategories { get; } = new();
+
+    public ObservableCollection<AssetBrowserItemViewModel> AssetItems { get; } = new();
 
     public ObservableCollection<ConsoleEntryViewModel> ConsoleEntries { get; } = new();
 
     public Array EditorModes { get; } = Enum.GetValues<EditorMode>();
 
     public Array SceneViewModes { get; } = Enum.GetValues<SceneViewMode>();
+
+    public bool IsSculptMode => SelectedMode == EditorMode.Sculpt;
+
+    public bool IsPaintMode => SelectedMode == EditorMode.Paint;
+
+    public bool IsFoliageMode => SelectedMode == EditorMode.Foliage;
+
+    public bool IsRoadsMode => SelectedMode == EditorMode.Roads;
+
+    public bool IsListView => !IsGridView;
 
     public EditorShellViewModel()
     {
@@ -78,10 +106,14 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         BrushParams = new BrushParametersViewModel();
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
 
+        InitializeModes();
+        InitializeAssetBrowser();
+
         SelectedMode = _editorState.CurrentEditorMode;
         ShowMaskOverlay = _editorState.ShowMaskOverlay;
         HeatmapEnabled = _editorState.HeatmapEnabled;
         RefreshTools();
+        SyncSelectedModeOption();
         RefreshProjectState();
         RefreshHistoryState();
 
@@ -235,6 +267,30 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task ImportAssets()
+    {
+        var storageProvider = GetStorageProvider();
+        if (storageProvider == null)
+        {
+            AddConsole("Warning", "File dialog unavailable.");
+            return;
+        }
+
+        var results = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import Assets",
+            AllowMultiple = true,
+        });
+
+        if (results.Count == 0)
+        {
+            return;
+        }
+
+        AddConsole("Info", $"Queued {results.Count} asset(s) for import.");
+    }
+
+    [RelayCommand]
     private async Task ExportMaterialDescriptor()
     {
         var storageProvider = GetStorageProvider();
@@ -287,41 +343,33 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void SelectSceneViewMode(SceneViewMode mode)
-    {
-        SelectedSceneViewMode = mode;
-        AddConsole("Info", $"Scene view mode set to {mode}.");
-    }
-
-    [RelayCommand]
-    private void SelectTool(ToolOptionViewModel tool)
-    {
-        SelectedToolName = tool.Label;
-        _editorState.CurrentEditorMode = tool.Mode;
-
-        if (tool.HeightTool.HasValue)
-        {
-            _editorState.CurrentHeightTool = tool.HeightTool.Value;
-            _editorState.HasSelectedTool = true;
-        }
-        else if (tool.PaintTool.HasValue)
-        {
-            _editorState.CurrentPaintTool = tool.PaintTool.Value;
-            _editorState.HasSelectedTool = true;
-        }
-        else
-        {
-            // Foliage and Climate tools don't have Height/Paint enums — mark tool as selected.
-            _editorState.HasSelectedTool = true;
-        }
-
-        AddConsole("Info", $"Selected {tool.Label}.");
-    }
-
-    [RelayCommand]
     private void ResetLayout()
     {
         AddConsole("Info", "Layout reset requested.");
+    }
+
+    [RelayCommand]
+    private void OpenSettings()
+    {
+        AddConsole("Info", "Settings panel is not implemented yet.");
+    }
+
+    [RelayCommand]
+    private void OpenHelp()
+    {
+        AddConsole("Info", "Help panel is not implemented yet.");
+    }
+
+    [RelayCommand]
+    private void SetGridView()
+    {
+        IsGridView = true;
+    }
+
+    [RelayCommand]
+    private void SetListView()
+    {
+        IsGridView = false;
     }
 
     [RelayCommand]
@@ -353,6 +401,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             _editorState.CurrentEditorMode = value;
         }
+
+        SyncSelectedModeOption();
+        OnPropertyChanged(nameof(IsSculptMode));
+        OnPropertyChanged(nameof(IsPaintMode));
+        OnPropertyChanged(nameof(IsFoliageMode));
+        OnPropertyChanged(nameof(IsRoadsMode));
     }
 
     partial void OnCanUndoChanged(bool value)
@@ -371,6 +425,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             _viewportHost.SetSceneViewMode(value);
         }
+
+        AddConsole("Info", $"Scene view mode set to {value}.");
     }
 
     partial void OnShowMaskOverlayChanged(bool value)
@@ -387,6 +443,55 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             _editorState.HeatmapEnabled = value;
         }
+    }
+
+    partial void OnSelectedModeOptionChanged(ModeOptionViewModel? value)
+    {
+        if (value is not null && SelectedMode != value.Mode)
+        {
+            SelectedMode = value.Mode;
+        }
+    }
+
+    partial void OnSelectedToolChanged(ToolOptionViewModel? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        SelectedToolName = value.Label;
+        if (_editorState.CurrentEditorMode != value.Mode)
+        {
+            _editorState.CurrentEditorMode = value.Mode;
+        }
+
+        if (value.HeightTool.HasValue)
+        {
+            _editorState.CurrentHeightTool = value.HeightTool.Value;
+            _editorState.HasSelectedTool = true;
+        }
+        else if (value.PaintTool.HasValue)
+        {
+            _editorState.CurrentPaintTool = value.PaintTool.Value;
+            _editorState.HasSelectedTool = true;
+        }
+        else
+        {
+            _editorState.HasSelectedTool = true;
+        }
+
+        AddConsole("Info", $"Selected {value.Label}.");
+    }
+
+    partial void OnSelectedAssetCategoryChanged(string value)
+    {
+        RefreshAssetItems();
+    }
+
+    partial void OnIsGridViewChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsListView));
     }
 
     private void OnEditorModeChanged(object? sender, EventArgs e)
@@ -426,7 +531,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     {
         IsDirty = _projectManager.IsDirty;
         ProjectName = _projectManager.IsProjectOpen ? _projectManager.ProjectName : "No project";
-        Title = IsDirty ? $"Terrain Editor - {ProjectName} *" : $"Terrain Editor - {ProjectName}";
+        Title = "Terrain Editor";
     }
 
     private void RefreshHistoryState()
@@ -445,7 +550,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             Tools.Add(tool);
         }
 
-        SelectedToolName = Tools.FirstOrDefault()?.Label ?? "None";
+        SelectedTool = Tools.FirstOrDefault(static tool => tool.Label == GetDefaultToolLabel(tool.Mode))
+            ?? Tools.FirstOrDefault();
+        SelectedToolName = SelectedTool?.Label ?? "None";
     }
 
     private static ToolOptionViewModel[] CreateToolsForMode(EditorMode mode)
@@ -454,27 +561,157 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             EditorMode.Sculpt =>
             [
-                new("Raise", "Raise terrain height", mode, HeightTool.Raise),
-                new("Lower", "Lower terrain height", mode, HeightTool.Lower),
-                new("Smooth", "Smooth terrain", mode, HeightTool.Smooth),
-                new("Flatten", "Flatten terrain to target height", mode, HeightTool.Flatten),
+                new("Raise", "Raise terrain height", "\uE74A", mode, HeightTool.Raise),
+                new("Smooth", "Smooth terrain", "\uE790", mode, HeightTool.Smooth),
+                new("Flatten", "Flatten terrain", "\uE81E", mode, HeightTool.Flatten),
+                new("Noise", "Apply terrain noise", "\uE9D9", mode),
             ],
             EditorMode.Paint =>
             [
-                new("Paint", "Paint material onto terrain", mode, null, PaintTool.Paint),
-                new("Erase", "Erase material from terrain", mode, null, PaintTool.Erase),
+                new("Paint", "Paint material", "\uE790", mode, null, PaintTool.Paint),
+                new("Erase", "Erase material", "\uE74D", mode, null, PaintTool.Erase),
+                new("Blend", "Blend layers", "\uE7ED", mode),
+                new("Pick", "Pick material", "\uE16C", mode),
             ],
             EditorMode.Foliage =>
             [
-                new("Place", "Place foliage instances", mode),
-                new("Remove", "Remove foliage instances", mode),
+                new("Paint Foliage", "Paint foliage", "\uE8BE", mode),
+                new("Erase Foliage", "Erase foliage", "\uE74D", mode),
+                new("Select", "Select foliage", "\uE14C", mode),
+                new("Scatter", "Scatter foliage", "\uE8C8", mode),
             ],
-            EditorMode.Climate =>
+            EditorMode.Roads =>
             [
-                new("Select Rule", "Select climate rule", mode),
-                new("Paint Mask", "Paint climate mask", mode),
+                new("Draw Road", "Draw road path", "\uE804", mode),
+                new("Edit Points", "Edit control points", "\uE70F", mode),
+                new("Smooth Path", "Smooth spline path", "\uE790", mode),
+                new("Delete Segment", "Delete road segment", "\uE74D", mode),
             ],
             _ => [],
+        };
+    }
+
+    private void InitializeModes()
+    {
+        Modes.Add(new ModeOptionViewModel("Sculpt", "Terrain height editing", "\uE7C3", EditorMode.Sculpt));
+        Modes.Add(new ModeOptionViewModel("Paint", "Surface material painting", "\uE790", EditorMode.Paint));
+        Modes.Add(new ModeOptionViewModel("Foliage", "Vegetation placement", "\uE8BE", EditorMode.Foliage));
+        Modes.Add(new ModeOptionViewModel("Roads", "Road spline editing", "\uE804", EditorMode.Roads));
+    }
+
+    private void InitializeAssetBrowser()
+    {
+        foreach (var category in new[] { "Materials", "Brushes", "Foliage", "Roads", "Meshes", "Prefabs" })
+        {
+            AssetCategories.Add(category);
+        }
+
+        RefreshAssetItems();
+    }
+
+    private void RefreshAssetItems()
+    {
+        AssetItems.Clear();
+
+        foreach (var item in CreateAssetItemsForCategory(SelectedAssetCategory))
+        {
+            AssetItems.Add(item);
+        }
+    }
+
+    private void SyncSelectedModeOption()
+    {
+        SelectedModeOption = Modes.FirstOrDefault(option => option.Mode == SelectedMode);
+    }
+
+    private static string GetDefaultToolLabel(EditorMode mode)
+    {
+        return mode switch
+        {
+            EditorMode.Sculpt => "Raise",
+            EditorMode.Paint => "Paint",
+            EditorMode.Foliage => "Paint Foliage",
+            EditorMode.Roads => "Draw Road",
+            _ => "None",
+        };
+    }
+
+    private static AssetBrowserItemViewModel[] CreateAssetItemsForCategory(string category)
+    {
+        return category switch
+        {
+            "Materials" =>
+            [
+                new("Grass_01", category, "Material", "#9DC874", "#2E5B2A", "Grass"),
+                new("Rock_01", category, "Material", "#C8CDD3", "#4E5966", "Rock"),
+                new("Dirt_01", category, "Material", "#C79363", "#6A4020", "Dirt"),
+                new("Sand_01", category, "Material", "#E3D0A9", "#87693B", "Sand"),
+                new("Snow_01", category, "Material", "#F3F7FB", "#7E8FA3", "Snow"),
+                new("Pine_Tree_01", category, "Tree", "#E5F1E3", "#355F32", "Pine"),
+                new("Bush_01", category, "Foliage", "#D9ECD5", "#49713B", "Bush"),
+                new("Road_Straight_01", category, "Road", "#D8D9DD", "#50545C", "Road"),
+                new("Cliff_Rock_01", category, "Mesh", "#D1D5DB", "#505966", "Cliff"),
+                new("Ground_Rock_01", category, "Mesh", "#D5CEC6", "#61564C", "Stone"),
+                new("Mud_01", category, "Material", "#B99676", "#5D3F2C", "Mud"),
+                new("Brush_Alpha_Soft", category, "Brush", "#F3F5F8", "#4B5661", "Soft"),
+                new("Brush_Alpha_Hard", category, "Brush", "#ECEFF3", "#252A31", "Hard"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+            ],
+            "Brushes" =>
+            [
+                new("Brush_Alpha_Soft", category, "Brush", "#F3F5F8", "#4B5661", "Soft"),
+                new("Brush_Alpha_Hard", category, "Brush", "#ECEFF3", "#252A31", "Hard"),
+                new("Brush_Noise_Medium", category, "Brush", "#E7EAEE", "#53606C", "Noise"),
+                new("Brush_Crater_01", category, "Brush", "#EEF1F5", "#55616C", "Crater"),
+                new("Brush_Ridges_02", category, "Brush", "#EEF2F5", "#5B6872", "Ridge"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+            ],
+            "Foliage" =>
+            [
+                new("Pine_Tree_01", category, "Tree", "#E5F1E3", "#355F32", "Pine"),
+                new("Bush_01", category, "Shrub", "#D9ECD5", "#49713B", "Bush"),
+                new("Grass_Clump_A", category, "Grass", "#EEF7E6", "#4B7A3D", "Grass"),
+                new("Dead_Tree_02", category, "Tree", "#EAE4D8", "#765D43", "Dead"),
+                new("Forest_Rock_01", category, "Mesh", "#D1D5DB", "#55606B", "Rock"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+            ],
+            "Roads" =>
+            [
+                new("Road_Straight_01", category, "Road", "#D8D9DD", "#50545C", "Road"),
+                new("Road_Curve_01", category, "Road", "#DADBE0", "#4F545E", "Curve"),
+                new("Road_Decal_Crack", category, "Decal", "#E3E4E7", "#666B73", "Crack"),
+                new("Bridge_Wood_01", category, "Bridge", "#D8C0A3", "#6A4F36", "Bridge"),
+                new("Shoulder_Gravel", category, "Surface", "#D7D3CC", "#6E665D", "Gravel"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+            ],
+            "Meshes" =>
+            [
+                new("Rock_01", category, "Mesh", "#C8CDD3", "#4E5966", "Rock"),
+                new("Cliff_Block_01", category, "Mesh", "#D4D6DA", "#59616B", "Cliff"),
+                new("Ground_Rock_01", category, "Mesh", "#D5CEC6", "#61564C", "Stone"),
+                new("River_Stone_A", category, "Mesh", "#D8DDD8", "#5A655A", "River"),
+                new("Fence_Post_01", category, "Mesh", "#D5C2A7", "#684F39", "Fence"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+            ],
+            "Prefabs" =>
+            [
+                new("Camp_Small_01", category, "Prefab", "#EFE4D5", "#6A5844", "Camp"),
+                new("WatchTower_01", category, "Prefab", "#E6E0D6", "#665645", "Tower"),
+                new("Roadside_Signs", category, "Prefab", "#E7EDF3", "#4F6883", "Signs"),
+                new("Forest_Cluster_A", category, "Prefab", "#E2F0DD", "#48703D", "Forest"),
+                new("River_Bank_Set", category, "Prefab", "#DCEAF1", "#4B6775", "River"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+            ],
+            _ =>
+            [
+                new("Grass_01", category, "Material", "#9DC874", "#2E5B2A", "Grass"),
+                new("Rock_01", category, "Material", "#C8CDD3", "#4E5966", "Rock"),
+                new("Dirt_01", category, "Material", "#C79363", "#6A4020", "Dirt"),
+                new("Sand_01", category, "Material", "#E3D0A9", "#87693B", "Sand"),
+                new("Snow_01", category, "Material", "#F3F7FB", "#7E8FA3", "Snow"),
+                new("Mud_01", category, "Material", "#B99676", "#5D3F2C", "Mud"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+            ],
         };
     }
 

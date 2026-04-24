@@ -40,7 +40,6 @@ public sealed class NativeStrideViewportControl : NativeControlHost
         if (change.Property == BoundsProperty && _childWindow != null)
         {
             PixelSize pixelSize = GetPixelSize();
-            ResizeChildWindow(pixelSize);
             ViewportHost?.Resize(pixelSize.Width, pixelSize.Height);
         }
     }
@@ -67,16 +66,6 @@ public sealed class NativeStrideViewportControl : NativeControlHost
         _childWindow = null;
 
         base.DestroyNativeControlCore(control);
-    }
-
-    private void ResizeChildWindow(PixelSize pixelSize)
-    {
-        if (_childWindow == null)
-        {
-            return;
-        }
-
-        _childWindow.Resize(pixelSize.Width, pixelSize.Height);
     }
 
     private PixelSize GetPixelSize()

@@ -23,7 +23,7 @@ public sealed class NativeStrideViewportHost : IDisposable
     private Window? _window;
     private DispatcherTimer? _tickTimer;
     private string _status = "Viewport host not attached.";
-    private SceneViewMode _sceneViewMode = SceneViewMode.Shaded;
+    private SceneViewMode _sceneViewMode = SceneViewMode.Perspective;
     private int _width;
     private int _height;
     private bool _isDisposed;

@@ -2,43 +2,577 @@
   xmlns="https://github.com/avaloniaui"
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Styles.Resources>
-    <SolidColorBrush x:Key="EditorWindowBackgroundBrush" Color="#1E1F22" />
-    <SolidColorBrush x:Key="EditorPanelBackgroundBrush" Color="#282A2E" />
-    <SolidColorBrush x:Key="EditorPanelBorderBrush" Color="#3A3D42" />
-    <SolidColorBrush x:Key="EditorViewportBackgroundBrush" Color="#15171A" />
-    <SolidColorBrush x:Key="EditorTextPrimaryBrush" Color="#F2F4F8" />
-    <SolidColorBrush x:Key="EditorTextSecondaryBrush" Color="#AAB0BA" />
-    <SolidColorBrush x:Key="EditorAccentBrush" Color="#4FA3FF" />
-    <SolidColorBrush x:Key="EditorWarningBrush" Color="#E5B454" />
-    <SolidColorBrush x:Key="EditorErrorBrush" Color="#E06C75" />
-    <Thickness x:Key="EditorPanelPadding">10</Thickness>
+    <SolidColorBrush x:Key="EditorWindowBackgroundBrush" Color="#F3F6FA" />
+    <SolidColorBrush x:Key="EditorChromeBackgroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="EditorPanelBackgroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="EditorPanelAltBackgroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="EditorPanelBorderBrush" Color="#D9DFE7" />
+    <SolidColorBrush x:Key="EditorPanelBorderStrongBrush" Color="#CED6E0" />
+    <SolidColorBrush x:Key="EditorViewportBackgroundBrush" Color="#F4F6F9" />
+    <SolidColorBrush x:Key="EditorTextPrimaryBrush" Color="#2C2C2C" />
+    <SolidColorBrush x:Key="EditorTextSecondaryBrush" Color="#6E6E6E" />
+    <SolidColorBrush x:Key="EditorAccentBrush" Color="#2B87F3" />
+    <SolidColorBrush x:Key="EditorAccentDarkBrush" Color="#1F76E5" />
+    <SolidColorBrush x:Key="EditorAccentSoftBrush" Color="#DCEBFF" />
+    <SolidColorBrush x:Key="EditorSelectionBrush" Color="#DCEBFF" />
+    <SolidColorBrush x:Key="EditorStatusBarBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="EditorCommandBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="EditorSurfaceBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="EditorSurfaceHoverBrush" Color="#FAFDFF" />
+    <SolidColorBrush x:Key="EditorModeHoverBrush" Color="#F7FBFF" />
+    <SolidColorBrush x:Key="EditorModeHoverBorderBrush" Color="#BED9F8" />
+    <SolidColorBrush x:Key="EditorPanelAltBorderBrush" Color="#D7DDE5" />
+    <SolidColorBrush x:Key="EditorGlyphMutedBrush" Color="#8A8A8A" />
+    <SolidColorBrush x:Key="EditorGlyphDimBrush" Color="#919191" />
+    <SolidColorBrush x:Key="EditorModeLabelBrush" Color="#3B3B3B" />
+    <SolidColorBrush x:Key="EditorToolLabelBrush" Color="#4B4B4B" />
+    <SolidColorBrush x:Key="EditorCloseGlyphBrush" Color="#7D7D7D" />
+    <SolidColorBrush x:Key="EditorTitleTextBrush" Color="#2C2C2C" />
+    <SolidColorBrush x:Key="EditorWindowButtonHoverBrush" Color="#EEF5FB" />
+    <SolidColorBrush x:Key="EditorWindowButtonIconBrush" Color="#2E4155" />
+    <SolidColorBrush x:Key="EditorWindowCloseBrush" Color="#C75050" />
+    <SolidColorBrush x:Key="EditorTrackBackgroundBrush" Color="#CFCFCF" />
+    <SolidColorBrush x:Key="EditorAxisXBrush" Color="#E14C4C" />
+    <SolidColorBrush x:Key="EditorAxisYBrush" Color="#4FA558" />
+    <SolidColorBrush x:Key="EditorAxisZBrush" Color="#3487E5" />
+    <SolidColorBrush x:Key="EditorCategoryHoverBrush" Color="#F7FAFD" />
+    <SolidColorBrush x:Key="EditorToolHoverBrush" Color="#FAFCFF" />
+    <SolidColorBrush x:Key="EditorToolHoverBorderBrush" Color="#BED9F8" />
+    <SolidColorBrush x:Key="EditorViewportDarkBackgroundBrush" Color="#4B4C54" />
+    <SolidColorBrush x:Key="EditorViewportDarkBorderBrush" Color="#61646E" />
+    <SolidColorBrush x:Key="EditorAppIconBackgroundBrush" Color="#F7FBFF" />
+    <SolidColorBrush x:Key="EditorAppIconBorderBrush" Color="#C9D7E5" />
+    <SolidColorBrush x:Key="EditorAppIconBlueBrush" Color="#3AA0F3" />
+    <SolidColorBrush x:Key="EditorAppIconGreenBrush" Color="#7FC97F" />
+    <SolidColorBrush x:Key="EditorStatusGreenBrush" Color="#4DB24D" />
+    <Thickness x:Key="EditorPanelPadding">14</Thickness>
+    <CornerRadius x:Key="EditorCornerRadius">0</CornerRadius>
   </Styles.Resources>
 
   <Style Selector="Window">
     <Setter Property="Background" Value="{DynamicResource EditorWindowBackgroundBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource EditorTextPrimaryBrush}" />
-    <Setter Property="FontFamily" Value="Inter" />
+    <Setter Property="FontFamily" Value="Segoe UI" />
+    <Setter Property="FontSize" Value="11.5" />
   </Style>
 
-  <Style Selector="TextBlock.sectionTitle">
+  <Style Selector="Border.titleBar">
+    <Setter Property="Background" Value="{DynamicResource EditorChromeBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,0" />
+    <Setter Property="Padding" Value="6,0,0,0" />
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="Height" Value="34" />
+  </Style>
+
+  <Style Selector="TextBlock.titleBarText">
+    <Setter Property="FontFamily" Value="Segoe UI Semilight" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorTitleTextBrush}" />
+  </Style>
+
+  <Style Selector="Menu.mainMenu">
+    <Setter Property="Background" Value="{DynamicResource EditorChromeBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="16,0" />
+    <Setter Property="MinHeight" Value="42" />
+    <Setter Property="Height" Value="42" />
+  </Style>
+
+  <Style Selector="Menu.mainMenu MenuItem">
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextPrimaryBrush}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Menu.mainMenu MenuItem:pointerover">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Menu.mainMenu MenuItem.highlightMenu">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAccentBrush}" />
     <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+
+  <Style Selector="Border.commandBar">
+    <Setter Property="Background" Value="{DynamicResource EditorChromeBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="16,8,16,8" />
+    <Setter Property="MinHeight" Value="72" />
+    <Setter Property="Height" Value="72" />
+  </Style>
+
+  <Style Selector="Border.commandGroup">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Height" Value="54" />
   </Style>
 
   <Style Selector="Border.editorPanel">
     <Setter Property="Background" Value="{DynamicResource EditorPanelBackgroundBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Padding" Value="{DynamicResource EditorPanelPadding}" />
+    <Setter Property="Padding" Value="10" />
+    <Setter Property="CornerRadius" Value="{DynamicResource EditorCornerRadius}" />
   </Style>
 
-  <Style Selector="Button.toolButton">
-    <Setter Property="MinHeight" Value="30" />
-    <Setter Property="HorizontalContentAlignment" Value="Left" />
+  <Style Selector="Border.modePanel">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelAltBorderBrush}" />
   </Style>
 
-  <Style Selector="Button.toolbarButton">
-    <Setter Property="MinWidth" Value="72" />
-    <Setter Property="MinHeight" Value="30" />
+  <Style Selector="Border.viewportPanel">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelAltBorderBrush}" />
+  </Style>
+
+  <Style Selector="Border.inspectorPanel">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelAltBorderBrush}" />
+  </Style>
+
+  <Style Selector="Border.assetBrowserPanel">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelAltBorderBrush}" />
+  </Style>
+
+  <Style Selector="Border.inspectorSection">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Padding" Value="0,14,0,0" />
+  </Style>
+
+  <Style Selector="Border.statusBar">
+    <Setter Property="Background" Value="{DynamicResource EditorStatusBarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelAltBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1,1,1,0" />
+    <Setter Property="Padding" Value="10,6" />
+  </Style>
+
+  <Style Selector="TextBlock.sectionTitle">
+    <Setter Property="FontFamily" Value="Segoe UI Semilight" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <Style Selector="TextBlock.modeCloseGlyph">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorCloseGlyphBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.inspectorLabel">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.panelHint">
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextSecondaryBrush}" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+
+  <Style Selector="TextBlock.fieldLabel">
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.modeLabel">
+    <Setter Property="FontFamily" Value="Segoe UI Semilight" />
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorModeLabelBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.modeIcon">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorGlyphMutedBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.toolbarIcon">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorAccentBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="TextBlock.toolbarText">
+    <Setter Property="FontSize" Value="10.5" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="TextBlock.assetCategoryIcon">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorGlyphMutedBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.toolIcon">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorGlyphDimBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.toolLabel">
+    <Setter Property="FontSize" Value="10.5" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorToolLabelBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.cubeIcon">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextSecondaryBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.chevronIcon">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextSecondaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="TextBlock.viewToggleIcon">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextSecondaryBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.assetPreviewGlyph">
+    <Setter Property="FontFamily" Value="Segoe UI Semibold" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="TextBlock.assetListGlyph">
+    <Setter Property="FontFamily" Value="Segoe UI Semibold" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="TextBlock.valueText">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextSecondaryBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.unitText">
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextSecondaryBrush}" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="TextBlock.axisX">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAxisXBrush}" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
+  <Style Selector="TextBlock.axisY">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAxisYBrush}" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
+  <Style Selector="TextBlock.axisZ">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAxisZBrush}" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="8,5" />
+    <Setter Property="CornerRadius" Value="{DynamicResource EditorCornerRadius}" />
+  </Style>
+
+  <Style Selector="Button:pointerover">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderStrongBrush}" />
+  </Style>
+
+  <Style Selector="Button:pressed">
+    <Setter Property="Background" Value="{DynamicResource EditorAccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentDarkBrush}" />
+  </Style>
+
+  <Style Selector="Button.commandButton">
+    <Setter Property="Background" Value="{DynamicResource EditorCommandBrush}" />
+    <Setter Property="MinWidth" Value="66" />
+    <Setter Property="MinHeight" Value="50" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="Button.windowButton">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinWidth" Value="46" />
+    <Setter Property="MinHeight" Value="34" />
+  </Style>
+
+  <Style Selector="Button.windowButton:pointerover">
+    <Setter Property="Background" Value="{DynamicResource EditorWindowButtonHoverBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Button.windowButton.closeButton">
+    <Setter Property="Background" Value="{DynamicResource EditorWindowCloseBrush}" />
+  </Style>
+
+  <Style Selector="Button.windowButton.closeButton TextBlock.windowButtonIcon">
+    <Setter Property="Foreground" Value="{DynamicResource EditorSurfaceBrush}" />
+  </Style>
+
+  <Style Selector="Button.windowButton.closeButton:pointerover">
+    <Setter Property="Background" Value="{DynamicResource EditorWindowCloseBrush}" />
+  </Style>
+
+  <Style Selector="Button.windowButton.closeButton:pointerover TextBlock.windowButtonIcon">
+    <Setter Property="Foreground" Value="{DynamicResource EditorSurfaceBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.windowButtonIcon">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="8.5" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorWindowButtonIconBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.iconSquareButton">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
+  <Style Selector="Border.commandDivider">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Height" Value="42" />
+    <Setter Property="Background" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="ComboBox.metroCombo">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="8,5" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="TextBox.searchBox">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="10,5" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="TextBox.valueBox">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="HorizontalContentAlignment" Value="Right" />
+    <Setter Property="FontSize" Value="11.5" />
+  </Style>
+
+  <Style Selector="CheckBox">
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="Slider">
+    <Setter Property="MinWidth" Value="110" />
+  </Style>
+
+  <Style Selector="Slider /template/ Border#TrackBackground">
+    <Setter Property="Background" Value="{DynamicResource EditorTrackBackgroundBrush}" />
+    <Setter Property="Height" Value="2" />
+    <Setter Property="CornerRadius" Value="1" />
+  </Style>
+
+  <Style Selector="Slider /template/ Border#TrackFill">
+    <Setter Property="Background" Value="{DynamicResource EditorAccentBrush}" />
+    <Setter Property="Height" Value="2" />
+    <Setter Property="CornerRadius" Value="1" />
+  </Style>
+
+  <Style Selector="Slider /template/ Thumb">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+  </Style>
+
+  <Style Selector="ListBox.modeList">
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="ListBox.modeList > ListBoxItem">
+    <Setter Property="Margin" Value="0,0,0,8" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="ListBox.modeList > ListBoxItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource EditorModeHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorModeHoverBorderBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.modeList > ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource EditorSelectionBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.modeList > ListBoxItem:selected TextBlock.modeLabel">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAccentDarkBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.modeList > ListBoxItem:selected TextBlock.modeIcon">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.toolList">
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="ListBox.toolList > ListBoxItem">
+    <Setter Property="Margin" Value="0,0,10,8" />
+    <Setter Property="Padding" Value="8,8" />
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="ListBox.toolList > ListBoxItem:pointerover">
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorToolHoverBorderBrush}" />
+    <Setter Property="Background" Value="{DynamicResource EditorToolHoverBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.toolList > ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource EditorSelectionBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.toolList > ListBoxItem:selected TextBlock.toolIcon">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.toolList > ListBoxItem:selected TextBlock.toolLabel">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAccentDarkBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.assetCategoryList">
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="ListBox.assetCategoryList > ListBoxItem">
+    <Setter Property="Margin" Value="0,0,0,4" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="ListBox.assetCategoryList > ListBoxItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource EditorCategoryHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.assetCategoryList > ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource EditorSelectionBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.assetTileList">
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="ListBox.assetTileList > ListBoxItem">
+    <Setter Property="Margin" Value="0,0,10,10" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Border.assetTile">
+    <Setter Property="Width" Value="114" />
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="7" />
+  </Style>
+
+  <Style Selector="ListBox.assetTileList > ListBoxItem:pointerover Border.assetTile">
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorModeHoverBorderBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.assetTileList > ListBoxItem:selected Border.assetTile">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="Border.assetPreview">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="ListBox.assetListView">
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="ListBox.assetListView > ListBoxItem">
+    <Setter Property="Padding" Value="8,6" />
+    <Setter Property="Margin" Value="0,0,0,5" />
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="ListBox.assetListView > ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="Border.assetListPreview">
+    <Setter Property="Width" Value="40" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="Border.brushPreviewFrame">
+    <Setter Property="Width" Value="72" />
+    <Setter Property="Height" Value="72" />
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="Border.materialPreviewCard">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="8" />
+  </Style>
+
+  <Style Selector="Border.materialSwatch">
+    <Setter Property="Width" Value="46" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
   </Style>
 </Styles>

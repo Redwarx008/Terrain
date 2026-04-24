@@ -27,7 +27,7 @@ public sealed class EmbeddedStrideViewportGame : Game
     private GraphicsCompositor? _graphicsCompositor;
     private Scene? _scene;
     private CameraComponent? _camera;
-    private SceneViewMode _sceneViewMode = SceneViewMode.Shaded;
+    private SceneViewMode _sceneViewMode = SceneViewMode.Perspective;
     private bool _hasRenderedFirstFrame;
     private bool _isBrushStrokeActive;
     private bool _wasLeftMouseDown;
@@ -253,8 +253,8 @@ public sealed class EmbeddedStrideViewportGame : Game
                 PaintEditor.Instance.BeginStroke(paintToolName, TerrainManager!);
                 break;
 
-            case EditorMode.Climate:
-                // Climate mode uses BeginStroke-less ApplyStroke — set active flag only.
+            case EditorMode.Roads:
+                // Roads mode currently exposes shell-only layout controls.
                 break;
         }
     }
@@ -280,16 +280,7 @@ public sealed class EmbeddedStrideViewportGame : Game
 
                 break;
 
-            case EditorMode.Climate:
-                if (TerrainManager!.ClimateMask != null)
-                {
-                    ClimateEditor.Instance.ApplyStroke(
-                        worldPosition,
-                        TerrainManager.ClimateMask,
-                        TerrainManager,
-                        (byte)_editorState.CurrentClimateId);
-                }
-
+            case EditorMode.Roads:
                 break;
         }
     }
@@ -313,8 +304,8 @@ public sealed class EmbeddedStrideViewportGame : Game
                 PaintEditor.Instance.EndStroke();
                 break;
 
-            case EditorMode.Climate:
-                // Climate has no stroke lifecycle — nothing to end.
+            case EditorMode.Roads:
+                // Roads mode currently has no stroke lifecycle.
                 break;
         }
     }

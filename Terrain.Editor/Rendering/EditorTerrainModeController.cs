@@ -119,8 +119,8 @@ public sealed class EditorTerrainModeController
         return mode switch
         {
             SceneViewMode.Wireframe => EditorTerrainViewMode.Wireframe,
-            // Current behavior: Textured falls back to shaded until a dedicated textured path exists.
-            SceneViewMode.Shaded => EditorTerrainViewMode.Shaded,
+            // Perspective is the default 3D editor camera view and maps to shaded terrain rendering.
+            SceneViewMode.Perspective => EditorTerrainViewMode.Shaded,
             SceneViewMode.Textured => EditorTerrainViewMode.Shaded,
             _ => EditorTerrainViewMode.Shaded,
         };
