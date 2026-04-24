@@ -78,10 +78,11 @@ public sealed class NativeStrideViewportHost : IDisposable
 
     public void Detach()
     {
-        StopRuntime();
+        IntPtr previousHwnd = _childHwnd;
         _childHwnd = IntPtr.Zero;
         _width = 0;
         _height = 0;
+        StopRuntime();
         _status = "Viewport host detached.";
         RuntimeStateChanged?.Invoke(this, EventArgs.Empty);
     }

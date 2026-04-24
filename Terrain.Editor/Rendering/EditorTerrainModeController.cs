@@ -5,6 +5,7 @@ using System.Linq;
 using Stride.Rendering;
 using Stride.Rendering.Compositing;
 using Terrain.Editor.Models;
+using Terrain.Editor.Rendering.NativeViewport;
 
 namespace Terrain.Editor.Rendering;
 
@@ -228,9 +229,9 @@ public sealed class EditorTerrainModeController
 
     private static SceneRendererCollection? EnsureSceneRendererCollection(GraphicsCompositor graphicsCompositor)
     {
-        if (graphicsCompositor.Game is ViewportRenderTextureSceneRenderer viewportRenderer)
+        if (graphicsCompositor.Game is PresenterViewportSceneRenderer presenterRenderer)
         {
-            return EnsureSceneRendererCollection(viewportRenderer);
+            return EnsureSceneRendererCollection(presenterRenderer);
         }
 
         if (graphicsCompositor.Game is SceneRendererCollection sceneRendererCollection)
@@ -254,23 +255,23 @@ public sealed class EditorTerrainModeController
         return null;
     }
 
-    private static SceneRendererCollection? EnsureSceneRendererCollection(ViewportRenderTextureSceneRenderer viewportRenderer)
+    private static SceneRendererCollection? EnsureSceneRendererCollection(PresenterViewportSceneRenderer presenterRenderer)
     {
-        if (viewportRenderer.Child is SceneRendererCollection sceneRendererCollection)
+        if (presenterRenderer.Child is SceneRendererCollection sceneRendererCollection)
         {
             return sceneRendererCollection;
         }
 
-        if (viewportRenderer.Child is SceneCameraRenderer sceneCameraRenderer)
+        if (presenterRenderer.Child is SceneCameraRenderer sceneCameraRenderer)
         {
             return EnsureSceneRendererCollection(sceneCameraRenderer);
         }
 
-        if (viewportRenderer.Child is ISceneRenderer sceneRenderer)
+        if (presenterRenderer.Child is ISceneRenderer sceneRenderer)
         {
             var wrappedCollection = new SceneRendererCollection();
             wrappedCollection.Children.Add(sceneRenderer);
-            viewportRenderer.Child = wrappedCollection;
+            presenterRenderer.Child = wrappedCollection;
             return wrappedCollection;
         }
 

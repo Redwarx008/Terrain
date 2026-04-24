@@ -33,15 +33,13 @@
 |------|------|
 | `Views/MainWindow.axaml` | 主窗口 XAML 布局 |
 | `Views/MainWindow.axaml.cs` | 主窗口生命周期处理 |
-| `Views/Controls/SharedTextureViewportControl.cs` | 共享纹理视口 Avalonia 控件，当前保留作实验路径 |
-| `Views/Controls/NativeStrideViewportControl.cs` | 基于纯原生 `HWND` 子窗口的 Avalonia 视口宿主控件，当前主线路径 |
+| `Views/Controls/NativeStrideViewportControl.cs` | 基于纯原生 `HWND` 子窗口的 Avalonia 视口宿主控件 |
 
 ## ViewModel
 
 | 文件 | 职责 |
 |------|------|
 | `ViewModels/EditorShellViewModel.cs` | 主窗口绑定状态和命令，统一创建并释放当前 SDL 视口宿主 |
-| `ViewModels/SharedTextureViewportViewModel.cs` | 共享纹理视口绑定状态，并通过共享 host 暴露 Scene/TerrainManager/runtime 入口，当前保留作实验路径 |
 | `ViewModels/NativeStrideViewportViewModel.cs` | SDL 原生 `HWND` 视口绑定状态，转发宿主状态和视图模式 |
 | `ViewModels/ToolOptionViewModel.cs` | 工具选项绑定模型 |
 | `ViewModels/ConsoleEntryViewModel.cs` | 控制台条目绑定模型 |
@@ -69,22 +67,9 @@
 | `Rendering/EditorTerrainQuadTree.cs` | 编辑器四叉树 |
 | `Rendering/EditorTerrainModeController.cs` | 编辑器模式控制器 |
 | `Rendering/EditorGlobalLodMap.cs` | 编辑器全局 LOD 贴图 |
-| `Rendering/SceneRenderTargetManager.cs` | 场景渲染目标管理 |
-| `Rendering/ViewportRenderTextureSceneRenderer.cs` | 视口渲染纹理渲染器 |
-| `Rendering/SharedTexture/ISharedTextureViewportSource.cs` | 共享纹理视口源契约 |
-| `Rendering/SharedTexture/IStrideOffscreenViewportRenderer.cs` | 离屏共享纹理帧渲染器契约和委托适配器 |
-| `Rendering/SharedTexture/SharedTextureFrame.cs` | 共享纹理帧描述 |
-| `Rendering/SharedTexture/SharedTextureHandleTypes.cs` | 共享纹理平台 handle 类型常量 |
-| `Rendering/SharedTexture/HeadlessStrideGraphicsDeviceHost.cs` | 无窗口 Stride GraphicsDevice 生命周期宿主 |
-| `Rendering/SharedTexture/DiagnosticStrideOffscreenViewportRenderer.cs` | 默认诊断清屏渲染器 |
-| `Rendering/SharedTexture/SharedTextureRenderTargetManager.cs` | Stride D3D11 共享 render target 管理 |
-| `Rendering/SharedTexture/D3D11SharedTextureKeyedMutex.cs` | 共享纹理 keyed mutex 同步桥，协调 Stride producer 与 Avalonia compositor |
-| `Rendering/SharedTexture/StrideSceneViewportRuntime.cs` | 最小 Stride scene/compositor runtime，直接把 Scene 绘制到共享纹理 render target |
-| `Rendering/SharedTexture/StrideEditorViewportHost.cs` | 集中管理共享纹理 GraphicsDevice、Scene/GraphicsCompositor/TerrainManager runtime、render loop、renderer 和 viewport source attach/detach |
-| `Rendering/SharedTexture/StrideSharedTextureViewportSource.cs` | Stride 共享纹理视口源和诊断状态，拼接 host runtime 文案 |
-| `Rendering/SharedTexture/StrideOffscreenViewportRenderLoop.cs` | Stride 离屏共享纹理帧循环，可由集中式 host 切换当前 viewport source |
 | `Rendering/NativeViewport/NativeStrideViewportHost.cs` | 基于纯原生 `HWND` + `GameContextSDL` 的视口宿主，集中管理 SDL 窗口、Game 生命周期和 Tick |
 | `Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | SDL 嵌入视口使用的最小 Stride `Game` 运行时，负责 Scene/Compositor/TerrainManager 初始化 |
+| `Rendering/NativeViewport/PresenterViewportSceneRenderer.cs` | Presenter 视口场景渲染器，将场景绘制到 SDL 窗口的 backbuffer |
 | `Rendering/Materials/MaterialEditorTerrainDiffuseFeature.cs` | 编辑器漫反射特性 |
 | `Rendering/Materials/MaterialEditorTerrainDisplacementFeature.cs` | 编辑器位移特性 |
 

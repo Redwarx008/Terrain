@@ -5,9 +5,11 @@ using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Games;
 using Stride.Graphics;
+using Stride.Input;
 using Stride.Rendering;
 using Stride.Rendering.Compositing;
 using Stride.Rendering.Lights;
+using Terrain.Editor.Input;
 using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Services;
@@ -19,11 +21,16 @@ public sealed class EmbeddedStrideViewportGame : Game
     private const bool PresenterOnlyDiagnostic = false;
 
     private readonly EditorTerrainModeController _modeController = new();
+    private readonly HybridCameraController _cameraController = new();
+    private readonly EditorState _editorState = EditorState.Instance;
+
     private GraphicsCompositor? _graphicsCompositor;
     private Scene? _scene;
     private CameraComponent? _camera;
     private SceneViewMode _sceneViewMode = SceneViewMode.Shaded;
     private bool _hasRenderedFirstFrame;
+    private bool _isBrushStrokeActive;
+    private bool _wasLeftMouseDown;
 
     public EmbeddedStrideViewportGame()
     {
@@ -86,6 +93,9 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             _modeController.Apply(_sceneViewMode, _graphicsCompositor);
         }
+
+        UpdateCamera((float)gameTime.Elapsed.TotalSeconds);
+        UpdateBrush((float)gameTime.Elapsed.TotalSeconds);
     }
 
     protected override void EndRun()
@@ -139,6 +149,176 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
     }
 
+    private void UpdateCamera(float deltaTime)
+    {
+        _cameraController.Update(deltaTime, Input);
+
+        if (_cameraController.HasPendingCameraRefresh && _camera != null)
+        {
+            _camera.Entity.Transform.UpdateWorldMatrix();
+            float aspectRatio = (float)GraphicsDevice.Presenter.BackBuffer.Width
+                              / GraphicsDevice.Presenter.BackBuffer.Height;
+            _camera.Update(aspectRatio);
+        }
+    }
+
+    private void UpdateBrush(float deltaTime)
+    {
+        if (TerrainManager == null || _camera == null || !_editorState.HasSelectedTool)
+        {
+            EndBrushStrokeIfNeeded();
+            return;
+        }
+
+        bool leftMouseDown = Input.IsMouseButtonDown(MouseButton.Left);
+        bool rightMouseDown = Input.IsMouseButtonDown(MouseButton.Right);
+
+        // Camera rotation takes priority — right-button orbit cancels brush strokes.
+        if (rightMouseDown)
+        {
+            EndBrushStrokeIfNeeded();
+            _wasLeftMouseDown = false;
+            return;
+        }
+
+        // No terrain data loaded — skip brush input.
+        if (!TerrainManager.HasHeightCache)
+        {
+            EndBrushStrokeIfNeeded();
+            _wasLeftMouseDown = leftMouseDown;
+            return;
+        }
+
+        if (leftMouseDown)
+        {
+            Vector3? worldPosition = RaycastTerrain();
+            if (worldPosition == null)
+            {
+                // No intersection — cancel the stroke.
+                EndBrushStrokeIfNeeded();
+                _wasLeftMouseDown = true;
+                return;
+            }
+
+            if (!_isBrushStrokeActive)
+            {
+                BeginBrushStroke(worldPosition.Value);
+            }
+
+            ApplyBrushStroke(worldPosition.Value, deltaTime);
+        }
+        else
+        {
+            EndBrushStrokeIfNeeded();
+        }
+
+        _wasLeftMouseDown = leftMouseDown;
+    }
+
+    private Vector3? RaycastTerrain()
+    {
+        if (_camera == null || TerrainManager == null || Window == null)
+        {
+            return null;
+        }
+
+        var mousePosition = Input.MousePosition;
+        var clientBounds = Window.ClientBounds;
+        float viewportWidth = clientBounds.Width;
+        float viewportHeight = clientBounds.Height;
+
+        var (rayOrigin, rayDirection) = TerrainRaycast.ScreenToWorldRay(
+            mousePosition.X * viewportWidth,
+            mousePosition.Y * viewportHeight,
+            0, 0,
+            viewportWidth, viewportHeight,
+            _camera);
+
+        return TerrainRaycast.RayTerrainIntersection(rayOrigin, rayDirection, TerrainManager);
+    }
+
+    private void BeginBrushStroke(Vector3 worldPosition)
+    {
+        _isBrushStrokeActive = true;
+
+        switch (_editorState.CurrentEditorMode)
+        {
+            case EditorMode.Sculpt:
+                string heightToolName = _editorState.CurrentHeightTool.ToString();
+                HeightEditor.Instance.BeginStroke(heightToolName, worldPosition, TerrainManager!);
+                break;
+
+            case EditorMode.Paint:
+                string paintToolName = _editorState.CurrentPaintTool.ToString();
+                PaintEditor.Instance.BeginStroke(paintToolName, TerrainManager!);
+                break;
+
+            case EditorMode.Climate:
+                // Climate mode uses BeginStroke-less ApplyStroke — set active flag only.
+                break;
+        }
+    }
+
+    private void ApplyBrushStroke(Vector3 worldPosition, float deltaTime)
+    {
+        switch (_editorState.CurrentEditorMode)
+        {
+            case EditorMode.Sculpt:
+                HeightEditor.Instance.ApplyStroke(worldPosition, TerrainManager!, deltaTime);
+                break;
+
+            case EditorMode.Paint:
+                if (TerrainManager!.MaterialIndices != null)
+                {
+                    PaintEditor.Instance.ApplyStroke(
+                        worldPosition,
+                        TerrainManager.MaterialIndices,
+                        TerrainManager.HeightCacheWidth,
+                        TerrainManager.HeightCacheHeight,
+                        TerrainManager);
+                }
+
+                break;
+
+            case EditorMode.Climate:
+                if (TerrainManager!.ClimateMask != null)
+                {
+                    ClimateEditor.Instance.ApplyStroke(
+                        worldPosition,
+                        TerrainManager.ClimateMask,
+                        TerrainManager,
+                        (byte)_editorState.CurrentClimateId);
+                }
+
+                break;
+        }
+    }
+
+    private void EndBrushStrokeIfNeeded()
+    {
+        if (!_isBrushStrokeActive)
+        {
+            return;
+        }
+
+        _isBrushStrokeActive = false;
+
+        switch (_editorState.CurrentEditorMode)
+        {
+            case EditorMode.Sculpt:
+                HeightEditor.Instance.EndStroke();
+                break;
+
+            case EditorMode.Paint:
+                PaintEditor.Instance.EndStroke();
+                break;
+
+            case EditorMode.Climate:
+                // Climate has no stroke lifecycle — nothing to end.
+                break;
+        }
+    }
+
     private void InitializeScene()
     {
         _scene = new Scene();
@@ -158,6 +338,8 @@ public sealed class EmbeddedStrideViewportGame : Game
             Vector3.Normalize(new Vector3(0.0f, -0.8660254f, 0.5f)),
             Vector3.UnitY);
         _scene.Entities.Add(cameraEntity);
+
+        _cameraController.Camera = _camera;
 
         _scene.Entities.Add(new Entity("Ambient Light")
         {

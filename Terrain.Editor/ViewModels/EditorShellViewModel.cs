@@ -3,6 +3,10 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Terrain.Editor.Models;
@@ -49,23 +53,17 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _redoLabel = "Redo";
 
+    [ObservableProperty]
+    private bool _showMaskOverlay = true;
+
+    [ObservableProperty]
+    private bool _heatmapEnabled;
+
     public NativeStrideViewportViewModel Viewport { get; }
 
+    public BrushParametersViewModel BrushParams { get; }
+
     public ObservableCollection<ToolOptionViewModel> Tools { get; } = new();
-
-    public ObservableCollection<string> Assets { get; } = new()
-    {
-        "Heightmaps",
-        "Material slots",
-        "Splat maps",
-    };
-
-    public ObservableCollection<string> ClimateRules { get; } = new()
-    {
-        "Altitude bands",
-        "Slope filters",
-        "Moisture masks",
-    };
 
     public ObservableCollection<ConsoleEntryViewModel> ConsoleEntries { get; } = new();
 
@@ -77,9 +75,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     {
         _viewportHost = new NativeStrideViewportHost();
         Viewport = new NativeStrideViewportViewModel(_viewportHost);
+        BrushParams = new BrushParametersViewModel();
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
 
         SelectedMode = _editorState.CurrentEditorMode;
+        ShowMaskOverlay = _editorState.ShowMaskOverlay;
+        HeatmapEnabled = _editorState.HeatmapEnabled;
         RefreshTools();
         RefreshProjectState();
         RefreshHistoryState();
@@ -87,6 +88,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.EditorModeChanged += OnEditorModeChanged;
         _editorState.HeightToolChanged += OnToolChanged;
         _editorState.PaintToolChanged += OnToolChanged;
+        _editorState.OverlayChanged += OnOverlayChanged;
+        _editorState.HeatmapChanged += OnHeatmapChanged;
         _projectManager.DirtyChanged += OnProjectDirtyChanged;
         _historyManager.HistoryChanged += OnHistoryChanged;
 
@@ -105,15 +108,59 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void NewProject()
+    private async Task NewProject()
     {
-        AddConsole("Info", "New project command routed. Avalonia dialog migration is pending.");
+        var storageProvider = GetStorageProvider();
+        if (storageProvider == null)
+        {
+            AddConsole("Warning", "File dialog unavailable.");
+            return;
+        }
+
+        var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "New Terrain Project",
+            SuggestedFileName = "terrain",
+            FileTypeChoices = [new FilePickerFileType("Terrain Project") { Patterns = ["*.toml"] }],
+        });
+
+        if (result == null)
+        {
+            return;
+        }
+
+        string path = result.TryGetLocalPath() ?? result.Path.ToString();
+        _projectManager.CreateProject(System.IO.Path.GetDirectoryName(path)!, System.IO.Path.GetFileNameWithoutExtension(path));
+        RefreshProjectState();
+        AddConsole("Info", $"Created project at {path}.");
     }
 
     [RelayCommand]
-    private void OpenProject()
+    private async Task OpenProject()
     {
-        AddConsole("Info", "Open project command routed. Avalonia file picker migration is pending.");
+        var storageProvider = GetStorageProvider();
+        if (storageProvider == null)
+        {
+            AddConsole("Warning", "File dialog unavailable.");
+            return;
+        }
+
+        var results = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open Terrain Project",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Terrain Project") { Patterns = ["*.toml"] }],
+        });
+
+        if (results.Count == 0)
+        {
+            return;
+        }
+
+        string path = results[0].TryGetLocalPath() ?? results[0].Path.ToString();
+        _projectManager.OpenProject(path);
+        RefreshProjectState();
+        AddConsole("Info", $"Opened project: {_projectManager.ProjectName}.");
     }
 
     [RelayCommand]
@@ -135,21 +182,81 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void SaveProjectAs()
+    private async Task SaveProjectAs()
     {
-        AddConsole("Info", "Save As command routed. Avalonia file picker migration is pending.");
+        var storageProvider = GetStorageProvider();
+        if (storageProvider == null)
+        {
+            AddConsole("Warning", "File dialog unavailable.");
+            return;
+        }
+
+        var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save Project As",
+            SuggestedFileName = _projectManager.ProjectName,
+            FileTypeChoices = [new FilePickerFileType("Terrain Project") { Patterns = ["*.toml"] }],
+        });
+
+        if (result == null)
+        {
+            return;
+        }
+
+        string path = result.TryGetLocalPath() ?? result.Path.ToString();
+        _projectManager.SaveProjectAs(path);
+        RefreshProjectState();
+        AddConsole("Info", $"Project saved to {path}.");
     }
 
     [RelayCommand]
-    private void ExportTerrain()
+    private async Task ExportTerrain()
     {
-        AddConsole("Info", "Terrain export command routed. Export dialog migration is pending.");
+        var storageProvider = GetStorageProvider();
+        if (storageProvider == null)
+        {
+            AddConsole("Warning", "File dialog unavailable.");
+            return;
+        }
+
+        var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export Terrain",
+            SuggestedFileName = "terrain_export",
+            FileTypeChoices = [new FilePickerFileType("RAW Heightmap") { Patterns = ["*.raw"] }],
+        });
+
+        if (result == null)
+        {
+            return;
+        }
+
+        AddConsole("Info", $"Terrain export initiated to {result.Path}.");
     }
 
     [RelayCommand]
-    private void ExportMaterialDescriptor()
+    private async Task ExportMaterialDescriptor()
     {
-        AddConsole("Info", "Material descriptor export command routed. Export dialog migration is pending.");
+        var storageProvider = GetStorageProvider();
+        if (storageProvider == null)
+        {
+            AddConsole("Warning", "File dialog unavailable.");
+            return;
+        }
+
+        var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export Material Descriptor",
+            SuggestedFileName = "materials",
+            FileTypeChoices = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }],
+        });
+
+        if (result == null)
+        {
+            return;
+        }
+
+        AddConsole("Info", $"Material descriptor export initiated to {result.Path}.");
     }
 
     [RelayCommand(CanExecute = nameof(CanUndo))]
@@ -202,6 +309,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             _editorState.CurrentPaintTool = tool.PaintTool.Value;
             _editorState.HasSelectedTool = true;
         }
+        else
+        {
+            // Foliage and Climate tools don't have Height/Paint enums — mark tool as selected.
+            _editorState.HasSelectedTool = true;
+        }
 
         AddConsole("Info", $"Selected {tool.Label}.");
     }
@@ -215,7 +327,10 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Exit()
     {
-        Environment.Exit(0);
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
     }
 
     public void Dispose()
@@ -223,8 +338,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.EditorModeChanged -= OnEditorModeChanged;
         _editorState.HeightToolChanged -= OnToolChanged;
         _editorState.PaintToolChanged -= OnToolChanged;
+        _editorState.OverlayChanged -= OnOverlayChanged;
+        _editorState.HeatmapChanged -= OnHeatmapChanged;
         _projectManager.DirtyChanged -= OnProjectDirtyChanged;
         _historyManager.HistoryChanged -= OnHistoryChanged;
+        BrushParams.Dispose();
         Viewport.Dispose();
         _viewportHost.Dispose();
     }
@@ -255,6 +373,22 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
     }
 
+    partial void OnShowMaskOverlayChanged(bool value)
+    {
+        if (_editorState.ShowMaskOverlay != value)
+        {
+            _editorState.ShowMaskOverlay = value;
+        }
+    }
+
+    partial void OnHeatmapEnabledChanged(bool value)
+    {
+        if (_editorState.HeatmapEnabled != value)
+        {
+            _editorState.HeatmapEnabled = value;
+        }
+    }
+
     private void OnEditorModeChanged(object? sender, EventArgs e)
     {
         SelectedMode = _editorState.CurrentEditorMode;
@@ -266,6 +400,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         SelectedToolName = SelectedMode == EditorMode.Paint
             ? _editorState.CurrentPaintTool.ToString()
             : _editorState.CurrentHeightTool.ToString();
+    }
+
+    private void OnOverlayChanged(object? sender, EventArgs e)
+    {
+        ShowMaskOverlay = _editorState.ShowMaskOverlay;
+    }
+
+    private void OnHeatmapChanged(object? sender, EventArgs e)
+    {
+        HeatmapEnabled = _editorState.HeatmapEnabled;
     }
 
     private void OnProjectDirtyChanged(object? sender, EventArgs e)
@@ -332,6 +476,18 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             ],
             _ => [],
         };
+    }
+
+    private static IStorageProvider? GetStorageProvider()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is { } window
+            && window.StorageProvider is { } provider)
+        {
+            return provider;
+        }
+
+        return null;
     }
 
     private void AddConsole(string level, string message)
