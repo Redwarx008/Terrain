@@ -13,7 +13,7 @@ public class TerrainGame : Game
     protected override void BeginRun()
     {
         base.BeginRun();
-        
+
         // 关闭 VSync 以获得更高的帧率
         var graphicsDeviceManager = Services.GetService<IGraphicsDeviceManager>() as GraphicsDeviceManager;
         if (graphicsDeviceManager != null)
@@ -21,7 +21,7 @@ public class TerrainGame : Game
             graphicsDeviceManager.SynchronizeWithVerticalRetrace = false;
             graphicsDeviceManager.ApplyChanges();
         }
-        
+
         // 显示帧率和性能信息
         ProfilingSystem.EnableProfiling(false, GameProfilingKeys.GameDrawFPS);
     }

@@ -9,8 +9,9 @@
 
 | 文件 | 职责 |
 |------|------|
-| `Program.cs` | 应用程序入口 |
-| `EditorGame.cs` | 编辑器游戏类，初始化系统 |
+| `Program.cs` | Avalonia 桌面应用入口 |
+| `App.axaml` | Avalonia 应用资源、Simple 主题入口 |
+| `App.axaml.cs` | Avalonia 应用初始化和主窗口创建 |
 
 ## 服务层
 
@@ -26,49 +27,37 @@
 | `Services/TerrainSplitter.cs` | 地形分割器 |
 | `Services/SplitTerrainConfig.cs` | 分割配置 |
 
-## UI 框架
+## Avalonia UI 框架
 
 | 文件 | 职责 |
 |------|------|
-| `UI/MainWindow.cs` | 主窗口，协调所有面板 |
-| `UI/EditorUIRenderer.cs` | UI 渲染器 |
-| `UI/ImGuiExtension.cs` | ImGui 扩展方法 |
-| `UI/Layout/LayoutManager.cs` | 布局管理器 |
+| `Views/MainWindow.axaml` | 主窗口 XAML 布局 |
+| `Views/MainWindow.axaml.cs` | 主窗口生命周期处理 |
+| `Views/Controls/SharedTextureViewportControl.cs` | 共享纹理视口 Avalonia 控件，当前保留作实验路径 |
+| `Views/Controls/NativeStrideViewportControl.cs` | 基于纯原生 `HWND` 子窗口的 Avalonia 视口宿主控件，当前主线路径 |
 
-## UI 面板
-
-| 文件 | 职责 |
-|------|------|
-| `UI/Panels/PanelBase.cs` | 面板基类 |
-| `UI/Panels/ToolbarPanel.cs` | 工具栏面板 |
-| `UI/Panels/ToolsPanel.cs` | 工具面板（笔刷选择） |
-| `UI/Panels/SceneViewPanel.cs` | 场景视图面板 |
-| `UI/Panels/AssetsPanel.cs` | 资源面板 |
-| `UI/Panels/ConsolePanel.cs` | 控制台面板 |
-| `UI/Panels/RightPanel.cs` | 右侧面板（属性） |
-| `UI/Panels/GridTileRenderer.cs` | 网格瓦片渲染 |
-
-## UI 控件
+## ViewModel
 
 | 文件 | 职责 |
 |------|------|
-| `UI/Controls/ControlBase.cs` | 控件基类 |
-| `UI/Controls/Button.cs` | 按钮控件 |
-| `UI/Controls/CheckBox.cs` | 复选框控件 |
-| `UI/Controls/Label.cs` | 标签控件 |
-| `UI/Controls/NumericField.cs` | 数值输入控件 |
-| `UI/Controls/TextBox.cs` | 文本框控件 |
-| `UI/Controls/Slider.cs` | 滑块控件 |
-| `UI/Controls/Toggle.cs` | 开关控件 |
-| `UI/Controls/Separator.cs` | 分隔符控件 |
+| `ViewModels/EditorShellViewModel.cs` | 主窗口绑定状态和命令，统一创建并释放当前 SDL 视口宿主 |
+| `ViewModels/SharedTextureViewportViewModel.cs` | 共享纹理视口绑定状态，并通过共享 host 暴露 Scene/TerrainManager/runtime 入口，当前保留作实验路径 |
+| `ViewModels/NativeStrideViewportViewModel.cs` | SDL 原生 `HWND` 视口绑定状态，转发宿主状态和视图模式 |
+| `ViewModels/ToolOptionViewModel.cs` | 工具选项绑定模型 |
+| `ViewModels/ConsoleEntryViewModel.cs` | 控制台条目绑定模型 |
+
+## 模型
+
+| 文件 | 职责 |
+|------|------|
+| `Models/EditorMode.cs` | 编辑器模式和视图模式枚举 |
+| `Models/TerrainFileFormat.cs` | 地形文件格式模型 |
 
 ## UI 样式
 
 | 文件 | 职责 |
 |------|------|
-| `UI/Styling/ColorPalette.cs` | 颜色调色板 |
-| `UI/Styling/EditorStyle.cs` | 编辑器样式定义 |
-| `UI/Styling/FontManager.cs` | 字体管理器 |
+| `Styles/EditorTheme.axaml` | Simple 主题覆盖和编辑器资源 |
 
 ## 渲染
 
@@ -82,6 +71,20 @@
 | `Rendering/EditorGlobalLodMap.cs` | 编辑器全局 LOD 贴图 |
 | `Rendering/SceneRenderTargetManager.cs` | 场景渲染目标管理 |
 | `Rendering/ViewportRenderTextureSceneRenderer.cs` | 视口渲染纹理渲染器 |
+| `Rendering/SharedTexture/ISharedTextureViewportSource.cs` | 共享纹理视口源契约 |
+| `Rendering/SharedTexture/IStrideOffscreenViewportRenderer.cs` | 离屏共享纹理帧渲染器契约和委托适配器 |
+| `Rendering/SharedTexture/SharedTextureFrame.cs` | 共享纹理帧描述 |
+| `Rendering/SharedTexture/SharedTextureHandleTypes.cs` | 共享纹理平台 handle 类型常量 |
+| `Rendering/SharedTexture/HeadlessStrideGraphicsDeviceHost.cs` | 无窗口 Stride GraphicsDevice 生命周期宿主 |
+| `Rendering/SharedTexture/DiagnosticStrideOffscreenViewportRenderer.cs` | 默认诊断清屏渲染器 |
+| `Rendering/SharedTexture/SharedTextureRenderTargetManager.cs` | Stride D3D11 共享 render target 管理 |
+| `Rendering/SharedTexture/D3D11SharedTextureKeyedMutex.cs` | 共享纹理 keyed mutex 同步桥，协调 Stride producer 与 Avalonia compositor |
+| `Rendering/SharedTexture/StrideSceneViewportRuntime.cs` | 最小 Stride scene/compositor runtime，直接把 Scene 绘制到共享纹理 render target |
+| `Rendering/SharedTexture/StrideEditorViewportHost.cs` | 集中管理共享纹理 GraphicsDevice、Scene/GraphicsCompositor/TerrainManager runtime、render loop、renderer 和 viewport source attach/detach |
+| `Rendering/SharedTexture/StrideSharedTextureViewportSource.cs` | Stride 共享纹理视口源和诊断状态，拼接 host runtime 文案 |
+| `Rendering/SharedTexture/StrideOffscreenViewportRenderLoop.cs` | Stride 离屏共享纹理帧循环，可由集中式 host 切换当前 viewport source |
+| `Rendering/NativeViewport/NativeStrideViewportHost.cs` | 基于纯原生 `HWND` + `GameContextSDL` 的视口宿主，集中管理 SDL 窗口、Game 生命周期和 Tick |
+| `Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | SDL 嵌入视口使用的最小 Stride `Game` 运行时，负责 Scene/Compositor/TerrainManager 初始化 |
 | `Rendering/Materials/MaterialEditorTerrainDiffuseFeature.cs` | 编辑器漫反射特性 |
 | `Rendering/Materials/MaterialEditorTerrainDisplacementFeature.cs` | 编辑器位移特性 |
 
@@ -94,14 +97,6 @@
 | `Effects/EditorTerrainHeightStream.sdsl` | 编辑器高度流式着色器 |
 | `Effects/EditorTerrainHeightParameters.sdsl` | 编辑器高度参数 |
 | `Effects/EditorTerrainForwardShadingEffect.sdfx` | 编辑器前向着色效果 |
-| `Effects/ImGuiShaderKeys.cs` | ImGui 着色器键 |
-
-## 平台
-
-| 文件 | 职责 |
-|------|------|
-| `Platform/WindowInterop.cs` | 窗口互操作 |
-| `Platform/FileDialog.cs` | 文件对话框 |
 
 ## 输入
 
@@ -111,4 +106,4 @@
 
 ---
 
-*最后更新: 2026-04-06*
+*最后更新: 2026-04-24*

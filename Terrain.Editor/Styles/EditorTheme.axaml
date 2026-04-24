@@ -1,0 +1,44 @@
+<Styles
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="EditorWindowBackgroundBrush" Color="#1E1F22" />
+    <SolidColorBrush x:Key="EditorPanelBackgroundBrush" Color="#282A2E" />
+    <SolidColorBrush x:Key="EditorPanelBorderBrush" Color="#3A3D42" />
+    <SolidColorBrush x:Key="EditorViewportBackgroundBrush" Color="#15171A" />
+    <SolidColorBrush x:Key="EditorTextPrimaryBrush" Color="#F2F4F8" />
+    <SolidColorBrush x:Key="EditorTextSecondaryBrush" Color="#AAB0BA" />
+    <SolidColorBrush x:Key="EditorAccentBrush" Color="#4FA3FF" />
+    <SolidColorBrush x:Key="EditorWarningBrush" Color="#E5B454" />
+    <SolidColorBrush x:Key="EditorErrorBrush" Color="#E06C75" />
+    <Thickness x:Key="EditorPanelPadding">10</Thickness>
+  </Styles.Resources>
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource EditorWindowBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextPrimaryBrush}" />
+    <Setter Property="FontFamily" Value="Inter" />
+  </Style>
+
+  <Style Selector="TextBlock.sectionTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+
+  <Style Selector="Border.editorPanel">
+    <Setter Property="Background" Value="{DynamicResource EditorPanelBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="{DynamicResource EditorPanelPadding}" />
+  </Style>
+
+  <Style Selector="Button.toolButton">
+    <Setter Property="MinHeight" Value="30" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+  </Style>
+
+  <Style Selector="Button.toolbarButton">
+    <Setter Property="MinWidth" Value="72" />
+    <Setter Property="MinHeight" Value="30" />
+  </Style>
+</Styles>

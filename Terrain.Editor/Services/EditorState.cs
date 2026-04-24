@@ -2,7 +2,7 @@
 
 using System;
 using Stride.Core.Mathematics;
-using Terrain.Editor.UI.Panels;
+using Terrain.Editor.Models;
 
 namespace Terrain.Editor.Services;
 

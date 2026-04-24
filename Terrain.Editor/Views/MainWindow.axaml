@@ -1,0 +1,146 @@
+<Window
+  x:Class="Terrain.Editor.Views.MainWindow"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:controls="clr-namespace:Terrain.Editor.Views.Controls"
+  Title="{Binding Title}"
+  Width="1440"
+  Height="900"
+  MinWidth="1100"
+  MinHeight="720">
+  <DockPanel LastChildFill="True">
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Header="_New" Command="{Binding NewProjectCommand}" />
+        <MenuItem Header="_Open..." Command="{Binding OpenProjectCommand}" />
+        <Separator />
+        <MenuItem Header="_Save" Command="{Binding SaveProjectCommand}" />
+        <MenuItem Header="Save _As..." Command="{Binding SaveProjectAsCommand}" />
+        <Separator />
+        <MenuItem Header="_Export Terrain..." Command="{Binding ExportTerrainCommand}" />
+        <MenuItem Header="Export _Material Descriptor..." Command="{Binding ExportMaterialDescriptorCommand}" />
+        <Separator />
+        <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Edit">
+        <MenuItem Header="{Binding UndoLabel}" Command="{Binding UndoCommand}" />
+        <MenuItem Header="{Binding RedoLabel}" Command="{Binding RedoCommand}" />
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="Reset Layout" Command="{Binding ResetLayoutCommand}" />
+      </MenuItem>
+    </Menu>
+
+    <Border DockPanel.Dock="Top" Classes="editorPanel" Padding="8" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+          <Button Classes="toolbarButton" Content="Sculpt" Command="{Binding SelectModeCommand}" CommandParameter="Sculpt" />
+          <Button Classes="toolbarButton" Content="Paint" Command="{Binding SelectModeCommand}" CommandParameter="Paint" />
+          <Button Classes="toolbarButton" Content="Foliage" Command="{Binding SelectModeCommand}" CommandParameter="Foliage" />
+          <Button Classes="toolbarButton" Content="Climate" Command="{Binding SelectModeCommand}" CommandParameter="Climate" />
+        </StackPanel>
+        <TextBlock
+          Grid.Column="1"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          Text="{Binding ProjectName}" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+          <Button Content="{Binding UndoLabel}" Command="{Binding UndoCommand}" />
+          <Button Content="{Binding RedoLabel}" Command="{Binding RedoCommand}" />
+          <TextBlock VerticalAlignment="Center" Text="{Binding IsDirty, StringFormat='Dirty: {0}'}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid ColumnDefinitions="280,*,320" RowDefinitions="*,240">
+      <Border Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" Classes="editorPanel" Margin="8,8,4,8">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <TextBlock Classes="sectionTitle" Text="Tools" />
+          <ItemsControl Grid.Row="1" ItemsSource="{Binding Tools}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button
+                  Classes="toolButton"
+                  Margin="0,0,0,6"
+                  Command="{Binding DataContext.SelectToolCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                  CommandParameter="{Binding}">
+                  <StackPanel>
+                    <TextBlock Text="{Binding Label}" />
+                    <TextBlock FontSize="11" Foreground="{DynamicResource EditorTextSecondaryBrush}" Text="{Binding Description}" />
+                  </StackPanel>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <StackPanel Grid.Row="2" Spacing="6">
+            <TextBlock Foreground="{DynamicResource EditorTextSecondaryBrush}" Text="{Binding SelectedToolName, StringFormat='Selected: {0}'}" />
+            <ComboBox
+              ItemsSource="{Binding SceneViewModes}"
+              SelectedItem="{Binding SelectedSceneViewMode}"
+              HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="0" Grid.Column="1" Classes="editorPanel" Margin="4,8">
+        <Grid RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="sectionTitle" Text="Viewport" />
+            <TextBlock
+              Grid.Column="1"
+              Foreground="{DynamicResource EditorTextSecondaryBrush}"
+              Text="{Binding Viewport.Status}" />
+          </Grid>
+          <controls:NativeStrideViewportControl
+            Grid.Row="1"
+            ViewportHost="{Binding Viewport.ViewportHost}"
+            Background="{DynamicResource EditorViewportBackgroundBrush}"
+            MinHeight="320" />
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="0" Grid.Column="2" Classes="editorPanel" Margin="4,8,8,4">
+        <TabControl>
+          <TabItem Header="Inspector">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="sectionTitle" Text="Parameters" />
+              <TextBlock Text="{Binding SelectedMode, StringFormat='Mode: {0}'}" />
+              <TextBlock Text="{Binding SelectedToolName, StringFormat='Tool: {0}'}" />
+              <Slider Minimum="1" Maximum="256" Value="32" />
+              <Slider Minimum="0" Maximum="1" Value="0.5" />
+            </StackPanel>
+          </TabItem>
+          <TabItem Header="Climate">
+            <ItemsControl ItemsSource="{Binding ClimateRules}" />
+          </TabItem>
+          <TabItem Header="Assets">
+            <ItemsControl ItemsSource="{Binding Assets}" />
+          </TabItem>
+        </TabControl>
+      </Border>
+
+      <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Classes="editorPanel" Margin="4,4,8,8">
+        <TabControl>
+          <TabItem Header="Console">
+            <ListBox ItemsSource="{Binding ConsoleEntries}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="80,*" Margin="0,2">
+                    <TextBlock Foreground="{DynamicResource EditorTextSecondaryBrush}" Text="{Binding Level}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Message}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </TabItem>
+          <TabItem Header="Rules">
+            <ItemsControl ItemsSource="{Binding ClimateRules}" />
+          </TabItem>
+          <TabItem Header="Materials">
+            <ItemsControl ItemsSource="{Binding Assets}" />
+          </TabItem>
+        </TabControl>
+      </Border>
+    </Grid>
+  </DockPanel>
+</Window>

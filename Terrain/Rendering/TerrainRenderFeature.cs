@@ -69,7 +69,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
         RenderFeatures.CollectionChanged += RenderFeatures_CollectionChanged;
         EnsureConfiguredSubRenderFeatures();
         EnsureDefaultPipelineProcessors();
-           
+
 
         foreach (var renderFeature in RenderFeatures)
         {

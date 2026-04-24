@@ -9,7 +9,7 @@ namespace Terrain.Editor.Rendering;
 
 /// <summary>
 /// Redirects the scene renderer chain into a dedicated render target so the editor viewport
-/// can display the scene inside an ImGui panel instead of always drawing full-screen.
+/// can display the scene through the shared-texture presentation path instead of always drawing full-screen.
 /// </summary>
 public sealed class ViewportRenderTextureSceneRenderer : SceneRendererBase
 {

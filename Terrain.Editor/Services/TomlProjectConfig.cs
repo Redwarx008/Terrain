@@ -122,8 +122,12 @@ public class TomlProjectConfig
 
                 config.Climates.Add(new TomlClimateDefinitionConfig
                 {
-                    Id = id, Name = name,
-                    DebugColorR = r, DebugColorG = g, DebugColorB = b, DebugColorA = a
+                    Id = id,
+                    Name = name,
+                    DebugColorR = r,
+                    DebugColorG = g,
+                    DebugColorB = b,
+                    DebugColorA = a
                 });
             }
         }
@@ -166,10 +170,15 @@ public class TomlProjectConfig
 
                 config.ClimateRules.Add(new TomlClimateRuleConfig
                 {
-                    ClimateId = climateId, Name = ruleName, Enabled = enabled,
-                    MinAltitude = minAlt, MaxAltitude = maxAlt,
-                    MinSlopeDegrees = minSlope, MaxSlopeDegrees = maxSlope,
-                    BlendRange = blend, MaterialSlotIndex = matSlot
+                    ClimateId = climateId,
+                    Name = ruleName,
+                    Enabled = enabled,
+                    MinAltitude = minAlt,
+                    MaxAltitude = maxAlt,
+                    MinSlopeDegrees = minSlope,
+                    MaxSlopeDegrees = maxSlope,
+                    BlendRange = blend,
+                    MaterialSlotIndex = matSlot
                 });
             }
         }

@@ -64,7 +64,9 @@
       "Bash(npx skills *)",
       "Bash(gh repo *)",
       "Bash(git submodule *)",
-      "Bash(git subtree *)"
+      "Bash(git subtree *)",
+      "Bash(trellis init *)",
+      "Bash(npm uninstall *)"
     ]
   }
 }

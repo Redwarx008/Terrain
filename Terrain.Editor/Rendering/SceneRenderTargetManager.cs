@@ -7,7 +7,7 @@ namespace Terrain.Editor.Rendering;
 
 /// <summary>
 /// Manages scene render target creation and resizing.
-/// Handles synchronization between ImGui panel size and Stride render target dimensions.
+/// Handles synchronization between editor viewport size and Stride render target dimensions.
 /// </summary>
 public sealed class SceneRenderTargetManager : IDisposable
 {
@@ -74,9 +74,9 @@ public sealed class SceneRenderTargetManager : IDisposable
     }
 
     /// <summary>
-    /// Gets the texture for use with ImGui rendering.
+    /// Gets the texture for viewport presentation.
     /// The texture must be rendered through Stride's pipeline and displayed
-    /// using a custom ImGui integration approach.
+    /// using the active editor viewport integration approach.
     /// </summary>
     /// <returns>The render target texture, or null if not created</returns>
     public Texture? GetTexture()

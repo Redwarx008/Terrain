@@ -4,7 +4,7 @@ using System;
 using System.Linq;
 using Stride.Rendering;
 using Stride.Rendering.Compositing;
-using Terrain.Editor.UI.Panels;
+using Terrain.Editor.Models;
 
 namespace Terrain.Editor.Rendering;
 
