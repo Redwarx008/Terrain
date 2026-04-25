@@ -74,6 +74,15 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isGridView = true;
 
+    [ObservableProperty]
+    private bool _isAssetBrowserVisible = true;
+
+    [ObservableProperty]
+    private bool _isSideNavVisible = true;
+
+    [ObservableProperty]
+    private bool _isInspectorVisible = true;
+
     public NativeStrideViewportViewModel Viewport { get; }
 
     public BrushParametersViewModel BrushParams { get; }
@@ -377,6 +386,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void SetListView()
     {
         IsGridView = false;
+    }
+
+    [RelayCommand]
+    private void ToggleAssetBrowser()
+    {
+        IsAssetBrowserVisible = !IsAssetBrowserVisible;
     }
 
     [RelayCommand]

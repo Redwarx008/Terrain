@@ -7,8 +7,8 @@
     <SolidColorBrush x:Key="EditorChromeBackgroundBrush" Color="#EFF1F3" />
     <SolidColorBrush x:Key="EditorPanelBackgroundBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="EditorPanelAltBackgroundBrush" Color="#FAFAFA" />
-    <SolidColorBrush x:Key="EditorPanelBorderBrush" Color="#E2E2E2" />
-    <SolidColorBrush x:Key="EditorPanelBorderStrongBrush" Color="#D0D0D0" />
+    <SolidColorBrush x:Key="EditorPanelBorderBrush" Color="#C0C0C0" />
+    <SolidColorBrush x:Key="EditorPanelBorderStrongBrush" Color="#A0A0A0" />
     <SolidColorBrush x:Key="EditorViewportBackgroundBrush" Color="#E8E8E8" />
     <SolidColorBrush x:Key="EditorTextPrimaryBrush" Color="#1A1A1A" />
     <SolidColorBrush x:Key="EditorTextSecondaryBrush" Color="#5A5A5A" />
@@ -582,6 +582,7 @@
     <Setter Property="Padding" Value="0" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Width" Value="120" />
   </Style>
 
   <Style Selector="Border.assetTile">
@@ -589,6 +590,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="Width" Value="120" />
   </Style>
 
   <Style Selector="ListBox.assetTileList > ListBoxItem:pointerover Border.assetTile">
@@ -605,6 +607,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="2,2,0,0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
   </Style>
 
   <!-- Asset List ListBox -->
@@ -717,7 +720,7 @@
   <Style Selector="Border.viewportToolbar">
     <Setter Property="Background" Value="{DynamicResource EditorViewportToolbarBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
-    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
     <Setter Property="Padding" Value="8,0" />
     <Setter Property="Height" Value="32" />
   </Style>
@@ -737,4 +740,24 @@
     <Setter Property="FontWeight" Value="Medium" />
     <Setter Property="Foreground" Value="{DynamicResource EditorTextSecondaryBrush}" />
   </Style>
+
+  <!-- Toolbar Inline Menu (single MenuItem drop-down) -->
+  <Style Selector="Menu.toolbarMenu">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Height" Value="40" />
+  </Style>
+
+  <Style Selector="Menu.toolbarMenu > MenuItem">
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextPrimaryBrush}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Menu.toolbarMenu > MenuItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceHoverBrush}" />
+  </Style>
+
 </Styles>

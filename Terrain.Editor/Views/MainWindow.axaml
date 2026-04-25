@@ -69,7 +69,13 @@
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
           <Button Classes="commandButton" Content="File" FontSize="12" />
           <Button Classes="commandButton" Content="Edit" FontSize="12" />
-          <Button Classes="commandButton" Content="View" FontSize="12" />
+          <Menu Classes="toolbarMenu">
+            <MenuItem Header="View" FontSize="12">
+              <MenuItem Header="Side Nav" IsChecked="{Binding IsSideNavVisible, Mode=TwoWay}" ToggleType="CheckBox" />
+              <MenuItem Header="Asset Browser" IsChecked="{Binding IsAssetBrowserVisible, Mode=TwoWay}" ToggleType="CheckBox" />
+              <MenuItem Header="Inspector" IsChecked="{Binding IsInspectorVisible, Mode=TwoWay}" ToggleType="CheckBox" />
+            </MenuItem>
+          </Menu>
           <Button Classes="commandButton" Content="Select" FontSize="12" />
           <Button Classes="commandButton" Content="Tools" FontSize="12" Foreground="{DynamicResource EditorAccentBrush}" FontWeight="SemiBold" />
           <Button Classes="commandButton" Content="Help" FontSize="12" />
@@ -83,10 +89,10 @@
     </Border>
 
     <!-- ═══ Main Workspace: Mode | Viewport+AssetBrowser | Inspector ═══ -->
-    <Grid ColumnDefinitions="80,*,280" Margin="0">
+    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0">
 
       <!-- ─── SideNavBar (Modes) ─── -->
-      <Border Grid.Column="0" Classes="editorPanel,modePanel" BorderThickness="0,0,1,0">
+      <Border Grid.Column="0" Classes="editorPanel,modePanel" BorderThickness="0,0,1,0" IsVisible="{Binding IsSideNavVisible}" Width="80">
         <Grid RowDefinitions="Auto,*">
           <!-- Mode Header -->
           <StackPanel HorizontalAlignment="Center" Margin="0,8,0,2">
@@ -112,12 +118,12 @@
       </Border>
 
       <!-- ─── Center: Viewport + Asset Browser ─── -->
-      <Grid Grid.Column="1" RowDefinitions="*,192">
+      <Grid Grid.Column="1" RowDefinitions="*,Auto">
 
         <!-- Viewport Area -->
-        <Border Grid.Row="0" Classes="editorPanel,viewportPanel" BorderThickness="0" ClipToBounds="True">
+        <Border Grid.Row="0" Classes="editorPanel,viewportPanel" BorderThickness="0,0,0,1" ClipToBounds="True">
           <Grid RowDefinitions="Auto,*">
-            <!-- Viewport Toolbar (floating top) -->
+            <!-- Viewport Toolbar (top row) -->
             <Border Classes="viewportToolbar">
               <Grid ColumnDefinitions="Auto,Auto,1,Auto,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="2">
@@ -179,11 +185,11 @@
         </Border>
 
         <!-- ─── Asset Browser ─── -->
-        <Border Grid.Row="1" Classes="editorPanel,assetBrowserPanel" BorderThickness="0,1,0,0" ClipToBounds="True">
+        <Border Grid.Row="1" Classes="editorPanel,assetBrowserPanel" BorderThickness="0,1,0,0" ClipToBounds="True" IsVisible="{Binding IsAssetBrowserVisible}">
           <Grid RowDefinitions="Auto,*">
             <!-- Asset Tab Bar -->
-            <Border Classes="viewportToolbar" Background="{DynamicResource EditorAssetTabBackgroundBrush}">
-              <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+            <Border Classes="viewportToolbar" Background="{DynamicResource EditorAssetTabBackgroundBrush}" BorderThickness="0">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="0" Margin="0,0,0,0">
                   <Button Classes="assetTabActive">
                     <StackPanel Orientation="Horizontal" Spacing="4">
@@ -214,14 +220,17 @@
                 <Border Grid.Column="1" />
 
                 <!-- Search + Filter -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" Margin="0,0,4,0">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" Margin="0,0,4,0" VerticalAlignment="Center">
                   <Border Background="{DynamicResource EditorSurfaceBrush}" BorderBrush="{DynamicResource EditorPanelBorderBrush}" BorderThickness="1,1,0,1" Padding="6,0">
                     <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{DynamicResource EditorTextSecondaryBrush}" Text="&#xE71E;" VerticalAlignment="Center" />
                   </Border>
                   <TextBox Classes="searchBox" Watermark="Search meshes..." Width="180" BorderThickness="0,1,1,1" />
                 </StackPanel>
-                <Button Grid.Column="3" Classes="commandButton" Padding="4">
+                <Button Grid.Column="3" Classes="commandButton" Padding="4" VerticalAlignment="Center">
                   <TextBlock Classes="viewToggleIcon" Text="&#xE71C;" />
+                </Button>
+                <Button Grid.Column="4" Classes="commandButton" Padding="4" VerticalAlignment="Center" Command="{Binding ToggleAssetBrowserCommand}">
+                  <TextBlock Classes="viewToggleIcon" Text="&#xE70E;" />
                 </Button>
               </Grid>
             </Border>
@@ -253,7 +262,7 @@
       </Grid>
 
       <!-- ─── Right Inspector Panel ─── -->
-      <Border Grid.Column="2" Classes="editorPanel,inspectorPanel" BorderThickness="1,0,0,0" ClipToBounds="True">
+      <Border Grid.Column="2" Classes="editorPanel,inspectorPanel" BorderThickness="1,0,0,0" ClipToBounds="True" IsVisible="{Binding IsInspectorVisible}" Width="280">
         <Grid RowDefinitions="Auto,*,Auto">
           <!-- Inspector Header -->
           <Border Classes="inspectorHeader">
