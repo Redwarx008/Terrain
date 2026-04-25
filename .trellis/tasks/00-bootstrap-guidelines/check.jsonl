@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/editor/index.md", "reason": "Editor spec index — overview for compliance checks"}
+{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "Quality standards and review checklist for editor code"}
+{"file": ".trellis/spec/editor/component-guidelines.md", "reason": "Component patterns to verify against"}
+{"file": ".trellis/spec/editor/state-management.md", "reason": "State layer conventions to verify against"}
+{"file": ".trellis/spec/editor/type-safety.md", "reason": "Type safety conventions to verify against"}
+{"file": ".trellis/spec/runtime/index.md", "reason": "Runtime spec index — overview for compliance checks"}
+{"file": ".trellis/spec/runtime/quality-guidelines.md", "reason": "Quality standards and review checklist for runtime code"}
+{"file": ".trellis/spec/runtime/error-handling.md", "reason": "Error handling patterns to verify against"}
+{"file": ".trellis/spec/runtime/database-guidelines.md", "reason": "Database/TOML conventions to verify against"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer consistency checks"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Code reuse verification — no unnecessary duplication"}

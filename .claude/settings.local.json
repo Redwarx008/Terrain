@@ -73,7 +73,21 @@
       "Bash(python3 ./.trellis/scripts/task.py --help)",
       "Bash(python3 ./.trellis/scripts/task.py)",
       "Bash(python3 -c \"from .trellis.scripts import task; task.main\\(\\)\" -- --help)",
-      "Bash(python ./.trellis/scripts/get_context.py)"
+      "Bash(python ./.trellis/scripts/get_context.py)",
+      "Bash(claude mcp *)",
+      "Bash(sed -i 's/\\\\\\\\uE7C3\", EditorMode.Sculpt/\\\\\\\\uE790\", EditorMode.Sculpt/' \"e:/Stride Projects/Terrain/Terrain.Editor/ViewModels/EditorShellViewModel.cs\")",
+      "Bash(sed -i 's/\\\\\\\\uE790\", EditorMode.Paint/\\\\\\\\uE791\", EditorMode.Paint/' \"e:/Stride Projects/Terrain/Terrain.Editor/ViewModels/EditorShellViewModel.cs\")",
+      "Bash(sed -i 's/\\\\\\\\uE7BE\", EditorMode.Water/\\\\\\\\uE8E8\", EditorMode.Water/' \"e:/Stride Projects/Terrain/Terrain.Editor/ViewModels/EditorShellViewModel.cs\")",
+      "Bash(sed -i 's/\\\\\\\\uE8F1\", EditorMode.Landscape/\\\\\\\\uE804\", EditorMode.Landscape/' \"e:/Stride Projects/Terrain/Terrain.Editor/ViewModels/EditorShellViewModel.cs\")",
+      "Bash(python3 ./.trellis/scripts/task.py status)",
+      "Bash(python3 .trellis/scripts/task.py start 00-bootstrap-guidelines)",
+      "Bash(python3 .trellis/scripts/task.py list)",
+      "Bash(python .trellis/scripts/task.py start 00-bootstrap-guidelines)",
+      "Bash(python .trellis/scripts/task.py list)",
+      "Bash(python .claude/hooks/session-start.py)",
+      "Bash(git check-ignore *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(python ./.trellis/scripts/get_context.py --mode phase)"
     ]
   }
 }
