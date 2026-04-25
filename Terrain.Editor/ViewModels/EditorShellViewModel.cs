@@ -42,7 +42,10 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private SceneViewMode _selectedSceneViewMode = SceneViewMode.Perspective;
 
     [ObservableProperty]
-    private string _selectedToolName = "Raise";
+    private SceneLightingMode _selectedSceneLightingMode = SceneLightingMode.Lit;
+
+    [ObservableProperty]
+    private string _selectedToolName = "Sculpt";
 
     [ObservableProperty]
     private ToolOptionViewModel? _selectedTool;
@@ -89,13 +92,17 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public Array SceneViewModes { get; } = Enum.GetValues<SceneViewMode>();
 
+    public Array SceneLightingModes { get; } = Enum.GetValues<SceneLightingMode>();
+
     public bool IsSculptMode => SelectedMode == EditorMode.Sculpt;
 
     public bool IsPaintMode => SelectedMode == EditorMode.Paint;
 
     public bool IsFoliageMode => SelectedMode == EditorMode.Foliage;
 
-    public bool IsRoadsMode => SelectedMode == EditorMode.Roads;
+    public bool IsWaterMode => SelectedMode == EditorMode.Water;
+
+    public bool IsLandscapeMode => SelectedMode == EditorMode.Landscape;
 
     public bool IsListView => !IsGridView;
 
@@ -406,7 +413,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsSculptMode));
         OnPropertyChanged(nameof(IsPaintMode));
         OnPropertyChanged(nameof(IsFoliageMode));
-        OnPropertyChanged(nameof(IsRoadsMode));
+        OnPropertyChanged(nameof(IsWaterMode));
+        OnPropertyChanged(nameof(IsLandscapeMode));
     }
 
     partial void OnCanUndoChanged(bool value)
@@ -561,10 +569,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             EditorMode.Sculpt =>
             [
-                new("Raise", "Raise terrain height", "\uE74A", mode, HeightTool.Raise),
+                new("Sculpt", "Raise terrain height", "\uE74A", mode, HeightTool.Raise),
                 new("Smooth", "Smooth terrain", "\uE790", mode, HeightTool.Smooth),
                 new("Flatten", "Flatten terrain", "\uE81E", mode, HeightTool.Flatten),
-                new("Noise", "Apply terrain noise", "\uE9D9", mode),
+                new("Ramp", "Create ramp", "\uE8F1", mode),
+                new("Erosion", "Apply erosion", "\uE9D9", mode),
+                new("Noise", "Apply terrain noise", "\uE950", mode),
             ],
             EditorMode.Paint =>
             [
@@ -580,12 +590,19 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 new("Select", "Select foliage", "\uE14C", mode),
                 new("Scatter", "Scatter foliage", "\uE8C8", mode),
             ],
-            EditorMode.Roads =>
+            EditorMode.Water =>
             [
-                new("Draw Road", "Draw road path", "\uE804", mode),
-                new("Edit Points", "Edit control points", "\uE70F", mode),
-                new("Smooth Path", "Smooth spline path", "\uE790", mode),
-                new("Delete Segment", "Delete road segment", "\uE74D", mode),
+                new("Raise Water", "Raise water level", "\uE74A", mode),
+                new("Lower Water", "Lower water level", "\uE74D", mode),
+                new("Ripple", "Create water ripple", "\uE9D9", mode),
+                new("Smooth Water", "Smooth water surface", "\uE790", mode),
+            ],
+            EditorMode.Landscape =>
+            [
+                new("Auto Generate", "Auto generate terrain", "\uE70F", mode),
+                new("Erosion Sim", "Simulate erosion", "\uE9D9", mode),
+                new("Satellite Import", "Import satellite data", "\uE8F1", mode),
+                new("Climate Map", "Edit climate map", "\uE950", mode),
             ],
             _ => [],
         };
@@ -593,15 +610,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private void InitializeModes()
     {
-        Modes.Add(new ModeOptionViewModel("Sculpt", "Terrain height editing", "\uE7C3", EditorMode.Sculpt));
-        Modes.Add(new ModeOptionViewModel("Paint", "Surface material painting", "\uE790", EditorMode.Paint));
+        Modes.Add(new ModeOptionViewModel("Sculpt", "Terrain height editing", "", EditorMode.Sculpt));
+        Modes.Add(new ModeOptionViewModel("Paint", "Surface material painting", "", EditorMode.Paint));
         Modes.Add(new ModeOptionViewModel("Foliage", "Vegetation placement", "\uE8BE", EditorMode.Foliage));
-        Modes.Add(new ModeOptionViewModel("Roads", "Road spline editing", "\uE804", EditorMode.Roads));
+        Modes.Add(new ModeOptionViewModel("Water", "Water level editing", "", EditorMode.Water));
+        Modes.Add(new ModeOptionViewModel("Landscape", "Landscape generation", "", EditorMode.Landscape));
     }
 
     private void InitializeAssetBrowser()
     {
-        foreach (var category in new[] { "Materials", "Brushes", "Foliage", "Roads", "Meshes", "Prefabs" })
+        foreach (var category in new[] { "Materials", "Textures", "Meshes", "Brushes", "Foliage", "Prefabs" })
         {
             AssetCategories.Add(category);
         }
@@ -628,10 +646,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     {
         return mode switch
         {
-            EditorMode.Sculpt => "Raise",
+            EditorMode.Sculpt => "Sculpt",
             EditorMode.Paint => "Paint",
             EditorMode.Foliage => "Paint Foliage",
-            EditorMode.Roads => "Draw Road",
+            EditorMode.Water => "Raise Water",
+            EditorMode.Landscape => "Auto Generate",
             _ => "None",
         };
     }
@@ -675,13 +694,13 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 new("Forest_Rock_01", category, "Mesh", "#D1D5DB", "#55606B", "Rock"),
                 new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
             ],
-            "Roads" =>
+            "Textures" =>
             [
-                new("Road_Straight_01", category, "Road", "#D8D9DD", "#50545C", "Road"),
-                new("Road_Curve_01", category, "Road", "#DADBE0", "#4F545E", "Curve"),
-                new("Road_Decal_Crack", category, "Decal", "#E3E4E7", "#666B73", "Crack"),
-                new("Bridge_Wood_01", category, "Bridge", "#D8C0A3", "#6A4F36", "Bridge"),
-                new("Shoulder_Gravel", category, "Surface", "#D7D3CC", "#6E665D", "Gravel"),
+                new("Tex_Grass_01", category, "Texture", "#9DC874", "#2E5B2A", "Grass"),
+                new("Tex_Rock_01", category, "Texture", "#C8CDD3", "#4E5966", "Rock"),
+                new("Tex_Dirt_01", category, "Texture", "#C79363", "#6A4020", "Dirt"),
+                new("Tex_Sand_01", category, "Texture", "#E3D0A9", "#87693B", "Sand"),
+                new("Tex_Snow_01", category, "Texture", "#F3F7FB", "#7E8FA3", "Snow"),
                 new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
             ],
             "Meshes" =>

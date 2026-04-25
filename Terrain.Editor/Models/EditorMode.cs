@@ -7,7 +7,8 @@ public enum EditorMode
     Sculpt,
     Paint,
     Foliage,
-    Roads,
+    Water,
+    Landscape,
 }
 
 public enum SceneViewMode
@@ -15,4 +16,11 @@ public enum SceneViewMode
     Perspective,
     Wireframe,
     Textured,
+}
+
+public enum SceneLightingMode
+{
+    Lit,
+    Unlit,
+    Wireframe,
 }

@@ -253,8 +253,9 @@ public sealed class EmbeddedStrideViewportGame : Game
                 PaintEditor.Instance.BeginStroke(paintToolName, TerrainManager!);
                 break;
 
-            case EditorMode.Roads:
-                // Roads mode currently exposes shell-only layout controls.
+            case EditorMode.Water:
+            case EditorMode.Landscape:
+                // Water/Landscape modes currently expose shell-only layout controls.
                 break;
         }
     }
@@ -280,7 +281,8 @@ public sealed class EmbeddedStrideViewportGame : Game
 
                 break;
 
-            case EditorMode.Roads:
+            case EditorMode.Water:
+            case EditorMode.Landscape:
                 break;
         }
     }
@@ -304,8 +306,9 @@ public sealed class EmbeddedStrideViewportGame : Game
                 PaintEditor.Instance.EndStroke();
                 break;
 
-            case EditorMode.Roads:
-                // Roads mode currently has no stroke lifecycle.
+            case EditorMode.Water:
+            case EditorMode.Landscape:
+                // Water/Landscape modes currently have no stroke lifecycle.
                 break;
         }
     }
