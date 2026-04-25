@@ -14,14 +14,14 @@
     <!-- ═══ Title Bar ═══ -->
     <Border DockPanel.Dock="Top" Classes="titleBar" PointerPressed="TitleBar_OnPointerPressed">
       <Grid ColumnDefinitions="Auto,*,Auto">
-        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="8,0,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="4,0,0,0">
           <Border Width="18" Height="18" Background="{DynamicResource EditorAppIconBackgroundBrush}" CornerRadius="2">
             <TextBlock Foreground="White" FontFamily="Segoe MDL2 Assets" FontSize="10" Text="&#xE9D9;" HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>
           <TextBlock Classes="titleBarText" Text="{Binding Title}" />
         </StackPanel>
 
-        <Grid Grid.Column="2" ColumnDefinitions="46,46,46">
+        <Grid Grid.Column="2" ColumnDefinitions="40,40,40">
           <Button Grid.Column="0" Classes="windowButton" Click="MinimizeButton_OnClick">
             <TextBlock Classes="windowButtonIcon" Text="&#xE921;" />
           </Button>
@@ -39,7 +39,7 @@
     <Border DockPanel.Dock="Top" Classes="toolbarRow">
       <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" VerticalAlignment="Center">
         <!-- Quick Actions (New/Open/Save) -->
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="1" Margin="8,0,4,0">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="1" Margin="4,0,2,0">
           <Button Classes="commandButton" Command="{Binding NewProjectCommand}">
             <TextBlock Classes="toolbarIcon" Text="&#xE710;" />
           </Button>
@@ -51,10 +51,10 @@
           </Button>
         </StackPanel>
 
-        <Border Grid.Column="1" Classes="commandDivider" Margin="4,0" />
+        <Border Grid.Column="1" Classes="commandDivider" Margin="2,0" />
 
         <!-- Undo/Redo -->
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="1" Margin="4,0,4,0">
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="1" Margin="4,0,2,0">
           <Button Classes="commandButton" Command="{Binding UndoCommand}">
             <TextBlock Classes="toolbarIcon" Text="&#xE7A7;" />
           </Button>
@@ -63,7 +63,7 @@
           </Button>
         </StackPanel>
 
-        <Border Grid.Column="3" Classes="commandDivider" Margin="4,0" />
+        <Border Grid.Column="3" Classes="commandDivider" Margin="2,0" />
 
         <!-- Menu Nav -->
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
@@ -89,7 +89,7 @@
       <Border Grid.Column="0" Classes="editorPanel,modePanel" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,*">
           <!-- Mode Header -->
-          <StackPanel HorizontalAlignment="Center" Margin="0,12,0,4">
+          <StackPanel HorizontalAlignment="Center" Margin="0,8,0,2">
             <TextBlock FontSize="11" FontWeight="Bold" Text="MODES" HorizontalAlignment="Center" Foreground="{DynamicResource EditorTextPrimaryBrush}" />
           </StackPanel>
 
@@ -134,7 +134,7 @@
                 <!-- View Dropdown (Perspective/Wireframe/Textured) -->
                 <ComboBox
                   Classes="metroCombo"
-                  MinWidth="100"
+                  MinWidth="90"
                   ItemsSource="{Binding SceneViewModes}"
                   SelectedItem="{Binding SelectedSceneViewMode}" />
 
@@ -142,7 +142,7 @@
                 <ComboBox
                   Grid.Column="4"
                   Classes="metroCombo"
-                  MinWidth="80"
+                  MinWidth="70"
                   Margin="8,0,0,0"
                   ItemsSource="{Binding SceneLightingModes}"
                   SelectedItem="{Binding SelectedSceneLightingMode}" />
@@ -184,17 +184,42 @@
             <!-- Asset Tab Bar -->
             <Border Classes="viewportToolbar" Background="{DynamicResource EditorAssetTabBackgroundBrush}">
               <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                <StackPanel Orientation="Horizontal" Spacing="0" Margin="0,-1,0,0">
-                  <Button Classes="assetTabActive" Content="Meshes" />
-                  <Button Classes="assetTab" Content="Textures" />
-                  <Button Classes="assetTab" Content="Materials" />
-                  <Button Classes="assetTab" Content="Blueprints" />
+                <StackPanel Orientation="Horizontal" Spacing="0" Margin="0,0,0,0">
+                  <Button Classes="assetTabActive">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Classes="assetTabIcon" Text="&#xE80A;" />
+                      <TextBlock Text="Meshes" />
+                    </StackPanel>
+                  </Button>
+                  <Button Classes="assetTab">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Classes="assetTabIcon" Text="&#xE790;" />
+                      <TextBlock Text="Textures" />
+                    </StackPanel>
+                  </Button>
+                  <Button Classes="assetTab">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Classes="assetTabIcon" Text="&#xE8A9;" />
+                      <TextBlock Text="Materials" />
+                    </StackPanel>
+                  </Button>
+                  <Button Classes="assetTab">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Classes="assetTabIcon" Text="&#xE943;" />
+                      <TextBlock Text="Blueprints" />
+                    </StackPanel>
+                  </Button>
                 </StackPanel>
 
                 <Border Grid.Column="1" />
 
                 <!-- Search + Filter -->
-                <TextBox Grid.Column="2" Classes="searchBox" Watermark="Search meshes..." Width="160" Margin="0,0,4,0" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" Margin="0,0,4,0">
+                  <Border Background="{DynamicResource EditorSurfaceBrush}" BorderBrush="{DynamicResource EditorPanelBorderBrush}" BorderThickness="1,1,0,1" Padding="6,0">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{DynamicResource EditorTextSecondaryBrush}" Text="&#xE71E;" VerticalAlignment="Center" />
+                  </Border>
+                  <TextBox Classes="searchBox" Watermark="Search meshes..." Width="180" BorderThickness="0,1,1,1" />
+                </StackPanel>
                 <Button Grid.Column="3" Classes="commandButton" Padding="4">
                   <TextBlock Classes="viewToggleIcon" Text="&#xE71C;" />
                 </Button>
@@ -212,11 +237,11 @@
                 <ListBox.ItemTemplate>
                   <DataTemplate>
                     <Border Classes="assetTile">
-                      <Grid RowDefinitions="80,Auto">
-                        <Border Classes="assetPreview" Background="{Binding PreviewBackground}">
+                      <Grid RowDefinitions="96,Auto">
+                        <Border Classes="assetPreview">
                           <TextBlock Classes="assetPreviewGlyph" Foreground="{Binding PreviewForeground}" Text="{Binding PreviewGlyph}" />
                         </Border>
-                        <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="10" TextWrapping="Wrap" Margin="4,4,4,2" />
+                        <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="10" TextWrapping="Wrap" TextAlignment="Center" Margin="4,6,4,4" Foreground="{DynamicResource EditorTextPrimaryBrush}" />
                       </Grid>
                     </Border>
                   </DataTemplate>
@@ -240,7 +265,7 @@
             <StackPanel Spacing="0">
 
               <!-- ═══ Current Tool Section ═══ -->
-              <Border Padding="12,12,12,0">
+              <Border Padding="10,10,10,0">
                 <StackPanel Spacing="8">
                   <TextBlock Classes="sectionLabel" Text="CURRENT TOOL" />
                   <ListBox
@@ -268,12 +293,12 @@
               <!-- ═══ Sculpt Mode Inspector ═══ -->
               <StackPanel IsVisible="{Binding IsSculptMode}" Spacing="0">
                 <!-- Brush Settings -->
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="BRUSH SETTINGS" />
 
                     <!-- Radius -->
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Radius" />
                         <Slider Minimum="1" Maximum="1000" Value="{Binding BrushParams.Size}" />
@@ -282,7 +307,7 @@
                     </Grid>
 
                     <!-- Strength -->
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Strength" />
                         <Slider Minimum="0" Maximum="1" Value="{Binding BrushParams.Strength}" />
@@ -291,7 +316,7 @@
                     </Grid>
 
                     <!-- Falloff -->
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Falloff" />
                         <Slider Minimum="0" Maximum="1" Value="{Binding BrushParams.Falloff}" />
@@ -324,7 +349,7 @@
                 </Border>
 
                 <!-- Advanced -->
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="6">
                     <TextBlock Classes="sectionLabel" Text="ADVANCED" />
                     <CheckBox Content="Use Target Value" IsChecked="True" />
@@ -336,24 +361,24 @@
 
               <!-- ═══ Paint Mode Inspector ═══ -->
               <StackPanel IsVisible="{Binding IsPaintMode}" Spacing="0">
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="BRUSH SETTINGS" />
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Radius" />
                         <Slider Minimum="1" Maximum="200" Value="{Binding BrushParams.Size}" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Size, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Strength" />
                         <Slider Minimum="0" Maximum="1" Value="{Binding BrushParams.Strength}" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Strength, StringFormat='{}{0:F2}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Falloff" />
                         <Slider Minimum="0" Maximum="1" Value="{Binding BrushParams.Falloff}" />
@@ -363,7 +388,7 @@
                   </StackPanel>
                 </Border>
 
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="MATERIAL" />
                     <Border Classes="materialPreviewCard">
@@ -383,10 +408,10 @@
                   </StackPanel>
                 </Border>
 
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="LAYER BLEND" />
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Opacity" />
                         <Slider Minimum="0" Maximum="1" Value="0.75" />
@@ -400,24 +425,24 @@
 
               <!-- ═══ Foliage Mode Inspector ═══ -->
               <StackPanel IsVisible="{Binding IsFoliageMode}" Spacing="0">
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="BRUSH SETTINGS" />
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Radius" />
                         <Slider Minimum="1" Maximum="200" Value="{Binding BrushParams.Size}" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Size, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Density" />
                         <Slider Minimum="0" Maximum="1" Value="0.65" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="0.65" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Randomness" />
                         <Slider Minimum="0" Maximum="1" Value="0.30" />
@@ -427,7 +452,7 @@
                   </StackPanel>
                 </Border>
 
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="FOLIAGE SET" />
                     <ComboBox Classes="metroCombo" SelectedIndex="0">
@@ -438,17 +463,17 @@
                   </StackPanel>
                 </Border>
 
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="PLACEMENT" />
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Min Scale" />
                         <Slider Minimum="0.2" Maximum="2" Value="0.75" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="0.75" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Max Scale" />
                         <Slider Minimum="0.2" Maximum="3" Value="1.40" />
@@ -463,24 +488,24 @@
 
               <!-- ═══ Water Mode Inspector ═══ -->
               <StackPanel IsVisible="{Binding IsWaterMode}" Spacing="0">
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="WATER SETTINGS" />
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Water Level" />
                         <Slider Minimum="-500" Maximum="4000" Value="100" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="100" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Wave Height" />
                         <Slider Minimum="0" Maximum="10" Value="1.5" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="1.50" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Flow Speed" />
                         <Slider Minimum="0" Maximum="5" Value="1.0" />
@@ -490,7 +515,7 @@
                   </StackPanel>
                 </Border>
 
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="APPEARANCE" />
                     <ComboBox Classes="metroCombo" SelectedIndex="0">
@@ -507,24 +532,24 @@
 
               <!-- ═══ Landscape Mode Inspector ═══ -->
               <StackPanel IsVisible="{Binding IsLandscapeMode}" Spacing="0">
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="GENERATION SETTINGS" />
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Scale" />
                         <Slider Minimum="0.1" Maximum="10" Value="2.0" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="2.00" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Octaves" />
                         <Slider Minimum="1" Maximum="8" Value="4" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="4" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Persistence" />
                         <Slider Minimum="0" Maximum="1" Value="0.5" />
@@ -534,17 +559,17 @@
                   </StackPanel>
                 </Border>
 
-                <Border Classes="inspectorSection" Padding="12,12">
+                <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="EROSION" />
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Iterations" />
                         <Slider Minimum="100" Maximum="50000" Value="10000" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="10000" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Sediment" />
                         <Slider Minimum="0" Maximum="1" Value="0.3" />
