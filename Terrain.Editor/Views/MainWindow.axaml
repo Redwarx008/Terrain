@@ -9,6 +9,14 @@
   MinWidth="1280"
   MinHeight="780"
   SystemDecorations="None">
+  <Window.Styles>
+    <Style Selector="Button#CloseButton:pointerover">
+      <Setter Property="Background" Value="{DynamicResource EditorWindowCloseBrush}" />
+    </Style>
+    <Style Selector="Button#CloseButton:pointerover TextBlock.windowButtonIcon">
+      <Setter Property="Foreground" Value="{DynamicResource EditorSurfaceBrush}" />
+    </Style>
+  </Window.Styles>
   <DockPanel LastChildFill="True">
 
     <!-- ═══ Title Bar ═══ -->
@@ -28,7 +36,7 @@
           <Button Grid.Column="1" Classes="windowButton" Click="MaximizeButton_OnClick">
             <TextBlock Classes="windowButtonIcon" Text="&#xE922;" />
           </Button>
-          <Button Grid.Column="2" Classes="windowButton,closeButton" Click="CloseButton_OnClick">
+          <Button Grid.Column="2" x:Name="CloseButton" Classes="windowButton" Click="CloseButton_OnClick">
             <TextBlock Classes="windowButtonIcon" Text="&#xE8BB;" />
           </Button>
         </Grid>
