@@ -1,0 +1,5 @@
+{"file":".trellis/spec/editor/index.md","reason":"检查是否误加 ImGui 或偏离编辑器迁移约定。"}
+{"file":".trellis/spec/editor/component-guidelines.md","reason":"检查命令绑定、事件取消订阅和 MVVM 接线。"}
+{"file":".trellis/spec/editor/state-management.md","reason":"检查 EditorState 与服务状态同步是否一致。"}
+{"file":".trellis/spec/editor/native-viewport-hosting.md","reason":"检查原生视口宿主和像素尺寸同步是否符合契约。"}
+{"file":".trellis/spec/editor/quality-guidelines.md","reason":"检查 Avalonia UI 质量、布局和 Dispose 模式。"}

@@ -1,0 +1,5 @@
+{"file":".trellis/spec/editor/index.md","reason":"编辑器 Avalonia 迁移任务的总约定和禁止模式。"}
+{"file":".trellis/spec/editor/component-guidelines.md","reason":"ViewModel 命令绑定、事件订阅和 UI 组件接线规范。"}
+{"file":".trellis/spec/editor/state-management.md","reason":"EditorState、服务状态和 ViewModel 同步规则。"}
+{"file":".trellis/spec/editor/native-viewport-hosting.md","reason":"NativeControlHost 挂接 SDL/Stride 视口的宿主契约。"}
+{"file":".trellis/spec/editor/quality-guidelines.md","reason":"Avalonia UI 代码质量和 Dispose/绑定约束。"}
