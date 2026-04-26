@@ -47,6 +47,31 @@ public sealed class NativeStrideViewportHost : IDisposable
 
     public IntPtr ChildHwnd => _childHwnd;
 
+    /// <summary>
+    /// Temporarily removes WS_CHILD from the SDL window so that
+    /// <see cref="Stride.Input.InputManager.LockMousePosition"/> and
+    /// keyboard input work correctly during camera navigation.
+    /// Call <see cref="RestoreChildStyle"/> when navigation ends.
+    /// </summary>
+    public void RemoveChildStyle()
+    {
+        if (_window == null) return;
+        IntPtr style = GetWindowLongPtrW(_window.Handle, GwlStyle);
+        nint newStyle = (nint)style.ToInt64() & ~WsChild;
+        SetWindowLongPtrW(_window.Handle, GwlStyle, new IntPtr(newStyle));
+    }
+
+    /// <summary>
+    /// Restores WS_CHILD on the SDL window after camera navigation ends.
+    /// </summary>
+    public void RestoreChildStyle()
+    {
+        if (_window == null) return;
+        IntPtr style = GetWindowLongPtrW(_window.Handle, GwlStyle);
+        nint newStyle = (nint)style.ToInt64() | WsChild;
+        SetWindowLongPtrW(_window.Handle, GwlStyle, new IntPtr(newStyle));
+    }
+
     public void FocusRuntimeWindow()
     {
         if (_window == null)
@@ -169,6 +194,10 @@ public sealed class NativeStrideViewportHost : IDisposable
             _window.ClientSize = new Size2(_width, _height);
 
             _game = new EmbeddedStrideViewportGame();
+            _game.SetChildWindowStyle = isChild =>
+            {
+                if (isChild) RestoreChildStyle(); else RemoveChildStyle();
+            };
             _game.RuntimeReady += OnGameRuntimeReady;
             _game.FirstFrameRendered += OnGameFirstFrameRendered;
             _game.SetSceneViewMode(_sceneViewMode);

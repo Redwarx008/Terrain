@@ -24,7 +24,7 @@ public sealed class EmbeddedStrideViewportGame : Game
     private const bool PresenterOnlyDiagnostic = false;
 
     private readonly EditorTerrainModeController _modeController = new();
-    private readonly HybridCameraController _cameraController = new();
+    private readonly FlyCameraController _cameraController = new();
     private readonly EditorState _editorState = EditorState.Instance;
 
     private GraphicsCompositor? _graphicsCompositor;
@@ -33,7 +33,6 @@ public sealed class EmbeddedStrideViewportGame : Game
     private SceneViewMode _sceneViewMode = SceneViewMode.Perspective;
     private bool _hasRenderedFirstFrame;
     private bool _isBrushStrokeActive;
-    private bool _isCameraCursorHidden;
     private bool _wasLeftMouseDown;
 
     public EmbeddedStrideViewportGame()
@@ -146,18 +145,44 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
     }
 
+    private bool _isControllingCamera;
+
+    /// <summary>
+    /// Called by the host to toggle the SDL window's WS_CHILD style.
+    /// Must be set before the game starts so UpdateCamera can call it.
+    /// </summary>
+    public Action<bool>? SetChildWindowStyle { get; set; }
+
     private void UpdateCamera(float deltaTime)
     {
         bool rightMouseDown = Input.IsMouseButtonDown(MouseButton.Right);
-        bool middleMouseDown = Input.IsMouseButtonDown(MouseButton.Middle);
-        SetCameraCursorHidden(rightMouseDown);
+
+        bool shouldControl = rightMouseDown;
+        if (shouldControl != _isControllingCamera)
+        {
+            _isControllingCamera = shouldControl;
+            if (_isControllingCamera)
+            {
+                // GameStudio workaround (#94): remove WS_CHILD so that
+                // LockMousePosition (SDL relative mode) and keyboard
+                // input work correctly in an embedded child window.
+                SetChildWindowStyle?.Invoke(false);
+                Input.LockMousePosition(forceCenter: true);
+                Window.IsMouseVisible = false;
+            }
+            else
+            {
+                Input.UnlockMousePosition();
+                Window.IsMouseVisible = true;
+                SetChildWindowStyle?.Invoke(true);
+            }
+        }
 
         _cameraController.UpdateFromViewportInput(
             deltaTime,
             new NumericsVector2(Input.AbsoluteMouseDelta.X, Input.AbsoluteMouseDelta.Y),
             Input.MouseWheelDelta,
             rightMouseDown,
-            middleMouseDown,
             Input.IsKeyDown(Keys.W),
             Input.IsKeyDown(Keys.S),
             Input.IsKeyDown(Keys.A),
@@ -172,17 +197,6 @@ public sealed class EmbeddedStrideViewportGame : Game
                               / GraphicsDevice.Presenter.BackBuffer.Height;
             _cameraController.RefreshCameraMatrices(aspectRatio);
         }
-    }
-
-    private void SetCameraCursorHidden(bool hidden)
-    {
-        if (Window == null || _isCameraCursorHidden == hidden)
-        {
-            return;
-        }
-
-        Window.IsMouseVisible = !hidden;
-        _isCameraCursorHidden = hidden;
     }
 
     private void UpdateBrush(float deltaTime)
@@ -583,7 +597,15 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     protected override void EndRun()
     {
-        SetCameraCursorHidden(false);
+        if (_isControllingCamera)
+        {
+            if (Input.HasMouse && Input.IsMousePositionLocked)
+                Input.UnlockMousePosition();
+            if (Window != null)
+                Window.IsMouseVisible = true;
+            SetChildWindowStyle?.Invoke(true);
+            _isControllingCamera = false;
+        }
 
         if (TerrainManager != null)
         {
