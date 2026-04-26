@@ -785,6 +785,10 @@ public sealed class TerrainManager : IDisposable
                 slot.PropertiesTexturePath = slotConfig.PropertiesPath;
         }
 
+        int firstActiveSlot = MaterialSlotManager.Instance.GetActiveSlots().Select(static slot => slot.Index).DefaultIfEmpty(0).First();
+        MaterialSlotManager.Instance.SelectedSlotIndex = firstActiveSlot;
+        MaterialSlotManager.Instance.NotifySlotsChanged();
+
         // 恢复气候定义和规则
         RestoreClimateData(config);
 

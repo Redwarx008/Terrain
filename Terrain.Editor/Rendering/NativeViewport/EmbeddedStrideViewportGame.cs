@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Linq;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Games;
@@ -9,10 +10,12 @@ using Stride.Input;
 using Stride.Rendering;
 using Stride.Rendering.Compositing;
 using Stride.Rendering.Lights;
+using Stride.Rendering.Skyboxes;
 using Terrain.Editor.Input;
 using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Services;
+using NumericsVector2 = System.Numerics.Vector2;
 
 namespace Terrain.Editor.Rendering.NativeViewport;
 
@@ -30,6 +33,7 @@ public sealed class EmbeddedStrideViewportGame : Game
     private SceneViewMode _sceneViewMode = SceneViewMode.Perspective;
     private bool _hasRenderedFirstFrame;
     private bool _isBrushStrokeActive;
+    private bool _isCameraCursorHidden;
     private bool _wasLeftMouseDown;
 
     public EmbeddedStrideViewportGame()
@@ -98,13 +102,6 @@ public sealed class EmbeddedStrideViewportGame : Game
         UpdateBrush((float)gameTime.Elapsed.TotalSeconds);
     }
 
-    protected override void EndRun()
-    {
-        TerrainManager?.Dispose();
-        TerrainManager = null;
-        base.EndRun();
-    }
-
     protected override void Draw(GameTime gameTime)
     {
         if (GraphicsDevice?.Presenter?.BackBuffer != null)
@@ -151,15 +148,41 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     private void UpdateCamera(float deltaTime)
     {
-        _cameraController.Update(deltaTime, Input);
+        bool rightMouseDown = Input.IsMouseButtonDown(MouseButton.Right);
+        bool middleMouseDown = Input.IsMouseButtonDown(MouseButton.Middle);
+        SetCameraCursorHidden(rightMouseDown);
+
+        _cameraController.UpdateFromViewportInput(
+            deltaTime,
+            new NumericsVector2(Input.AbsoluteMouseDelta.X, Input.AbsoluteMouseDelta.Y),
+            Input.MouseWheelDelta,
+            rightMouseDown,
+            middleMouseDown,
+            Input.IsKeyDown(Keys.W),
+            Input.IsKeyDown(Keys.S),
+            Input.IsKeyDown(Keys.A),
+            Input.IsKeyDown(Keys.D),
+            Input.IsKeyDown(Keys.Q),
+            Input.IsKeyDown(Keys.E),
+            Input.IsKeyDown(Keys.LeftShift) || Input.IsKeyDown(Keys.RightShift));
 
         if (_cameraController.HasPendingCameraRefresh && _camera != null)
         {
-            _camera.Entity.Transform.UpdateWorldMatrix();
             float aspectRatio = (float)GraphicsDevice.Presenter.BackBuffer.Width
                               / GraphicsDevice.Presenter.BackBuffer.Height;
-            _camera.Update(aspectRatio);
+            _cameraController.RefreshCameraMatrices(aspectRatio);
         }
+    }
+
+    private void SetCameraCursorHidden(bool hidden)
+    {
+        if (Window == null || _isCameraCursorHidden == hidden)
+        {
+            return;
+        }
+
+        Window.IsMouseVisible = !hidden;
+        _isCameraCursorHidden = hidden;
     }
 
     private void UpdateBrush(float deltaTime)
@@ -328,6 +351,52 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     private void InitializeScene()
     {
+        Texture? defaultTerrainTexture = TryLoadTextureAsset("Grid Gray 128x128");
+        if (TryInitializeSceneFromAssets(defaultTerrainTexture))
+        {
+            return;
+        }
+
+        InitializeFallbackScene(defaultTerrainTexture);
+    }
+
+    private bool TryInitializeSceneFromAssets(Texture? defaultTerrainTexture)
+    {
+        Scene? sceneAsset = TryLoadSceneAsset("MainScene");
+        GraphicsCompositor? compositorAsset = TryLoadGraphicsCompositorAsset("GraphicsCompositor");
+        if (sceneAsset == null || compositorAsset == null)
+        {
+            return false;
+        }
+
+        _scene = CreateEditorSceneFromAsset(sceneAsset);
+        _camera = _scene.Entities
+            .Select(static entity => entity.Get<CameraComponent>())
+            .FirstOrDefault(static camera => camera != null);
+        if (_camera == null)
+        {
+            _scene = null;
+            return false;
+        }
+
+        _cameraController.Camera = _camera;
+        _graphicsCompositor = compositorAsset;
+        _graphicsCompositor.Game = new PresenterViewportSceneRenderer
+        {
+            Child = _graphicsCompositor.Game,
+        };
+        _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
+        EnsureEditorTerrainRenderFeature(_graphicsCompositor);
+        _modeController.Apply(_sceneViewMode, _graphicsCompositor);
+
+        SceneSystem.GraphicsCompositor = _graphicsCompositor;
+        SceneSystem.SceneInstance = new SceneInstance(Services, _scene);
+        InitializeTerrainManager(defaultTerrainTexture);
+        return true;
+    }
+
+    private void InitializeFallbackScene(Texture? defaultTerrainTexture)
+    {
         _scene = new Scene();
 
         _camera = new CameraComponent
@@ -369,6 +438,12 @@ public sealed class EmbeddedStrideViewportGame : Game
             * Quaternion.RotationY(MathUtil.DegreesToRadians(35f));
         _scene.Entities.Add(keyLight);
 
+        Entity? skyboxEntity = CreateSkyboxEntity();
+        if (skyboxEntity != null)
+        {
+            _scene.Entities.Add(skyboxEntity);
+        }
+
         _graphicsCompositor = GraphicsCompositorHelper.CreateDefault(
             enablePostEffects: true,
             modelEffectName: EditorTerrainRenderFeature.EffectName,
@@ -380,11 +455,169 @@ public sealed class EmbeddedStrideViewportGame : Game
             Child = _graphicsCompositor.Game,
         };
         _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
-        _graphicsCompositor.RenderFeatures.Add(new EditorTerrainRenderFeature());
+        EnsureEditorTerrainRenderFeature(_graphicsCompositor);
         _modeController.Apply(_sceneViewMode, _graphicsCompositor);
 
         SceneSystem.GraphicsCompositor = _graphicsCompositor;
         SceneSystem.SceneInstance = new SceneInstance(Services, _scene);
-        TerrainManager = new TerrainManager(GraphicsDevice, _scene);
+        InitializeTerrainManager(defaultTerrainTexture);
+    }
+
+    private void InitializeTerrainManager(Texture? defaultTerrainTexture)
+    {
+        TerrainManager = new TerrainManager(GraphicsDevice, _scene!, defaultTerrainTexture);
+        TerrainManager.MaterialTexturesLoadRequired += OnMaterialTexturesLoadRequired;
+        TerrainManager.TerrainLoaded += OnTerrainLoaded;
+    }
+
+    private static Scene CreateEditorSceneFromAsset(Scene sourceScene)
+    {
+        var editorScene = new Scene();
+        foreach (Entity entity in sourceScene.Entities)
+        {
+            if (entity.Get<CameraComponent>() != null
+                || entity.Get<LightComponent>() != null
+                || entity.Get<BackgroundComponent>() != null)
+            {
+                editorScene.Entities.Add(entity.Clone());
+            }
+        }
+
+        return editorScene;
+    }
+
+    private static void EnsureEditorTerrainRenderFeature(GraphicsCompositor graphicsCompositor)
+    {
+        if (!graphicsCompositor.RenderFeatures.OfType<EditorTerrainRenderFeature>().Any())
+        {
+            graphicsCompositor.RenderFeatures.Add(new EditorTerrainRenderFeature());
+        }
+    }
+
+    private Scene? TryLoadSceneAsset(string assetName)
+    {
+        try
+        {
+            return Content.Load<Scene>(assetName);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private GraphicsCompositor? TryLoadGraphicsCompositorAsset(string assetName)
+    {
+        try
+        {
+            return Content.Load<GraphicsCompositor>(assetName);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private Entity? CreateSkyboxEntity()
+    {
+        Texture? skyboxTexture = TryLoadTextureAsset("Skybox texture");
+        Skybox? skybox = TryLoadSkyboxAsset("Skybox");
+        if (skyboxTexture == null && skybox == null)
+        {
+            return null;
+        }
+
+        var skyboxEntity = new Entity("Skybox");
+        if (skyboxTexture != null)
+        {
+            skyboxEntity.Add(new BackgroundComponent
+            {
+                Texture = skyboxTexture,
+            });
+        }
+
+        if (skybox != null)
+        {
+            skyboxEntity.Add(new LightComponent
+            {
+                Type = new LightSkybox
+                {
+                    Skybox = skybox,
+                },
+            });
+        }
+
+        return skyboxEntity;
+    }
+
+    private Texture? TryLoadTextureAsset(string assetName)
+    {
+        try
+        {
+            return Content.Load<Texture>(assetName);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private Skybox? TryLoadSkyboxAsset(string assetName)
+    {
+        try
+        {
+            return Content.Load<Skybox>(assetName);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public bool TryGetGraphicsContext(out GraphicsDevice? graphicsDevice, out CommandList? commandList)
+    {
+        graphicsDevice = GraphicsDevice;
+        commandList = GraphicsContext?.CommandList;
+        return graphicsDevice != null && commandList != null;
+    }
+
+    protected override void EndRun()
+    {
+        SetCameraCursorHidden(false);
+
+        if (TerrainManager != null)
+        {
+            TerrainManager.MaterialTexturesLoadRequired -= OnMaterialTexturesLoadRequired;
+            TerrainManager.TerrainLoaded -= OnTerrainLoaded;
+            TerrainManager.Dispose();
+            TerrainManager = null;
+        }
+
+        base.EndRun();
+    }
+
+    private void OnMaterialTexturesLoadRequired(object? sender, EventArgs e)
+    {
+        if (TerrainManager == null || GraphicsContext?.CommandList == null)
+            return;
+
+        TerrainManager.LoadMaterialTextures(GraphicsContext.CommandList);
+    }
+
+    private void OnTerrainLoaded(object? sender, TerrainLoadedEventArgs e)
+    {
+        if (TerrainManager != null)
+        {
+            var bounds = TerrainManager.GetTerrainBounds();
+            if (bounds.Maximum.X > 0 && bounds.Maximum.Z > 0)
+            {
+                _cameraController.ResetToTerrainBounds(
+                    bounds.Maximum.X,
+                    bounds.Maximum.Z,
+                    bounds.Maximum.Y);
+            }
+        }
+
+        TerrainManager?.TryLoadPendingClimateMask();
     }
 }

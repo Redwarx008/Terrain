@@ -8,12 +8,18 @@ using NumericsVector2 = System.Numerics.Vector2;
 namespace Terrain.Editor.Input;
 
 /// <summary>
-/// Fly-only camera controller for the editor viewport.
-/// Input collection stays outside this class; this class only applies fly camera transforms.
+/// Hybrid camera controller matching the legacy editor behavior.
+/// Default mode is orbit: right-drag rotates, middle-drag pans, wheel zooms.
+/// Holding Shift enters fly mode: right-drag looks around, WASDQE moves, and
+/// right-drag + wheel adjusts movement speed presets.
 /// </summary>
 public sealed class HybridCameraController
 {
     private const float DefaultRotationSpeed = 0.3f;
+    private const float DefaultPanSpeed = 0.5f;
+    private const float DefaultZoomSpeed = 5.0f;
+    private const float MinOrbitDistance = 5.0f;
+    private const float MaxOrbitDistance = 2000.0f;
 
     /// <summary>
     /// Speed presets in units per second. Index 2 (50) matches the original default.
@@ -28,6 +34,10 @@ public sealed class HybridCameraController
     private bool hasPendingCameraRefresh = true;
 
     public float RotationSpeed { get; set; } = DefaultRotationSpeed;
+    public float PanSpeed { get; set; } = DefaultPanSpeed;
+    public float ZoomSpeed { get; set; } = DefaultZoomSpeed;
+    public float MinDistance { get; set; } = MinOrbitDistance;
+    public float MaxDistance { get; set; } = MaxOrbitDistance;
 
     /// <summary>
     /// Current fly speed in units per second. Automatically synced with SpeedPresetIndex.
@@ -83,14 +93,18 @@ public sealed class HybridCameraController
     }
 
     public CameraComponent? Camera { get; set; }
-    public bool IsFlyModeActive { get; private set; } = true;
+    public bool IsFlyModeActive { get; private set; }
     public Vector3 OrbitCenter
     {
         get => orbitCenter;
         set => orbitCenter = value;
     }
 
-    public float OrbitDistance => orbitDistance;
+    public float OrbitDistance
+    {
+        get => orbitDistance;
+        set => orbitDistance = MathUtil.Clamp(value, MinDistance, MaxDistance);
+    }
 
     public float YawDegrees => yaw;
     public float PitchDegrees => pitch;
@@ -104,17 +118,20 @@ public sealed class HybridCameraController
             return;
         }
 
-        UpdateFlyMode(
+        bool flyModifier = input.IsKeyDown(Keys.LeftShift) || input.IsKeyDown(Keys.RightShift);
+        UpdateFromViewportInput(
             deltaTime,
             input.MouseDelta,
+            input.MouseWheelDelta,
             input.IsMouseButtonDown(MouseButton.Right),
+            input.IsMouseButtonDown(MouseButton.Middle),
             input.IsKeyDown(Keys.W),
             input.IsKeyDown(Keys.S),
             input.IsKeyDown(Keys.A),
             input.IsKeyDown(Keys.D),
             input.IsKeyDown(Keys.Q),
             input.IsKeyDown(Keys.E),
-            input.IsKeyDown(Keys.LeftShift) || input.IsKeyDown(Keys.RightShift));
+            flyModifier);
     }
 
     public void UpdateFromViewportInput(
@@ -136,26 +153,32 @@ public sealed class HybridCameraController
             return;
         }
 
-        // Handle speed adjustment via mouse wheel when right mouse button is held
-        if (rightMouseDown && mouseWheelDelta != 0)
+        IsFlyModeActive = flyModifier;
+        if (IsFlyModeActive)
         {
-            int delta = Math.Sign(mouseWheelDelta);
-            // Shift modifier doubles the adjustment speed
-            if (flyModifier) delta *= 2;
-            AdjustSpeed(delta);
+            // Legacy fly mode keeps speed presets on right-drag + wheel.
+            if (rightMouseDown && mouseWheelDelta != 0)
+            {
+                int delta = Math.Sign(mouseWheelDelta);
+                if (flyModifier) delta *= 2;
+                AdjustSpeed(delta);
+            }
+
+            UpdateFlyMode(
+                deltaTime,
+                mouseDelta,
+                rightMouseDown,
+                moveForward,
+                moveBackward,
+                moveLeft,
+                moveRight,
+                moveDown,
+                moveUp,
+                flyModifier);
+            return;
         }
 
-        UpdateFlyMode(
-            deltaTime,
-            mouseDelta,
-            rightMouseDown,
-            moveForward,
-            moveBackward,
-            moveLeft,
-            moveRight,
-            moveDown,
-            moveUp,
-            flyModifier);
+        UpdateOrbitMode(mouseDelta, mouseWheelDelta, rightMouseDown, middleMouseDown);
     }
 
     /// <summary>
@@ -182,7 +205,7 @@ public sealed class HybridCameraController
     {
         float terrainExtent = Math.Max(terrainWidth, terrainHeight);
         orbitCenter = new Vector3(terrainWidth * 0.5f, maxHeight * 0.5f, terrainHeight * 0.5f);
-        orbitDistance = terrainExtent * 0.9f;
+        orbitDistance = MathUtil.Clamp(terrainExtent * 0.9f, MinDistance, MaxDistance);
 
         if (Camera == null)
         {
@@ -263,6 +286,56 @@ public sealed class HybridCameraController
         {
             hasPendingCameraRefresh = true;
         }
+    }
+
+    private void UpdateOrbitMode(
+        NumericsVector2 mouseDelta,
+        float mouseWheelDelta,
+        bool rightMouseDown,
+        bool middleMouseDown)
+    {
+        var cameraEntity = Camera!.Entity;
+        bool transformChanged = false;
+
+        if (rightMouseDown)
+        {
+            yaw -= mouseDelta.X * RotationSpeed;
+            pitch = MathUtil.Clamp(pitch - mouseDelta.Y * RotationSpeed, -89.0f, 89.0f);
+            transformChanged = true;
+        }
+
+        var rotation = Quaternion.RotationYawPitchRoll(
+            MathUtil.DegreesToRadians(yaw),
+            MathUtil.DegreesToRadians(pitch),
+            0.0f);
+        var rotationMatrix = Matrix.RotationQuaternion(rotation);
+        var forward = rotationMatrix.Forward;
+        var right = Vector3.Normalize(Vector3.Cross(forward, Vector3.UnitY));
+
+        if (middleMouseDown)
+        {
+            orbitCenter += right * -mouseDelta.X * PanSpeed;
+            orbitCenter += Vector3.UnitY * mouseDelta.Y * PanSpeed;
+            transformChanged = true;
+        }
+
+        if (mouseWheelDelta != 0)
+        {
+            orbitDistance = MathUtil.Clamp(
+                orbitDistance - mouseWheelDelta * ZoomSpeed,
+                MinDistance,
+                MaxDistance);
+            transformChanged = true;
+        }
+
+        if (!transformChanged)
+        {
+            return;
+        }
+
+        cameraEntity.Transform.Position = orbitCenter - forward * orbitDistance;
+        cameraEntity.Transform.Rotation = rotation;
+        hasPendingCameraRefresh = true;
     }
 
     private void SyncAnglesFromForward(Vector3 forward)

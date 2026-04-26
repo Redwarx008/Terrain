@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Platform;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Platform;
 using Terrain.Editor.Rendering.NativeViewport;
@@ -33,6 +34,19 @@ public sealed class NativeStrideViewportControl : NativeControlHost
         set => SetValue(BackgroundProperty, value);
     }
 
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        Focus();
+        ViewportHost?.FocusRuntimeWindow();
+    }
+
+    protected override void OnGotFocus(GotFocusEventArgs e)
+    {
+        base.OnGotFocus(e);
+        ViewportHost?.FocusRuntimeWindow();
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -40,6 +54,7 @@ public sealed class NativeStrideViewportControl : NativeControlHost
         if (change.Property == BoundsProperty && _childWindow != null)
         {
             PixelSize pixelSize = GetPixelSize();
+            ResizeChildWindow(pixelSize);
             ViewportHost?.Resize(pixelSize.Width, pixelSize.Height);
         }
     }
@@ -66,6 +81,16 @@ public sealed class NativeStrideViewportControl : NativeControlHost
         _childWindow = null;
 
         base.DestroyNativeControlCore(control);
+    }
+
+    private void ResizeChildWindow(PixelSize pixelSize)
+    {
+        if (_childWindow == null)
+        {
+            return;
+        }
+
+        _childWindow.Resize(pixelSize.Width, pixelSize.Height);
     }
 
     private PixelSize GetPixelSize()

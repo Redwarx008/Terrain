@@ -9,6 +9,7 @@ namespace Terrain.Editor.ViewModels;
 public sealed partial class BrushParametersViewModel : ObservableObject, IDisposable
 {
     private readonly BrushParameters _source = BrushParameters.Instance;
+    private bool _syncing;
 
     public BrushParametersViewModel()
     {
@@ -34,12 +35,12 @@ public sealed partial class BrushParametersViewModel : ObservableObject, IDispos
     [ObservableProperty]
     private float _maxSlopeDegrees;
 
-    partial void OnSizeChanged(float value) => _source.Size = value;
-    partial void OnStrengthChanged(float value) => _source.Strength = value;
-    partial void OnFalloffChanged(float value) => _source.Falloff = value;
-    partial void OnUseSlopeFilterChanged(bool value) => _source.UseSlopeFilter = value;
-    partial void OnMinSlopeDegreesChanged(float value) => _source.MinSlopeDegrees = value;
-    partial void OnMaxSlopeDegreesChanged(float value) => _source.MaxSlopeDegrees = value;
+    partial void OnSizeChanged(float value) { if (!_syncing) _source.Size = value; }
+    partial void OnStrengthChanged(float value) { if (!_syncing) _source.Strength = value; }
+    partial void OnFalloffChanged(float value) { if (!_syncing) _source.Falloff = value; }
+    partial void OnUseSlopeFilterChanged(bool value) { if (!_syncing) _source.UseSlopeFilter = value; }
+    partial void OnMinSlopeDegreesChanged(float value) { if (!_syncing) _source.MinSlopeDegrees = value; }
+    partial void OnMaxSlopeDegreesChanged(float value) { if (!_syncing) _source.MaxSlopeDegrees = value; }
 
     public void Dispose()
     {
@@ -53,11 +54,13 @@ public sealed partial class BrushParametersViewModel : ObservableObject, IDispos
 
     private void SyncFromSource()
     {
+        _syncing = true;
         Size = _source.Size;
         Strength = _source.Strength;
         Falloff = _source.Falloff;
         UseSlopeFilter = _source.UseSlopeFilter;
         MinSlopeDegrees = _source.MinSlopeDegrees;
         MaxSlopeDegrees = _source.MaxSlopeDegrees;
+        _syncing = false;
     }
 }

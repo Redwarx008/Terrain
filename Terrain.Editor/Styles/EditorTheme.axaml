@@ -63,6 +63,7 @@
     <SolidColorBrush x:Key="EditorSliderAccentBrush" Color="#0078D4" />
     <SolidColorBrush x:Key="EditorViewportToolbarBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="EditorOverlayMutedBrush" Color="#8A8A8A" />
+    <SolidColorBrush x:Key="EditorViewportStatTextBrush" Color="#FFFFFFCC" />
     <Thickness x:Key="EditorPanelPadding">12</Thickness>
     <CornerRadius x:Key="EditorCornerRadius">2</CornerRadius>
   </Styles.Resources>

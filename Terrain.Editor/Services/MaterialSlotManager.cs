@@ -27,6 +27,7 @@ public sealed class MaterialSlotManager
     private static readonly int[] ArrayCapacityTiers = { 16, 32, 64, 128, 256 };
 
     private readonly MaterialSlot[] slots = new MaterialSlot[256];
+    private int _selectedSlotIndex;
     private Texture? cachedMaterialAlbedoArray;
     private Texture? cachedMaterialNormalArray;
     private Texture? cachedMaterialPropertiesArray;
@@ -35,9 +36,25 @@ public sealed class MaterialSlotManager
 
     public static MaterialSlotManager Instance => InstanceFactory.Value;
 
-    public int SelectedSlotIndex { get; set; }
+    public int SelectedSlotIndex
+    {
+        get => _selectedSlotIndex;
+        set
+        {
+            int clamped = Math.Clamp(value, 0, slots.Length - 1);
+            if (_selectedSlotIndex == clamped)
+                return;
+
+            _selectedSlotIndex = clamped;
+            SelectedSlotChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
     public MaterialSlot SelectedSlot => slots[SelectedSlotIndex];
     public MaterialSlot this[int index] => slots[index];
+
+    public event EventHandler? SlotsChanged;
+
+    public event EventHandler? SelectedSlotChanged;
 
     public int NextAvailableSlotIndex
     {
@@ -53,6 +70,7 @@ public sealed class MaterialSlotManager
         for (int i = 0; i < slots.Length; i++)
         {
             slots[i] = new MaterialSlot { Index = i };
+            slots[i].Name = $"Texture {i}";
         }
     }
 
@@ -100,6 +118,7 @@ public sealed class MaterialSlotManager
         }
 
         RebuildMaterialArrays(graphicsDevice, commandList);
+        NotifySlotsChanged();
         return true;
     }
 
@@ -122,6 +141,7 @@ public sealed class MaterialSlotManager
         slot.NormalTexture = texture;
         slot.NormalTexturePath = path;
         RebuildMaterialArrays(graphicsDevice, commandList);
+        NotifySlotsChanged();
         return true;
     }
 
@@ -144,6 +164,7 @@ public sealed class MaterialSlotManager
         slot.PropertiesTexture = texture;
         slot.PropertiesTexturePath = path;
         RebuildMaterialArrays(graphicsDevice, commandList);
+        NotifySlotsChanged();
         return true;
     }
 
@@ -154,6 +175,7 @@ public sealed class MaterialSlotManager
         slot.NormalTexture = null;
         slot.NormalTexturePath = null;
         RebuildMaterialArrays(graphicsDevice, commandList);
+        NotifySlotsChanged();
     }
 
     public void ClearPropertiesTexture(int slotIndex, GraphicsDevice graphicsDevice, CommandList commandList)
@@ -163,12 +185,14 @@ public sealed class MaterialSlotManager
         slot.PropertiesTexture = null;
         slot.PropertiesTexturePath = null;
         RebuildMaterialArrays(graphicsDevice, commandList);
+        NotifySlotsChanged();
     }
 
     public void ClearSlot(int slotIndex, GraphicsDevice graphicsDevice, CommandList commandList)
     {
         slots[slotIndex].Clear();
         RebuildMaterialArrays(graphicsDevice, commandList);
+        NotifySlotsChanged();
     }
 
     public void ClearAll()
@@ -182,6 +206,8 @@ public sealed class MaterialSlotManager
         cachedDefaultNormalTexture?.Dispose();
         cachedDefaultNormalTexture = null;
         cachedDefaultNormalSignature = null;
+        SelectedSlotIndex = 0;
+        NotifySlotsChanged();
     }
 
     public Texture? GetMaterialAlbedoArray()
@@ -261,6 +287,12 @@ public sealed class MaterialSlotManager
         }
 
         RebuildMaterialArrays(graphicsDevice, commandList);
+        NotifySlotsChanged();
+    }
+
+    public void NotifySlotsChanged()
+    {
+        SlotsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RebuildMaterialArrays(GraphicsDevice graphicsDevice, CommandList commandList)

@@ -93,8 +93,25 @@ public sealed class BrushParameters
 
 ---
 
+## Common Mistake: HasSelectedTool 与后端实现脱节
+
+**Symptom**: 工具栏显示某工具已激活（`HasSelectedTool = true`），但选择该工具后视口无任何笔刷响应。
+
+**Cause**: `EditorMode` 枚举新增了模式值（如 Foliage），ViewModel 在模式切换时无条件设置 `HasSelectedTool = true`，但 `EmbeddedStrideViewportGame` 中尚无对应笔刷后端。
+
+**Fix**: 在模式切换逻辑中加守卫，仅对有后端实现的模式设置 `HasSelectedTool = true`：
+
+```csharp
+HasSelectedTool = mode != EditorMode.Foliage; // Foliage 无笔刷后端
+```
+
+**Prevention**: 新增 `EditorMode` 枚举值时，同步确认 `EmbeddedStrideViewportGame.GetBrushForMode` 是否返回有效笔刷；若没有，工具可用性必须返回 `false`。
+
+---
+
 ## Anti-patterns
 
 1. **不要**为每个面板创建全局状态
 2. **不要**在面板中存储场景级状态
 3. **不要**使用静态字段替代单例服务
+4. **不要**在无后端实现的工具模式上设置 `HasSelectedTool = true`

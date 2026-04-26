@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Games;
+using Stride.Graphics;
 using Stride.Graphics.SDL;
 using Terrain.Editor.Models;
 using Terrain.Editor.Services;
@@ -45,6 +46,24 @@ public sealed class NativeStrideViewportHost : IDisposable
     public SceneViewMode SceneViewMode => _sceneViewMode;
 
     public IntPtr ChildHwnd => _childHwnd;
+
+    public void FocusRuntimeWindow()
+    {
+        if (_window == null)
+        {
+            return;
+        }
+
+        SetFocus(_window.Handle);
+    }
+
+    public bool TryGetRuntimeServices(out TerrainManager? terrainManager, out GraphicsDevice? graphicsDevice, out CommandList? commandList)
+    {
+        terrainManager = _game?.TerrainManager;
+        graphicsDevice = _game?.GraphicsDevice;
+        commandList = _game?.GraphicsContext?.CommandList;
+        return terrainManager != null && graphicsDevice != null && commandList != null;
+    }
 
     public void Attach(IntPtr childHwnd, int width, int height)
     {
@@ -143,7 +162,7 @@ public sealed class NativeStrideViewportHost : IDisposable
         {
             _window = new GameFormSDL("Terrain Editor Viewport")
             {
-                Visible = true,
+                Visible = false,
                 FormBorderStyle = FormBorderStyle.None,
             };
             AttachSdlWindowToHost();
@@ -157,6 +176,11 @@ public sealed class NativeStrideViewportHost : IDisposable
 
             _context = new GameContextSDL(_window, _width, _height, isUserManagingRun: true);
             _game.Run(_context);
+
+            // Stride/SDL initialization can mutate Win32 styles, so restamp hosted-window
+            // flags after the game starts to keep the embedded viewport borderless.
+            AttachSdlWindowToHost();
+            _window.Visible = true;
 
             _tickTimer = new DispatcherTimer(TickInterval, DispatcherPriority.Render, OnTick);
             _tickTimer.Start();
@@ -205,7 +229,8 @@ public sealed class NativeStrideViewportHost : IDisposable
         }
 
         _window.ClientSize = new Size2(_width, _height);
-        SetWindowPos(_window.Handle, IntPtr.Zero, 0, 0, _width, _height, SwpNoActivate | SwpNoZOrder | SwpShowWindow);
+        ApplyHostedWindowStyles();
+        SetWindowPos(_window.Handle, IntPtr.Zero, 0, 0, _width, _height, SwpNoActivate | SwpNoZOrder | SwpShowWindow | SwpFrameChanged);
     }
 
     private void OnTick(object? sender, EventArgs e)
@@ -263,22 +288,47 @@ public sealed class NativeStrideViewportHost : IDisposable
             return;
         }
 
-        IntPtr style = GetWindowLongPtrW(_window.Handle, GwlStyle);
-        nint childStyle = (nint)style.ToInt64();
-        childStyle &= ~(WsCaption | WsThickFrame | WsPopup);
-        childStyle |= WsChild | WsVisible;
-        SetWindowLongPtrW(_window.Handle, GwlStyle, new IntPtr(childStyle));
-
         SetParent(_window.Handle, _childHwnd);
+        ApplyHostedWindowStyles();
         SetWindowPos(_window.Handle, IntPtr.Zero, 0, 0, _width, _height, SwpNoActivate | SwpNoZOrder | SwpShowWindow | SwpFrameChanged);
     }
 
+    private void ApplyHostedWindowStyles()
+    {
+        if (_window == null)
+        {
+            return;
+        }
+
+        IntPtr style = GetWindowLongPtrW(_window.Handle, GwlStyle);
+        nint childStyle = (nint)style.ToInt64();
+        childStyle &= ~(WsCaption | WsThickFrame | WsPopup | WsSysMenu | WsMinimizeBox | WsMaximizeBox);
+        childStyle |= WsChild | WsVisible | WsClipChildren | WsClipSiblings;
+        SetWindowLongPtrW(_window.Handle, GwlStyle, new IntPtr(childStyle));
+
+        IntPtr exStyle = GetWindowLongPtrW(_window.Handle, GwlExStyle);
+        nint childExStyle = (nint)exStyle.ToInt64();
+        childExStyle &= ~(WsExAppWindow | WsExWindowEdge | WsExClientEdge | WsExStaticEdge | WsExDlgModalFrame);
+        SetWindowLongPtrW(_window.Handle, GwlExStyle, new IntPtr(childExStyle));
+    }
+
     private const int GwlStyle = -16;
+    private const int GwlExStyle = -20;
     private const nint WsChild = 0x40000000;
     private const nint WsVisible = 0x10000000;
     private const nint WsPopup = unchecked((int)0x80000000);
     private const nint WsCaption = 0x00C00000;
+    private const nint WsSysMenu = 0x00080000;
     private const nint WsThickFrame = 0x00040000;
+    private const nint WsMinimizeBox = 0x00020000;
+    private const nint WsMaximizeBox = 0x00010000;
+    private const nint WsClipChildren = 0x02000000;
+    private const nint WsClipSiblings = 0x04000000;
+    private const nint WsExDlgModalFrame = 0x00000001;
+    private const nint WsExClientEdge = 0x00000200;
+    private const nint WsExStaticEdge = 0x00020000;
+    private const nint WsExAppWindow = 0x00040000;
+    private const nint WsExWindowEdge = 0x00000100;
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpShowWindow = 0x0040;
@@ -303,4 +353,7 @@ public sealed class NativeStrideViewportHost : IDisposable
         int width,
         int height,
         uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetFocus(IntPtr hwnd);
 }

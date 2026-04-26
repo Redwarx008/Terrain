@@ -95,6 +95,27 @@ private void OpenHeightmap()
 
 ---
 
+## 导出命令接线模式
+
+导出命令通过 `ExportManager` 单例调用历史 exporter，不直接构造 exporter 实例：
+
+```csharp
+[RelayCommand]
+private async Task ExportTerrainAsync()
+{
+    var path = await _dialogService.SaveFileDialog(...);
+    if (path == null) return;
+    await ExportManager.Instance.ExecuteAsync("Terrain", path);
+}
+```
+
+关键约束：
+- 使用 `ExportManager.Instance.ExecuteAsync(exporterName, path)` 而非直接 `new TerrainExporter().Export(...)`。
+- 导出器名称字符串（`"Terrain"`、`"Material Descriptor"`）对应 `ExportManager` 注册时使用的键。
+- 异步导出必须用 `async Task` 命令方法，不要用 `async void`。
+
+---
+
 ## Anti-patterns
 
 1. **不要**新增 ImGui 调用

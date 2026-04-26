@@ -3,6 +3,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -13,6 +14,8 @@ using Terrain.Editor.Models;
 using Terrain.Editor.Rendering.NativeViewport;
 using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
+using Terrain.Editor.Services.Export;
+using Terrain.Editor.Services.Export.Exporters;
 
 namespace Terrain.Editor.ViewModels;
 
@@ -21,7 +24,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private readonly EditorState _editorState = EditorState.Instance;
     private readonly ProjectManager _projectManager = ProjectManager.Instance;
     private readonly HistoryManager _historyManager = HistoryManager.Instance;
+    private readonly MaterialSlotManager _materialSlotManager = MaterialSlotManager.Instance;
     private readonly NativeStrideViewportHost _viewportHost;
+    private readonly TerrainExporter _terrainExporter = new();
 
     [ObservableProperty]
     private string _title = "Terrain Editor";
@@ -49,6 +54,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private ToolOptionViewModel? _selectedTool;
+
+    [ObservableProperty]
+    private MaterialSlotOptionViewModel? _selectedMaterialSlot;
 
     [ObservableProperty]
     private bool _canUndo;
@@ -102,6 +110,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<ConsoleEntryViewModel> ConsoleEntries { get; } = new();
 
+    public ObservableCollection<MaterialSlotOptionViewModel> MaterialSlots { get; } = new();
+
     public Array EditorModes { get; } = Enum.GetValues<EditorMode>();
 
     public Array SceneViewModes { get; } = Enum.GetValues<SceneViewMode>();
@@ -129,9 +139,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         BrushParams = new BrushParametersViewModel();
         Climate = new ClimateViewModel();
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
+        ExportManager.Instance.Register(_terrainExporter);
+        ExportManager.Instance.Register(new MaterialDescriptorExporter());
 
         InitializeModes();
         InitializeAssetBrowser();
+        RefreshMaterialSlots();
 
         SelectedMode = _editorState.CurrentEditorMode;
         ShowMaskOverlay = _editorState.ShowMaskOverlay;
@@ -148,6 +161,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.OverlayChanged += OnOverlayChanged;
         _editorState.HeatmapChanged += OnHeatmapChanged;
         _editorState.MaterialSlotSelectionChanged += OnMaterialSlotSelectionChanged;
+        _materialSlotManager.SlotsChanged += OnMaterialSlotsChanged;
+        _materialSlotManager.SelectedSlotChanged += OnMaterialSlotManagerSelectedSlotChanged;
         _projectManager.DirtyChanged += OnProjectDirtyChanged;
         _historyManager.HistoryChanged += OnHistoryChanged;
 
@@ -175,22 +190,36 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        var results = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "New Terrain Project",
-            SuggestedFileName = "terrain",
-            FileTypeChoices = [new FilePickerFileType("Terrain Project") { Patterns = ["*.toml"] }],
+            Title = "Select Heightmap",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Heightmap PNG") { Patterns = ["*.png"] }],
         });
 
-        if (result == null)
+        if (results.Count == 0)
         {
             return;
         }
 
-        string path = result.TryGetLocalPath() ?? result.Path.ToString();
-        _projectManager.CreateProject(System.IO.Path.GetDirectoryName(path)!, System.IO.Path.GetFileNameWithoutExtension(path));
+        if (!TryGetTerrainManager(out var terrainManager))
+        {
+            return;
+        }
+
+        string path = results[0].TryGetLocalPath() ?? results[0].Path.ToString();
+        _projectManager.CloseProject();
+
+        var entities = await terrainManager.LoadTerrainAsync(path);
+        if (entities.Count == 0)
+        {
+            AddConsole("Error", $"Failed to create project from heightmap: {path}");
+            RefreshProjectState();
+            return;
+        }
+
         RefreshProjectState();
-        AddConsole("Info", $"Created project at {path}.");
+        AddConsole("Info", $"Created unsaved project from heightmap: {path}");
     }
 
     [RelayCommand]
@@ -216,7 +245,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         string path = results[0].TryGetLocalPath() ?? results[0].Path.ToString();
-        _projectManager.OpenProject(path);
+        if (!TryGetTerrainManager(out var terrainManager))
+        {
+            return;
+        }
+
+        terrainManager.LoadProject(path);
         RefreshProjectState();
         AddConsole("Info", $"Opened project: {_projectManager.ProjectName}.");
     }
@@ -224,19 +258,26 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void SaveProject()
     {
-        if (_projectManager.IsProjectOpen)
+        if (!_projectManager.IsProjectOpen)
         {
-            var config = _projectManager.LoadConfig();
-            if (config != null)
-            {
-                _projectManager.SaveConfig(config);
-                AddConsole("Info", $"Saved project '{_projectManager.ProjectName}'.");
-                RefreshProjectState();
-                return;
-            }
+            SaveProjectAsCommand.Execute(null);
+            return;
         }
 
-        AddConsole("Warning", "Save requested without an open project.");
+        if (!TryGetTerrainManager(out var terrainManager))
+        {
+            return;
+        }
+
+        if (terrainManager.HasTerrainLoaded)
+        {
+            terrainManager.SaveProject();
+            AddConsole("Info", $"Saved project '{_projectManager.ProjectName}'.");
+            RefreshProjectState();
+            return;
+        }
+
+        AddConsole("Warning", "Nothing to save.");
     }
 
     [RelayCommand]
@@ -262,7 +303,20 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         string path = result.TryGetLocalPath() ?? result.Path.ToString();
-        _projectManager.SaveProjectAs(path);
+        if (_projectManager.IsProjectOpen)
+        {
+            _projectManager.SaveProjectAs(path);
+        }
+        else
+        {
+            _projectManager.CreateProject(path, System.IO.Path.GetFileNameWithoutExtension(path));
+        }
+
+        if (TryGetTerrainManager(out var terrainManager) && terrainManager.HasTerrainLoaded)
+        {
+            terrainManager.SaveProject();
+        }
+
         RefreshProjectState();
         AddConsole("Info", $"Project saved to {path}.");
     }
@@ -280,8 +334,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Export Terrain",
-            SuggestedFileName = "terrain_export",
-            FileTypeChoices = [new FilePickerFileType("RAW Heightmap") { Patterns = ["*.raw"] }],
+            SuggestedFileName = "terrain",
+            FileTypeChoices = [new FilePickerFileType("Terrain") { Patterns = ["*.terrain"] }],
         });
 
         if (result == null)
@@ -289,7 +343,44 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        AddConsole("Info", $"Terrain export initiated to {result.Path}.");
+        if (!TryGetTerrainManager(out var terrainManager))
+        {
+            return;
+        }
+
+        if (!terrainManager.HasTerrainLoaded)
+        {
+            AddConsole("Warning", "No terrain loaded to export.");
+            return;
+        }
+
+        string path = result.TryGetLocalPath() ?? result.Path.ToString();
+        _terrainExporter.TerrainManager = terrainManager;
+
+        try
+        {
+            var progress = new Progress<ExportProgress>(report =>
+            {
+                if (report.IsCompleted)
+                {
+                    AddConsole(report.ErrorMessage == null ? "Info" : "Error",
+                        report.ErrorMessage ?? "Terrain export completed.");
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(report.Message))
+                {
+                    AddConsole("Info", report.Message);
+                }
+            });
+
+            await ExportManager.Instance.ExecuteAsync("Terrain", path, progress, CancellationToken.None);
+            AddConsole("Info", $"Terrain exported to {path}.");
+        }
+        catch (Exception exception)
+        {
+            AddConsole("Error", $"Terrain export failed: {exception.Message}");
+        }
     }
 
     [RelayCommand]
@@ -306,6 +397,13 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             Title = "Import Assets",
             AllowMultiple = true,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Image Files")
+                {
+                    Patterns = ["*.dds", "*.png", "*.jpg", "*.jpeg", "*.tga", "*.bmp", "*.tiff", "*.tif"],
+                },
+            ],
         });
 
         if (results.Count == 0)
@@ -313,7 +411,45 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        AddConsole("Info", $"Queued {results.Count} asset(s) for import.");
+        if (!TryGetTerrainRuntime(out _, out var graphicsDevice, out var commandList))
+        {
+            return;
+        }
+
+        int preferredSlotIndex = SelectedMaterialSlot?.Index ?? _materialSlotManager.NextAvailableSlotIndex;
+        int importedCount = 0;
+        foreach (var file in results)
+        {
+            string? path = file.TryGetLocalPath();
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            int slotIndex = ResolveImportTargetSlot(preferredSlotIndex);
+            if (slotIndex < 0)
+            {
+                AddConsole("Warning", "No available material slots.");
+                break;
+            }
+
+            if (!ImportAlbedoTexture(slotIndex, path, graphicsDevice, commandList))
+            {
+                continue;
+            }
+
+            importedCount++;
+            preferredSlotIndex = _materialSlotManager.NextAvailableSlotIndex;
+        }
+
+        if (importedCount > 0)
+        {
+            AddConsole("Info", $"Imported {importedCount} material texture(s).");
+            if (SelectedMode != EditorMode.Paint)
+            {
+                SelectedMode = EditorMode.Paint;
+            }
+        }
     }
 
     [RelayCommand]
@@ -330,7 +466,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             Title = "Export Material Descriptor",
             SuggestedFileName = "materials",
-            FileTypeChoices = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }],
+            FileTypeChoices = [new FilePickerFileType("TOML") { Patterns = ["*.toml"] }],
         });
 
         if (result == null)
@@ -338,7 +474,32 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        AddConsole("Info", $"Material descriptor export initiated to {result.Path}.");
+        string path = result.TryGetLocalPath() ?? result.Path.ToString();
+
+        try
+        {
+            var progress = new Progress<ExportProgress>(report =>
+            {
+                if (report.IsCompleted)
+                {
+                    AddConsole(report.ErrorMessage == null ? "Info" : "Error",
+                        report.ErrorMessage ?? "Material descriptor export completed.");
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(report.Message))
+                {
+                    AddConsole("Info", report.Message);
+                }
+            });
+
+            await ExportManager.Instance.ExecuteAsync("Material Descriptor", path, progress, CancellationToken.None);
+            AddConsole("Info", $"Material descriptor exported to {path}.");
+        }
+        catch (Exception exception)
+        {
+            AddConsole("Error", $"Material descriptor export failed: {exception.Message}");
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanUndo))]
@@ -405,6 +566,73 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task ImportSelectedNormal()
+    {
+        if (SelectedMaterialSlot == null)
+        {
+            AddConsole("Warning", "Select a material slot first.");
+            return;
+        }
+
+        var storageProvider = GetStorageProvider();
+        if (storageProvider == null)
+        {
+            AddConsole("Warning", "File dialog unavailable.");
+            return;
+        }
+
+        var results = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import Normal Texture",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Image Files")
+                {
+                    Patterns = ["*.dds", "*.png", "*.jpg", "*.jpeg", "*.tga", "*.bmp", "*.tiff", "*.tif"],
+                },
+            ],
+        });
+
+        if (results.Count == 0)
+        {
+            return;
+        }
+
+        string? path = results[0].TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        if (!TryGetTerrainRuntime(out _, out var graphicsDevice, out var commandList))
+        {
+            return;
+        }
+
+        _ = ImportNormalTexture(SelectedMaterialSlot.Index, path, graphicsDevice, commandList);
+    }
+
+    [RelayCommand]
+    private void ClearSelectedMaterialSlot()
+    {
+        if (SelectedMaterialSlot == null)
+        {
+            AddConsole("Warning", "Select a material slot first.");
+            return;
+        }
+
+        if (!TryGetTerrainRuntime(out _, out var graphicsDevice, out var commandList))
+        {
+            return;
+        }
+
+        _materialSlotManager.ClearSlot(SelectedMaterialSlot.Index, graphicsDevice, commandList);
+        ProjectManager.Instance.MarkDirty();
+        AddConsole("Info", $"Cleared slot {SelectedMaterialSlot.Index}.");
+    }
+
+    [RelayCommand]
     private void Exit()
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -421,6 +649,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.OverlayChanged -= OnOverlayChanged;
         _editorState.HeatmapChanged -= OnHeatmapChanged;
         _editorState.MaterialSlotSelectionChanged -= OnMaterialSlotSelectionChanged;
+        _materialSlotManager.SlotsChanged -= OnMaterialSlotsChanged;
+        _materialSlotManager.SelectedSlotChanged -= OnMaterialSlotManagerSelectedSlotChanged;
         _projectManager.DirtyChanged -= OnProjectDirtyChanged;
         _historyManager.HistoryChanged -= OnHistoryChanged;
         BrushParams.Dispose();
@@ -487,6 +717,24 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             _editorState.SelectedMaterialSlotIndex = value;
         }
+
+        if (_materialSlotManager.SelectedSlotIndex != value)
+        {
+            _materialSlotManager.SelectedSlotIndex = value;
+        }
+    }
+
+    partial void OnSelectedMaterialSlotChanged(MaterialSlotOptionViewModel? value)
+    {
+        if (value == null)
+        {
+            return;
+        }
+
+        if (SelectedMaterialSlotIndex != value.Index)
+        {
+            SelectedMaterialSlotIndex = value.Index;
+        }
     }
 
     partial void OnSelectedModeOptionChanged(ModeOptionViewModel? value)
@@ -522,7 +770,14 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
         else
         {
-            _editorState.HasSelectedTool = true;
+            // Only mark tool as selected if the current mode has actual brush
+            // stroke handling in EmbeddedStrideViewportGame. Foliage has no
+            // backend brush implementation yet, so its tools must not set
+            // HasSelectedTool to true.
+            if (value.Mode != EditorMode.Foliage)
+            {
+                _editorState.HasSelectedTool = true;
+            }
         }
 
         AddConsole("Info", $"Selected {value.Label}.");
@@ -564,6 +819,22 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void OnMaterialSlotSelectionChanged(object? sender, EventArgs e)
     {
         SelectedMaterialSlotIndex = _editorState.SelectedMaterialSlotIndex;
+        SyncSelectedMaterialSlot();
+    }
+
+    private void OnMaterialSlotsChanged(object? sender, EventArgs e)
+    {
+        RefreshMaterialSlots();
+    }
+
+    private void OnMaterialSlotManagerSelectedSlotChanged(object? sender, EventArgs e)
+    {
+        if (SelectedMaterialSlotIndex != _materialSlotManager.SelectedSlotIndex)
+        {
+            SelectedMaterialSlotIndex = _materialSlotManager.SelectedSlotIndex;
+        }
+
+        SyncSelectedMaterialSlot();
     }
 
     private void OnProjectDirtyChanged(object? sender, EventArgs e)
@@ -579,8 +850,13 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void RefreshProjectState()
     {
         IsDirty = _projectManager.IsDirty;
-        ProjectName = _projectManager.IsProjectOpen ? _projectManager.ProjectName : "No project";
-        Title = "Terrain Editor";
+        bool hasUnsavedTerrain = !_projectManager.IsProjectOpen && _viewportHost.TerrainManager?.HasTerrainLoaded == true;
+        ProjectName = _projectManager.IsProjectOpen ? _projectManager.ProjectName : hasUnsavedTerrain ? "Unsaved" : "No project";
+        Title = _projectManager.IsProjectOpen
+            ? $"Terrain Editor - {_projectManager.ProjectName}"
+            : hasUnsavedTerrain
+                ? "Terrain Editor - Unsaved *"
+                : "Terrain Editor";
     }
 
     private void RefreshHistoryState()
@@ -604,6 +880,42 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         SelectedToolName = SelectedTool?.Label ?? "None";
     }
 
+    private void RefreshMaterialSlots()
+    {
+        var activeSlots = _materialSlotManager
+            .GetActiveSlots()
+            .Select(static slot => new MaterialSlotOptionViewModel(
+                slot.Index,
+                string.IsNullOrWhiteSpace(slot.Name) ? $"Texture {slot.Index}" : slot.Name,
+                !string.IsNullOrWhiteSpace(slot.NormalTexturePath),
+                !string.IsNullOrWhiteSpace(slot.PropertiesTexturePath)))
+            .OrderBy(static slot => slot.Index)
+            .ToArray();
+
+        MaterialSlots.Clear();
+        foreach (var slot in activeSlots)
+        {
+            MaterialSlots.Add(slot);
+        }
+
+        SyncSelectedMaterialSlot();
+    }
+
+    private void SyncSelectedMaterialSlot()
+    {
+        MaterialSlotOptionViewModel? selected = MaterialSlots.FirstOrDefault(slot => slot.Index == SelectedMaterialSlotIndex);
+        if (selected == null && MaterialSlots.Count > 0)
+        {
+            selected = MaterialSlots[0];
+            SelectedMaterialSlotIndex = selected.Index;
+        }
+
+        if (SelectedMaterialSlot != selected)
+        {
+            SelectedMaterialSlot = selected;
+        }
+    }
+
     private static ToolOptionViewModel[] CreateToolsForMode(EditorMode mode)
     {
         return mode switch
@@ -611,38 +923,24 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             EditorMode.Sculpt =>
             [
                 new("Sculpt", "Raise terrain height", "\uE74A", mode, HeightTool.Raise),
+                new("Lower", "Lower terrain height", "\uE74D", mode, HeightTool.Lower),
                 new("Smooth", "Smooth terrain", "\uE790", mode, HeightTool.Smooth),
                 new("Flatten", "Flatten terrain", "\uE81E", mode, HeightTool.Flatten),
-                new("Ramp", "Create ramp", "\uE8F1", mode),
-                new("Erosion", "Apply erosion", "\uE9D9", mode),
-                new("Noise", "Apply terrain noise", "\uE950", mode),
             ],
             EditorMode.Paint =>
             [
                 new("Paint", "Paint material", "\uE790", mode, null, PaintTool.Paint),
                 new("Erase", "Erase material", "\uE74D", mode, null, PaintTool.Erase),
-                new("Blend", "Blend layers", "\uE7ED", mode),
-                new("Pick", "Pick material", "\uE16C", mode),
             ],
             EditorMode.Foliage =>
             [
-                new("Paint Foliage", "Paint foliage", "\uE8BE", mode),
-                new("Erase Foliage", "Erase foliage", "\uE74D", mode),
-                new("Select", "Select foliage", "\uE14C", mode),
-                new("Scatter", "Scatter foliage", "\uE8C8", mode),
+                new("Place", "Place foliage", "\uE8BE", mode),
+                new("Remove", "Remove foliage", "\uE74D", mode),
             ],
             EditorMode.Water =>
-            [
-                new("Raise Water", "Raise water level", "\uE74A", mode),
-                new("Lower Water", "Lower water level", "\uE74D", mode),
-                new("Ripple", "Create water ripple", "\uE9D9", mode),
-                new("Smooth Water", "Smooth water surface", "\uE790", mode),
-            ],
+                [],
             EditorMode.Landscape =>
             [
-                new("Auto Generate", "Auto generate terrain", "\uE70F", mode),
-                new("Erosion Sim", "Simulate erosion", "\uE9D9", mode),
-                new("Satellite Import", "Import satellite data", "\uE8F1", mode),
                 new("Climate Map", "Edit climate map", "\uE950", mode),
             ],
             _ => [],
@@ -689,11 +987,115 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             EditorMode.Sculpt => "Sculpt",
             EditorMode.Paint => "Paint",
-            EditorMode.Foliage => "Paint Foliage",
-            EditorMode.Water => "Raise Water",
-            EditorMode.Landscape => "Auto Generate",
+            EditorMode.Foliage => "Place",
+            EditorMode.Landscape => "Climate Map",
             _ => "None",
         };
+    }
+
+    private bool TryGetTerrainManager(out TerrainManager terrainManager)
+    {
+        terrainManager = null!;
+        if (_viewportHost.TerrainManager is { } manager)
+        {
+            terrainManager = manager;
+            return true;
+        }
+
+        AddConsole("Warning", "Viewport runtime is not ready yet.");
+        return false;
+    }
+
+    private bool TryGetTerrainRuntime(out TerrainManager terrainManager, out Stride.Graphics.GraphicsDevice graphicsDevice, out Stride.Graphics.CommandList commandList)
+    {
+        terrainManager = null!;
+        graphicsDevice = null!;
+        commandList = null!;
+
+        if (_viewportHost.TryGetRuntimeServices(out var manager, out var device, out var commands))
+        {
+            terrainManager = manager!;
+            graphicsDevice = device!;
+            commandList = commands!;
+            return true;
+        }
+
+        AddConsole("Warning", "Viewport runtime is not ready yet.");
+        return false;
+    }
+
+    private int ResolveImportTargetSlot(int preferredSlotIndex)
+    {
+        if (preferredSlotIndex >= 0 && preferredSlotIndex < 256)
+        {
+            return preferredSlotIndex;
+        }
+
+        int nextAvailable = _materialSlotManager.NextAvailableSlotIndex;
+        if (nextAvailable >= 0)
+        {
+            return nextAvailable;
+        }
+
+        return -1;
+    }
+
+    private bool ImportAlbedoTexture(int slotIndex, string path, Stride.Graphics.GraphicsDevice graphicsDevice, Stride.Graphics.CommandList commandList)
+    {
+        var texture = TextureImporter.ImportFromFile(path, graphicsDevice, commandList, TextureSize.Size512, isNormalMap: false);
+        if (texture == null)
+        {
+            AddConsole("Error", $"Failed to import texture: {path}");
+            return false;
+        }
+
+        if (!_materialSlotManager.TrySetAlbedoTexture(slotIndex, texture, path, TextureSize.Size512, graphicsDevice, commandList, out string? error))
+        {
+            AddConsole("Error", error ?? $"Failed to import albedo to slot {slotIndex}.");
+            return false;
+        }
+
+        ProjectManager.Instance.MarkDirty();
+        _materialSlotManager.SelectedSlotIndex = slotIndex;
+        SelectedMaterialSlotIndex = slotIndex;
+        SelectedMode = EditorMode.Paint;
+        AddConsole("Info", $"Imported albedo to slot {slotIndex}: {path}");
+
+        string? normalPath = TextureImporter.FindMatchingNormalMap(path);
+        if (!string.IsNullOrWhiteSpace(normalPath))
+        {
+            _ = ImportNormalTexture(slotIndex, normalPath, graphicsDevice, commandList, logSuccess: false);
+        }
+
+        return true;
+    }
+
+    private bool ImportNormalTexture(int slotIndex, string path, Stride.Graphics.GraphicsDevice graphicsDevice, Stride.Graphics.CommandList commandList, bool logSuccess = true)
+    {
+        var texture = TextureImporter.ImportFromFile(path, graphicsDevice, commandList, TextureSize.Size512, isNormalMap: true);
+        if (texture == null)
+        {
+            AddConsole("Error", $"Failed to import normal texture: {path}");
+            return false;
+        }
+
+        if (!_materialSlotManager.TrySetNormalTexture(slotIndex, texture, path, graphicsDevice, commandList, out string? error))
+        {
+            AddConsole("Error", error ?? $"Failed to import normal map to slot {slotIndex}.");
+            return false;
+        }
+
+        ProjectManager.Instance.MarkDirty();
+        if (logSuccess)
+        {
+            AddConsole("Info", $"Imported normal map to slot {slotIndex}: {path}");
+        }
+        else
+        {
+            AddConsole("Info", $"Auto-imported normal map for slot {slotIndex}: {path}");
+        }
+
+        return true;
     }
 
     private static AssetBrowserItemViewModel[] CreateAssetItemsForCategory(string category)
