@@ -59,6 +59,7 @@ public sealed class NativeStrideViewportHost : IDisposable
         IntPtr style = GetWindowLongPtrW(_window.Handle, GwlStyle);
         nint newStyle = (nint)style.ToInt64() & ~WsChild;
         SetWindowLongPtrW(_window.Handle, GwlStyle, new IntPtr(newStyle));
+        SetFocus(_window.Handle);
     }
 
     /// <summary>
