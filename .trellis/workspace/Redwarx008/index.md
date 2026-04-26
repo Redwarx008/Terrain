@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-04-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~139 | Active |
+| `journal-1.md` | ~172 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-04-26 | Avalonia migration wiring | `8a6b972` | `implement-climate-texturing` |
 | 4 | 2026-04-26 | Climate panels + Paint/Sculpt brush integration | `51548d7` | `implement-climate-texturing` |
 | 3 | 2026-04-26 | Bootstrap spec guidelines | `9f27c2e` | `implement-climate-texturing` |
 | 2 | 2026-04-25 | Redesign editor GUI to Metro Light | `8ac5399` | `implement-climate-texturing` |

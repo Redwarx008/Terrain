@@ -137,3 +137,36 @@ Added ClimateViewModel/ClimateDefinitionViewModel/RuleViewModel for biome/layer 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Avalonia migration wiring
+
+**Date**: 2026-04-26
+**Task**: Avalonia migration wiring
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+恢复 ImGui→Avalonia 迁移后的编辑器功能接线：项目流程通过 TerrainManager、导出命令通过 ExportManager、原生视口挂接、材质槽位真实数据绑定、占位工具清理。质量检查修复 4 个问题（Foliage 工具可用性守卫、硬编码颜色替换、BrushParametersViewModel _syncing 守卫、缺失资源定义）。更新 spec 新增 HasSelectedTool 常见错误和导出命令接线模式。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8a6b972` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
