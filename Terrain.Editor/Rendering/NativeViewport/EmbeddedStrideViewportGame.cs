@@ -253,9 +253,11 @@ public sealed class EmbeddedStrideViewportGame : Game
                 PaintEditor.Instance.BeginStroke(paintToolName, TerrainManager!);
                 break;
 
-            case EditorMode.Water:
             case EditorMode.Landscape:
-                // Water/Landscape modes currently expose shell-only layout controls.
+                // Climate brush — no separate BeginStroke; ApplyStroke is stateless.
+                break;
+
+            case EditorMode.Water:
                 break;
         }
     }
@@ -281,8 +283,11 @@ public sealed class EmbeddedStrideViewportGame : Game
 
                 break;
 
-            case EditorMode.Water:
             case EditorMode.Landscape:
+                ApplyClimateStroke(worldPosition);
+                break;
+
+            case EditorMode.Water:
                 break;
         }
     }
@@ -306,11 +311,19 @@ public sealed class EmbeddedStrideViewportGame : Game
                 PaintEditor.Instance.EndStroke();
                 break;
 
-            case EditorMode.Water:
             case EditorMode.Landscape:
-                // Water/Landscape modes currently have no stroke lifecycle.
+            case EditorMode.Water:
                 break;
         }
+    }
+
+    private void ApplyClimateStroke(Vector3 worldPosition)
+    {
+        if (TerrainManager?.ClimateMask == null)
+            return;
+
+        byte climateId = (byte)_editorState.CurrentClimateId;
+        ClimateEditor.Instance.ApplyStroke(worldPosition, TerrainManager.ClimateMask, TerrainManager, climateId);
     }
 
     private void InitializeScene()

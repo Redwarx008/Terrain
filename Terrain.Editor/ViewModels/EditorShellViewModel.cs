@@ -69,6 +69,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private bool _heatmapEnabled;
 
     [ObservableProperty]
+    private int _selectedMaterialSlotIndex;
+
+    [ObservableProperty]
     private string _selectedAssetCategory = "Materials";
 
     [ObservableProperty]
@@ -86,6 +89,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     public NativeStrideViewportViewModel Viewport { get; }
 
     public BrushParametersViewModel BrushParams { get; }
+
+    public ClimateViewModel Climate { get; }
 
     public ObservableCollection<ModeOptionViewModel> Modes { get; } = new();
 
@@ -113,6 +118,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public bool IsLandscapeMode => SelectedMode == EditorMode.Landscape;
 
+    public bool IsClimateVisible => IsPaintMode || IsLandscapeMode;
+
     public bool IsListView => !IsGridView;
 
     public EditorShellViewModel()
@@ -120,6 +127,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _viewportHost = new NativeStrideViewportHost();
         Viewport = new NativeStrideViewportViewModel(_viewportHost);
         BrushParams = new BrushParametersViewModel();
+        Climate = new ClimateViewModel();
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
 
         InitializeModes();
@@ -128,6 +136,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         SelectedMode = _editorState.CurrentEditorMode;
         ShowMaskOverlay = _editorState.ShowMaskOverlay;
         HeatmapEnabled = _editorState.HeatmapEnabled;
+        SelectedMaterialSlotIndex = _editorState.SelectedMaterialSlotIndex;
         RefreshTools();
         SyncSelectedModeOption();
         RefreshProjectState();
@@ -138,6 +147,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.PaintToolChanged += OnToolChanged;
         _editorState.OverlayChanged += OnOverlayChanged;
         _editorState.HeatmapChanged += OnHeatmapChanged;
+        _editorState.MaterialSlotSelectionChanged += OnMaterialSlotSelectionChanged;
         _projectManager.DirtyChanged += OnProjectDirtyChanged;
         _historyManager.HistoryChanged += OnHistoryChanged;
 
@@ -410,9 +420,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.PaintToolChanged -= OnToolChanged;
         _editorState.OverlayChanged -= OnOverlayChanged;
         _editorState.HeatmapChanged -= OnHeatmapChanged;
+        _editorState.MaterialSlotSelectionChanged -= OnMaterialSlotSelectionChanged;
         _projectManager.DirtyChanged -= OnProjectDirtyChanged;
         _historyManager.HistoryChanged -= OnHistoryChanged;
         BrushParams.Dispose();
+        Climate.Dispose();
         Viewport.Dispose();
         _viewportHost.Dispose();
     }
@@ -430,6 +442,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsFoliageMode));
         OnPropertyChanged(nameof(IsWaterMode));
         OnPropertyChanged(nameof(IsLandscapeMode));
+        OnPropertyChanged(nameof(IsClimateVisible));
     }
 
     partial void OnCanUndoChanged(bool value)
@@ -465,6 +478,14 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         if (_editorState.HeatmapEnabled != value)
         {
             _editorState.HeatmapEnabled = value;
+        }
+    }
+
+    partial void OnSelectedMaterialSlotIndexChanged(int value)
+    {
+        if (_editorState.SelectedMaterialSlotIndex != value)
+        {
+            _editorState.SelectedMaterialSlotIndex = value;
         }
     }
 
@@ -538,6 +559,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void OnHeatmapChanged(object? sender, EventArgs e)
     {
         HeatmapEnabled = _editorState.HeatmapEnabled;
+    }
+
+    private void OnMaterialSlotSelectionChanged(object? sender, EventArgs e)
+    {
+        SelectedMaterialSlotIndex = _editorState.SelectedMaterialSlotIndex;
     }
 
     private void OnProjectDirtyChanged(object? sender, EventArgs e)

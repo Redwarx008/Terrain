@@ -138,14 +138,24 @@ public sealed class PaintEditor
 
     private static byte ResolveTargetMaterialIndex()
     {
+        var editorState = EditorState.Instance;
         var manager = MaterialSlotManager.Instance;
-        int selectedIndex = manager.SelectedSlotIndex;
+
+        // Prefer EditorState (driven by Avalonia UI) then MaterialSlotManager
+        int selectedIndex = editorState.SelectedMaterialSlotIndex;
+        if (selectedIndex < 0 || selectedIndex >= 256 || manager[selectedIndex].IsEmpty)
+            selectedIndex = manager.SelectedSlotIndex;
+
         if (selectedIndex >= 0 && selectedIndex < 256 && !manager[selectedIndex].IsEmpty)
+        {
+            manager.SelectedSlotIndex = selectedIndex;
             return (byte)selectedIndex;
+        }
 
         foreach (var slot in manager.GetActiveSlots())
         {
             manager.SelectedSlotIndex = slot.Index;
+            editorState.SelectedMaterialSlotIndex = slot.Index;
             return (byte)slot.Index;
         }
 

@@ -61,6 +61,7 @@ public sealed class EditorState
     private bool _showMaskOverlay = true;
     private SceneDebugViewMode _currentDebugViewMode = SceneDebugViewMode.FinalOutput;
     private TerrainPainterTab _terrainPainterTab = TerrainPainterTab.Layers;
+    private int _selectedMaterialSlotIndex;
     private int _selectedModifierIndex = -1;
     private bool _heatmapEnabled;
     private bool _editLayerMode = true;
@@ -156,6 +157,7 @@ public sealed class EditorState
     public event EventHandler? OverlayChanged;
     public event EventHandler? DebugViewModeChanged;
     public event EventHandler? TerrainPainterTabChanged;
+    public event EventHandler? MaterialSlotSelectionChanged;
     public event EventHandler? ModifierSelectionChanged;
     public event EventHandler? HeatmapChanged;
     public event EventHandler? EditLayerModeChanged;
@@ -239,6 +241,19 @@ public sealed class EditorState
             {
                 _terrainPainterTab = value;
                 TerrainPainterTabChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public int SelectedMaterialSlotIndex
+    {
+        get => _selectedMaterialSlotIndex;
+        set
+        {
+            if (_selectedMaterialSlotIndex != value)
+            {
+                _selectedMaterialSlotIndex = value;
+                MaterialSlotSelectionChanged?.Invoke(this, EventArgs.Empty);
             }
         }
     }

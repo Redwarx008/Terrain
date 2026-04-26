@@ -408,6 +408,13 @@
                 <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="MATERIAL" />
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Slot Index" />
+                        <Slider Minimum="0" Maximum="255" Value="{Binding SelectedMaterialSlotIndex}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding SelectedMaterialSlotIndex}" VerticalAlignment="Bottom" />
+                    </Grid>
                     <Border Classes="materialPreviewCard">
                       <Grid ColumnDefinitions="46,*" ColumnSpacing="10">
                         <Border Classes="materialSwatch" Background="{DynamicResource EditorAccentSoftBrush}" />
@@ -597,6 +604,168 @@
                     <CheckBox Content="Hydraulic Erosion" IsChecked="True" />
                   </StackPanel>
                 </Border>
+              </StackPanel>
+
+              <!-- ═══ Climate Panels (Paint + Landscape modes) ═══ -->
+              <StackPanel IsVisible="{Binding IsClimateVisible}" Spacing="0">
+
+                <!-- Climate Manager -->
+                <Border Classes="inspectorSection" Padding="10,10">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionLabel" Text="BIOMES" />
+
+                    <!-- Climate List -->
+                    <ListBox
+                  Classes="toolList"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                  ItemsSource="{Binding Climate.Climates}"
+                  SelectedItem="{Binding Climate.SelectedClimate}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate>
+                          <Grid ColumnDefinitions="16,*,Auto" ColumnSpacing="6" VerticalAlignment="Center">
+                            <Border Width="12" Height="12" CornerRadius="2" Background="{Binding DebugColorBrush}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" />
+                            <Button Grid.Column="2" Classes="commandButton" Padding="2"
+                        Command="{Binding $parent[Window].DataContext.Climate.RemoveClimateCommand}"
+                    CommandParameter="{Binding Id}">
+                              <TextBlock Classes="chevronIcon" Text="&#xE74D;" FontSize="11" />
+                            </Button>
+                          </Grid>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- Add Climate -->
+                    <Button Classes="commandButton" HorizontalAlignment="Stretch"
+                Command="{Binding Climate.AddClimateCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                        <TextBlock Classes="toolbarIcon" Text="&#xE710;" FontSize="12" />
+                        <TextBlock Text="Add Biome" FontSize="12" />
+                      </StackPanel>
+                    </Button>
+
+                    <!-- Mask Overlay Toggle -->
+                    <CheckBox Content="Show Mask Overlay" IsChecked="{Binding Climate.ShowMaskOverlay}" />
+                  </StackPanel>
+                </Border>
+
+                <!-- Rule Manager -->
+                <Border Classes="inspectorSection" Padding="10,10">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionLabel" Text="LAYERS" />
+
+                    <!-- Rule List -->
+                    <ListBox
+                  Classes="toolList"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                  ItemsSource="{Binding Climate.Rules}"
+                  SelectedItem="{Binding Climate.SelectedRule}"
+                  SelectedIndex="{Binding Climate.SelectedRuleIndex, Mode=TwoWay}">
+                      <ListBox.ItemTemplate>
+                        <DataTemplate>
+                          <Grid ColumnDefinitions="16,*" ColumnSpacing="4" VerticalAlignment="Center">
+                            <CheckBox IsChecked="{Binding IsEnabled}" Padding="0" />
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" />
+                          </Grid>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- Rule actions (move up/down, remove) -->
+                    <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center">
+                      <Button Classes="commandButton" Padding="4"
+                  Command="{Binding Climate.MoveRuleUpCommand}"
+                  CommandParameter="{Binding Climate.SelectedRuleIndex}">
+                        <TextBlock Classes="toolbarIcon" Text="&#xE74A;" FontSize="12" />
+                      </Button>
+                      <Button Classes="commandButton" Padding="4"
+                  Command="{Binding Climate.MoveRuleDownCommand}"
+                  CommandParameter="{Binding Climate.SelectedRuleIndex}">
+                        <TextBlock Classes="toolbarIcon" Text="&#xE74B;" FontSize="12" />
+                      </Button>
+                      <Button Classes="commandButton" Padding="4"
+                  Command="{Binding Climate.RemoveRuleAtCommand}"
+                  CommandParameter="{Binding Climate.SelectedRuleIndex}">
+                        <TextBlock Classes="toolbarIcon" Text="&#xE74D;" FontSize="12" />
+                      </Button>
+                    </StackPanel>
+
+                    <!-- Add Rule (uses selected climate) -->
+                    <Button Classes="commandButton" HorizontalAlignment="Stretch"
+                Command="{Binding Climate.AddRuleCommand}"
+                CommandParameter="{Binding Climate.SelectedClimate.Id}">
+                      <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                        <TextBlock Classes="toolbarIcon" Text="&#xE710;" FontSize="12" />
+                        <TextBlock Text="Add Layer" FontSize="12" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                </Border>
+
+                <!-- Rule Inspector -->
+                <Border Classes="inspectorSection" Padding="10,10" IsVisible="{Binding Climate.SelectedRule, Converter={x:Static ObjectConverters.IsNotNull}}">
+                  <StackPanel Spacing="8" DataContext="{Binding Climate.SelectedRule}">
+                    <TextBlock Classes="sectionLabel" Text="LAYER PROPERTIES" />
+
+                    <!-- Name -->
+                    <StackPanel Spacing="2">
+                      <TextBlock Classes="fieldLabel" Text="Name" />
+                      <TextBox Classes="searchBox" Text="{Binding Name, Mode=TwoWay}" />
+                    </StackPanel>
+
+                    <!-- Min Altitude / Max Altitude -->
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Min Altitude" />
+                        <Slider Minimum="0" Maximum="1000" Value="{Binding MinAltitude}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MinAltitude, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Max Altitude" />
+                        <Slider Minimum="0" Maximum="1000" Value="{Binding MaxAltitude}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MaxAltitude, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+
+                    <!-- Min Slope / Max Slope -->
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Min Slope" />
+                        <Slider Minimum="0" Maximum="90" Value="{Binding MinSlopeDegrees}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MinSlopeDegrees, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Max Slope" />
+                        <Slider Minimum="0" Maximum="90" Value="{Binding MaxSlopeDegrees}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MaxSlopeDegrees, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+
+                    <!-- Blend Range -->
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Blend Range" />
+                        <Slider Minimum="0" Maximum="1" Value="{Binding BlendRange}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding BlendRange, StringFormat='{}{0:F2}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+
+                    <!-- Material Slot -->
+                    <StackPanel Spacing="2">
+                      <TextBlock Classes="fieldLabel" Text="Material Slot" />
+                      <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                        <Slider Minimum="0" Maximum="15" Value="{Binding MaterialSlotIndex}" />
+                        <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MaterialSlotIndex}" VerticalAlignment="Bottom" />
+                      </Grid>
+                    </StackPanel>
+
+                  </StackPanel>
+                </Border>
+
               </StackPanel>
 
             </StackPanel>
