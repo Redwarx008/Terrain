@@ -24,7 +24,7 @@ public sealed class EmbeddedStrideViewportGame : Game
     private const bool PresenterOnlyDiagnostic = false;
 
     private readonly EditorTerrainModeController _modeController = new();
-    private readonly FlyCameraController _cameraController = new();
+    private readonly CameraController _cameraController = new();
     private readonly EditorState _editorState = EditorState.Instance;
 
     private GraphicsCompositor? _graphicsCompositor;

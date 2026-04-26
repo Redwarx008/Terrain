@@ -24,7 +24,7 @@ public class EditorPreferences
     public static EditorPreferences Instance => instance ??= Load();
 
     /// <summary>
-    /// 相机速度档位索引（对应 FlyCameraController.SpeedPresets）。
+    /// 相机速度档位索引（对应 CameraController.SpeedPresets）。
     /// </summary>
     public int CameraSpeedIndex { get; set; } = 2; // 默认 50 单位/秒
 
@@ -46,7 +46,7 @@ public class EditorPreferences
                 {
                     var camera = root["camera"];
                     preferences.CameraSpeedIndex = camera.HasKey("speed_index") && camera["speed_index"].IsInteger
-                        ? Math.Clamp((int)camera["speed_index"].AsInteger, 0, 8) // FlyCameraController 有 9 个档位
+                        ? Math.Clamp((int)camera["speed_index"].AsInteger, 0, 8) // CameraController 有 9 个档位
                         : 2;
                 }
             }

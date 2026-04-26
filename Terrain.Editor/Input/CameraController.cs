@@ -12,7 +12,7 @@ namespace Terrain.Editor.Input;
 /// Right-drag rotates, WASDQE moves, Shift boosts speed,
 /// right-drag + wheel adjusts speed presets.
 /// </summary>
-public sealed class FlyCameraController
+public sealed class CameraController
 {
     private const float DefaultRotationSpeed = 0.3f;
 
