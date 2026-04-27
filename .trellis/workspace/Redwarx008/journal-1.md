@@ -170,3 +170,37 @@ Added ClimateViewModel/ClimateDefinitionViewModel/RuleViewModel for biome/layer 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Fix viewport out-of-bounds
+
+**Date**: 2026-04-27
+**Task**: Fix viewport out-of-bounds
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+修复 Avalonia 编辑器中 SDL 视口宿主越界覆盖兄弟区域的问题：移除 NativeChildWindow.Resize()，改用 Avalonia TryUpdateNativeControlPosition + GetClientRect 回读物理像素；移除 MinHeight 硬编码改用 Stretch 对齐；添加 Dispatcher 防抖避免 resize 竞争。更新 spec 新增子窗口主动 Resize 破坏布局所有权的 Common Mistake。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6cfcc02` | (see git log) |
+| `3d31266` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
