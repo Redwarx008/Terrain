@@ -125,6 +125,16 @@ Dispatcher.UIThread.Post(() =>
 
 **Prevention**: viewport 宿主尺寸由父级 `Grid`/`Border` 决定，最小可用高度应通过窗口整体 `MinHeight` 或可调整面板设计保证，不要在 `NativeControlHost` 本体上额外强塞更大的最小高度。
 
+## Common Mistake: 子窗口主动 Resize 破坏 Avalonia 布局所有权
+
+**Symptom**: 高 DPI 下视口越界覆盖兄弟 UI，或在 resize 时出现短暂闪烁/尺寸跳动。
+
+**Cause**: `NativeChildWindow` 自带 `Resize(w, h)` 方法并用 `MoveWindow` 强制设定尺寸，导致原生子窗口与 Avalonia `NativeControlHost` 的布局系统产生竞争。Avalonia 认为子窗口应该是一块区域，但 Win32 层面子窗口被拉到了物理像素尺寸。
+
+**Fix**: 移除 `NativeChildWindow.Resize()`，子窗口尺寸完全交给 Avalonia `NativeControlHost.TryUpdateNativeControlPosition()` 摆放；需要物理像素尺寸时从 `GetClientRect` 回读。
+
+**Prevention**: `NativeChildWindow` 只负责创建和销毁 HWND，不负责尺寸管理。尺寸唯一来源是 Avalonia 布局 → `TryUpdateNativeControlPosition()` → `GetClientRect` 回读。
+
 ## Common Mistake: 把调试状态栏当成长期 UI
 
 **Symptom**: 视口标题栏塞满 `BackBuffer=...; Depth=...; ClientBounds=...` 一长串文本，挤压正常布局。
