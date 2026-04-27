@@ -21,7 +21,9 @@
 ### 3. Contracts
 
 - Avalonia 控件必须先创建自己的原生子 `HWND`，再把该句柄交给 `NativeStrideViewportHost.Attach(...)`。
+- Avalonia `NativeControlHost` 返回的外层宿主 `HWND` 尺寸由 Avalonia 自己布局；不要再用 `RenderScaling` 后的物理像素手动放大这个外层窗口。
 - 传入 SDL/Stride 的 `width`、`height` 必须是**物理像素**，不是 Avalonia 逻辑尺寸；使用 `TopLevel.RenderScaling` 做换算。
+- 当宿主已经交给 Avalonia `NativeControlHost` 自动定位/缩放时，SDL 最终使用的物理像素尺寸应优先从真实子窗口 `GetClientRect(...)` 读取，而不是再次手算。
 - SDL 宿主必须使用 `GameFormSDL` **自建窗口**，再通过 Win32 `SetParent` / `SetWindowLongPtrW` / `SetWindowPos` 重挂接到 Avalonia 子 `HWND`。
 - 不要使用 `Stride.Graphics.SDL.Window(parentHwnd)` 或 SDL `CreateWindowFrom(existing HWND)` 直接绑定已有宿主窗口。
 - `EmbeddedStrideViewportGame` 必须关闭“失焦等价最小化”：
@@ -38,6 +40,8 @@
 |---|---|
 | `childHwnd == IntPtr.Zero` | `Attach(...)` 直接抛 `ArgumentException` |
 | 把 Avalonia 逻辑尺寸直接传给 SDL/Win32 | 高 DPI 下视口只覆盖左上角，宿主底色漏出 |
+| 把 `Bounds * RenderScaling` 同时用于 SDL 和外层 `NativeControlHost` 子窗口 | 高 DPI 下外层宿主二次放大，视口越界覆盖 Asset Browser / Inspector |
+| 在 Avalonia 已完成原生宿主布局前就提前用估算值驱动 SDL resize | SDL/backbuffer 与真实宿主 client rect 不一致，表现为持续越界或裁切 |
 | 使用 `CreateWindowFrom(existing HWND)` | 可能出现 `ClientBounds=1x1`，首帧虽触发但画面黑屏 |
 | 未关闭 `TreatNotFocusedLikeMinimized` | 嵌入式视口失焦后停绘，首帧或后续帧保持黑屏 |
 | resize 只改宿主窗口，不改 backbuffer | presenter/backbuffer 与可见区域错位，出现黑边或裁切 |
@@ -66,30 +70,60 @@
 #### Wrong
 
 ```csharp
-Window window = new(parentHwnd);
-GameContextSDL context = new(window, width, height, isUserManagingRun: true);
+PixelSize pixelSize = GetPixelSize();
+childWindow.Resize(pixelSize.Width, pixelSize.Height);
+viewportHost.Attach(childWindow.Handle, pixelSize.Width, pixelSize.Height);
 ```
 
-- 问题：看起来省事，但在当前工程里会出现 `ClientBounds=1x1` 和黑屏。
+- 问题：把 SDL 的物理像素尺寸直接拿去改外层 `NativeControlHost` 子窗口，会让宿主在高 DPI 下被二次放大，越界压住兄弟 UI。
 
 #### Correct
 
 ```csharp
-_window = new GameFormSDL("Terrain Editor Viewport")
-{
-    Visible = true,
-    FormBorderStyle = FormBorderStyle.None,
-};
-
-SetParent(_window.Handle, _childHwnd);
-SetWindowPos(_window.Handle, IntPtr.Zero, 0, 0, width, height, flags);
-
-_context = new GameContextSDL(_window, width, height, isUserManagingRun: true);
+PixelSize pixelSize = GetPixelSize();
+NativeChildWindow childWindow = new(parent.Handle, 1, 1);
+viewportHost.Attach(childWindow.Handle, pixelSize.Width, pixelSize.Height);
 ```
 
-- 原因：SDL 先拥有自己的窗口生命周期，再由 Win32 负责重挂接，Stride `Window.ClientBounds` 和 presenter 尺寸才能稳定同步。
+- 原因：虽然拆开了外层宿主和 SDL 尺寸职责，但这里仍然依赖手算值，时序上可能早于 Avalonia 对原生宿主的最终布局。
+
+#### Correct
+
+```csharp
+NativeChildWindow childWindow = new(parent.Handle, 1, 1);
+viewportHost.Attach(childWindow.Handle, 1, 1);
+
+Dispatcher.UIThread.Post(() =>
+{
+    TryUpdateNativeControlPosition();
+    PixelSize pixelSize = childWindow.GetClientSize();
+    viewportHost.Resize(pixelSize.Width, pixelSize.Height);
+}, DispatcherPriority.Render);
+```
+
+- 原因：先让 Avalonia 完成 `NativeControlHost` 的实际摆放，再从真实 `HWND client rect` 回读物理像素尺寸给 SDL，可避免 DPI 和布局时序带来的错位。
 
 ---
+
+## Common Mistake: 外层宿主窗口和 SDL 共用一套物理像素尺寸
+
+**Symptom**: viewport 本体越过底部 Asset Browser 或右侧 Inspector，像一整块原生窗口压在 Avalonia 布局之上。
+
+**Cause**: `Bounds * RenderScaling` 生成的物理像素尺寸本来只该传给 SDL/Stride，但又被拿去 `Resize` 外层 `NativeControlHost` 子窗口，导致高 DPI 下放大两次。
+
+**Fix**: 外层原生子窗口让 Avalonia 自己布局；仅对 `NativeStrideViewportHost.Attach/Resize` 传递物理像素宽高，并以真实 `HWND client rect` 为准。
+
+**Prevention**: 以后看到 `RenderScaling` 时先区分“这是给 SDL/backbuffer 的物理像素”还是“这是给 Avalonia 宿主布局的逻辑区域”，不要混用。
+
+## Common Mistake: 给嵌入式 viewport 宿主设置过大的 `MinHeight`
+
+**Symptom**: 编辑器启动第一帧开始，viewport 同时压到上方工具栏和下方 Asset Browser；检查控件 `Bounds` 时可见类似 `Y=-15` 这种负偏移。
+
+**Cause**: `NativeStrideViewportControl` 放在 `Grid RowDefinitions=\"Auto,*\"` 一类布局里时，如果给它设置了超过实际可用高度的 `MinHeight`，Avalonia 会按约束摆放控件并产生负向溢出。
+
+**Fix**: 对嵌入式 viewport 宿主优先使用 `Stretch` 对齐，让它消费父布局给出的实际区域；不要给它设置会超过常见启动窗口可用高度的硬编码 `MinHeight`。
+
+**Prevention**: viewport 宿主尺寸由父级 `Grid`/`Border` 决定，最小可用高度应通过窗口整体 `MinHeight` 或可调整面板设计保证，不要在 `NativeControlHost` 本体上额外强塞更大的最小高度。
 
 ## Common Mistake: 把调试状态栏当成长期 UI
 

@@ -8,6 +8,7 @@ using Avalonia.Controls.Platform;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Terrain.Editor.Rendering.NativeViewport;
 
 namespace Terrain.Editor.Views.Controls;
@@ -21,6 +22,7 @@ public sealed class NativeStrideViewportControl : NativeControlHost
         Border.BackgroundProperty.AddOwner<NativeStrideViewportControl>();
 
     private NativeChildWindow? _childWindow;
+    private bool _viewportSyncQueued;
 
     public NativeStrideViewportHost? ViewportHost
     {
@@ -53,23 +55,20 @@ public sealed class NativeStrideViewportControl : NativeControlHost
 
         if (change.Property == BoundsProperty && _childWindow != null)
         {
-            PixelSize pixelSize = GetPixelSize();
-            ResizeChildWindow(pixelSize);
-            ViewportHost?.Resize(pixelSize.Width, pixelSize.Height);
+            ScheduleViewportSync();
         }
     }
 
     protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
-        PixelSize pixelSize = GetPixelSize();
-
         NativeChildWindow childWindow = new(
             parent.Handle,
-            pixelSize.Width,
-            pixelSize.Height);
+            1,
+            1);
 
         _childWindow = childWindow;
-        ViewportHost?.Attach(childWindow.Handle, childWindow.Width, childWindow.Height);
+        ViewportHost?.Attach(childWindow.Handle, 1, 1);
+        ScheduleViewportSync();
         return new PlatformHandle(childWindow.Handle, "HWND");
     }
 
@@ -83,22 +82,29 @@ public sealed class NativeStrideViewportControl : NativeControlHost
         base.DestroyNativeControlCore(control);
     }
 
-    private void ResizeChildWindow(PixelSize pixelSize)
+    private void ScheduleViewportSync()
     {
+        if (_viewportSyncQueued)
+        {
+            return;
+        }
+
+        _viewportSyncQueued = true;
+        Dispatcher.UIThread.Post(SyncViewportToNativeHost, DispatcherPriority.Render);
+    }
+
+    private void SyncViewportToNativeHost()
+    {
+        _viewportSyncQueued = false;
+
         if (_childWindow == null)
         {
             return;
         }
 
-        _childWindow.Resize(pixelSize.Width, pixelSize.Height);
-    }
-
-    private PixelSize GetPixelSize()
-    {
-        double scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
-        int width = Math.Max(1, (int)Math.Ceiling(Bounds.Width * scaling));
-        int height = Math.Max(1, (int)Math.Ceiling(Bounds.Height * scaling));
-        return new PixelSize(width, height);
+        TryUpdateNativeControlPosition();
+        PixelSize pixelSize = _childWindow.GetClientSize();
+        ViewportHost?.Resize(pixelSize.Width, pixelSize.Height);
     }
 
     private sealed class NativeChildWindow : IDisposable
@@ -109,8 +115,8 @@ public sealed class NativeStrideViewportControl : NativeControlHost
 
         public NativeChildWindow(IntPtr parentHandle, int width, int height)
         {
-            Width = Math.Max(1, width);
-            Height = Math.Max(1, height);
+            int initialWidth = Math.Max(1, width);
+            int initialHeight = Math.Max(1, height);
 
             Handle = CreateWindowExW(
                 0,
@@ -119,8 +125,8 @@ public sealed class NativeStrideViewportControl : NativeControlHost
                 WsChild | WsVisible | WsClipChildren | WsClipSiblings,
                 0,
                 0,
-                Width,
-                Height,
+                initialWidth,
+                initialHeight,
                 parentHandle,
                 IntPtr.Zero,
                 GetModuleHandleW(null),
@@ -134,17 +140,18 @@ public sealed class NativeStrideViewportControl : NativeControlHost
 
         public IntPtr Handle { get; }
 
-        public int Width { get; private set; }
-
-        public int Height { get; private set; }
-
-        public void Resize(int width, int height)
+        public PixelSize GetClientSize()
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            Width = Math.Max(1, width);
-            Height = Math.Max(1, height);
-            MoveWindow(Handle, 0, 0, Width, Height, true);
+            if (!GetClientRect(Handle, out RECT rect))
+            {
+                return new PixelSize(1, 1);
+            }
+
+            int width = Math.Max(1, rect.Right - rect.Left);
+            int height = Math.Max(1, rect.Bottom - rect.Top);
+            return new PixelSize(width, height);
         }
 
         public void Dispose()
@@ -215,6 +222,15 @@ public sealed class NativeStrideViewportControl : NativeControlHost
         public IntPtr hIconSm;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern ushort RegisterClassExW(ref WNDCLASSEXW windowClass);
 
@@ -235,11 +251,11 @@ public sealed class NativeStrideViewportControl : NativeControlHost
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool MoveWindow(IntPtr hwnd, int x, int y, int width, int height, bool repaint);
+    private static extern bool DestroyWindow(IntPtr hwnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool DestroyWindow(IntPtr hwnd);
+    private static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
 
     [DllImport("user32.dll")]
     private static extern IntPtr DefWindowProcW(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);

@@ -150,7 +150,8 @@
               <controls:NativeStrideViewportControl
                 ViewportHost="{Binding Viewport.ViewportHost}"
                 Background="{DynamicResource EditorViewportDarkBackgroundBrush}"
-                MinHeight="400" />
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch" />
 
               <Canvas IsHitTestVisible="False" ClipToBounds="True">
                 <StackPanel Canvas.Left="20" Canvas.Bottom="20" Spacing="2">
