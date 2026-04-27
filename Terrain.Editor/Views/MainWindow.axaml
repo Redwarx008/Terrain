@@ -194,18 +194,6 @@
                       <TextBlock Text="Textures" />
                     </StackPanel>
                   </Button>
-                  <Button Classes="assetTab">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                      <TextBlock Classes="assetTabIcon" Text="&#xE8A9;" />
-                      <TextBlock Text="Materials" />
-                    </StackPanel>
-                  </Button>
-                  <Button Classes="assetTab">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                      <TextBlock Classes="assetTabIcon" Text="&#xE943;" />
-                      <TextBlock Text="Blueprints" />
-                    </StackPanel>
-                  </Button>
                 </StackPanel>
 
                 <Border Grid.Column="1" />
