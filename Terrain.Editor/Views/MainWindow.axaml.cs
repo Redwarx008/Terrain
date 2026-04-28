@@ -1,18 +1,50 @@
 #nullable enable
 
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Terrain.Editor.ViewModels;
 
 namespace Terrain.Editor.Views;
 
 public sealed partial class MainWindow : Window
 {
+    private readonly Dictionary<string, Button> _assetTabs = new();
+
     public MainWindow()
     {
         InitializeComponent();
         ApplyStartupSizeForPhysicalPixels();
+
+        _assetTabs["Textures"] = this.FindControl<Button>("AssetTabTextures")!;
+        _assetTabs["Meshes"] = this.FindControl<Button>("AssetTabMeshes")!;
+        _assetTabs["Foliage"] = this.FindControl<Button>("AssetTabFoliage")!;
+        _assetTabs["Prefabs"] = this.FindControl<Button>("AssetTabPrefabs")!;
+
+        foreach (var tab in _assetTabs.Values)
+        {
+            tab.Click += OnAssetTabClicked;
+        }
+    }
+
+    private void OnAssetTabClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.CommandParameter is not string category)
+            return;
+
+        UpdateAssetTabStyles(category);
+    }
+
+    private void UpdateAssetTabStyles(string activeCategory)
+    {
+        foreach (var (name, button) in _assetTabs)
+        {
+            button.Classes.Remove("assetTab");
+            button.Classes.Remove("assetTabActive");
+            button.Classes.Add(name == activeCategory ? "assetTabActive" : "assetTab");
+        }
     }
 
     private void ApplyStartupSizeForPhysicalPixels()
@@ -52,19 +84,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void MinimizeButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void MinimizeButton_OnClick(object? sender, RoutedEventArgs e)
     {
         WindowState = WindowState.Minimized;
     }
 
-    private void MaximizeButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void MaximizeButton_OnClick(object? sender, RoutedEventArgs e)
     {
         WindowState = WindowState == WindowState.Maximized
             ? WindowState.Normal
             : WindowState.Maximized;
     }
 
-    private void CloseButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void CloseButton_OnClick(object? sender, RoutedEventArgs e)
     {
         Close();
     }
@@ -74,6 +106,11 @@ public sealed partial class MainWindow : Window
         if (DataContext is EditorShellViewModel viewModel)
         {
             viewModel.Dispose();
+        }
+
+        foreach (var tab in _assetTabs.Values)
+        {
+            tab.Click -= OnAssetTabClicked;
         }
 
         base.OnClosed(e);

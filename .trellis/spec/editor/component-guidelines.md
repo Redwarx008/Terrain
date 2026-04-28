@@ -126,6 +126,47 @@ private async Task ExportTerrainAsync()
 
 ---
 
+## Common Mistake: Avalonia Classes 属性不能绑定
+
+**Symptom**: XAML 编译报错 `AVLN3000: Unable to find suitable setter for property Classes`
+
+**Cause**: `Classes` 是 `IList<string>` 集合属性，Avalonia XAML 不支持将 Binding 表达式直接赋值给集合属性（即使是转换为字符串的 Converter 也不行）。
+
+**Fix**: 用以下方法之一切换 CSS 类：
+- Code-behind 中用 `button.Classes.Remove("assetTab"); button.Classes.Add("assetTabActive");`（纯 UI 逻辑，不违反 MVVM）
+- 用 `RadioButton` 互斥组实现单选标签
+- 用 `DataTrigger` 样式（Avalonia 11+ 支持）
+
+**Prevention**: 任何需要根据 ViewModel 状态切换 CSS 类的场景，优先考虑 code-behind UI 处理或 DataTrigger。
+
+---
+
+## Common Mistake: DataTemplate 内的 ContextMenu 编译错误
+
+**Symptom**: XAML 编译报错 `AVLN2000: Unable to resolve suitable regular or attached property ContextMenu on type Border`
+
+**Cause**: 在 DataTemplate 内部对 `Border` 等非 Control 元素使用 `ContextMenu` 附加属性时，XAML 编译器可能无法解析。
+
+**Fix**: 将 ContextMenu 移到 ListBox 的 `ContextMenu` 属性上，或改用 Button 等支持 ContextMenu 的 Control 作为容器。
+
+---
+
+## 资源类型图标映射
+
+项目使用 Segoe MDL2 Assets 图标字体显示资源类型图标。映射表：
+
+| Kind | Glyph | Unicode | 含义 |
+|------|-------|---------|------|
+| Texture | Photo | `\xE71B` | 纹理/图片 |
+| Mesh | Cube | `\xE80A` | 3D 模型 |
+| Tree/Shrub/Grass | MapleLeaf | `\xEC7A` | 植被 |
+| Prefab | Package | `\xE7B8` | 预制体 |
+| Create | Add | `\xE710` | 添加资源 |
+
+参考: https://learn.microsoft.com/en-us/windows/apps/design/style/segoe-ui-icons-family
+
+---
+
 ## ViewModel 包装后端单例服务的同步模式
 
 当 ViewModel 包装后端单例服务（如 `ClimateRuleService`）时，需要处理三层状态的双向同步：

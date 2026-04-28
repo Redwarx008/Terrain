@@ -3,12 +3,16 @@
   xmlns="https://github.com/avaloniaui"
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
   xmlns:controls="clr-namespace:Terrain.Editor.Views.Controls"
+  xmlns:converters="clr-namespace:Terrain.Editor.Converters"
   Title="{Binding Title}"
   Width="1920"
   Height="1080"
   MinWidth="1280"
   MinHeight="780"
   SystemDecorations="None">
+  <Window.Resources>
+    <converters:InvertedNullToBoolConverter x:Key="InvertedNullToBool" />
+  </Window.Resources>
   <Window.Styles>
     <Style Selector="Button#CloseButton:pointerover">
       <Setter Property="Background" Value="{DynamicResource EditorWindowCloseBrush}" />
@@ -181,30 +185,42 @@
             <!-- Asset Tab Bar -->
             <Border Classes="viewportToolbar" Background="{DynamicResource EditorAssetTabBackgroundBrush}" BorderThickness="0">
               <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
-                <StackPanel Orientation="Horizontal" Spacing="0" Margin="0,0,0,0">
-                  <Button Classes="assetTabActive">
+                <StackPanel Orientation="Horizontal" Spacing="0">
+                  <Button x:Name="AssetTabTextures" Classes="assetTabActive" Command="{Binding SelectAssetCategoryCommand}" CommandParameter="Textures">
                     <StackPanel Orientation="Horizontal" Spacing="4">
-                      <TextBlock Classes="assetTabIcon" Text="&#xE790;" />
+                      <TextBlock Classes="assetTabIcon" Text="&#xE71B;" />
                       <TextBlock Text="Textures" />
                     </StackPanel>
                   </Button>
-                  <Button Classes="assetTab">
+                  <Button x:Name="AssetTabMeshes" Classes="assetTab" Command="{Binding SelectAssetCategoryCommand}" CommandParameter="Meshes">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                       <TextBlock Classes="assetTabIcon" Text="&#xE80A;" />
                       <TextBlock Text="Meshes" />
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name="AssetTabFoliage" Classes="assetTab" Command="{Binding SelectAssetCategoryCommand}" CommandParameter="Foliage">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Classes="assetTabIcon" Text="&#xEC7A;" />
+                      <TextBlock Text="Foliage" />
+                    </StackPanel>
+                  </Button>
+                  <Button x:Name="AssetTabPrefabs" Classes="assetTab" Command="{Binding SelectAssetCategoryCommand}" CommandParameter="Prefabs">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Classes="assetTabIcon" Text="&#xE7B8;" />
+                      <TextBlock Text="Prefabs" />
                     </StackPanel>
                   </Button>
                 </StackPanel>
 
                 <Border Grid.Column="1" />
 
-                <!-- Search + Filter -->
-                <TextBox Grid.Column="2" Classes="searchBox" Watermark="Search meshes..." Width="180" Margin="0,0,4,0" VerticalAlignment="Center">
+                <!-- Search -->
+                <TextBox Grid.Column="2" Classes="searchBox" Text="{Binding AssetSearchText}" Watermark="Search assets..." Width="180" Margin="0,0,4,0" VerticalAlignment="Center">
                   <TextBox.InnerLeftContent>
                     <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{DynamicResource EditorTextSecondaryBrush}" Text="&#xE71E;" VerticalAlignment="Center" Margin="0,0,6,0" />
                   </TextBox.InnerLeftContent>
                 </TextBox>
-                <Button Grid.Column="3" Classes="commandButton" Padding="4" VerticalAlignment="Center">
+                <Button Grid.Column="3" Classes="commandButton" Padding="4" VerticalAlignment="Center" Command="{Binding SetGridViewCommand}">
                   <TextBlock Classes="viewToggleIcon" Text="&#xE71C;" />
                 </Button>
                 <Button Grid.Column="4" Classes="commandButton" Padding="4" VerticalAlignment="Center" Command="{Binding ToggleAssetBrowserCommand}">
@@ -215,7 +231,7 @@
 
             <!-- Asset Grid -->
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-              <ListBox Classes="assetTileList" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding AssetItems}">
+              <ListBox Classes="assetTileList" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding AssetItems}" SelectedItem="{Binding SelectedAssetItem, Mode=TwoWay}">
                 <ListBox.ItemsPanel>
                   <ItemsPanelTemplate>
                     <WrapPanel Orientation="Horizontal" />
@@ -225,8 +241,13 @@
                   <DataTemplate>
                     <Border Classes="assetTile">
                       <Grid RowDefinitions="96,Auto">
-                        <Border Classes="assetPreview">
-                          <TextBlock Classes="assetPreviewGlyph" Foreground="{Binding PreviewForeground}" Text="{Binding PreviewGlyph}" />
+                        <Border Classes="assetPreview" Background="{Binding PreviewBackground}">
+                          <Panel>
+                            <TextBlock Classes="assetPreviewGlyph" Foreground="{Binding PreviewForeground}" Text="{Binding IconGlyph}"
+                                       IsVisible="{Binding PreviewImage, Converter={StaticResource InvertedNullToBool}}" />
+                            <Image Source="{Binding PreviewImage}" Stretch="UniformToFill"
+                                   IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                          </Panel>
                         </Border>
                         <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="10" TextWrapping="Wrap" TextAlignment="Center" Margin="4,6,4,4" Foreground="{DynamicResource EditorTextPrimaryBrush}" />
                       </Grid>

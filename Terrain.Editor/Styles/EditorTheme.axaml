@@ -305,8 +305,8 @@
   </Style>
 
   <Style Selector="TextBlock.assetPreviewGlyph">
-    <Setter Property="FontFamily" Value="Segoe UI Semibold" />
-    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="28" />
     <Setter Property="HorizontalAlignment" Value="Center" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
@@ -588,7 +588,6 @@
   </Style>
 
   <Style Selector="Border.assetPreview">
-    <Setter Property="Background" Value="#3A3A3A" />
     <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="2,2,0,0" />

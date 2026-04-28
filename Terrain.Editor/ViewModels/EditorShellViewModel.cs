@@ -80,7 +80,13 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private int _selectedMaterialSlotIndex;
 
     [ObservableProperty]
-    private string _selectedAssetCategory = "Materials";
+    private string _selectedAssetCategory = "Textures";
+
+    [ObservableProperty]
+    private string _assetSearchText = string.Empty;
+
+    [ObservableProperty]
+    private AssetBrowserItemViewModel? _selectedAssetItem;
 
     [ObservableProperty]
     private bool _isGridView = true;
@@ -554,6 +560,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private void SelectAssetCategory(string category)
+    {
+        SelectedAssetCategory = category;
+    }
+
+    [RelayCommand]
     private void SetListView()
     {
         IsGridView = false;
@@ -958,7 +970,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private void InitializeAssetBrowser()
     {
-        foreach (var category in new[] { "Materials", "Textures", "Meshes", "Brushes", "Foliage", "Prefabs" })
+        foreach (var category in new[] { "Textures", "Meshes", "Foliage", "Prefabs" })
         {
             AssetCategories.Add(category);
         }
@@ -970,10 +982,22 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     {
         AssetItems.Clear();
 
-        foreach (var item in CreateAssetItemsForCategory(SelectedAssetCategory))
+        var items = CreateAssetItemsForCategory(SelectedAssetCategory);
+
+        foreach (var item in items)
         {
-            AssetItems.Add(item);
+            if (string.IsNullOrWhiteSpace(AssetSearchText)
+                || item.Name.Contains(AssetSearchText, StringComparison.OrdinalIgnoreCase)
+                || item.IsCreateItem)
+            {
+                AssetItems.Add(item);
+            }
         }
+    }
+
+    partial void OnAssetSearchTextChanged(string value)
+    {
+        RefreshAssetItems();
     }
 
     private void SyncSelectedModeOption()
@@ -1100,79 +1124,52 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private static AssetBrowserItemViewModel[] CreateAssetItemsForCategory(string category)
     {
+        // Segoe MDL2 Assets icon glyphs
+        // E71B = Photo/Image, E80A = Cube, EC7A = MapleLeaf/Tree,
+        // E7B8 = Package/Prefab, E710 = Add/Create
         return category switch
         {
-            "Materials" =>
-            [
-                new("Grass_01", category, "Material", "#9DC874", "#2E5B2A", "Grass"),
-                new("Rock_01", category, "Material", "#C8CDD3", "#4E5966", "Rock"),
-                new("Dirt_01", category, "Material", "#C79363", "#6A4020", "Dirt"),
-                new("Sand_01", category, "Material", "#E3D0A9", "#87693B", "Sand"),
-                new("Snow_01", category, "Material", "#F3F7FB", "#7E8FA3", "Snow"),
-                new("Pine_Tree_01", category, "Tree", "#E5F1E3", "#355F32", "Pine"),
-                new("Bush_01", category, "Foliage", "#D9ECD5", "#49713B", "Bush"),
-                new("Road_Straight_01", category, "Road", "#D8D9DD", "#50545C", "Road"),
-                new("Cliff_Rock_01", category, "Mesh", "#D1D5DB", "#505966", "Cliff"),
-                new("Ground_Rock_01", category, "Mesh", "#D5CEC6", "#61564C", "Stone"),
-                new("Mud_01", category, "Material", "#B99676", "#5D3F2C", "Mud"),
-                new("Brush_Alpha_Soft", category, "Brush", "#F3F5F8", "#4B5661", "Soft"),
-                new("Brush_Alpha_Hard", category, "Brush", "#ECEFF3", "#252A31", "Hard"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
-            ],
-            "Brushes" =>
-            [
-                new("Brush_Alpha_Soft", category, "Brush", "#F3F5F8", "#4B5661", "Soft"),
-                new("Brush_Alpha_Hard", category, "Brush", "#ECEFF3", "#252A31", "Hard"),
-                new("Brush_Noise_Medium", category, "Brush", "#E7EAEE", "#53606C", "Noise"),
-                new("Brush_Crater_01", category, "Brush", "#EEF1F5", "#55616C", "Crater"),
-                new("Brush_Ridges_02", category, "Brush", "#EEF2F5", "#5B6872", "Ridge"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
-            ],
-            "Foliage" =>
-            [
-                new("Pine_Tree_01", category, "Tree", "#E5F1E3", "#355F32", "Pine"),
-                new("Bush_01", category, "Shrub", "#D9ECD5", "#49713B", "Bush"),
-                new("Grass_Clump_A", category, "Grass", "#EEF7E6", "#4B7A3D", "Grass"),
-                new("Dead_Tree_02", category, "Tree", "#EAE4D8", "#765D43", "Dead"),
-                new("Forest_Rock_01", category, "Mesh", "#D1D5DB", "#55606B", "Rock"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
-            ],
             "Textures" =>
             [
-                new("Tex_Grass_01", category, "Texture", "#9DC874", "#2E5B2A", "Grass"),
-                new("Tex_Rock_01", category, "Texture", "#C8CDD3", "#4E5966", "Rock"),
-                new("Tex_Dirt_01", category, "Texture", "#C79363", "#6A4020", "Dirt"),
-                new("Tex_Sand_01", category, "Texture", "#E3D0A9", "#87693B", "Sand"),
-                new("Tex_Snow_01", category, "Texture", "#F3F7FB", "#7E8FA3", "Snow"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+                new("Tex_Grass_01", category, "Texture", "#9DC874", "#2E5B2A", "\xE71B"),
+                new("Tex_Rock_01", category, "Texture", "#C8CDD3", "#4E5966", "\xE71B"),
+                new("Tex_Dirt_01", category, "Texture", "#C79363", "#6A4020", "\xE71B"),
+                new("Tex_Sand_01", category, "Texture", "#E3D0A9", "#87693B", "\xE71B"),
+                new("Tex_Snow_01", category, "Texture", "#F3F7FB", "#7E8FA3", "\xE71B"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
             ],
             "Meshes" =>
             [
-                new("Rock_01", category, "Mesh", "#C8CDD3", "#4E5966", "Rock"),
-                new("Cliff_Block_01", category, "Mesh", "#D4D6DA", "#59616B", "Cliff"),
-                new("Ground_Rock_01", category, "Mesh", "#D5CEC6", "#61564C", "Stone"),
-                new("River_Stone_A", category, "Mesh", "#D8DDD8", "#5A655A", "River"),
-                new("Fence_Post_01", category, "Mesh", "#D5C2A7", "#684F39", "Fence"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+                new("Rock_01", category, "Mesh", "#C8CDD3", "#4E5966", "\xE80A"),
+                new("Cliff_Block_01", category, "Mesh", "#D4D6DA", "#59616B", "\xE80A"),
+                new("Ground_Rock_01", category, "Mesh", "#D5CEC6", "#61564C", "\xE80A"),
+                new("River_Stone_A", category, "Mesh", "#D8DDD8", "#5A655A", "\xE80A"),
+                new("Fence_Post_01", category, "Mesh", "#D5C2A7", "#684F39", "\xE80A"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
+            ],
+            "Foliage" =>
+            [
+                new("Pine_Tree_01", category, "Tree", "#E5F1E3", "#355F32", "\xEC7A"),
+                new("Bush_01", category, "Shrub", "#D9ECD5", "#49713B", "\xEC7A"),
+                new("Grass_Clump_A", category, "Grass", "#EEF7E6", "#4B7A3D", "\xEC7A"),
+                new("Dead_Tree_02", category, "Tree", "#EAE4D8", "#765D43", "\xEC7A"),
+                new("Forest_Rock_01", category, "Mesh", "#D1D5DB", "#55606B", "\xE80A"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
             ],
             "Prefabs" =>
             [
-                new("Camp_Small_01", category, "Prefab", "#EFE4D5", "#6A5844", "Camp"),
-                new("WatchTower_01", category, "Prefab", "#E6E0D6", "#665645", "Tower"),
-                new("Roadside_Signs", category, "Prefab", "#E7EDF3", "#4F6883", "Signs"),
-                new("Forest_Cluster_A", category, "Prefab", "#E2F0DD", "#48703D", "Forest"),
-                new("River_Bank_Set", category, "Prefab", "#DCEAF1", "#4B6775", "River"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+                new("Camp_Small_01", category, "Prefab", "#EFE4D5", "#6A5844", "\xE7B8"),
+                new("WatchTower_01", category, "Prefab", "#E6E0D6", "#665645", "\xE7B8"),
+                new("Roadside_Signs", category, "Prefab", "#E7EDF3", "#4F6883", "\xE7B8"),
+                new("Forest_Cluster_A", category, "Prefab", "#E2F0DD", "#48703D", "\xE7B8"),
+                new("River_Bank_Set", category, "Prefab", "#DCEAF1", "#4B6775", "\xE7B8"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
             ],
             _ =>
             [
-                new("Grass_01", category, "Material", "#9DC874", "#2E5B2A", "Grass"),
-                new("Rock_01", category, "Material", "#C8CDD3", "#4E5966", "Rock"),
-                new("Dirt_01", category, "Material", "#C79363", "#6A4020", "Dirt"),
-                new("Sand_01", category, "Material", "#E3D0A9", "#87693B", "Sand"),
-                new("Snow_01", category, "Material", "#F3F7FB", "#7E8FA3", "Snow"),
-                new("Mud_01", category, "Material", "#B99676", "#5D3F2C", "Mud"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#1A9DE0", "+"),
+                new("Grass_01", category, "Material", "#9DC874", "#2E5B2A", "\xE71B"),
+                new("Rock_01", category, "Material", "#C8CDD3", "#4E5966", "\xE80A"),
+                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
             ],
         };
     }
