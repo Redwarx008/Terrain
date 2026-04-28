@@ -204,3 +204,66 @@ Added ClimateViewModel/ClimateDefinitionViewModel/RuleViewModel for biome/layer 
 ### Next Steps
 
 - None - task complete
+
+---
+
+## Session 7: Restore Asset Panel Icons and Functionality
+
+**Date**: 2026-04-28
+**Branch**: `implement-climate-texturing`
+**Commits**: `69e3874`
+
+### Summary
+
+Restored asset browser from placeholder state to functional:
+- Segoe MDL2 Assets icon glyphs per asset kind (Texture→E71B, Mesh→E80A, Foliage→EC7A, Prefab→E7B8, Create→E710)
+- 4 category tabs with icons (Textures, Meshes, Foliage, Prefabs) replacing 6 plain-text tabs
+- Search box bound to AssetSearchText with real-time filtering
+- AssetBrowserItemViewModel expanded from record to ObservableObject with IconGlyph, PreviewImage, IsEmpty, IsCreateItem
+- InvertedNullToBoolConverter for PreviewImage/icon switching
+- PreviewBackground bound in XAML instead of hardcoded #3A3A3A
+- Code-behind tab click handler for CSS class switching (Avalonia Classes binding limitation)
+- Updated component-guidelines spec with Avalonia gotchas and icon mapping table
+
+### Quality Check
+
+- Build: 0 errors, passed
+- Spec compliance: All 10 checklist items passed
+- No hardcoded colors in XAML (uses DynamicResource or binding)
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 8: Replace asset panel placeholders with real data
+
+**Date**: 2026-04-28
+**Task**: Replace asset panel placeholders with real data
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+Textures category now reads from MaterialSlotManager; added create-item click, context menu delete with CanExecute, AssetColors constants; updated component-guidelines spec
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3ce533d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

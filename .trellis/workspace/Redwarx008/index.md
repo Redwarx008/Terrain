@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
-- **Last Active**: 2026-04-27
+- **Total Sessions**: 8
+- **Last Active**: 2026-04-28
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~206 | Active |
+| `journal-1.md` | ~269 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-04-28 | Replace asset panel placeholders with real data | `3ce533d` | `implement-climate-texturing` |
+| 7 | 2026-04-28 | Restore asset panel icons and functionality | `69e3874` | `implement-climate-texturing` |
 | 6 | 2026-04-27 | Fix viewport out-of-bounds | `6cfcc02`, `3d31266` | `implement-climate-texturing` |
 | 5 | 2026-04-26 | Avalonia migration wiring | `8a6b972` | `implement-climate-texturing` |
 | 4 | 2026-04-26 | Climate panels + Paint/Sculpt brush integration | `51548d7` | `implement-climate-texturing` |
