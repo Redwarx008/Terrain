@@ -250,8 +250,10 @@
                           <Panel>
                             <TextBlock Classes="assetPreviewGlyph" Foreground="{Binding PreviewForeground}" Text="{Binding IconGlyph}"
                                        IsVisible="{Binding PreviewImage, Converter={StaticResource InvertedNullToBool}}" />
-                            <Image Source="{Binding PreviewImage}" Stretch="UniformToFill"
-                                   IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                            <Image Source="{Binding PreviewImage}"
+                                   Stretch="UniformToFill"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch" />
                           </Panel>
                         </Border>
                         <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="10" TextWrapping="Wrap" TextAlignment="Center" Margin="4,6,4,4" Foreground="{DynamicResource EditorTextPrimaryBrush}" />
@@ -406,10 +408,23 @@
                     <TextBlock Classes="sectionLabel" Text="MATERIAL" />
                     <Border Classes="materialPreviewCard">
                       <Grid ColumnDefinitions="46,*" ColumnSpacing="10">
-                        <Border Classes="materialSwatch" Background="{DynamicResource EditorAccentSoftBrush}" />
+                        <Border Classes="materialSwatch"
+                                Background="{DynamicResource EditorAccentSoftBrush}"
+                                ClipToBounds="True">
+                          <Panel>
+                            <TextBlock Classes="assetPreviewGlyph"
+                                       Text="&#xE71B;"
+                                       FontSize="18"
+                                       IsVisible="{Binding SelectedMaterialSlotPreviewImage, Converter={StaticResource InvertedNullToBool}}" />
+                            <Image Source="{Binding SelectedMaterialSlotPreviewImage}"
+                                   Stretch="UniformToFill"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch" />
+                          </Panel>
+                        </Border>
                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding SelectedMaterialSlot.Name, FallbackValue='No material selected'}" />
-                          <TextBlock Classes="panelHint" Text="{Binding SelectedMaterialSlot.Detail, FallbackValue='Import albedo first'}" />
+                          <TextBlock Text="{Binding SelectedMaterialSlotName}" />
+                          <TextBlock Classes="panelHint" Text="{Binding SelectedMaterialSlotDetail}" />
                         </StackPanel>
                       </Grid>
                     </Border>
