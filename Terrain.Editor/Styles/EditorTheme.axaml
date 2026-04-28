@@ -592,6 +592,11 @@
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="2,2,0,0" />
     <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="Background" Value="{DynamicResource EditorPanelAltBackgroundBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.assetPreviewGlyph">
+    <Setter Property="Foreground" Value="{DynamicResource EditorGlyphMutedBrush}" />
   </Style>
 
   <!-- Asset List ListBox -->

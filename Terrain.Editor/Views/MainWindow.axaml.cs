@@ -12,6 +12,7 @@ namespace Terrain.Editor.Views;
 public sealed partial class MainWindow : Window
 {
     private readonly Dictionary<string, Button> _assetTabs = new();
+    private ListBox? _assetListBox;
 
     public MainWindow()
     {
@@ -26,6 +27,12 @@ public sealed partial class MainWindow : Window
         foreach (var tab in _assetTabs.Values)
         {
             tab.Click += OnAssetTabClicked;
+        }
+
+        _assetListBox = this.FindControl<ListBox>("AssetListBox");
+        if (_assetListBox != null)
+        {
+            _assetListBox.SelectionChanged += OnAssetSelectionChanged;
         }
     }
 
@@ -44,6 +51,22 @@ public sealed partial class MainWindow : Window
             button.Classes.Remove("assetTab");
             button.Classes.Remove("assetTabActive");
             button.Classes.Add(name == activeCategory ? "assetTabActive" : "assetTab");
+        }
+    }
+
+    // MVVM note: selection deselection is UI logic (ViewModel can't deselect a ListBoxItem).
+    // The command dispatch is acceptable here because it's a UI-triggered action
+    // with no clean pure-binding alternative (similar to OnAssetTabClicked).
+    private void OnAssetSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ListBox listBox || listBox.SelectedItem is not AssetBrowserItemViewModel item)
+            return;
+
+        if (item.IsCreateItem && DataContext is EditorShellViewModel vm)
+        {
+            // Deselect the create item and trigger the add command
+            listBox.SelectedItem = null;
+            vm.AddAssetForCategoryCommand.Execute(item.Category);
         }
     }
 
@@ -111,6 +134,11 @@ public sealed partial class MainWindow : Window
         foreach (var tab in _assetTabs.Values)
         {
             tab.Click -= OnAssetTabClicked;
+        }
+
+        if (_assetListBox != null)
+        {
+            _assetListBox.SelectionChanged -= OnAssetSelectionChanged;
         }
 
         base.OnClosed(e);

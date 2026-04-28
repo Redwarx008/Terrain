@@ -232,3 +232,64 @@ partial void OnSelectedClimateChanged(ClimateDefinitionViewModel? value)
         _editorState.CurrentClimateId = value.Id;
 }
 ```
+
+---
+
+## 资产面板数据源模式
+
+资产面板的分类标签保持固定结构（Textures / Meshes / Foliage / Prefabs），各分类的数据来源独立：
+
+| 分类 | 数据源 | 状态 |
+|------|--------|------|
+| Textures | `MaterialSlotManager.GetActiveSlots()` | 真实数据 |
+| Meshes | 无（仅显示 "+" 瓷贴） | 待实现 |
+| Foliage | 无（仅显示 "+" 瓷贴） | 待实现 |
+| Prefabs | 无（仅显示 "+" 瓷贴） | 待实现 |
+
+**关键约束**：
+- 当 `MaterialSlotManager.SlotsChanged` 事件触发时，如果当前选中 Textures 分类，必须刷新 `AssetItems`
+- 每个分类末尾必须有 "+" 瓷贴（`IsCreateItem = true`），点击触发对应的导入命令
+- 右键菜单的 Delete 命令必须用 `CanExecute` 控制可用性，不可删除的项应禁用菜单项
+
+### ViewModel 中颜色值的处理
+
+ViewModel 中需要传入预览颜色的场景（如 `AssetBrowserItemViewModel.PreviewBackground`），颜色值必须从常量类读取，禁止在方法体中硬编码十六进制字符串：
+
+```csharp
+// 正确：从常量类读取
+new AssetBrowserItemViewModel(name, category, "Texture",
+    AssetColors.TexturePreviewBackground,
+    AssetColors.TexturePreviewForeground,
+    "\xE71B", materialSlotIndex: slot.Index)
+
+// 错误：硬编码颜色
+new AssetBrowserItemViewModel(name, category, "Texture",
+    "#3A3A3A", "#E0E0E0", "\xE71B")
+```
+
+常量类 `AssetColors` 集中管理所有预览颜色值，便于统一修改和与主题同步。
+
+---
+
+## Code-behind 中处理特殊 UI 选择逻辑
+
+当 UI 需要在选中项上执行"选中后立即取消选中+派发命令"的逻辑时（如点击 "+" 瓷贴），纯 XAML 绑定无法实现（ViewModel 无法取消 ListBox 的选中状态）。此时在 code-behind 中处理是可接受的 MVVM 妥协：
+
+```csharp
+// MVVM note: selection deselection is UI logic (ViewModel can't deselect a ListBoxItem).
+// The command dispatch is acceptable here because it's a UI-triggered action
+// with no clean pure-binding alternative.
+private void OnAssetSelectionChanged(object? sender, SelectionChangedEventArgs e)
+{
+    if (sender is not ListBox listBox || listBox.SelectedItem is not AssetBrowserItemViewModel item)
+        return;
+
+    if (item.IsCreateItem && DataContext is EditorShellViewModel vm)
+    {
+        listBox.SelectedItem = null;          // UI 逻辑：取消选中
+        vm.AddAssetForCategoryCommand.Execute(item.Category);  // 命令派发
+    }
+}
+```
+
+**约束**：code-behind 中只能做 UI 状态操作（取消选中、CSS 类切换）和命令派发，不得包含业务逻辑。

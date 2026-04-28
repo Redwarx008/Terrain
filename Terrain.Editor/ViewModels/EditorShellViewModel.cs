@@ -566,6 +566,36 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task AddAssetForCategory(string category)
+    {
+        if (category == "Textures")
+        {
+            await ImportAssets();
+        }
+    }
+
+    private bool CanDeleteAssetItem(AssetBrowserItemViewModel item)
+    {
+        return item.MaterialSlotIndex >= 0 && !item.IsCreateItem;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanDeleteAssetItem))]
+    private void DeleteAssetItem(AssetBrowserItemViewModel item)
+    {
+        if (item.MaterialSlotIndex >= 0 && !item.IsCreateItem)
+        {
+            if (!TryGetTerrainRuntime(out _, out var graphicsDevice, out var commandList))
+            {
+                return;
+            }
+
+            _materialSlotManager.ClearSlot(item.MaterialSlotIndex, graphicsDevice, commandList);
+            ProjectManager.Instance.MarkDirty();
+            AddConsole("Info", $"Cleared slot {item.MaterialSlotIndex}.");
+        }
+    }
+
+    [RelayCommand]
     private void SetListView()
     {
         IsGridView = false;
@@ -837,6 +867,10 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void OnMaterialSlotsChanged(object? sender, EventArgs e)
     {
         RefreshMaterialSlots();
+        if (SelectedAssetCategory == "Textures")
+        {
+            RefreshAssetItems();
+        }
     }
 
     private void OnMaterialSlotManagerSelectedSlotChanged(object? sender, EventArgs e)
@@ -1122,56 +1156,40 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    private static AssetBrowserItemViewModel[] CreateAssetItemsForCategory(string category)
+    private AssetBrowserItemViewModel[] CreateAssetItemsForCategory(string category)
     {
-        // Segoe MDL2 Assets icon glyphs
-        // E71B = Photo/Image, E80A = Cube, EC7A = MapleLeaf/Tree,
-        // E7B8 = Package/Prefab, E710 = Add/Create
-        return category switch
+        if (category == "Textures")
         {
-            "Textures" =>
-            [
-                new("Tex_Grass_01", category, "Texture", "#9DC874", "#2E5B2A", "\xE71B"),
-                new("Tex_Rock_01", category, "Texture", "#C8CDD3", "#4E5966", "\xE71B"),
-                new("Tex_Dirt_01", category, "Texture", "#C79363", "#6A4020", "\xE71B"),
-                new("Tex_Sand_01", category, "Texture", "#E3D0A9", "#87693B", "\xE71B"),
-                new("Tex_Snow_01", category, "Texture", "#F3F7FB", "#7E8FA3", "\xE71B"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
-            ],
-            "Meshes" =>
-            [
-                new("Rock_01", category, "Mesh", "#C8CDD3", "#4E5966", "\xE80A"),
-                new("Cliff_Block_01", category, "Mesh", "#D4D6DA", "#59616B", "\xE80A"),
-                new("Ground_Rock_01", category, "Mesh", "#D5CEC6", "#61564C", "\xE80A"),
-                new("River_Stone_A", category, "Mesh", "#D8DDD8", "#5A655A", "\xE80A"),
-                new("Fence_Post_01", category, "Mesh", "#D5C2A7", "#684F39", "\xE80A"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
-            ],
-            "Foliage" =>
-            [
-                new("Pine_Tree_01", category, "Tree", "#E5F1E3", "#355F32", "\xEC7A"),
-                new("Bush_01", category, "Shrub", "#D9ECD5", "#49713B", "\xEC7A"),
-                new("Grass_Clump_A", category, "Grass", "#EEF7E6", "#4B7A3D", "\xEC7A"),
-                new("Dead_Tree_02", category, "Tree", "#EAE4D8", "#765D43", "\xEC7A"),
-                new("Forest_Rock_01", category, "Mesh", "#D1D5DB", "#55606B", "\xE80A"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
-            ],
-            "Prefabs" =>
-            [
-                new("Camp_Small_01", category, "Prefab", "#EFE4D5", "#6A5844", "\xE7B8"),
-                new("WatchTower_01", category, "Prefab", "#E6E0D6", "#665645", "\xE7B8"),
-                new("Roadside_Signs", category, "Prefab", "#E7EDF3", "#4F6883", "\xE7B8"),
-                new("Forest_Cluster_A", category, "Prefab", "#E2F0DD", "#48703D", "\xE7B8"),
-                new("River_Bank_Set", category, "Prefab", "#DCEAF1", "#4B6775", "\xE7B8"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
-            ],
-            _ =>
-            [
-                new("Grass_01", category, "Material", "#9DC874", "#2E5B2A", "\xE71B"),
-                new("Rock_01", category, "Material", "#C8CDD3", "#4E5966", "\xE80A"),
-                new("Add Asset", category, "Create", "#F7FBFE", "#0078D4", "\xE710", isCreateItem: true),
-            ],
+            var items = _materialSlotManager
+                .GetActiveSlots()
+                .OrderBy(static slot => slot.Index)
+                .Select(slot => new AssetBrowserItemViewModel(
+                    string.IsNullOrWhiteSpace(slot.Name) ? $"Texture {slot.Index}" : slot.Name,
+                    category,
+                    "Texture",
+                    AssetColors.TexturePreviewBackground,
+                    AssetColors.TexturePreviewForeground,
+                    "\xE71B",
+                    materialSlotIndex: slot.Index))
+                .ToList();
+
+            items.Add(new("Add Texture", category, "Create",
+                AssetColors.CreatePreviewBackground, AssetColors.CreatePreviewForeground,
+                "\xE710", isCreateItem: true));
+            return items.ToArray();
+        }
+
+        var label = category switch
+        {
+            "Meshes" => "Add Mesh",
+            "Foliage" => "Add Foliage",
+            "Prefabs" => "Add Prefab",
+            _ => "Add Asset",
         };
+
+        return [new(label, category, "Create",
+            AssetColors.CreatePreviewBackground, AssetColors.CreatePreviewForeground,
+            "\xE710", isCreateItem: true)];
     }
 
     private static IStorageProvider? GetStorageProvider()

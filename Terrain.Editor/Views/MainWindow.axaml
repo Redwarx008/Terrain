@@ -231,7 +231,7 @@
 
             <!-- Asset Grid -->
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-              <ListBox Classes="assetTileList" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding AssetItems}" SelectedItem="{Binding SelectedAssetItem, Mode=TwoWay}">
+              <ListBox x:Name="AssetListBox" Classes="assetTileList" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding AssetItems}" SelectedItem="{Binding SelectedAssetItem, Mode=TwoWay}">
                 <ListBox.ItemsPanel>
                   <ItemsPanelTemplate>
                     <WrapPanel Orientation="Horizontal" />
@@ -240,6 +240,11 @@
                 <ListBox.ItemTemplate>
                   <DataTemplate>
                     <Border Classes="assetTile">
+                      <Border.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="Delete" Command="{Binding $parent[Window].DataContext.DeleteAssetItemCommand}" CommandParameter="{Binding}" />
+                        </ContextMenu>
+                      </Border.ContextMenu>
                       <Grid RowDefinitions="96,Auto">
                         <Border Classes="assetPreview" Background="{Binding PreviewBackground}">
                           <Panel>

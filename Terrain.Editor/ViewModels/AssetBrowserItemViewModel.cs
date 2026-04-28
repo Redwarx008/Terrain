@@ -23,7 +23,7 @@ public sealed partial class AssetBrowserItemViewModel : ObservableObject
     private string _previewForeground = "#FFFFFF";
 
     [ObservableProperty]
-    private string _iconGlyph = ""; // default: cube
+    private string _iconGlyph = "\xE80A";
 
     [ObservableProperty]
     private Bitmap? _previewImage;
@@ -33,6 +33,12 @@ public sealed partial class AssetBrowserItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isCreateItem;
+
+    /// <summary>
+    /// Material slot index when this item represents a MaterialSlot (Paint mode).
+    /// </summary>
+    [ObservableProperty]
+    private int _materialSlotIndex = -1;
 
     public AssetBrowserItemViewModel() { }
 
@@ -45,7 +51,8 @@ public sealed partial class AssetBrowserItemViewModel : ObservableObject
         string iconGlyph,
         bool isEmpty = false,
         bool isCreateItem = false,
-        Bitmap? previewImage = null)
+        Bitmap? previewImage = null,
+        int materialSlotIndex = -1)
     {
         _name = name;
         _category = category;
@@ -56,5 +63,6 @@ public sealed partial class AssetBrowserItemViewModel : ObservableObject
         _isEmpty = isEmpty;
         _isCreateItem = isCreateItem;
         _previewImage = previewImage;
+        _materialSlotIndex = materialSlotIndex;
     }
 }
