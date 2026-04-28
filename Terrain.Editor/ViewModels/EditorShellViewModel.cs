@@ -601,7 +601,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private bool CanDeleteAssetItem(AssetBrowserItemViewModel item)
     {
-        return item.MaterialSlotIndex >= 0 && !item.IsCreateItem;
+        return item is not null && item.MaterialSlotIndex >= 0 && !item.IsCreateItem;
     }
 
     [RelayCommand(CanExecute = nameof(CanDeleteAssetItem))]
