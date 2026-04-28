@@ -71,6 +71,21 @@ For each boundary:
 - 原生宿主问题按“宿主链 → presenter 链 → scene/compositor 链”顺序二分
 - 不要一开始就把问题归到 camera、feature 或 shader
 
+### Mistake 1.6: shader 声明和 C# 参数 key 类型不一致
+
+**Symptom**: 编译能过，但地形法线、光照、切片采样或材质混合突然异常，表现看起来像渲染逻辑坏了。
+
+**Cause**: `.sdsl` 里声明的是一种常量缓冲类型（例如 `int4`），而生成的 `.sdsl.cs` key 或调用侧却改成了另一种类型（例如 `Vector4`）。这样数据会以错误的位模式写进 shader 参数。
+
+**Fix**:
+- 先回到 `.sdsl` 原始声明核对参数类型
+- 让 `.sdsl.cs` 的 `ParameterKey<T>` 类型与 shader 声明完全一致
+- 检查所有 `parameters.Set(...)` 调用是否也使用同一类型
+
+**Prevention**:
+- 修改自动生成 shader key 文件时，把 `.sdsl` 视为唯一真源
+- 出现“光照坏了但编译正常”的回归时，优先排查 shader 参数声明与 C# 绑定是否漂移
+
 ### Mistake 2: Scattered Validation
 
 **Bad**: Validating the same thing in multiple layers

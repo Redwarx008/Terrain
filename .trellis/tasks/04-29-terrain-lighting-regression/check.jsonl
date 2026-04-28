@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/runtime/quality-guidelines.md", "reason": "检查渲染修复是否符合运行时代码规范"}
+{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "检查编辑器侧改动是否保持局部且规范"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查shader声明与C#参数绑定的一致性"}
