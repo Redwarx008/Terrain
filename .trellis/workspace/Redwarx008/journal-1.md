@@ -267,3 +267,36 @@ Textures category now reads from MaterialSlotManager; added create-item click, c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 修复缩略图回归导致的编辑器地形光影丢失
+
+**Date**: 2026-04-29
+**Task**: 修复缩略图回归导致的编辑器地形光影丢失
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+定位并修复 EditorTerrain HeightmapSliceBounds 在 SDSL 与 C# 参数绑定之间的类型漂移，恢复编辑器地形光照；补充跨层排查指南。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7f2f8d3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

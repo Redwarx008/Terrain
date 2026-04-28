@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
-- **Last Active**: 2026-04-28
+- **Total Sessions**: 9
+- **Last Active**: 2026-04-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~269 | Active |
+| `journal-1.md` | ~302 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-04-29 | 修复缩略图回归导致的编辑器地形光影丢失 | `7f2f8d3` | `implement-climate-texturing` |
 | 8 | 2026-04-28 | Replace asset panel placeholders with real data | `3ce533d` | `implement-climate-texturing` |
 | 7 | 2026-04-28 | Restore asset panel icons and functionality | `69e3874` | `implement-climate-texturing` |
 | 6 | 2026-04-27 | Fix viewport out-of-bounds | `6cfcc02`, `3d31266` | `implement-climate-texturing` |
