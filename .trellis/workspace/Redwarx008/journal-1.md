@@ -300,3 +300,37 @@ Textures category now reads from MaterialSlotManager; added create-item click, c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: Texture thumbnail finish
+
+**Date**: 2026-04-29
+**Task**: Texture thumbnail finish
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+完成资源面板与右侧材质面板纹理缩略图复用修复，按 Studio 的 TextureTool 路径处理 DDS/压缩纹理，解决偏暗、占位图标和重复 Add Texture 覆盖问题，并通过独立输出目录构建验证后归档任务。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `64292c8` | (see git log) |
+| `b495bad` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
