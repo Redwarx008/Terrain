@@ -368,3 +368,36 @@ Textures category now reads from MaterialSlotManager; added create-item click, c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: Fix undo/redo keyboard shortcuts after Avalonia migration
+
+**Date**: 2026-04-30
+**Task**: Fix undo/redo keyboard shortcuts after Avalonia migration
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+Added Window.KeyBindings for Ctrl+Z (Undo), Ctrl+Y and Ctrl+Shift+Z (Redo) in MainWindow.axaml. Toolbar buttons were already wired correctly; only keyboard gestures were missing.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `43b8d7b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
