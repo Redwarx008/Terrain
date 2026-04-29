@@ -21,6 +21,11 @@
       <Setter Property="Foreground" Value="{DynamicResource EditorSurfaceBrush}" />
     </Style>
   </Window.Styles>
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+    <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}" />
+  </Window.KeyBindings>
   <DockPanel LastChildFill="True">
 
     <!-- ═══ Title Bar ═══ -->
