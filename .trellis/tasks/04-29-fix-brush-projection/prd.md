@@ -21,15 +21,17 @@
 * 笔刷投影应跟随地形高度（贴地），而非纯屏幕空间2D圆圈
 * 不需要在 Foliage/Water 模式下显示（这些模式目前没有笔刷功能）
 
-## Open Questions
+## Decision
 
-* 笔刷投影的视觉风格：使用哪种渲染方式？
+* 笔刷投影采用**屏幕空间贴花 (Screen-Space Decal)** 方式实现
+* 参考实现：`XenkoProofOfConcepts/ScreenSpaceDecalRootRendererExample` (Basewq)
+* 走完整的 `RootRenderFeature + Component → Processor → RenderObject` 链，与 Stride 渲染管线正确集成
 
 ## Requirements
 
 * 在 Sculpt / Paint / Landscape 模式下，当鼠标悬停在地形上时，显示笔刷投影圆圈
 * 投影圆圈应跟随地形高度（贴地渲染）
-* 显示外圈（falloff 边界，线框）和内圈（100% 强度区域，半透明填充）
+* 投影应表现为单一圆形笔刷遮罩，并通过 falloff 呈现从中心到边缘的透明度过渡
 * 笔刷颜色随当前工具变化（使用现有 `EditorState.GetToolColor()` / `GetPaintToolColor()`）
 * 右键控制相机时隐藏笔刷投影
 * 不在编辑模式或没有选中工具时隐藏投影
@@ -40,7 +42,7 @@
 - [ ] Paint 模式下鼠标悬停地形时可见笔刷投影
 - [ ] Landscape 模式下鼠标悬停地形时可见笔刷投影
 - [ ] 笔刷投影圆圈跟随地形高度
-- [ ] 外圈显示 falloff 边界，内圈显示 100% 强度区域
+- [ ] 笔刷投影显示单一圆形遮罩，边缘按 falloff 平滑衰减
 - [ ] 笔刷颜色随工具类型变化
 - [ ] 右键旋转相机时投影消失
 - [ ] 无选中工具时无投影显示
@@ -57,42 +59,38 @@
 * 笔刷投影的 GPU 着色器特效（发光、动画等）
 * 自定义笔刷形状（当前只支持圆形）
 
-## Technical Notes
+## Technical Approach
 
-* 研究文件：`research/stride-overlay-rendering.md`
-* 推荐 SceneRendererBase 方式：创建自定义 `SceneRendererBase` 子类，在 `DrawCore` 中使用自定义顶点缓冲区绘制地形跟随圆圈
-* 使用 `MutablePipelineState` 配置：AlphaBlend + DepthRead + CullNone + LineList/TriangleList
-* 笔刷世界位置从 `EmbeddedStrideViewportGame.RaycastTerrain()` 获取
-* 需要生成跟随地形的圆圈顶点（类似 ImGui 时代的 `GenerateWorldSpaceCircle`）
-* Z-fighting 预防：使用 depth bias 或世界空间偏移
+### 架构：屏幕空间 Decal 系统
+
+走 `Component → Processor → RenderObject → RootRenderFeature` 完整链：
+
+| 组件 | 职责 |
+|---|---|
+| `BrushDecalComponent` | EntityComponent — 存纹理、颜色、缩放、RenderGroup |
+| `BrushDecalProcessor` | EntityProcessor — 每帧同步 Transform + 参数到 RenderObject |
+| `BrushDecalRenderObject` | RenderObject — 持有 WorldMatrix, Texture, Color, Scale, Cube 图元 |
+| `BrushDecalRootRenderFeature` | RootRenderFeature — Draw 中绑定深度 SRV + shader 参数 + 画 Cube |
+| `DecalShader.sdsl` | 屏幕空间贴花着色器 — 深度重建世界位置 + clip盒内检测 + 程序化圆形笔刷遮罩 |
+| `BrushDecalRenderStageSelector` | RenderStageSelector — 分配到 Transparent 阶段 |
+
+### 着色器原理
+
+参考 `DecalShader.sdsl`：
+- VS: 计算顶点 ViewSpace 位置 (供 PS 做射线投影)
+- PS: 从屏幕坐标读深度缓冲 → 重建世界位置 → 转 Cube 局部空间 → `clip()` 丢弃盒外像素 → 基于局部 XZ 生成圆形遮罩并按 falloff 衰减 alpha
+- Pipeline: `AlphaBlend + DepthRead`, CullMode.Back
+- 继承: `DepthBase, ShaderBase, Transformation, PositionStream4, ComputeColor`
+
+### 集成方式
+
+1. Compositor: 添加 `BrushDecalRootRenderFeature` 到 Render Features
+2. RenderStage: 添加 `BrushDecalRenderStageSelector`, 指向 Transparent 阶段
+3. Entity: 创建不可见 Entity, 挂载 `BrushDecalComponent`
+4. 更新: 每帧将笔刷世界位置同步到该 Entity 的 Transform
 
 ## Research References
 
-* [`research/stride-overlay-rendering.md`](research/stride-overlay-rendering.md) — Stride overlay rendering 三种方案对比，推荐 SceneRendererBase 方式
-
-## Research Notes
-
-### 可行方案
-
-**方案 A: SceneRendererBase + 自定义顶点缓冲区 (推荐)**
-
-* 创建 `EditorTerrainBrushOverlayRenderer : SceneRendererBase`
-* 在 `DrawCore` 中生成跟随地形的圆圈顶点（线框外圈 + 半透明填充内圈）
-* 使用 `MutablePipelineState` 配置渲染管线（AlphaBlend, DepthRead, CullNone）
-* 通过 `DynamicVertexBuffer` 提交顶点数据
-* 添加到 compositor 的 `SceneRendererCollection`，在主场景之后渲染
-* 优点：与现有 `EditorTerrainModeController` 模式一致，最大控制度，支持地形跟随
-* 缺点：需要手动管理顶点缓冲区和 pipeline state
-
-**方案 B: Entity + GeometricPrimitive.Disc**
-
-* 创建一个 Disc mesh Entity，使用透明材质
-* 通过 Transform 跟随鼠标在地形上的位置
-* 优点：概念最简单
-* 缺点：无法跟随地形高度起伏（Disc 是平面的），不够灵活
-
-**方案 C: SubRenderFeature 注入**
-
-* 在 `EditorTerrainRenderFeature` 上添加 SubRenderFeature
-* 优点：与地形渲染紧密耦合
-* 缺点：耦合度高，维护困难，不够独立
+* [`research/stride-decal-support.md`](research/stride-decal-support.md) — Stride 引擎零内置 decal 支持的确认
+* [`research/stride-overlay-rendering.md`](research/stride-overlay-rendering.md) — Stride overlay 渲染方案对比
+* 参考实现: `XenkoProofOfConcepts/ScreenSpaceDecalRootRendererExample` (cloned to /tmp/XenkoProofOfConcepts)

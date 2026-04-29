@@ -14,6 +14,7 @@ using Stride.Rendering.Skyboxes;
 using Terrain.Editor.Input;
 using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
+using Terrain.Editor.Rendering.Decal;
 using Terrain.Editor.Services;
 using NumericsVector2 = System.Numerics.Vector2;
 
@@ -34,6 +35,10 @@ public sealed class EmbeddedStrideViewportGame : Game
     private bool _hasRenderedFirstFrame;
     private bool _isBrushStrokeActive;
     private bool _wasLeftMouseDown;
+
+    // Brush decal overlay
+    private Entity? _brushDecalEntity;
+    private BrushDecalComponent? _brushDecalComponent;
 
     public EmbeddedStrideViewportGame()
     {
@@ -204,6 +209,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         if (TerrainManager == null || _camera == null || !_editorState.HasSelectedTool)
         {
             EndBrushStrokeIfNeeded();
+            UpdateBrushDecalVisibility(visible: false);
             return;
         }
 
@@ -215,6 +221,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             EndBrushStrokeIfNeeded();
             _wasLeftMouseDown = false;
+            UpdateBrushDecalVisibility(visible: false);
             return;
         }
 
@@ -223,6 +230,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             EndBrushStrokeIfNeeded();
             _wasLeftMouseDown = leftMouseDown;
+            UpdateBrushDecalVisibility(visible: false);
             return;
         }
 
@@ -234,6 +242,7 @@ public sealed class EmbeddedStrideViewportGame : Game
                 // No intersection — cancel the stroke.
                 EndBrushStrokeIfNeeded();
                 _wasLeftMouseDown = true;
+                UpdateBrushDecalVisibility(visible: false);
                 return;
             }
 
@@ -243,13 +252,79 @@ public sealed class EmbeddedStrideViewportGame : Game
             }
 
             ApplyBrushStroke(worldPosition.Value, deltaTime);
+            UpdateBrushDecalPosition(worldPosition.Value);
+            UpdateBrushDecalVisibility(visible: true);
         }
         else
         {
             EndBrushStrokeIfNeeded();
+            // Show decal at hover position when not actively painting
+            Vector3? hoverPosition = RaycastTerrain();
+            UpdateBrushDecalPosition(hoverPosition);
+            UpdateBrushDecalVisibility(visible: hoverPosition != null);
         }
 
         _wasLeftMouseDown = leftMouseDown;
+    }
+
+    private bool IsBrushDecalMode()
+    {
+        return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint or EditorMode.Landscape;
+    }
+
+    private void UpdateBrushDecalPosition(Vector3? worldPosition)
+    {
+        if (_brushDecalEntity == null || _brushDecalComponent == null)
+        {
+            return;
+        }
+
+        if (worldPosition == null)
+        {
+            return;
+        }
+
+        var brushParams = BrushParameters.Instance;
+        float brushRadius = brushParams.Size;
+
+        // Position the decal cube at the brush world position.
+        // The cube must be large enough to encompass the brush circle.
+        // Scale the cube so that its XZ extent (default 1 unit = -0.5 to 0.5) maps to the brush radius.
+        float cubeScale = brushRadius * 2.0f;
+
+        _brushDecalEntity.Transform.Position = worldPosition.Value;
+        _brushDecalEntity.Transform.Scale = new Vector3(cubeScale, brushRadius, cubeScale);
+        _brushDecalEntity.Transform.UpdateWorldMatrix();
+
+        // Update decal color based on current tool
+        Color4 decalColor = _editorState.CurrentEditorMode switch
+        {
+            EditorMode.Sculpt => _editorState.GetToolColor(),
+            EditorMode.Paint => _editorState.GetPaintToolColor(),
+            EditorMode.Landscape => new Color4(0.2f, 0.7f, 0.4f, 0.5f),
+            _ => Color4.White,
+        };
+        _brushDecalComponent.Color = decalColor;
+
+        // TextureScale carries EffectiveFalloff so the shader can fade from the
+        // brush core to the outer edge without drawing explicit inner/outer rings.
+        _brushDecalComponent.TextureScale = brushParams.EffectiveFalloff;
+    }
+
+    private void UpdateBrushDecalVisibility(bool visible)
+    {
+        if (_brushDecalComponent == null)
+        {
+            return;
+        }
+
+        // Only show decal in brush-capable modes
+        if (!IsBrushDecalMode() || !_editorState.HasSelectedTool)
+        {
+            visible = false;
+        }
+
+        _brushDecalComponent.Enabled = visible;
     }
 
     private Vector3? RaycastTerrain()
@@ -401,11 +476,13 @@ public sealed class EmbeddedStrideViewportGame : Game
         };
         _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
+        EnsureBrushDecalRenderFeature(_graphicsCompositor);
         _modeController.Apply(_sceneViewMode, _graphicsCompositor);
 
         SceneSystem.GraphicsCompositor = _graphicsCompositor;
         SceneSystem.SceneInstance = new SceneInstance(Services, _scene);
         InitializeTerrainManager(defaultTerrainTexture);
+        CreateBrushDecalEntity();
         return true;
     }
 
@@ -470,11 +547,13 @@ public sealed class EmbeddedStrideViewportGame : Game
         };
         _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
+        EnsureBrushDecalRenderFeature(_graphicsCompositor);
         _modeController.Apply(_sceneViewMode, _graphicsCompositor);
 
         SceneSystem.GraphicsCompositor = _graphicsCompositor;
         SceneSystem.SceneInstance = new SceneInstance(Services, _scene);
         InitializeTerrainManager(defaultTerrainTexture);
+        CreateBrushDecalEntity();
     }
 
     private void InitializeTerrainManager(Texture? defaultTerrainTexture)
@@ -506,6 +585,56 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             graphicsCompositor.RenderFeatures.Add(new EditorTerrainRenderFeature());
         }
+    }
+
+    private static void EnsureBrushDecalRenderFeature(GraphicsCompositor graphicsCompositor)
+    {
+        if (graphicsCompositor.RenderFeatures.OfType<BrushDecalRootRenderFeature>().Any())
+        {
+            return;
+        }
+
+        var decalRenderFeature = new BrushDecalRootRenderFeature();
+
+        // Find the Transparent render stage (decals render as transparent overlays)
+        var transparentStage = graphicsCompositor.RenderStages.FirstOrDefault(stage =>
+            string.Equals(stage.Name, "Transparent", StringComparison.Ordinal));
+        if (transparentStage == null)
+        {
+            // If no Transparent stage exists, create one
+            transparentStage = new RenderStage("BrushDecalTransparent", "Main")
+            {
+                SortMode = new BackToFrontSortMode(),
+            };
+            graphicsCompositor.RenderStages.Add(transparentStage);
+        }
+
+        // Add render stage selector to assign decal objects to the Transparent stage
+        var decalSelector = new BrushDecalRenderStageSelector
+        {
+            EffectName = "BrushDecalShader",
+            RenderGroup = RenderGroupMask.All,
+            RenderStage = transparentStage,
+        };
+        decalRenderFeature.RenderStageSelectors.Add(decalSelector);
+
+        graphicsCompositor.RenderFeatures.Add(decalRenderFeature);
+    }
+
+    private void CreateBrushDecalEntity()
+    {
+        if (_scene == null)
+        {
+            return;
+        }
+
+        _brushDecalEntity = new Entity("BrushDecal");
+        _brushDecalComponent = new BrushDecalComponent
+        {
+            Enabled = false,
+        };
+        _brushDecalEntity.Add(_brushDecalComponent);
+        _scene.Entities.Add(_brushDecalEntity);
     }
 
     private Scene? TryLoadSceneAsset(string assetName)
@@ -605,6 +734,14 @@ public sealed class EmbeddedStrideViewportGame : Game
                 Window.IsMouseVisible = true;
             SetChildWindowStyle?.Invoke(true);
             _isControllingCamera = false;
+        }
+
+        // Clean up brush decal entity
+        if (_brushDecalEntity != null && _scene != null)
+        {
+            _scene.Entities.Remove(_brushDecalEntity);
+            _brushDecalEntity = null;
+            _brushDecalComponent = null;
         }
 
         if (TerrainManager != null)

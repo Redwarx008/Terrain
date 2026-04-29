@@ -1,0 +1,58 @@
+namespace Terrain.Editor
+{
+    shader BrushDecalShader : DepthBase, ShaderBase, Transformation, PositionStream4, ComputeColor
+    {
+        stage float TextureScale;
+        stage float4 DecalColor;
+
+        stage stream float4 PositionInViewSpace;
+
+        // Vertex Shader
+        stage override void VSMain()
+        {
+            base.VSMain();
+
+            // Compute view-space position for ray projection in PS
+            float4 viewSpacePos = mul(streams.Position, WorldView);
+            streams.PositionInViewSpace = viewSpacePos;
+            streams.ShadingPosition = mul(streams.Position, WorldViewProjection);
+        }
+
+        // Pixel Shader
+        stage override void PSMain()
+        {
+            // Get screen-space UV from the shading position
+            float2 screenPos = streams.ShadingPosition.xy;
+            float2 screenSpaceUv = float2(screenPos.x / ViewSize.x, screenPos.y / ViewSize.y);
+
+            // Reconstruct depth from the depth buffer (DepthBase provides ComputeDepthFromUV)
+            float depthValueInViewSpace = ComputeDepthFromUV(screenSpaceUv);
+
+            // Calculate the ratio for ray projection to far clip plane
+            float zDepthProportion = -streams.PositionInViewSpace.z / FarClipPlane;
+            float3 shaderPointRayInViewSpace = streams.PositionInViewSpace.xyz / zDepthProportion;
+
+            // Scale the ray by the depth ratio to get the actual view-space position
+            float3 depthPointInViewSpace = shaderPointRayInViewSpace * (depthValueInViewSpace / FarClipPlane);
+
+            // Transform to world space, then to the cube's local space
+            float4 depthPointInWorldSpace = mul(float4(depthPointInViewSpace, 1), ViewInverse);
+            float4 depthPointInBoxSpace = mul(depthPointInWorldSpace, WorldInverse);
+
+            // Clip pixels outside the cube (range [-0.5, 0.5])
+            clip(0.5f - abs(depthPointInBoxSpace.xyz));
+
+            // Generate a single circular brush mask from the cube's local XZ position.
+            // Box-space XZ is [-0.5, 0.5], so multiplying by 2 maps the brush radius to 1.0.
+            float dist = length(depthPointInBoxSpace.xz * 2.0f);
+            clip(1.0f - dist);
+
+            // TextureScale carries EffectiveFalloff: 0 = soft edge across the whole brush,
+            // 1 = nearly hard edge at the outer radius.
+            float fadeStart = min(TextureScale, 0.999f);
+            float alpha = 1.0f - smoothstep(fadeStart, 1.0f, dist);
+
+            streams.ColorTarget = float4(DecalColor.rgb, DecalColor.a * alpha);
+        }
+    };
+}

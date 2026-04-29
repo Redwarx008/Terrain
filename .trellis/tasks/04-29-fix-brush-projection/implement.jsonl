@@ -1,1 +1,12 @@
 {"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/editor/index.md", "reason": "编辑器核心约定、禁止模式 — implement 必须遵守"}
+{"file": ".trellis/spec/editor/state-management.md", "reason": "BrushParameters/EditorState 单例模式、工具可用性守卫约定"}
+{"file": ".trellis/spec/editor/directory-structure.md", "reason": "Rendering/ 目录约定、命名空间和文件命名规范"}
+{"file": ".trellis/tasks/04-29-fix-brush-projection/research/stride-overlay-rendering.md", "reason": "Stride overlay 渲染方案对比、代码模式、Pipeline State 推荐配置"}
+{"file": ".trellis/tasks/04-29-fix-brush-projection/research/stride-decal-support.md", "reason": "Stride 零内置 decal 支持的确认 — 说明为何需从零搭建"}
+{"file": ".trellis/tasks/04-29-fix-brush-projection/research/reference-decal-impl/DecalSystem/Renderer/DecalRootRenderFeature.cs", "reason": "参考：RootRenderFeature Draw 中绑定深度 SRV + shader 参数 + 画 Cube"}
+{"file": ".trellis/tasks/04-29-fix-brush-projection/research/reference-decal-impl/Effects/DecalShader.sdsl", "reason": "参考：屏幕空间贴花着色器 — 深度重建 + clip + 采样纹理"}
+{"file": ".trellis/tasks/04-29-fix-brush-projection/research/reference-decal-impl/DecalSystem/DecalComponent.cs", "reason": "参考：DecalComponent 实体组件结构"}
+{"file": ".trellis/tasks/04-29-fix-brush-projection/research/reference-decal-impl/DecalSystem/DecalProcessor.cs", "reason": "参考：DecalProcessor EntityProcessor 实现"}
+{"file": ".trellis/tasks/04-29-fix-brush-projection/research/reference-decal-impl/DecalSystem/Renderer/DecalRenderObject.cs", "reason": "参考：DecalRenderObject — Cube 图元 + AlphaBlend + DepthRead"}
+{"file": ".trellis/tasks/04-29-fix-brush-projection/research/reference-decal-impl/DecalSystem/Renderer/DecalRenderStageSelector.cs", "reason": "参考：RenderStageSelector 分配到 Transparent 阶段"}

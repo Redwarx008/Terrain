@@ -49,11 +49,19 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
+    <Compile Update="Effects\BrushDecalShader.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
     <None Update="Effects\EditorTerrainBuildSplatMap.sdsl">
       <LastGenOutput>EditorTerrainBuildSplatMap.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\BrushDecalShader.sdsl">
+      <LastGenOutput>BrushDecalShader.sdsl.cs</LastGenOutput>
     </None>
   </ItemGroup>
 

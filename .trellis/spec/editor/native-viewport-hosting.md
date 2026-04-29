@@ -105,6 +105,77 @@ Dispatcher.UIThread.Post(() =>
 
 ---
 
+## Scenario: Embedded Viewport Brush / Decal Overlay
+
+### 1. Scope / Trigger
+
+- Trigger: 需要在 Avalonia 承载的 Stride 原生 viewport 内显示笔刷投影、decal 或其他贴地世界空间覆盖层。
+- 这是 Avalonia 宿主、Stride 渲染管线、深度缓冲读取和编辑器工具状态的交叉边界，属于高风险渲染集成。
+
+### 2. Signatures
+
+- `EmbeddedStrideViewportGame.EnsureBrushDecalRenderFeature(GraphicsCompositor graphicsCompositor)`
+- `EmbeddedStrideViewportGame.CreateBrushDecalEntity()`
+- `BrushDecalProcessor.Draw(RenderContext context)`
+- `BrushDecalRootRenderFeature.Draw(RenderDrawContext context, RenderView renderView, RenderViewStage renderViewStage, int startIndex, int endIndex)`
+
+### 3. Contracts
+
+- 嵌入式 viewport 内的世界空间覆盖层必须走 Stride 渲染链：`Component -> Processor -> RenderObject -> RootRenderFeature`。
+- 不要尝试在 Avalonia 层直接给 Stride backbuffer 叠画笔刷 UI；Avalonia 无法直接绘制到这个原生 backbuffer 上。
+- `RootRenderFeature` 里读取深度时，必须从 `graphicsDevice.Presenter.DepthStencilBuffer` 走 `ResolveDepthStencil(...)`，不要改成其他离屏 depth 来源。
+- decal/brush 的可见性必须同步到 `RenderObject.Enabled`，不能只停留在组件布尔值上。
+- 动态创建的 `GeometricPrimitive`、`DynamicEffectInstance` 等 GPU 资源必须有明确释放路径。
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+|---|---|
+| 尝试用 Avalonia overlay 直接覆盖 Stride 视口 | 画不到 backbuffer，或只得到与世界空间脱节的 2D 假象 |
+| `RootRenderFeature` 使用当前 API 不存在的 pipeline processor 接法 | 直接编译失败 |
+| `component.Enabled` 改变但未同步 `renderObject.Enabled` | 关闭投影后仍可能残留渲染 |
+| 未释放 `GeometricPrimitive` / effect | 长时间运行或反复创建销毁后出现 GPU 资源泄漏风险 |
+| 未使用 presenter depth 做深度重建 | embedded viewport 下 decal 可能完全不显示或投影位置错误 |
+
+### 5. Good / Base / Bad Cases
+
+- Good: 笔刷投影通过 `BrushDecalRootRenderFeature` 读取 presenter depth，在地形表面贴地显示，并受编辑器模式与右键相机控制共同约束。
+- Base: 先只打通 `Component -> RenderObject -> RootRenderFeature` 链并确认单色 decal 能随鼠标移动，再逐步加入 falloff 和颜色逻辑。
+- Bad: 把笔刷投影当成 Avalonia 层的普通 overlay，或直接照搬其他版本 Stride/Xenko 的过时 API。
+
+### 6. Tests Required
+
+- 构建验证：
+  - `dotnet build Terrain.Editor/Terrain.Editor.csproj` 必须通过
+- 运行时验证：
+  - Sculpt / Paint / Landscape 模式下悬停地形时可见贴地投影
+  - 右键相机控制时投影隐藏
+  - 无选中工具或非笔刷模式时投影隐藏
+- 生命周期验证：
+  - 反复打开/关闭 viewport 或销毁场景时无资源泄漏异常
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```csharp
+// 试图在 Avalonia 层直接叠画 viewport 笔刷
+overlayCanvas.Children.Add(brushPreview);
+```
+
+- 问题：这只能生成宿主 UI 覆盖，不会得到基于地形深度的贴地投影。
+
+#### Correct
+
+```csharp
+var depthStencil = context.Resolver.ResolveDepthStencil(graphicsDevice.Presenter.DepthStencilBuffer);
+_decalShader.Parameters.Set(DepthBaseKeys.DepthStencil, depthStencil);
+```
+
+- 原因：嵌入式 viewport 下，贴花需要直接读取 presenter 的深度缓冲来重建世界位置。
+
+---
+
 ## Common Mistake: 外层宿主窗口和 SDL 共用一套物理像素尺寸
 
 **Symptom**: viewport 本体越过底部 Asset Browser 或右侧 Inspector，像一整块原生窗口压在 Avalonia 布局之上。
