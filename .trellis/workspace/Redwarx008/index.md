@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
-- **Last Active**: 2026-04-29
+- **Total Sessions**: 11
+- **Last Active**: 2026-04-30
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~336 | Active |
+| `journal-1.md` | ~370 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-04-30 | Brush projection decal restore | `6f8e9ab`, HEAD | `implement-climate-texturing` |
 | 10 | 2026-04-29 | Texture thumbnail finish | `64292c8`, `b495bad` | `implement-climate-texturing` |
 | 9 | 2026-04-29 | 修复缩略图回归导致的编辑器地形光影丢失 | `7f2f8d3` | `implement-climate-texturing` |
 | 8 | 2026-04-28 | Replace asset panel placeholders with real data | `3ce533d` | `implement-climate-texturing` |

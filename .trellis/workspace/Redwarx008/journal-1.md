@@ -334,3 +334,37 @@ Textures category now reads from MaterialSlotManager; added create-item click, c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Brush projection decal restore
+
+**Date**: 2026-04-30
+**Task**: Brush projection decal restore
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+恢复 Avalonia 迁移后丢失的地形笔刷投影：基于 Basewq ScreenSpaceDecalRootRendererExample 接入屏幕空间 decal 渲染链，新增 BrushDecal component/processor/render object/root render feature/shader，接入 EmbeddedStrideViewportGame 并按模式与右键相机控制显示。trellis-check 修复了不兼容的 RootRenderFeature API 接法、renderObject.Enabled 同步、GPU 资源释放路径，并将任务与 spec 文档同步为单一圆形笔刷遮罩 + falloff 衰减。任务已归档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6f8e9ab` | (see git log) |
+| `HEAD` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
