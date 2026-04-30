@@ -104,7 +104,7 @@ internal readonly struct TerrainPageKey : IEquatable<TerrainPageKey>
 internal struct TerrainFileHeader
 {
     public const int MagicValue = 0x52524554;
-    public const int SupportedVersion = 4;
+    public const int SupportedVersion = 5;
 
     public int Magic;
     public int Version;

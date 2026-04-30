@@ -57,7 +57,7 @@ public sealed class MaterialIndexMap
         if (x < 0 || x >= Width || z < 0 || z >= Height)
             return DetailControlPixel.Default;
 
-        int offset = ((z * Width) + x) * 4;
+        int offset = (int)(((long)z * Width + x) * 4);
         return new DetailControlPixel
         {
             Index0 = indexData[offset],
@@ -76,7 +76,7 @@ public sealed class MaterialIndexMap
         if (x < 0 || x >= Width || z < 0 || z >= Height)
             return;
 
-        int offset = ((z * Width) + x) * 4;
+        int offset = (int)(((long)z * Width + x) * 4);
         indexData[offset] = pixel.Index0;
         indexData[offset + 1] = pixel.Index1;
         indexData[offset + 2] = pixel.Index2;
@@ -129,14 +129,16 @@ public sealed class MaterialIndexMap
 
     public ReadOnlySpan<byte> GetIndexSliceBytesPerRow(int startX, int startZ, int row, int sliceWidth)
     {
-        int pixelOffset = (((startZ + row) * Width) + startX) * IndicesBytesPerPixel;
-        return indexData.AsSpan(pixelOffset, sliceWidth * IndicesBytesPerPixel);
+        int pixelOffset = (int)(((long)(startZ + row) * Width + startX) * IndicesBytesPerPixel);
+        int byteCount = (int)((long)sliceWidth * IndicesBytesPerPixel);
+        return indexData.AsSpan(pixelOffset, byteCount);
     }
 
     public ReadOnlySpan<byte> GetWeightSliceBytesPerRow(int startX, int startZ, int row, int sliceWidth)
     {
-        int pixelOffset = (((startZ + row) * Width) + startX) * WeightsBytesPerPixel;
-        return weightData.AsSpan(pixelOffset, sliceWidth * WeightsBytesPerPixel);
+        int pixelOffset = (int)(((long)(startZ + row) * Width + startX) * WeightsBytesPerPixel);
+        int byteCount = (int)((long)sliceWidth * WeightsBytesPerPixel);
+        return weightData.AsSpan(pixelOffset, byteCount);
     }
 
     public ReadOnlySpan<byte> GetSliceBytesPerRow(int startX, int startZ, int row, int sliceWidth)
@@ -146,21 +148,24 @@ public sealed class MaterialIndexMap
 
     public void SetRegionFromBytes(int startX, int startZ, int regionWidth, int regionHeight, ReadOnlySpan<byte> bytes)
     {
+        int rowByteCount = (int)((long)regionWidth * IndicesBytesPerPixel);
         for (int row = 0; row < regionHeight; row++)
         {
-            int dstOffset = (((startZ + row) * Width) + startX) * IndicesBytesPerPixel;
-            int srcByteOffset = row * regionWidth * IndicesBytesPerPixel;
-            bytes.Slice(srcByteOffset, regionWidth * IndicesBytesPerPixel).CopyTo(indexData.AsSpan(dstOffset, regionWidth * IndicesBytesPerPixel));
+            int dstOffset = (int)((((long)startZ + row) * Width + startX) * IndicesBytesPerPixel);
+            int srcByteOffset = (int)((long)row * regionWidth * IndicesBytesPerPixel);
+            bytes.Slice(srcByteOffset, rowByteCount).CopyTo(indexData.AsSpan(dstOffset, rowByteCount));
         }
     }
 
     public byte[] CopyRegionToBytes(int startX, int startZ, int regionWidth, int regionHeight)
     {
-        var bytes = new byte[regionWidth * regionHeight * IndicesBytesPerPixel];
+        var bytes = new byte[(long)regionWidth * regionHeight * IndicesBytesPerPixel];
+        int rowByteCount = (int)((long)regionWidth * IndicesBytesPerPixel);
         for (int row = 0; row < regionHeight; row++)
         {
-            int srcOffset = (((startZ + row) * Width) + startX) * IndicesBytesPerPixel;
-            indexData.AsSpan(srcOffset, regionWidth * IndicesBytesPerPixel).CopyTo(bytes.AsSpan(row * regionWidth * IndicesBytesPerPixel));
+            int srcOffset = (int)((((long)startZ + row) * Width + startX) * IndicesBytesPerPixel);
+            int dstOffset = (int)((long)row * regionWidth * IndicesBytesPerPixel);
+            indexData.AsSpan(srcOffset, rowByteCount).CopyTo(bytes.AsSpan(dstOffset));
         }
         return bytes;
     }
@@ -169,9 +174,10 @@ public sealed class MaterialIndexMap
 
     public void Fill(DetailControlPixel pixel)
     {
-        for (int i = 0; i < Width * Height; i++)
+        long pixelCount = (long)Width * Height;
+        for (long i = 0; i < pixelCount; i++)
         {
-            int offset = i * 4;
+            int offset = (int)(i * 4);
             indexData[offset] = pixel.Index0;
             indexData[offset + 1] = pixel.Index1;
             indexData[offset + 2] = pixel.Index2;
@@ -200,10 +206,11 @@ public sealed class MaterialIndexMap
         if (oldData.Length != (long)Width * Height)
             throw new ArgumentException("Old data size mismatch.", nameof(oldData));
 
-        for (int i = 0; i < oldData.Length; i++)
+        long length = oldData.Length;
+        for (long i = 0; i < length; i++)
         {
-            int offset = i * 4;
-            indexData[offset] = oldData[i];
+            int offset = (int)(i * 4);
+            indexData[offset] = oldData[(int)i];
             indexData[offset + 1] = byte.MaxValue;
             indexData[offset + 2] = byte.MaxValue;
             indexData[offset + 3] = byte.MaxValue;

@@ -118,7 +118,8 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
             return new Int4(0, 0, 1, 1);
 
         EditorTerrainSlice slice = entity.Slices[sliceIndex];
-        return new Int4(slice.StartSampleX, slice.StartSampleZ, slice.Width, slice.Height);
+        // SplatMap uses 1/2 of heightmap resolution; coordinates and dimensions divided by 2
+        return new Int4(slice.StartSampleX / 2, slice.StartSampleZ / 2, (slice.Width + 1) / 2, (slice.Height + 1) / 2);
     }
 
     private static void SetSliceBounds(ParameterCollection parameters, int sliceIndex, Int4 bounds)

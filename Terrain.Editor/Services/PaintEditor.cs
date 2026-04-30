@@ -59,30 +59,30 @@ public sealed class PaintEditor
         int pixelX = (int)MathF.Round(worldPosition.X);
         int pixelZ = (int)MathF.Round(worldPosition.Z);
 
-        // 1:1 splatmap 直接使用 heightmap 像素坐标
-        int splatPixelX = pixelX;
-        int splatPixelZ = pixelZ;
+        // SplatMap 使用 1/2 分辨率，画笔坐标需要 /2
+        int splatPixelX = pixelX / 2;
+        int splatPixelZ = pixelZ / 2;
 
         // 获取笔刷参数
         var brushParams = BrushParameters.Instance;
         float brushRadius = brushParams.Size * 0.5f;
         float brushInnerRadius = brushRadius * brushParams.EffectiveFalloff;
 
-        // 1:1 splatmap 下笔刷半径无需缩放
-        float splatBrushRadius = MathF.Ceiling(brushRadius);
-        float splatBrushInnerRadius = MathF.Ceiling(brushInnerRadius);
+        // SplatMap 1/2 分辨率下笔刷半径也 /2
+        float splatBrushRadius = MathF.Ceiling(brushRadius / 2.0f);
+        float splatBrushInnerRadius = MathF.Ceiling(brushInnerRadius / 2.0f);
 
         // 获取目标材质索引
         byte targetIndex = ResolveTargetMaterialIndex();
         if (targetIndex == byte.MaxValue)
             return;
 
-        // 构建编辑上下文
+        // 构建编辑上下文（DataWidth/DataHeight 是 splatmap 的尺寸）
         var context = new PaintEditContext
         {
             IndexMap = indexMap,
-            DataWidth = mapWidth,
-            DataHeight = mapHeight,
+            DataWidth = indexMap.Width,
+            DataHeight = indexMap.Height,
             CenterX = splatPixelX,
             CenterZ = splatPixelZ,
             BrushRadius = splatBrushRadius,
@@ -101,6 +101,7 @@ public sealed class PaintEditor
         };
 
         // Mark chunks before mutation so each chunk can cache its true "before" state.
+        // Chunk tracking operates in splatmap space (1/2 of heightmap)
         HistoryManager.Instance.MarkCommandChunks(splatPixelX, splatPixelZ, splatBrushRadius);
 
         // 应用工具

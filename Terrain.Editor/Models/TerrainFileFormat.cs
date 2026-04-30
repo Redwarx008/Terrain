@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Runtime.InteropServices;
 
 namespace Terrain.Editor.Models;
@@ -36,7 +38,7 @@ public struct TerrainFileHeader
     public int Reserved4;
 
     public const int MAGIC_VALUE = 0x52524554;
-    public const int CURRENT_VERSION = 4;
+    public const int CURRENT_VERSION = 5;
 
     public readonly bool IsValid => Magic == MAGIC_VALUE;
 }

@@ -235,16 +235,20 @@ namespace Terrain.Editor
             if (texelX >= (uint)OutputWidth || texelY >= (uint)OutputHeight)
                 return;
 
+            // SliceBounds are in splatmap space (1/2 of heightmap)
             int4 sliceBounds = GetIndexMapSliceBounds(CurrentSliceIndex);
-            int globalX = sliceBounds.x + (int)texelX;
-            int globalY = sliceBounds.y + (int)texelY;
-            int2 sampleCoord = int2(globalX, globalY);
+            int globalSplatX = sliceBounds.x + (int)texelX;
+            int globalSplatY = sliceBounds.y + (int)texelY;
 
-            int biomeId = LoadClimateId(sampleCoord);
-            float altitude = SampleHeightLinear(float2(sampleCoord), CurrentSliceIndex);
-            float slope = SampleSlopeDegrees(sampleCoord);
-            float curvature = SampleCurvature(sampleCoord);
-            float directionDegrees = SampleDirectionDegrees(sampleCoord);
+            // Convert splatmap coordinates to heightmap space for height sampling
+            int2 heightCoord = int2(globalSplatX * 2, globalSplatY * 2);
+
+            // ClimateMask 使用 splatmap 空间坐标（1/2 分辨率）
+            int biomeId = LoadClimateId(int2(globalSplatX, globalSplatY));
+            float altitude = SampleHeightLinear(float2(heightCoord), CurrentSliceIndex);
+            float slope = SampleSlopeDegrees(heightCoord);
+            float curvature = SampleCurvature(heightCoord);
+            float directionDegrees = SampleDirectionDegrees(heightCoord);
 
             int4 bestIndices = int4(0, 255, 255, 255);
             float4 bestWeights = float4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -268,7 +272,7 @@ namespace Terrain.Editor
                     if (modifier.Enabled == 0)
                         continue;
 
-                    float modifierValue = EvaluateModifier(modifier, sampleCoord, altitude, slope, curvature, directionDegrees);
+                    float modifierValue = EvaluateModifier(modifier, heightCoord, altitude, slope, curvature, directionDegrees);
                     float blended = ApplyBlendMode(weight, modifierValue, modifier.BlendMode);
                     weight = lerp(weight, blended, saturate(modifier.Opacity));
                 }

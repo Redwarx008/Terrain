@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -41,6 +43,7 @@ public class TerrainExporter : IExporter
 
         byte[] detailIndexData = detailControlMaps.GetIndexRawData();
         byte[] detailWeightData = detailControlMaps.GetWeightRawData();
+        // SplatMap 已经在 1/2 分辨率创建，直接使用其尺寸
         int splatW = detailControlMaps.Width;
         int splatH = detailControlMaps.Height;
 
@@ -102,7 +105,7 @@ public class TerrainExporter : IExporter
             HeightMapMipLevels = heightMapMipLevels,
             SplatMapFormat = (int)VTFormat.Rgba32,
             SplatMapMipLevels = splatMapMipLevels,
-            SplatMapResolutionRatio = 1,
+            SplatMapResolutionRatio = 2,
             Reserved2 = (int)VTFormat.Rgba32,
             Reserved3 = splatMapMipLevels,
         };

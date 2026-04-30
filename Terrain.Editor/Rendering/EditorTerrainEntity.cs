@@ -232,6 +232,7 @@ public sealed class EditorTerrainEntity : IDisposable
     /// <summary>
     /// 初始化材质相关 GPU 资源。
     /// 为每个高度图切片创建对应的 detail index / detail weight 控制图纹理。
+    /// SplatMap 使用 heightmap 的 1/2 分辨率。
     /// </summary>
     public void InitializeMaterialResources(GraphicsDevice graphicsDevice)
     {
@@ -240,8 +241,9 @@ public sealed class EditorTerrainEntity : IDisposable
         for (int i = 0; i < SplitConfig.TotalSliceCount; i++)
         {
             var sliceInfo = SplitConfig.Slices[i];
-            int indexMapWidth = sliceInfo.Width;
-            int indexMapHeight = sliceInfo.Height;
+            // SplatMap 半分辨率：每个 heightmap 切片对应的 splatmap 区域也减半
+            int indexMapWidth = (sliceInfo.Width + 1) / 2;
+            int indexMapHeight = (sliceInfo.Height + 1) / 2;
             DetailIndexMapTextures[i] = Texture.New2D(
                 graphicsDevice,
                 indexMapWidth,
@@ -407,7 +409,7 @@ public sealed class EditorTerrainEntity : IDisposable
 
     /// <summary>
     /// 同步材质索引图到 GPU。
-    /// IndexMap 与 heightmap 保持 1:1 分辨率。
+    /// SplatMap 使用 heightmap 的 1/2 分辨率，坐标需要 /2 转换。
     /// </summary>
     public void SyncDetailControlMapsToGpu(CommandList commandList, Services.MaterialIndexMap indexMap)
     {
@@ -424,19 +426,21 @@ public sealed class EditorTerrainEntity : IDisposable
             if (!indexDirty && !weightDirty)
                 continue;
 
-            int splatSliceWidth = slice.Width;
-            int splatSliceHeight = slice.Height;
+            // SplatMap 是 heightmap 的 1/2 分辨率
+            int splatSliceWidth = (slice.Width + 1) / 2;
+            int splatSliceHeight = (slice.Height + 1) / 2;
 
-            // splatmap 中该切片的起始位置（相对于 splatmap 原点）
-            int splatStartX = slice.StartSampleX;
-            int splatStartZ = slice.StartSampleZ;
+            // splatmap 中该切片的起始位置（相对于 splatmap 原点，heightmap 坐标 /2）
+            int splatStartX = slice.StartSampleX / 2;
+            int splatStartZ = slice.StartSampleZ / 2;
 
             if (slice.Dirty.HasRegion)
             {
-                int regionLeft = Math.Max(0, slice.Dirty.MinX);
-                int regionTop = Math.Max(0, slice.Dirty.MinZ);
-                int regionRight = Math.Min(splatSliceWidth - 1, slice.Dirty.MaxX);
-                int regionBottom = Math.Min(splatSliceHeight - 1, slice.Dirty.MaxZ);
+                // Dirty region is in heightmap slice-local coordinates; convert to splatmap space
+                int regionLeft = Math.Max(0, slice.Dirty.MinX / 2);
+                int regionTop = Math.Max(0, slice.Dirty.MinZ / 2);
+                int regionRight = Math.Min(splatSliceWidth - 1, (slice.Dirty.MaxX + 1) / 2);
+                int regionBottom = Math.Min(splatSliceHeight - 1, (slice.Dirty.MaxZ + 1) / 2);
                 int regionWidth = regionRight - regionLeft + 1;
                 int regionHeight = regionBottom - regionTop + 1;
 
@@ -447,8 +451,8 @@ public sealed class EditorTerrainEntity : IDisposable
                     continue;
                 }
 
-                int regionIndexByteSize = regionWidth * regionHeight * Services.MaterialIndexMap.IndicesBytesPerPixel;
-                int regionWeightByteSize = regionWidth * regionHeight * Services.MaterialIndexMap.WeightsBytesPerPixel;
+                int regionIndexByteSize = (int)((long)regionWidth * regionHeight * Services.MaterialIndexMap.IndicesBytesPerPixel);
+                int regionWeightByteSize = (int)((long)regionWidth * regionHeight * Services.MaterialIndexMap.WeightsBytesPerPixel);
                 byte[] indexUploadBuffer = ArrayPool<byte>.Shared.Rent(regionIndexByteSize);
                 byte[] weightUploadBuffer = ArrayPool<byte>.Shared.Rent(regionWeightByteSize);
                 try
@@ -480,8 +484,8 @@ public sealed class EditorTerrainEntity : IDisposable
             }
             else
             {
-                int indexByteSize = splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.IndicesBytesPerPixel;
-                int weightByteSize = splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.WeightsBytesPerPixel;
+                int indexByteSize = (int)((long)splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.IndicesBytesPerPixel);
+                int weightByteSize = (int)((long)splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.WeightsBytesPerPixel);
                 byte[] indexUploadBuffer = ArrayPool<byte>.Shared.Rent(indexByteSize);
                 byte[] weightUploadBuffer = ArrayPool<byte>.Shared.Rent(weightByteSize);
                 try
@@ -521,8 +525,8 @@ public sealed class EditorTerrainEntity : IDisposable
         {
             ReadOnlySpan<byte> indexSpan = indexMap.GetIndexSliceBytesPerRow(startX, startZ + row, 0, regionWidth);
             ReadOnlySpan<byte> weightSpan = indexMap.GetWeightSliceBytesPerRow(startX, startZ + row, 0, regionWidth);
-            int indexOffset = row * regionWidth * Services.MaterialIndexMap.IndicesBytesPerPixel;
-            int weightOffset = row * regionWidth * Services.MaterialIndexMap.WeightsBytesPerPixel;
+            int indexOffset = (int)((long)row * regionWidth * Services.MaterialIndexMap.IndicesBytesPerPixel);
+            int weightOffset = (int)((long)row * regionWidth * Services.MaterialIndexMap.WeightsBytesPerPixel);
             indexSpan.CopyTo(indexDestination.AsSpan(indexOffset));
             weightSpan.CopyTo(weightDestination.AsSpan(weightOffset));
         }

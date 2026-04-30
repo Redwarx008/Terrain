@@ -67,7 +67,10 @@ namespace Terrain.Editor
 
         int4 GetIndexMapSliceBounds(int sliceIndex)
         {
-            return GetSliceBounds(sliceIndex);
+            // SplatMap uses 1/2 resolution: convert heightmap bounds to splatmap space
+            int4 heightmapBounds = GetSliceBounds(sliceIndex);
+            return int4(heightmapBounds.x / 2, heightmapBounds.y / 2,
+                        (heightmapBounds.z + 1) / 2, (heightmapBounds.w + 1) / 2);
         }
 
         bool IsInsideSlice(float2 sampleCoord, int4 bounds)
@@ -228,7 +231,9 @@ namespace Terrain.Editor
 
         float4 LoadIndexMapAtGlobal(int2 globalPixel)
         {
-            float2 sampleCoord = float2(globalPixel);
+            // SplatMap uses 1/2 resolution: heightmap pixel (x,y) -> splatmap pixel (x/2, y/2)
+            int2 splatPixel = globalPixel / 2;
+            float2 sampleCoord = float2(splatPixel);
             int sliceIndex = ResolveIndexMapSliceIndex(sampleCoord, 0);
             int4 bounds = GetIndexMapSliceBounds(sliceIndex);
             int2 localCoord = ComputeSliceTexelCoord(sampleCoord, bounds);
@@ -257,7 +262,9 @@ namespace Terrain.Editor
 
         float4 LoadWeightMapAtGlobal(int2 globalPixel)
         {
-            float2 sampleCoord = float2(globalPixel);
+            // SplatMap uses 1/2 resolution: heightmap pixel (x,y) -> splatmap pixel (x/2, y/2)
+            int2 splatPixel = globalPixel / 2;
+            float2 sampleCoord = float2(splatPixel);
             int sliceIndex = ResolveIndexMapSliceIndex(sampleCoord, 0);
             int4 bounds = GetIndexMapSliceBounds(sliceIndex);
             int2 localCoord = ComputeSliceTexelCoord(sampleCoord, bounds);

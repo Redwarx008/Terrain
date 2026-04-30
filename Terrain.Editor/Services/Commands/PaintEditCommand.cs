@@ -86,7 +86,8 @@ public sealed class PaintEditCommand : TerrainEditCommand
             var stateData = afterState ? delta.After : delta.Before;
             indexMap.SetRegionFromBytes(delta.Region.X, delta.Region.Y, delta.Region.Width, delta.Region.Height, stateData);
 
-            // MaterialIndex region is in splatmap space; dirty tracking expects heightmap space.
+            // Chunk regions are tracked in splatmap space (1/2 of heightmap).
+            // Convert back to heightmap space for dirty tracking.
             float minX = delta.Region.X * 2.0f;
             float minZ = delta.Region.Y * 2.0f;
             float maxX = (delta.Region.X + delta.Region.Width) * 2.0f;

@@ -46,7 +46,7 @@ public sealed class TerrainManager : IDisposable
     public MaterialIndexMap? MaterialIndices { get; private set; }
 
     /// <summary>
-    /// 气候蒙版，R8 格式，尺寸为高度图的 1:1。
+    /// 气候蒙版，R8 格式，尺寸为高度图的 1/2（对齐 SplatMap）。
     /// 每个像素存储一个气候 ID，驱动规则求值生成 MaterialIndices。
     /// </summary>
     public ClimateMask? ClimateMask { get; private set; }
@@ -162,13 +162,14 @@ public sealed class TerrainManager : IDisposable
             currentHeightmapInfo = info;
             currentTerrainPath = heightmapPath;
 
-            // ClimateMask 与 MaterialIndexMap 都使用 heightmap 的 1:1 分辨率
-            int climateMaskWidth = heightDataWidth;
-            int climateMaskHeight = heightDataHeight;
+            // ClimateMask 使用 heightmap 的 1/2 分辨率（对齐 SplatMap，避免大地形 GPU 纹理尺寸溢出）
+            int climateMaskWidth = (heightDataWidth + 1) / 2;
+            int climateMaskHeight = (heightDataHeight + 1) / 2;
             ClimateMask = new ClimateMask(climateMaskWidth, climateMaskHeight);
 
-            int splatMapWidth = heightDataWidth;
-            int splatMapHeight = heightDataHeight;
+            // SplatMap 使用 heightmap 的 1/2 分辨率（与 CK3 一致）
+            int splatMapWidth = (heightDataWidth + 1) / 2;
+            int splatMapHeight = (heightDataHeight + 1) / 2;
             MaterialIndices = new MaterialIndexMap(splatMapWidth, splatMapHeight);
 
             // 设置材质索引数据引用到实体
@@ -843,14 +844,22 @@ public sealed class TerrainManager : IDisposable
             return false;
 
         using var image = HeightmapImage.Load<L8>(path);
-        if (image.Width != ClimateMask.Width || image.Height != ClimateMask.Height)
+
+        // ClimateMask 为半分辨率 (splatmap 尺寸)
+        // 支持：半分辨率图像直接加载，全分辨率图像自动降采样
+        bool halfRes = image.Width == ClimateMask.Width && image.Height == ClimateMask.Height;
+        bool fullRes = image.Width == heightDataWidth && image.Height == heightDataHeight;
+        if (!halfRes && !fullRes)
             return false;
 
-        for (int y = 0; y < image.Height; y++)
+        int step = fullRes ? 2 : 1;
+        for (int y = 0; y < ClimateMask.Height; y++)
         {
-            for (int x = 0; x < image.Width; x++)
+            int srcY = y * step;
+            for (int x = 0; x < ClimateMask.Width; x++)
             {
-                ClimateMask.SetValue(x, y, image[x, y].PackedValue);
+                int srcX = x * step;
+                ClimateMask.SetValue(x, y, image[srcX, srcY].PackedValue);
             }
         }
 
