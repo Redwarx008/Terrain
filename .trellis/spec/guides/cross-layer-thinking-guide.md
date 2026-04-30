@@ -86,6 +86,27 @@ For each boundary:
 - 修改自动生成 shader key 文件时，把 `.sdsl` 视为唯一真源
 - 出现“光照坏了但编译正常”的回归时，优先排查 shader 参数声明与 C# 绑定是否漂移
 
+### Mistake 1.7: 多分辨率空间坐标在跨层传递时遗漏缩放
+
+**Symptom**: 编辑器画笔偏移、splatmap 采样位置错误，或运行时材质边界出现马赛克/锯齿。
+
+**Cause**: SplatMap 使用半分辨率（1/2 of heightmap），但某一层的坐标仍按 1:1 计算。任何一层遗漏 `/2` 或 `*2` 转换都会导致全部对不齐。
+
+**Fix**:
+- 明确每个空间：heightmap space（1:1）vs splatmap space（1/2）
+- 在层边界处显式标注坐标空间转换：
+  - Editor C# → MaterialIndexMap: `heightmap / 2`
+  - Editor Shader → LoadIndexMapAtGlobal: `coord / 2`
+  - Editor Shader → BuildSplatMap 输出: `splatCoord * 2` 回到 heightmap 采样高度
+  - Paint brush: `pixel / 2, radius / 2`
+  - Undo/redo: 在 splatmap 空间捕获，`* 2` 转回 heightmap 标记脏
+  - Runtime C# → SplatInfo: 从 ratio 计算偏移/步幅
+  - Runtime Shader → splatPageLocalPos: 使用 float 步幅
+
+**Prevention**:
+- 跨分辨率空间传递时，在层边界画表格列出 src space → dst space 转换
+- 每次新增坐标计算时先问："这是 heightmap 空间还是 splatmap 空间？"
+
 ### Mistake 2: Scattered Validation
 
 **Bad**: Validating the same thing in multiple layers

@@ -74,6 +74,7 @@ System.Diagnostics.Debug.WriteLine($"Failed to load asset: {exception.Message}")
 |------|----------|
 | 配置错误 | `InvalidOperationException` |
 | 参数越界 | `ArgumentOutOfRangeException` |
+| 文件版本不兼容 | `InvalidOperationException` (拒绝加载) |
 | 文件未找到 | `FileNotFoundException` |
 | 资源加载失败 | `Exception` (捕获后返回 null) |
 | 内部不变量 | `Debug.Assert` |
@@ -98,6 +99,20 @@ catch (Exception exception)
 ### 配置验证
 
 参见 [EditorGame.cs](Terrain.Editor/EditorGame.cs) 中的窗口初始化。
+
+### 文件版本不兼容
+
+.terrain 文件格式升级时，对旧版本直接拒绝加载（不做向后兼容），避免数据不一致：
+
+```csharp
+if (version < SupportedVersion)
+{
+    throw new InvalidOperationException(
+        $"Terrain file version {version} is not supported. Minimum required: {SupportedVersion}. Please re-preprocess the terrain.");
+}
+```
+
+**Why**: 向后兼容需要在加载路径中维护多套数据布局逻辑，容易遗漏字段，且半分辨率等结构性变更无法靠兼容层安全修补。重新预处理是更安全的方案。
 
 ---
 

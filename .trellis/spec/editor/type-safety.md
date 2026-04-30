@@ -117,9 +117,32 @@ public struct TerrainConfig : IEquatable<TerrainConfig>
 
 ---
 
+## Large Array Index Overflow
+
+> **Warning**: 地形像素偏移计算在 width > 23170 时 `int` 静默溢出。
+>
+> `z * width * bpp` 在 `width` 超过 ~23170（4bpp）或 ~46340（2bpp）时，中间结果超出 `int` 范围（2^31-1），但 C# 不报错，只回绕为负值或零。
+
+**Don't**:
+```csharp
+int offset = z * Width + x;           // Width > 23170 时溢出
+long totalBytes = width * height * Bpp; // width * height 先按 int 溢出
+```
+
+**Do**:
+```csharp
+int offset = (int)((long)z * Width + x);  // long 中间计算
+long totalBytes = (long)width * height * Bpp;
+```
+
+**Prevention**: 凡是涉及地形像素坐标乘法（`z * Width`、`width * height`）的地方，一律用 `long` 做中间计算，最后再 cast 回 `int`（如果结果在 int 范围内）。
+
+---
+
 ## Anti-patterns
 
 1. **不要**使用 `object` 传递类型化数据
 2. **不要**忽略 nullable 警告
 3. **不要**使用 `dynamic`
 4. **不要**使用裸数组替代强类型集合
+5. **不要**在像素偏移计算中假设 `int` 不会溢出 — 大地形必须用 `long` 中间计算
