@@ -401,3 +401,36 @@ Added Window.KeyBindings for Ctrl+Z (Undo), Ctrl+Y and Ctrl+Shift+Z (Redo) in Ma
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: ClimateMask half-res + SplatMap half-res pipeline
+
+**Date**: 2026-04-30
+**Task**: ClimateMask half-res + SplatMap half-res pipeline
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+将 ClimateMask 和 MaterialIndexMap 统一为 heightmap 1/2 分辨率，修复大地形 GPU 纹理尺寸溢出。变更覆盖 C# 创建、Shader 采样、画笔编辑、图像加载全链路。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7e2faad` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
