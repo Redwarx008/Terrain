@@ -247,6 +247,26 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
 
         parameters.Set(EditorTerrainDiffuseKeys.MaterialTilingScale, 1.0f);
         parameters.Set(EditorTerrainDiffuseKeys.DetailBlendRange, 0.25f);
+
+        // Set debug view parameters
+        var debugViewMode = (int)EditorState.Instance.CurrentDebugViewMode;
+        parameters.Set(EditorTerrainDiffuseKeys.DebugViewMode, debugViewMode);
+        parameters.Set(EditorTerrainDiffuseKeys.HeatmapLayerIndex, EditorState.Instance.SelectedRuleIndex);
+
+        // Set BiomeMask debug texture if available
+        if (entity.BiomeMaskTexture != null)
+        {
+            parameters.Set(EditorTerrainDiffuseKeys.BiomeMaskDebugTexture, entity.BiomeMaskTexture);
+            parameters.Set(EditorTerrainDiffuseKeys.BiomeMaskDebugSampler, graphicsDevice.SamplerStates.LinearClamp);
+        }
+
+        // Heatmap texture: reuses WeightMap texture for LayerHeatmap mode.
+        // Future: create a dedicated heatmap texture for better visualization quality.
+        if (entity.DetailWeightMapTextures.Length > 0 && entity.DetailWeightMapTextures[0] != null)
+        {
+            parameters.Set(EditorTerrainDiffuseKeys.HeatmapTexture, entity.DetailWeightMapTextures[0]);
+            parameters.Set(EditorTerrainDiffuseKeys.HeatmapSampler, graphicsDevice.SamplerStates.LinearClamp);
+        }
     }
 
     private static void SetSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity, EditorTerrainRenderObject renderObject)

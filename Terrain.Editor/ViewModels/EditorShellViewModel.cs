@@ -114,7 +114,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public BrushParametersViewModel BrushParams { get; }
 
-    public ClimateViewModel Climate { get; }
+    public BiomeViewModel Biome { get; }
 
     public ObservableCollection<ModeOptionViewModel> Modes { get; } = new();
 
@@ -159,7 +159,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public bool IsLandscapeMode => SelectedMode == EditorMode.Landscape;
 
-    public bool IsClimateVisible => IsPaintMode || IsLandscapeMode;
+    public bool IsBiomeVisible => IsPaintMode || IsLandscapeMode;
 
     public bool IsListView => !IsGridView;
 
@@ -168,7 +168,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _viewportHost = new NativeStrideViewportHost();
         Viewport = new NativeStrideViewportViewModel(_viewportHost);
         BrushParams = new BrushParametersViewModel();
-        Climate = new ClimateViewModel();
+        Biome = new BiomeViewModel();
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
         ExportManager.Instance.Register(_terrainExporter);
         ExportManager.Instance.Register(new MaterialDescriptorExporter());
@@ -721,7 +721,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _projectManager.DirtyChanged -= OnProjectDirtyChanged;
         _historyManager.HistoryChanged -= OnHistoryChanged;
         BrushParams.Dispose();
-        Climate.Dispose();
+        Biome.Dispose();
         Viewport.Dispose();
         foreach (var thumbnail in _textureThumbnailCache.Values)
         {
@@ -745,7 +745,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsFoliageMode));
         OnPropertyChanged(nameof(IsWaterMode));
         OnPropertyChanged(nameof(IsLandscapeMode));
-        OnPropertyChanged(nameof(IsClimateVisible));
+        OnPropertyChanged(nameof(IsBiomeVisible));
     }
 
     partial void OnCanUndoChanged(bool value)
@@ -1024,7 +1024,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 [],
             EditorMode.Landscape =>
             [
-                new("Climate Map", "Edit climate map", "\uE950", mode),
+                new("Biome Map", "Edit biome map", "\uE950", mode),
             ],
             _ => [],
         };
@@ -1083,7 +1083,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             EditorMode.Sculpt => "Sculpt",
             EditorMode.Paint => "Paint",
             EditorMode.Foliage => "Place",
-            EditorMode.Landscape => "Climate Map",
+            EditorMode.Landscape => "Biome Map",
             _ => "None",
         };
     }

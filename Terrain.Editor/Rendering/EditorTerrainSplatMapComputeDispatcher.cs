@@ -7,6 +7,7 @@ using Stride.Core.Mathematics;
 using Stride.Graphics;
 using Stride.Rendering;
 using Stride.Rendering.ComputeEffect;
+using Terrain.Editor.Services;
 
 namespace Terrain.Editor.Rendering;
 
@@ -32,14 +33,14 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
         Debug.Assert(buildSplatMapEffect != null);
 
         EditorTerrainEntity? entity = renderObject.TerrainEntity;
-        if (entity == null || !entity.HasDirtyClimateSplatMap)
+        if (entity == null || !entity.HasDirtyBiomeSplatMap)
             return;
-        if (entity.ClimateMaskTexture == null || entity.BiomeBuffer == null || entity.LayerBuffer == null || entity.ModifierBuffer == null)
+        if (entity.BiomeMaskTexture == null || entity.BiomeBuffer == null || entity.LayerBuffer == null || entity.ModifierBuffer == null)
             return;
 
         CommandList commandList = drawContext.CommandList;
 
-        commandList.ResourceBarrierTransition(entity.ClimateMaskTexture, GraphicsResourceState.NonPixelShaderResource);
+        commandList.ResourceBarrierTransition(entity.BiomeMaskTexture, GraphicsResourceState.NonPixelShaderResource);
         commandList.ResourceBarrierTransition(entity.BiomeBuffer, GraphicsResourceState.NonPixelShaderResource);
         commandList.ResourceBarrierTransition(entity.LayerBuffer, GraphicsResourceState.NonPixelShaderResource);
         commandList.ResourceBarrierTransition(entity.ModifierBuffer, GraphicsResourceState.NonPixelShaderResource);
@@ -49,7 +50,7 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
             EditorTerrainSlice slice = entity.Slices[i];
             Texture? outputIndexTexture = entity.DetailIndexMapTextures[i];
             Texture? outputWeightTexture = entity.DetailWeightMapTextures[i];
-            if (!slice.ClimateSplatDirty || outputIndexTexture == null || outputWeightTexture == null)
+            if (!slice.BiomeSplatDirty || outputIndexTexture == null || outputWeightTexture == null)
                 continue;
 
             int groupCountX = (outputIndexTexture.Width + ThreadCountX - 1) / ThreadCountX;
@@ -77,7 +78,7 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.SliceCount, entity.Slices.Count);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainHeightParametersKeys.HeightmapSlicePadding, 0);
 
-                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateMaskTexture, entity.ClimateMaskTexture);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.BiomeMaskTexture, entity.BiomeMaskTexture);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.Biomes, entity.BiomeBuffer);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.Layers, entity.LayerBuffer);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.Modifiers, entity.ModifierBuffer);
@@ -86,17 +87,31 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.CurrentSliceIndex, i);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputWidth, outputIndexTexture.Width);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.OutputHeight, outputIndexTexture.Height);
-                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateMaskWidth, entity.ClimateMaskTexture.Width);
-                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ClimateMaskHeight, entity.ClimateMaskTexture.Height);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.BiomeMaskWidth, entity.BiomeMaskTexture.Width);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.BiomeMaskHeight, entity.BiomeMaskTexture.Height);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.BiomeCount, entity.BiomeCount);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.LayerCount, entity.LayerCount);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ModifierCount, entity.ModifierCount);
+
+                // Set TextureMask resource placeholder (white texture as default)
+                // A proper implementation would load and bind the actual texture from BiomeModifier.TextureMaskPath
+                // For now, we use the entity's existing texture or a fallback white texture
+                if (entity.TextureMaskResource != null)
+                {
+                    buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.TextureMaskResource, entity.TextureMaskResource);
+                    buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.TextureMaskSampler, drawContext.CommandList.GraphicsDevice.SamplerStates.LinearWrap);
+                }
+
+                // Heatmap preview parameters
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.HeatmapLayerIndex, EditorState.Instance.SelectedRuleIndex);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.HeatmapEnabled, EditorState.Instance.HeatmapEnabled ? 1 : 0);
+
                 buildSplatMapEffect.Draw(drawContext);
             }
 
             commandList.ResourceBarrierTransition(outputIndexTexture, GraphicsResourceState.PixelShaderResource);
             commandList.ResourceBarrierTransition(outputWeightTexture, GraphicsResourceState.PixelShaderResource);
-            entity.ClearClimateSplatDirty(i);
+            entity.ClearBiomeSplatDirty(i);
         }
     }
 
@@ -118,8 +133,9 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
             return new Int4(0, 0, 1, 1);
 
         EditorTerrainSlice slice = entity.Slices[sliceIndex];
-        // SplatMap uses 1/2 of heightmap resolution; coordinates and dimensions divided by 2
-        return new Int4(slice.StartSampleX / 2, slice.StartSampleZ / 2, (slice.Width + 1) / 2, (slice.Height + 1) / 2);
+        // HeightmapSliceBounds* always uses full-resolution heightmap space.
+        // The shader converts to splatmap space later via GetIndexMapSliceBounds().
+        return new Int4(slice.StartSampleX, slice.StartSampleZ, slice.Width, slice.Height);
     }
 
     private static void SetSliceBounds(ParameterCollection parameters, int sliceIndex, Int4 bounds)

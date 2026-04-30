@@ -233,6 +233,223 @@ partial void OnSelectedClimateChanged(ClimateDefinitionViewModel? value)
 }
 ```
 
+### Scenario: Rule Service 变更必须显式触发 Terrain 重算
+
+#### 1. Scope / Trigger
+- Trigger: Inspector / ViewModel 直接修改 `BiomeRuleService`、`ClimateRuleService` 这类规则服务，且最终结果由 GPU splat / heatmap / render texture 消费。
+
+#### 2. Signatures
+- 服务层变更事件：`BiomeRuleService.StateChanged`
+- 渲染重算入口：`TerrainManager.RegenerateMaterialIndices()`
+- Terrain 侧脏标记：`EditorTerrainEntity.MarkBiomeRulesDirty()` + `MarkAllBiomeSplatDirty()`
+
+#### 3. Contracts
+- UI 写入规则服务后，只触发 `ViewModel.RefreshCollections()` 不足以让视口更新。
+- 至少要有一条服务层到渲染层的显式链路：
+  `RuleViewModel/ModifierViewModel -> BiomeRuleService.NotifyMutated() -> TerrainManager.RegenerateMaterialIndices() -> EditorTerrainEntity dirty flags -> BuildSplatMap compute`
+- `RegenerateMaterialIndices()` 必须同时标记：
+  - 规则 buffer 需要重传
+  - splat / weight map 需要重算
+
+#### 4. Validation & Error Matrix
+- 仅订阅到 ViewModel，未订阅 TerrainManager -> Inspector 数值变化，但 viewport 完全不变
+- 只标记 rules dirty，未标记 splat dirty -> GPU buffer 更新，但 compute shader 不重跑
+- 只标记 splat dirty，未标记 rules dirty -> compute 继续使用旧的 layer/modifier buffer
+
+#### 5. Good/Base/Bad Cases
+- Good: 修改 layer2 的 modifier 后，不切换工具/不重载地形，材质混合立即变化
+- Base: 项目刚加载、尚未有 terrain entity 时触发 `StateChanged`，允许无效果但不得抛异常
+- Bad: UI 面板显示 layer2 已新增/已修改，但地形结果仍像只有 layer1 一样
+
+#### 6. Tests Required
+- 手工回归：新增第二个 biome layer，给它不同 material slot 和更窄的 height/slope 范围，确认 viewport 立即出现叠加效果
+- 手工回归：只改 modifier 的 `BlendMode/Opacity/Min/Max`，确认不需要重新加载 terrain
+- 断点/日志验证：`BiomeRuleService.StateChanged` 后必须命中 `TerrainManager.RegenerateMaterialIndices()`
+
+#### 7. Wrong vs Correct
+#### Wrong
+```csharp
+// 只有 UI 刷新，没有通知 terrain 重算
+_service.StateChanged += (_, _) => RefreshCollections();
+```
+
+#### Correct
+```csharp
+// UI 和渲染侧都要消费同一个服务层事件
+biomeRuleService.StateChanged += OnBiomeRuleStateChanged;
+
+private void OnBiomeRuleStateChanged(object? sender, EventArgs e)
+{
+    RegenerateMaterialIndices();
+}
+```
+
+### Scenario: HeightmapSliceBounds 在 compute / render 间必须保持全分辨率语义
+
+#### 1. Scope / Trigger
+- Trigger: 修改 `EditorTerrainHeightParameters` 的 slice bounds 绑定、`EditorTerrainSplatMapComputeDispatcher`、`EditorTerrainProcessor`，或任何依赖 `GetSliceBounds()` / `GetIndexMapSliceBounds()` 的 shader。
+
+#### 2. Signatures
+- CPU 侧参数键：`EditorTerrainHeightParametersKeys.HeightmapSliceBounds0..7`
+- Render 侧绑定：`EditorTerrainProcessor.SetSliceBounds(...)`
+- Compute 侧绑定：`EditorTerrainSplatMapComputeDispatcher.SetSliceBounds(...)`
+- Shader 转换入口：`EditorTerrainHeightParameters.GetIndexMapSliceBounds(int sliceIndex)`
+
+#### 3. Contracts
+- `HeightmapSliceBounds*` 永远表示全分辨率 heightmap 空间：
+  `startSampleX`, `startSampleZ`, `width`, `height`
+- 任何 splatmap / biome mask 的半分辨率换算都必须在 shader 内通过 `GetIndexMapSliceBounds()` 完成。
+- CPU 侧 dispatcher 不能把 `/2` 后的 splat bounds 塞进 `HeightmapSliceBounds*`，否则 shader 再调用 `GetIndexMapSliceBounds()` 时会发生二次缩放。
+
+#### 4. Validation & Error Matrix
+- CPU 传全分辨率 bounds，shader 内 `/2` 一次 -> 正常
+- CPU 预先 `/2`，shader 再 `/2` -> slice 起点和尺寸缩成 1/4，出现 biome mask / splatmap 错位、条纹、跨区块拉伸
+- Diffuse 路径和 Compute 路径使用不同 bounds 语义 -> 调试图与最终材质表现不一致
+
+#### 5. Good/Base/Bad Cases
+- Good: 同一张 biome mask 在单 slice 和多 slice 地形上都覆盖到正确世界位置
+- Base: 地形宽高为奇数时，`GetIndexMapSliceBounds()` 负责处理 `(width + 1) / 2`，CPU 不额外补偿
+- Bad: biome 分区在最终材质上表现为大面积斜切、重复条带，或边界明显按 slice 错位
+
+#### 6. Tests Required
+- 手工回归：加载多 slice 大地形，导入带清晰边界的 biome mask，确认最终材质分区与 mask 世界位置一致
+- 手工回归：切换 `BiomeMaskMap` / 最终材质输出，确认两者边界位置一致
+- 代码检查：`EditorTerrainProcessor` 与 `EditorTerrainSplatMapComputeDispatcher` 传入 `HeightmapSliceBounds*` 的语义必须一致
+
+#### 7. Wrong vs Correct
+#### Wrong
+```csharp
+// CPU 先转成 splat 空间，shader 又会再 /2 一次
+return new Int4(slice.StartSampleX / 2, slice.StartSampleZ / 2, (slice.Width + 1) / 2, (slice.Height + 1) / 2);
+```
+
+#### Correct
+```csharp
+// HeightmapSliceBounds* 一律传全分辨率，half-res 换算留给 shader
+return new Int4(slice.StartSampleX, slice.StartSampleZ, slice.Width, slice.Height);
+```
+
+### Scenario: 单 ID BiomeMask 不能用随机覆盖伪装软边缘
+
+#### 1. Scope / Trigger
+- Trigger: 编辑 `BiomeEditor`、导入 biome mask、或尝试在当前单通道 biome authoring 模型里实现“软刷子/羽化边缘”。
+
+#### 2. Signatures
+- 画笔写入入口：`BiomeEditor.ApplyStroke(...)`
+- 蒙版存储：`BiomeMask.SetValue(int x, int y, byte biomeId)`
+- 导入入口：`TerrainManager.LoadBiomeMask(...)`
+
+#### 3. Contracts
+- 当前 `BiomeMask` 每个 texel 只能存一个离散 biome ID，不支持多个 biome 同时占比。
+- 在这个模型下，不能用 `Random`/概率覆盖去“模拟”软边缘；那会把分类边界变成椒盐噪声，最终在 splat 输出里表现为马赛克块。
+- 真正的软边缘需要未来切到连续 biome weight/alpha 图；在此之前，画笔应使用确定性阈值写入，导入 full-res mask 时应做稳定降采样而不是随手抽样。
+
+#### 4. Validation & Error Matrix
+- 概率覆盖离散 ID -> 画笔边缘出现随机碎块，重复笔触结果不稳定
+- full-res 导入直接取 `2x2` 左上角样本 -> 半分辨率 mask 出现锯齿和抖动
+- 确定性阈值写入 + 多数投票降采样 -> 边界仍是硬边，但稳定、不闪、不噪
+
+#### 5. Good/Base/Bad Cases
+- Good: 同一笔刷参数重复涂抹，biome 边界稳定一致，不出现随机岛状碎片
+- Base: 当前版本允许 biome 边界是硬过渡，只要最终输出不马赛克
+- Bad: 软刷边缘看似过渡，实际由随机小块拼出来，缩放或重绘后形状还会变化
+
+#### 6. Tests Required
+- 手工回归：用带 falloff 的 biome 画笔连续涂抹，确认边缘不会出现随机椒盐块
+- 手工回归：导入全分辨率 biome mask，确认半分辨率结果没有大量孤立单像素碎片
+- 稳定性检查：同一位置重复笔触，输出应可重复，而不是每次随机不同
+
+#### 7. Wrong vs Correct
+#### Wrong
+```csharp
+if (Random.Shared.NextSingle() < strength)
+    mask.SetValue(x, y, biomeId);
+```
+
+#### Correct
+```csharp
+if (strength >= 0.5f)
+    mask.SetValue(x, y, biomeId);
+```
+
+### Scenario: 最终材质必须在 splat 空间插值控制图
+
+#### 1. Scope / Trigger
+- Trigger: 修改 `EditorTerrainDiffuse.sdsl`、`EditorTerrainHeightParameters.sdsl`，或任何读取 `IndexMap/WeightMap` 控制图并参与最终地表混合的 shader。
+
+#### 2. Signatures
+- 控制图读取：`LoadIndexMapAtGlobal(...)`、`LoadWeightMapAtGlobal(...)`
+- splat 读取：`LoadIndexMapAtGlobalSplat(...)`、`LoadWeightMapAtGlobalSplat(...)`
+- 最终混合入口：`EditorTerrainDiffuse.Compute()`
+
+#### 3. Contracts
+- `IndexMap/WeightMap` 存储在 splat 空间，即高度图的半分辨率。
+- 最终材质如果要做平滑混合，必须先把 `sampleCoord` 转成 splat 坐标，再对相邻 splat texel 做插值。
+- 不能先在全分辨率 heightmap 像素上做 4 邻域插值，再在读取 helper 里用 `/2` 折到 splat 像素；那样相邻 `2x2` 高度像素会落到同一控制 texel，直接产生块状马赛克。
+
+#### 4. Validation & Error Matrix
+- 先转 splat 空间再插值 -> 权重过渡平滑，和参考 alphamap 行为一致
+- 先按 height 像素插值，再在 helper 里 `/2` -> 每个 `2x2` block 共享同一权重，最终材质出现大块离散边界
+- 用 point load 直接读单个 splat texel -> 结果稳定但仍然是硬块，不符合最终地表混合预期
+
+#### 5. Good/Base/Bad Cases
+- Good: 单 biome 下仅由 layer/modifier 生成的材质边界也能连续过渡，不出现规则马赛克块
+- Base: 即使 `BiomeMask` 全图都是同一个 biome，最终材质混合也应保持平滑
+- Bad: 用户关闭/忽略 biome 逻辑后，场景仍然出现明显 `2x2` 或更大块状边界
+
+#### 6. Tests Required
+- 手工回归：全局单 biome、两个不同 layer/material，确认边界不是规则马赛克块
+- 手工回归：关闭所有 biome 复杂性，只保留单 biome + modifier，确认仍然平滑
+- 代码检查：最终混合路径中，控制图插值权重必须来自 splat 坐标 `sampleCoord * 0.5`
+
+#### 7. Wrong vs Correct
+#### Wrong
+```csharp
+float2 indexPixels = sampleCoord;
+float2 index00Pixel = floor(indexPixels);
+// helper 内部再 /2，导致 2x2 height 像素量化到同一 splat texel
+```
+
+#### Correct
+```csharp
+float2 splatPixels = sampleCoord * 0.5f;
+float2 splat00Pixel = floor(splatPixels);
+// 直接对相邻 splat texel 做插值
+```
+
+### 过滤子集列表的选择桥接
+
+当 Inspector 展示的是后端全量集合的一个过滤子集（例如“当前 Biome 下的 RuleLayer 列表”），而渲染/调试状态仍然使用全局索引（例如 `EditorState.SelectedRuleIndex`）时，ViewModel 必须同时维护：
+
+- 全量集合的稳定引用（用于和服务层同步）
+- 过滤后的可见集合（用于 UI 展示）
+- 从 UI 选中项到全局索引的映射逻辑
+
+推荐模式：
+
+```csharp
+public ObservableCollection<RuleViewModel> Layers { get; } = new();
+public ObservableCollection<RuleViewModel> VisibleLayers { get; } = new();
+
+partial void OnSelectedLayerChanged(RuleViewModel? value)
+{
+    int globalIndex = value != null ? Layers.IndexOf(value) : -1;
+    if (_editorState.SelectedRuleIndex != globalIndex)
+        _editorState.SelectedRuleIndex = globalIndex;
+}
+
+private void RefreshVisibleLayers()
+{
+    var source = Layers.Where(layer => layer.BiomeId == SelectedBiome?.Id).ToList();
+    // 对 VisibleLayers 做增量同步，不要 Clear()+AddAll()
+}
+```
+
+为什么要这样做：
+- 直接把过滤列表的局部索引写回 `EditorState.SelectedRuleIndex` 会选错 heatmap/rule
+- `Clear()+AddAll()` 会打断当前选中项和绑定状态，Inspector 会闪烁
+- 选中项如果还会驱动别的单例服务（如 `MaterialSlotManager`），必须在 `SelectedLayer` 变化时一起同步
+
 ---
 
 ## 资产面板数据源模式

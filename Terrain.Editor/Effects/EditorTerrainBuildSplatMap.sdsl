@@ -58,7 +58,13 @@ namespace Terrain.Editor
         static const int BlendModeMin = 3;
         static const int BlendModeMax = 4;
 
-        stage Texture2D<float> ClimateMaskTexture;
+        // TextureMask channel constants
+        static const int TextureMaskChannelR = 0;
+        static const int TextureMaskChannelG = 1;
+        static const int TextureMaskChannelB = 2;
+        static const int TextureMaskChannelA = 3;
+
+        stage Texture2D<float> BiomeMaskTexture;
         stage StructuredBuffer<BiomeGpu> Biomes;
         stage StructuredBuffer<LayerGpu> Layers;
         stage StructuredBuffer<ModifierGpu> Modifiers;
@@ -67,23 +73,34 @@ namespace Terrain.Editor
         stage int CurrentSliceIndex;
         stage int OutputWidth;
         stage int OutputHeight;
-        stage int ClimateMaskWidth;
-        stage int ClimateMaskHeight;
+        stage int BiomeMaskWidth;
+        stage int BiomeMaskHeight;
         stage int BiomeCount;
         stage int LayerCount;
         stage int ModifierCount;
 
-        int2 ClampClimateCoord(int2 coord)
+        // Global TextureMask resource for TextureMask modifiers.
+        // This is a single shared texture that can be used by any TextureMask modifier.
+        // The C# side sets this per-modifier when processing rules.
+        // For now, this is a placeholder - full implementation would require per-modifier texture binding.
+        stage Texture2D<float4> TextureMaskResource;
+        stage SamplerState TextureMaskSampler;
+
+        // Heatmap preview parameters
+        stage int HeatmapLayerIndex;
+        stage int HeatmapEnabled;
+
+        int2 ClampBiomeCoord(int2 coord)
         {
             return int2(
-                clamp(coord.x, 0, max(ClimateMaskWidth - 1, 0)),
-                clamp(coord.y, 0, max(ClimateMaskHeight - 1, 0)));
+                clamp(coord.x, 0, max(BiomeMaskWidth - 1, 0)),
+                clamp(coord.y, 0, max(BiomeMaskHeight - 1, 0)));
         }
 
-        int LoadClimateId(int2 coord)
+        int LoadBiomeId(int2 coord)
         {
-            int2 clamped = ClampClimateCoord(coord);
-            return (int)(ClimateMaskTexture.Load(int3(clamped, 0)).x * 255.0f + 0.5f);
+            int2 clamped = ClampBiomeCoord(coord);
+            return (int)(BiomeMaskTexture.Load(int3(clamped, 0)).x * 255.0f + 0.5f);
         }
 
         float SampleSlopeDegrees(int2 heightCoord)
@@ -193,7 +210,31 @@ namespace Terrain.Editor
                     return saturate(noise);
                 }
                 case ModifierTypeTextureMask:
-                    return modifier.Invert > 0.5f ? 0.0f : 1.0f;
+                {
+                    // TextureMask modifier: sample from the global TextureMaskResource.
+                    // UV is computed from heightmap coordinates with scale and offset.
+                    // The channel (R/G/B/A) is selected via TextureMaskChannel parameter.
+                    //
+                    // Note: This is a simplified implementation using a single global texture.
+                    // Full implementation would require per-modifier texture binding, which
+                    // would need changes to the GPU buffer upload and shader resource management.
+                    //
+                    // For now, we read from the TextureMaskResource and extract the specified channel.
+                    float2 uv = float2(heightCoord) * max(modifier.Scale, 0.0001f) + float2(modifier.OffsetX, modifier.OffsetY);
+                    float4 maskSample = TextureMaskResource.SampleLevel(TextureMaskSampler, uv, 0.0f);
+
+                    float channelValue;
+                    switch (modifier.TextureMaskChannel)
+                    {
+                        case TextureMaskChannelR: channelValue = maskSample.r; break;
+                        case TextureMaskChannelG: channelValue = maskSample.g; break;
+                        case TextureMaskChannelB: channelValue = maskSample.b; break;
+                        case TextureMaskChannelA: channelValue = maskSample.a; break;
+                        default: channelValue = maskSample.r; break;
+                    }
+
+                    return saturate(channelValue);
+                }
             }
 
             return 1.0f;
@@ -203,6 +244,28 @@ namespace Terrain.Editor
         {
             if (weight <= 0.0f)
                 return;
+
+            // Handle same MaterialSlotIndex: merge weights for same index
+            if (bestIndices.x == materialIndex)
+            {
+                bestWeights.x += weight;
+                return;
+            }
+            if (bestIndices.y == materialIndex)
+            {
+                bestWeights.y += weight;
+                return;
+            }
+            if (bestIndices.z == materialIndex)
+            {
+                bestWeights.z += weight;
+                return;
+            }
+            if (bestIndices.w == materialIndex)
+            {
+                bestWeights.w += weight;
+                return;
+            }
 
             if (weight > bestWeights.x)
             {
@@ -228,6 +291,20 @@ namespace Terrain.Editor
             }
         }
 
+        /// <summary>
+        /// Find the BiomeGpu index matching the given biomeId.
+        /// Returns -1 if no matching biome is found (invalid biome ID).
+        /// </summary>
+        int FindBiomeIndex(int biomeId)
+        {
+            for (int i = 0; i < BiomeCount; i++)
+            {
+                if (Biomes[i].BiomeId == biomeId)
+                    return i;
+            }
+            return -1;
+        }
+
         override void Compute()
         {
             uint texelX = streams.DispatchThreadId.x;
@@ -243,23 +320,52 @@ namespace Terrain.Editor
             // Convert splatmap coordinates to heightmap space for height sampling
             int2 heightCoord = int2(globalSplatX * 2, globalSplatY * 2);
 
-            // ClimateMask 使用 splatmap 空间坐标（1/2 分辨率）
-            int biomeId = LoadClimateId(int2(globalSplatX, globalSplatY));
+            // BiomeMask uses splatmap space coordinates (half resolution)
+            int biomeId = LoadBiomeId(int2(globalSplatX, globalSplatY));
             float altitude = SampleHeightLinear(float2(heightCoord), CurrentSliceIndex);
             float slope = SampleSlopeDegrees(heightCoord);
             float curvature = SampleCurvature(heightCoord);
             float directionDegrees = SampleDirectionDegrees(heightCoord);
 
+            // Initialize with default material (slot 0, weight 1.0)
+            // This handles the case of empty biome or invalid biome ID
             int4 bestIndices = int4(0, 255, 255, 255);
-            float4 bestWeights = float4(0.0f, 0.0f, 0.0f, 0.0f);
+            float4 bestWeights = float4(1.0f, 0.0f, 0.0f, 0.0f);
+            bool foundValidLayer = false;
+
+            // Edge case: check if biomeId is valid (has matching BiomeGpu)
+            int biomeIndex = FindBiomeIndex(biomeId);
+            if (biomeIndex < 0)
+            {
+                // Invalid biome ID: output default material (slot 0)
+                OutputIndexMap[int2(texelX, texelY)] = float4(0.0f, 1.0f, 1.0f, 1.0f);
+                OutputWeightMap[int2(texelX, texelY)] = float4(1.0f, 0.0f, 0.0f, 0.0f);
+                return;
+            }
+
+            // Edge case: check if biome has any layers
+            BiomeGpu biome = Biomes[biomeIndex];
+            if (biome.LayerCount <= 0)
+            {
+                // Empty biome (no layers): output default material (slot 0)
+                OutputIndexMap[int2(texelX, texelY)] = float4(0.0f, 1.0f, 1.0f, 1.0f);
+                OutputWeightMap[int2(texelX, texelY)] = float4(1.0f, 0.0f, 0.0f, 0.0f);
+                return;
+            }
+
+            // Reset weights for valid biome processing
+            bestIndices = int4(255, 255, 255, 255);
+            bestWeights = float4(0.0f, 0.0f, 0.0f, 0.0f);
+            float remainingWeight = 1.0f;
 
             [loop]
-            for (int layerIndex = 0; layerIndex < LayerCount; layerIndex++)
+            for (int layerIndex = LayerCount - 1; layerIndex >= 0; layerIndex--)
             {
                 LayerGpu layer = Layers[layerIndex];
                 if (layer.Enabled == 0 || layer.Visible == 0 || layer.BiomeId != biomeId)
                     continue;
 
+                foundValidLayer = true;
                 float weight = 1.0f;
                 [loop]
                 for (int modifierOffset = 0; modifierOffset < layer.ModifierCount; modifierOffset++)
@@ -273,11 +379,42 @@ namespace Terrain.Editor
                         continue;
 
                     float modifierValue = EvaluateModifier(modifier, heightCoord, altitude, slope, curvature, directionDegrees);
+
+                    // Apply invert if enabled
+                    if (modifier.Invert > 0.5f)
+                        modifierValue = 1.0f - modifierValue;
+
                     float blended = ApplyBlendMode(weight, modifierValue, modifier.BlendMode);
                     weight = lerp(weight, blended, saturate(modifier.Opacity));
                 }
 
-                PushTop4(bestIndices, bestWeights, layer.MaterialSlotIndex, weight);
+                weight = saturate(weight);
+                if (weight <= 0.0f)
+                    continue;
+
+                float contribution = weight * remainingWeight;
+                if (contribution <= 0.0f)
+                    continue;
+
+                PushTop4(bestIndices, bestWeights, layer.MaterialSlotIndex, contribution);
+                remainingWeight *= (1.0f - weight);
+
+                if (remainingWeight <= 0.0001f)
+                    break;
+            }
+
+            // Edge case: no valid layers found (all disabled or invisible)
+            if (!foundValidLayer)
+            {
+                // All layers disabled: output default material (slot 0)
+                OutputIndexMap[int2(texelX, texelY)] = float4(0.0f, 1.0f, 1.0f, 1.0f);
+                OutputWeightMap[int2(texelX, texelY)] = float4(1.0f, 0.0f, 0.0f, 0.0f);
+                return;
+            }
+
+            if (remainingWeight > 0.0001f)
+            {
+                PushTop4(bestIndices, bestWeights, 0, remainingWeight);
             }
 
             float totalWeight = max(dot(bestWeights, float4(1.0f, 1.0f, 1.0f, 1.0f)), 0.0001f);

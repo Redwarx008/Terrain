@@ -228,7 +228,7 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
 
             if (renderMesh.TerrainEntity != null && rebuiltTerrainEntities.Add(renderMesh.TerrainEntity))
             {
-                renderMesh.TerrainEntity.SyncClimateResourcesToGpu(Context.GraphicsDevice, commandList);
+                renderMesh.TerrainEntity.SyncBiomeResourcesToGpu(Context.GraphicsDevice, commandList);
                 splatMapComputeDispatcher.Dispatch(context, renderMesh);
             }
 

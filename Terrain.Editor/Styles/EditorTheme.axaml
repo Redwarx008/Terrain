@@ -64,6 +64,11 @@
     <SolidColorBrush x:Key="EditorViewportToolbarBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="EditorOverlayMutedBrush" Color="#8A8A8A" />
     <SolidColorBrush x:Key="EditorViewportStatTextBrush" Color="#FFFFFFCC" />
+    <SolidColorBrush x:Key="EditorBiomeCardBackgroundBrush" Color="#FAFAFA" />
+    <SolidColorBrush x:Key="EditorBiomeCardBorderBrush" Color="#C0C0C0" />
+    <SolidColorBrush x:Key="EditorBiomeBadgeBrush" Color="#F0F0F0" />
+    <SolidColorBrush x:Key="EditorBiomeBadgeTextBrush" Color="#404040" />
+    <SolidColorBrush x:Key="EditorBiomeThumbBrush" Color="#F5F5F5" />
     <Thickness x:Key="EditorPanelPadding">12</Thickness>
     <CornerRadius x:Key="EditorCornerRadius">2</CornerRadius>
   </Styles.Resources>
@@ -533,6 +538,54 @@
     <Setter Property="Foreground" Value="{DynamicResource EditorAccentBrush}" />
   </Style>
 
+  <Style Selector="ListBox.biomeLayerList">
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="ListBox.biomeLayerList > ListBoxItem">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="Padding" Value="8" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+
+  <Style Selector="ListBox.biomeLayerList > ListBoxItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource EditorToolGridHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.biomeLayerList > ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.biomeModifierList">
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="ListBox.biomeModifierList > ListBoxItem">
+    <Setter Property="Background" Value="{DynamicResource EditorPanelAltBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="6,4" />
+    <Setter Property="Margin" Value="0" />
+  </Style>
+
+  <Style Selector="ListBox.biomeModifierList > ListBoxItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource EditorToolGridHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="ListBox.biomeModifierList > ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource EditorToolGridHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
   <!-- Asset Category ListBox -->
   <Style Selector="ListBox.assetCategoryList">
     <Setter Property="BorderThickness" Value="0" />
@@ -648,6 +701,118 @@
     <Setter Property="Height" Value="34" />
     <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="Border.biomeCardSurface">
+    <Setter Property="Background" Value="{DynamicResource EditorBiomeCardBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorBiomeCardBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="Padding" Value="8" />
+  </Style>
+
+  <Style Selector="Border.biomeLayerThumb">
+    <Setter Property="Width" Value="42" />
+    <Setter Property="Height" Value="42" />
+    <Setter Property="Background" Value="{DynamicResource EditorBiomeThumbBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorBiomeCardBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="2" />
+  </Style>
+
+  <Style Selector="Border.biomeSlotBadge">
+    <Setter Property="Background" Value="{DynamicResource EditorBiomeBadgeBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="Padding" Value="8,3" />
+  </Style>
+
+  <Style Selector="Border.biomeSlotBadge TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource EditorBiomeBadgeTextBrush}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="Button.biomeMiniButton">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="2" />
+  </Style>
+
+  <Style Selector="Border.biomeMaterialPreviewCard">
+    <Setter Property="Background" Value="{DynamicResource EditorBiomeCardBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorBiomeCardBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="Padding" Value="8" />
+  </Style>
+
+  <Style Selector="Border.biomeMaterialSwatch">
+    <Setter Property="Width" Value="64" />
+    <Setter Property="Height" Value="48" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+
+  <Style Selector="ComboBox.biomeSoftCombo">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="2" />
+  </Style>
+
+  <Style Selector="ComboBox.biomeBlendCombo">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="2" />
+  </Style>
+
+  <Style Selector="TextBlock.biomeModifierGrip">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorGlyphMutedBrush}" />
+  </Style>
+
+  <Style Selector="CheckBox.biomeIconCheck">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="Foreground" Value="{DynamicResource EditorTextSecondaryBrush}" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
+  <Style Selector="CheckBox.biomeIconCheck /template/ Rectangle#CheckGlyph">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <Style Selector="CheckBox.biomeIconCheck /template/ Border#NormalRectangle">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <Style Selector="CheckBox.biomeIconCheck:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="CheckBox.biomeIconCheck:checked">
+    <Setter Property="Foreground" Value="{DynamicResource EditorAccentBrush}" />
+  </Style>
+
+  <Style Selector="TextBox.biomeModifierNameBox">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="6,3" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="TextBox.biomeModifierValueBox">
+    <Setter Property="Background" Value="{DynamicResource EditorSurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource EditorPanelBorderStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="TextAlignment" Value="Center" />
+    <Setter Property="Padding" Value="4,3" />
   </Style>
 
   <!-- Action Footer Buttons -->

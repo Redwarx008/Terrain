@@ -106,7 +106,13 @@
     </Border>
 
     <!-- ═══ Main Workspace: Mode | Viewport+AssetBrowser | Inspector ═══ -->
-    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0">
+    <Grid Margin="0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="4" />
+        <ColumnDefinition Width="360" MinWidth="320" MaxWidth="520" />
+      </Grid.ColumnDefinitions>
 
       <!-- ─── SideNavBar (Modes) ─── -->
       <Border Grid.Column="0" Classes="editorPanel,modePanel" BorderThickness="0,0,1,0" IsVisible="{Binding IsSideNavVisible}" Width="80">
@@ -272,8 +278,19 @@
         </Border>
       </Grid>
 
+      <GridSplitter Grid.Column="2"
+                    Width="4"
+                    HorizontalAlignment="Stretch"
+                    ResizeDirection="Columns"
+                    ResizeBehavior="PreviousAndNext"
+                    Background="Transparent"
+                    BorderBrush="{DynamicResource EditorPanelBorderBrush}"
+                    BorderThickness="1,0,0,0"
+                    ShowsPreview="False"
+                    IsVisible="{Binding IsInspectorVisible}" />
+
       <!-- ─── Right Inspector Panel ─── -->
-      <Border Grid.Column="2" Classes="editorPanel,inspectorPanel" BorderThickness="1,0,0,0" ClipToBounds="True" IsVisible="{Binding IsInspectorVisible}" Width="280">
+      <Border Grid.Column="3" Classes="editorPanel,inspectorPanel" BorderThickness="1,0,0,0" ClipToBounds="True" IsVisible="{Binding IsInspectorVisible}">
         <Grid RowDefinitions="Auto,*,Auto">
           <!-- Inspector Header -->
           <Border Classes="inspectorHeader">
@@ -405,63 +422,6 @@
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Falloff, StringFormat='{}{0:F2}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                  </StackPanel>
-                </Border>
-
-                <Border Classes="inspectorSection" Padding="10,10">
-                  <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="MATERIAL" />
-                    <Border Classes="materialPreviewCard">
-                      <Grid ColumnDefinitions="46,*" ColumnSpacing="10">
-                        <Border Classes="materialSwatch"
-                                Background="{DynamicResource EditorAccentSoftBrush}"
-                                ClipToBounds="True">
-                          <Panel>
-                            <TextBlock Classes="assetPreviewGlyph"
-                                       Text="&#xE71B;"
-                                       FontSize="18"
-                                       IsVisible="{Binding SelectedMaterialSlotPreviewImage, Converter={StaticResource InvertedNullToBool}}" />
-                            <Image Source="{Binding SelectedMaterialSlotPreviewImage}"
-                                   Stretch="UniformToFill"
-                                   HorizontalAlignment="Stretch"
-                                   VerticalAlignment="Stretch" />
-                          </Panel>
-                        </Border>
-                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding SelectedMaterialSlotName}" />
-                          <TextBlock Classes="panelHint" Text="{Binding SelectedMaterialSlotDetail}" />
-                        </StackPanel>
-                      </Grid>
-                    </Border>
-                    <ComboBox
-                      Classes="metroCombo"
-                      ItemsSource="{Binding MaterialSlots}"
-                      SelectedItem="{Binding SelectedMaterialSlot}">
-                      <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                          <TextBlock Text="{Binding Label}" />
-                        </DataTemplate>
-                      </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
-                      <Button Classes="outlineButton" Content="Import" Command="{Binding ImportAssetsCommand}" />
-                      <Button Grid.Column="1" Classes="outlineButton" Content="Normal" Command="{Binding ImportSelectedNormalCommand}" />
-                      <Button Grid.Column="2" Classes="outlineButton" Content="Clear" Command="{Binding ClearSelectedMaterialSlotCommand}" />
-                    </Grid>
-                  </StackPanel>
-                </Border>
-
-                <Border Classes="inspectorSection" Padding="10,10">
-                  <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="LAYER BLEND" />
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Opacity" />
-                        <Slider Minimum="0" Maximum="1" Value="0.75" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="0.75" VerticalAlignment="Bottom" />
-                    </Grid>
-                    <CheckBox Content="Use Height Blend" IsChecked="True" />
                   </StackPanel>
                 </Border>
               </StackPanel>
@@ -625,162 +585,312 @@
                 </Border>
               </StackPanel>
 
-              <!-- ═══ Climate Panels (Paint + Landscape modes) ═══ -->
-              <StackPanel IsVisible="{Binding IsClimateVisible}" Spacing="0">
-
-                <!-- Climate Manager -->
+              <!-- ═══ Biome Panels (Paint + Landscape modes) ═══ -->
+              <StackPanel IsVisible="{Binding IsBiomeVisible}" Spacing="0">
                 <Border Classes="inspectorSection" Padding="10,10">
-                  <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="BIOMES" />
-
-                    <!-- Climate List -->
-                    <ListBox
-                  Classes="toolList"
-                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                  ItemsSource="{Binding Climate.Climates}"
-                  SelectedItem="{Binding Climate.SelectedClimate}">
-                      <ListBox.ItemTemplate>
-                        <DataTemplate>
-                          <Grid ColumnDefinitions="16,*,Auto" ColumnSpacing="6" VerticalAlignment="Center">
-                            <Border Width="12" Height="12" CornerRadius="2" Background="{Binding DebugColorBrush}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" />
-                            <Button Grid.Column="2" Classes="commandButton" Padding="2"
-                        Command="{Binding $parent[Window].DataContext.Climate.RemoveClimateCommand}"
-                    CommandParameter="{Binding Id}">
-                              <TextBlock Classes="chevronIcon" Text="&#xE74D;" FontSize="11" />
-                            </Button>
-                          </Grid>
-                        </DataTemplate>
-                      </ListBox.ItemTemplate>
-                    </ListBox>
-
-                    <!-- Add Climate -->
-                    <Button Classes="commandButton" HorizontalAlignment="Stretch"
-                Command="{Binding Climate.AddClimateCommand}">
-                      <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
-                        <TextBlock Classes="toolbarIcon" Text="&#xE710;" FontSize="12" />
-                        <TextBlock Text="Add Biome" FontSize="12" />
+                  <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="sectionLabel" Text="BIOME LAYERS" />
+                        <TextBlock Classes="panelHint" Text="{Binding Biome.SelectedBiomeLayerSummary}" />
                       </StackPanel>
-                    </Button>
+                      <CheckBox Grid.Column="1" Content="Mask" IsChecked="{Binding Biome.ShowMaskOverlay}" VerticalAlignment="Center" />
+                    </Grid>
 
-                    <!-- Mask Overlay Toggle -->
-                    <CheckBox Content="Show Mask Overlay" IsChecked="{Binding Climate.ShowMaskOverlay}" />
-                  </StackPanel>
-                </Border>
-
-                <!-- Rule Manager -->
-                <Border Classes="inspectorSection" Padding="10,10">
-                  <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="LAYERS" />
-
-                    <!-- Rule List -->
-                    <ListBox
-                  Classes="toolList"
-                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                  ItemsSource="{Binding Climate.Rules}"
-                  SelectedItem="{Binding Climate.SelectedRule}"
-                  SelectedIndex="{Binding Climate.SelectedRuleIndex, Mode=TwoWay}">
-                      <ListBox.ItemTemplate>
-                        <DataTemplate>
-                          <Grid ColumnDefinitions="16,*" ColumnSpacing="4" VerticalAlignment="Center">
-                            <CheckBox IsChecked="{Binding IsEnabled}" Padding="0" />
-                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" FontSize="12" />
-                          </Grid>
-                        </DataTemplate>
-                      </ListBox.ItemTemplate>
-                    </ListBox>
-
-                    <!-- Rule actions (move up/down, remove) -->
-                    <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center">
-                      <Button Classes="commandButton" Padding="4"
-                  Command="{Binding Climate.MoveRuleUpCommand}"
-                  CommandParameter="{Binding Climate.SelectedRuleIndex}">
-                        <TextBlock Classes="toolbarIcon" Text="&#xE74A;" FontSize="12" />
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                      <ComboBox Grid.Column="0"
+                                Classes="metroCombo,biomeSoftCombo"
+                                ItemsSource="{Binding Biome.Biomes}"
+                                SelectedItem="{Binding Biome.SelectedBiome}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate>
+                            <Grid ColumnDefinitions="14,*" ColumnSpacing="8">
+                              <Border Width="10" Height="10" CornerRadius="2" Background="{Binding DebugColorBrush}" VerticalAlignment="Center" />
+                              <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                            </Grid>
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <Button Grid.Column="1" Classes="commandButton,biomeMiniButton" Command="{Binding Biome.AddBiomeCommand}">
+                        <TextBlock Classes="toolbarIcon" Text="&#xE710;" FontSize="12" />
                       </Button>
-                      <Button Classes="commandButton" Padding="4"
-                  Command="{Binding Climate.MoveRuleDownCommand}"
-                  CommandParameter="{Binding Climate.SelectedRuleIndex}">
-                        <TextBlock Classes="toolbarIcon" Text="&#xE74B;" FontSize="12" />
-                      </Button>
-                      <Button Classes="commandButton" Padding="4"
-                  Command="{Binding Climate.RemoveRuleAtCommand}"
-                  CommandParameter="{Binding Climate.SelectedRuleIndex}">
+                      <Button Grid.Column="2"
+                              Classes="commandButton,biomeMiniButton"
+                              Command="{Binding Biome.RemoveBiomeCommand}"
+                              CommandParameter="{Binding Biome.SelectedBiome.Id}">
                         <TextBlock Classes="toolbarIcon" Text="&#xE74D;" FontSize="12" />
                       </Button>
-                    </StackPanel>
+                    </Grid>
 
-                    <!-- Add Rule (uses selected climate) -->
-                    <Button Classes="commandButton" HorizontalAlignment="Stretch"
-                Command="{Binding Climate.AddRuleCommand}"
-                CommandParameter="{Binding Climate.SelectedClimate.Id}">
-                      <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
-                        <TextBlock Classes="toolbarIcon" Text="&#xE710;" FontSize="12" />
-                        <TextBlock Text="Add Layer" FontSize="12" />
-                      </StackPanel>
-                    </Button>
+                    <Border Classes="biomeCardSurface">
+                      <Grid RowDefinitions="*,Auto,Auto">
+                        <ListBox Grid.Row="0"
+                                 Classes="biomeLayerList"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ItemsSource="{Binding Biome.VisibleLayers}"
+                                 SelectedItem="{Binding Biome.SelectedLayer}">
+                          <ListBox.ItemTemplate>
+                            <DataTemplate>
+                              <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" VerticalAlignment="Center">
+                                <CheckBox IsChecked="{Binding IsEnabled}" Padding="0" VerticalAlignment="Center" />
+                                <Border Classes="biomeLayerThumb">
+                                  <TextBlock Classes="assetPreviewGlyph" Text="&#xE71B;" FontSize="14" />
+                                </Border>
+                                <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                                  <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
+                                  <TextBlock Classes="panelHint" Text="{Binding ModifierCountLabel}" />
+                                </StackPanel>
+                                <Border Grid.Column="3" Classes="biomeSlotBadge">
+                                  <TextBlock Text="{Binding MaterialSlotLabel}" />
+                                </Border>
+                              </Grid>
+                            </DataTemplate>
+                          </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <Grid Grid.Row="1"
+                              ColumnDefinitions="*,Auto"
+                              ColumnSpacing="8"
+                              Margin="0,10,0,0"
+                              IsVisible="{Binding Biome.SelectedLayer, Converter={x:Static ObjectConverters.IsNotNull}}">
+                          <TextBox Classes="searchBox"
+                                   Text="{Binding Biome.SelectedLayer.Name, Mode=TwoWay}"
+                                   Watermark="Layer name" />
+                          <CheckBox Grid.Column="1"
+                                    Content="Enabled"
+                                    IsChecked="{Binding Biome.SelectedLayer.IsEnabled}"
+                                    VerticalAlignment="Center" />
+                        </Grid>
+
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6" Margin="0,10,0,0">
+                          <Button Classes="commandButton,biomeMiniButton" Command="{Binding Biome.MoveSelectedLayerUpCommand}">
+                            <TextBlock Classes="toolbarIcon" Text="&#xE74A;" FontSize="12" />
+                          </Button>
+                          <Button Classes="commandButton,biomeMiniButton" Command="{Binding Biome.MoveSelectedLayerDownCommand}">
+                            <TextBlock Classes="toolbarIcon" Text="&#xE74B;" FontSize="12" />
+                          </Button>
+                          <Button Classes="commandButton,biomeMiniButton" Command="{Binding Biome.AddLayerCommand}">
+                            <TextBlock Classes="toolbarIcon" Text="&#xE710;" FontSize="14" />
+                          </Button>
+                          <Button Classes="commandButton,biomeMiniButton" Command="{Binding Biome.RemoveSelectedLayerCommand}">
+                            <TextBlock Classes="toolbarIcon" Text="&#xE74D;" FontSize="14" />
+                          </Button>
+                        </StackPanel>
+                      </Grid>
+                    </Border>
                   </StackPanel>
                 </Border>
 
-                <!-- Rule Inspector -->
-                <Border Classes="inspectorSection" Padding="10,10" IsVisible="{Binding Climate.SelectedRule, Converter={x:Static ObjectConverters.IsNotNull}}">
-                  <StackPanel Spacing="8" DataContext="{Binding Climate.SelectedRule}">
-                    <TextBlock Classes="sectionLabel" Text="LAYER PROPERTIES" />
+                <Border Classes="inspectorSection" Padding="10,10" IsVisible="{Binding Biome.SelectedLayer, Converter={x:Static ObjectConverters.IsNotNull}}">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionLabel" Text="MATERIAL" />
+                    <Border Classes="materialPreviewCard,biomeMaterialPreviewCard">
+                      <Grid ColumnDefinitions="64,*" ColumnSpacing="12">
+                        <Border Classes="materialSwatch,biomeMaterialSwatch"
+                                Background="{DynamicResource EditorPanelAltBackgroundBrush}">
+                          <TextBlock Classes="assetPreviewGlyph" Text="&#xE71B;" FontSize="18" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Biome.SelectedLayerMaterialTitle}" FontSize="13" FontWeight="SemiBold" />
+                          <TextBlock Classes="panelHint" Text="{Binding Biome.SelectedLayerMaterialDetail}" TextWrapping="Wrap" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                    <ComboBox Classes="metroCombo,biomeSoftCombo"
+                              ItemsSource="{Binding Biome.AvailableMaterialSlots}"
+                              SelectedItem="{Binding Biome.SelectedLayerMaterialSlotOption, Mode=TwoWay}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding Label}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
+                      <Button Classes="outlineButton" Content="Import" Command="{Binding ImportAssetsCommand}" />
+                      <Button Grid.Column="1" Classes="outlineButton" Content="Normal" Command="{Binding ImportSelectedNormalCommand}" />
+                      <Button Grid.Column="2" Classes="outlineButton" Content="Clear" Command="{Binding ClearSelectedMaterialSlotCommand}" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
 
-                    <!-- Name -->
+                <Border Classes="inspectorSection" Padding="10,10" IsVisible="{Binding Biome.SelectedLayer, Converter={x:Static ObjectConverters.IsNotNull}}">
+                  <StackPanel Spacing="8" DataContext="{Binding Biome.SelectedLayer}">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                      <TextBlock Classes="sectionLabel" Text="MODIFIER STACK" />
+                      <TextBlock Grid.Column="1" Classes="panelHint" Text="{Binding ModifierCountLabel}" />
+                    </Grid>
+
+                    <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+                      <ListBox
+                        Grid.Row="0"
+                        Classes="biomeModifierList"
+                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        ItemsSource="{Binding Modifiers}"
+                        SelectedItem="{Binding SelectedModifier}"
+                        SelectedIndex="{Binding SelectedModifierIndex, Mode=TwoWay}">
+                        <ListBox.ItemTemplate>
+                          <DataTemplate>
+                            <Grid ColumnDefinitions="18,28,*,70,40" ColumnSpacing="8" VerticalAlignment="Center">
+                              <TextBlock Classes="biomeModifierGrip"
+                                         Text="&#xE784;"
+                                         VerticalAlignment="Center"
+                                         HorizontalAlignment="Center" />
+                              <CheckBox Grid.Column="1"
+                                        Classes="biomeIconCheck"
+                                        IsChecked="{Binding IsEnabled}" />
+                              <TextBox Grid.Column="2"
+                                       Classes="searchBox,biomeModifierNameBox"
+                                       Text="{Binding Name, Mode=TwoWay}"
+                                       VerticalContentAlignment="Center" />
+                              <ComboBox Grid.Column="3"
+                                        Classes="metroCombo,biomeBlendCombo"
+                                        SelectedIndex="{Binding BlendModeIndex}"
+                                        FontSize="11">
+                                <ComboBoxItem Content="Multiply" />
+                                <ComboBoxItem Content="Add" />
+                                <ComboBoxItem Content="Subtract" />
+                                <ComboBoxItem Content="Min" />
+                                <ComboBoxItem Content="Max" />
+                              </ComboBox>
+                              <TextBox Grid.Column="4"
+                                       Classes="valueBox,biomeModifierValueBox"
+                                       IsReadOnly="True"
+                                       Text="{Binding OpacityPercent}"
+                                       VerticalAlignment="Center" />
+                            </Grid>
+                          </DataTemplate>
+                        </ListBox.ItemTemplate>
+                      </ListBox>
+
+                      <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                        <ComboBox Grid.Column="0" Classes="metroCombo,biomeSoftCombo" SelectedIndex="{Binding $parent[Window].DataContext.Biome.AddModifierTypeIndex, Mode=TwoWay}">
+                          <ComboBoxItem Content="Height range" />
+                          <ComboBoxItem Content="Slope range" />
+                          <ComboBoxItem Content="Curvature range" />
+                          <ComboBoxItem Content="Direction range" />
+                          <ComboBoxItem Content="Noise" />
+                          <ComboBoxItem Content="Texture mask" />
+                        </ComboBox>
+                        <Button Grid.Column="1" Classes="commandButton,biomeMiniButton" Command="{Binding $parent[Window].DataContext.Biome.AddModifierCommand}">
+                          <TextBlock Classes="toolbarIcon" Text="&#xE710;" FontSize="14" />
+                        </Button>
+                        <Button Grid.Column="2" Classes="commandButton,biomeMiniButton" Command="{Binding $parent[Window].DataContext.Biome.RemoveSelectedModifierCommand}">
+                          <TextBlock Classes="toolbarIcon" Text="&#xE711;" FontSize="14" />
+                        </Button>
+                      </Grid>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <!-- Modifier Inspector -->
+                <Border Classes="inspectorSection" Padding="10,10" DataContext="{Binding Biome.SelectedLayer}" IsVisible="{Binding DataContext, RelativeSource={RelativeSource Self}, Converter={x:Static ObjectConverters.IsNotNull}}">
+                  <StackPanel Spacing="8"
+                              DataContext="{Binding SelectedModifier}"
+                              IsVisible="{Binding DataContext, RelativeSource={RelativeSource Self}, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Classes="sectionLabel" Text="MODIFIER SETTINGS" />
+
+                    <!-- Modifier Name -->
                     <StackPanel Spacing="2">
                       <TextBlock Classes="fieldLabel" Text="Name" />
                       <TextBox Classes="searchBox" Text="{Binding Name, Mode=TwoWay}" />
                     </StackPanel>
 
-                    <!-- Min Altitude / Max Altitude -->
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                    <!-- Invert (common to most modifiers) -->
+                    <CheckBox Content="Invert" IsChecked="{Binding IsInverted}" IsVisible="{Binding HasInvert}" />
+
+                    <!-- Min/Max Range (Height, Slope, Curvature, Direction, Noise) -->
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasMin}">
                       <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Min Altitude" />
-                        <Slider Minimum="0" Maximum="1000" Value="{Binding MinAltitude}" />
+                        <TextBlock Classes="fieldLabel" Text="Min" />
+                        <Slider Minimum="{Binding MinSliderMinimum}" Maximum="{Binding MinSliderMaximum}" Value="{Binding Min}" />
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MinAltitude, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding Min, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasMax}">
                       <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Max Altitude" />
-                        <Slider Minimum="0" Maximum="1000" Value="{Binding MaxAltitude}" />
+                        <TextBlock Classes="fieldLabel" Text="Max" />
+                        <Slider Minimum="{Binding MaxSliderMinimum}" Maximum="{Binding MaxSliderMaximum}" Value="{Binding Max}" />
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MaxAltitude, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding Max, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
                     </Grid>
 
-                    <!-- Min Slope / Max Slope -->
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                    <!-- MinFalloff/MaxFalloff (Height, Slope, Curvature) -->
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasFalloff}">
                       <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Min Slope" />
-                        <Slider Minimum="0" Maximum="90" Value="{Binding MinSlopeDegrees}" />
+                        <TextBlock Classes="fieldLabel" Text="Min Falloff" />
+                        <Slider Minimum="0" Maximum="100" Value="{Binding MinFalloff}" />
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MinSlopeDegrees, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MinFalloff, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasFalloff}">
                       <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Max Slope" />
-                        <Slider Minimum="0" Maximum="90" Value="{Binding MaxSlopeDegrees}" />
+                        <TextBlock Classes="fieldLabel" Text="Max Falloff" />
+                        <Slider Minimum="0" Maximum="100" Value="{Binding MaxFalloff}" />
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MaxSlopeDegrees, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
-                    </Grid>
-
-                    <!-- Blend Range -->
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Blend Range" />
-                        <Slider Minimum="0" Maximum="1" Value="{Binding BlendRange}" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding BlendRange, StringFormat='{}{0:F2}'}" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MaxFalloff, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
                     </Grid>
 
-                    <!-- Material Slot -->
-                    <StackPanel Spacing="2">
-                      <TextBlock Classes="fieldLabel" Text="Material Slot" />
-                      <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                        <Slider Minimum="0" Maximum="15" Value="{Binding MaterialSlotIndex}" />
-                        <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MaterialSlotIndex}" VerticalAlignment="Bottom" />
-                      </Grid>
-                    </StackPanel>
+                    <!-- Radius (Curvature only) -->
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasRadius}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Radius" />
+                        <Slider Minimum="0.1" Maximum="10" Value="{Binding Radius}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding Radius, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+
+                    <!-- Angle (Direction only) -->
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasAngle}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Angle (deg)" />
+                        <Slider Minimum="-180" Maximum="180" Value="{Binding AngleDegrees}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding AngleDegrees, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasAngle}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Angle Range (deg)" />
+                        <Slider Minimum="0" Maximum="180" Value="{Binding AngleRangeDegrees}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding AngleRangeDegrees, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+
+                    <!-- Noise parameters -->
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasScale}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Scale" />
+                        <Slider Minimum="0.001" Maximum="1" Value="{Binding Scale}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding Scale, StringFormat='{}{0:F3}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasOffset}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Offset X" />
+                        <Slider Minimum="-1000" Maximum="1000" Value="{Binding OffsetX}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding OffsetX, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasOffset}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Offset Y" />
+                        <Slider Minimum="-1000" Maximum="1000" Value="{Binding OffsetY}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding OffsetY, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasSeed}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Seed" />
+                        <Slider Minimum="0" Maximum="10000" Value="{Binding Seed}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding Seed, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasOctaves}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Octaves" />
+                        <Slider Minimum="1" Maximum="8" Value="{Binding Octaves}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding Octaves, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
 
                   </StackPanel>
                 </Border>

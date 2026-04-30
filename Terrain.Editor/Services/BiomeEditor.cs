@@ -6,22 +6,22 @@ using Stride.Core.Mathematics;
 namespace Terrain.Editor.Services;
 
 /// <summary>
-/// Applies climate ids to the authoring mask. The generated material map is then
+/// Applies biome ids to the authoring mask. The generated material map is then
 /// rebuilt from the edited mask rather than being painted directly.
 /// </summary>
-public sealed class ClimateEditor
+public sealed class BiomeEditor
 {
-    private static readonly Lazy<ClimateEditor> InstanceFactory = new(() => new());
+    private static readonly Lazy<BiomeEditor> InstanceFactory = new(() => new());
 
-    public static ClimateEditor Instance => InstanceFactory.Value;
+    public static BiomeEditor Instance => InstanceFactory.Value;
 
-    private ClimateEditor()
+    private BiomeEditor()
     {
     }
 
-    public void ApplyStroke(Vector3 worldPosition, ClimateMask mask, TerrainManager terrainManager, byte climateId)
+    public void ApplyStroke(Vector3 worldPosition, BiomeMask mask, TerrainManager terrainManager, byte biomeId)
     {
-        // ClimateMask 使用 1/2 分辨率，画笔坐标需从高度图空间转换
+        // BiomeMask 使用 1/2 分辨率，画笔坐标需从高度图空间转换
         int maskX = (int)MathF.Round(worldPosition.X / 2.0f);
         int maskY = (int)MathF.Round(worldPosition.Z / 2.0f);
 
@@ -43,26 +43,37 @@ public sealed class ClimateEditor
                 if (distance > halfResRadius)
                     continue;
 
-                // 气候 ID 为离散值，用强度控制覆盖概率实现软边缘混合
-                float strength = PaintEditor.ComputeLinearFalloff(distance, halfResRadius, innerRadius) * brush.Strength;
+                // Biome ID 为离散值，用强度控制覆盖概率实现软边缘混合
+                float strength = ComputeLinearFalloff(distance, halfResRadius, innerRadius) * brush.Strength;
                 if (strength > 0.0f)
                 {
                     byte current = mask.GetValue(x, y);
-                    if (current == climateId)
+                    if (current == biomeId)
                         continue;
 
                     // 按强度概率覆盖：强度越高越可能写入新 ID
                     if (Random.Shared.NextSingle() < strength)
-                        mask.SetValue(x, y, climateId);
+                        mask.SetValue(x, y, biomeId);
                 }
             }
         }
 
-        terrainManager.MarkClimateMaskDirty();
+        terrainManager.MarkBiomeMaskDirty();
         // 脏标记使用高度图空间坐标（与 slice 相交判定需要全分辨率坐标）
         int heightmapX = (int)MathF.Round(worldPosition.X);
         int heightmapY = (int)MathF.Round(worldPosition.Z);
         float heightmapRadius = MathF.Ceiling(brush.Size * 0.5f);
         terrainManager.RegenerateMaterialIndices(heightmapX, heightmapY, heightmapRadius);
+    }
+
+    private static float ComputeLinearFalloff(float distance, float outerRadius, float innerRadius)
+    {
+        if (distance <= innerRadius)
+            return 1.0f;
+
+        if (distance >= outerRadius)
+            return 0.0f;
+
+        return 1.0f - (distance - innerRadius) / (outerRadius - innerRadius);
     }
 }

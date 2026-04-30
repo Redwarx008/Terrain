@@ -360,15 +360,11 @@ public sealed class EmbeddedStrideViewportGame : Game
                 HeightEditor.Instance.BeginStroke(heightToolName, worldPosition, TerrainManager!);
                 break;
 
-            case EditorMode.Paint:
-                string paintToolName = _editorState.CurrentPaintTool.ToString();
-                PaintEditor.Instance.BeginStroke(paintToolName, TerrainManager!);
-                break;
-
             case EditorMode.Landscape:
-                // Climate brush — no separate BeginStroke; ApplyStroke is stateless.
+                // Biome brush — no separate BeginStroke; ApplyStroke is stateless.
                 break;
 
+            case EditorMode.Paint:
             case EditorMode.Water:
                 break;
         }
@@ -382,23 +378,11 @@ public sealed class EmbeddedStrideViewportGame : Game
                 HeightEditor.Instance.ApplyStroke(worldPosition, TerrainManager!, deltaTime);
                 break;
 
-            case EditorMode.Paint:
-                if (TerrainManager!.MaterialIndices != null)
-                {
-                    PaintEditor.Instance.ApplyStroke(
-                        worldPosition,
-                        TerrainManager.MaterialIndices,
-                        TerrainManager.HeightCacheWidth,
-                        TerrainManager.HeightCacheHeight,
-                        TerrainManager);
-                }
-
-                break;
-
             case EditorMode.Landscape:
-                ApplyClimateStroke(worldPosition);
+                ApplyBiomeStroke(worldPosition);
                 break;
 
+            case EditorMode.Paint:
             case EditorMode.Water:
                 break;
         }
@@ -420,22 +404,19 @@ public sealed class EmbeddedStrideViewportGame : Game
                 break;
 
             case EditorMode.Paint:
-                PaintEditor.Instance.EndStroke();
-                break;
-
             case EditorMode.Landscape:
             case EditorMode.Water:
                 break;
         }
     }
 
-    private void ApplyClimateStroke(Vector3 worldPosition)
+    private void ApplyBiomeStroke(Vector3 worldPosition)
     {
-        if (TerrainManager?.ClimateMask == null)
+        if (TerrainManager?.BiomeMask == null)
             return;
 
-        byte climateId = (byte)_editorState.CurrentClimateId;
-        ClimateEditor.Instance.ApplyStroke(worldPosition, TerrainManager.ClimateMask, TerrainManager, climateId);
+        byte biomeId = (byte)_editorState.CurrentBiomeId;
+        BiomeEditor.Instance.ApplyStroke(worldPosition, TerrainManager.BiomeMask, TerrainManager, biomeId);
     }
 
     private void InitializeScene()
@@ -777,6 +758,6 @@ public sealed class EmbeddedStrideViewportGame : Game
             }
         }
 
-        TerrainManager?.TryLoadPendingClimateMask();
+        TerrainManager?.TryLoadPendingBiomeMask();
     }
 }

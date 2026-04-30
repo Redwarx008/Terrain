@@ -78,7 +78,7 @@ public sealed class EditorTerrainEntity : IDisposable
 
     public Texture?[] DetailIndexMapTextures { get; private set; } = Array.Empty<Texture?>();
     public Texture?[] DetailWeightMapTextures { get; private set; } = Array.Empty<Texture?>();
-    public Texture? ClimateMaskTexture { get; private set; }
+    public Texture? BiomeMaskTexture { get; private set; }
     public Buffer? BiomeBuffer { get; private set; }
     public Buffer? LayerBuffer { get; private set; }
     public Buffer? ModifierBuffer { get; private set; }
@@ -86,10 +86,18 @@ public sealed class EditorTerrainEntity : IDisposable
     public int LayerCount { get; private set; }
     public int ModifierCount { get; private set; }
 
+    /// <summary>
+    /// Global TextureMask resource for TextureMask modifiers.
+    /// This is a single shared texture that can be used by any TextureMask modifier.
+    /// The C# side sets this texture when a TextureMask modifier is active.
+    /// Note: Full implementation would require per-modifier texture binding.
+    /// </summary>
+    public Texture? TextureMaskResource { get; set; }
+
     private MaterialIndexMap? materialIndexMap;
-    private ClimateMask? climateMask;
-    private bool climateMaskTextureDirty;
-    private bool climateRulesDirty;
+    private BiomeMask? biomeMask;
+    private bool biomeMaskTextureDirty;
+    private bool biomeRulesDirty;
 
     /// <summary>
     /// 材质索引图引用，由 TerrainManager 设置。
@@ -112,9 +120,9 @@ public sealed class EditorTerrainEntity : IDisposable
         }
     }
 
-    public bool HasDirtyClimateMaskTexture => climateMaskTextureDirty;
-    public bool HasDirtyClimateRules => climateRulesDirty;
-    public bool HasDirtyClimateSplatMap => slices.Exists(static s => s.ClimateSplatDirty);
+    public bool HasDirtyBiomeMaskTexture => biomeMaskTextureDirty;
+    public bool HasDirtyBiomeRules => biomeRulesDirty;
+    public bool HasDirtyBiomeSplatMap => slices.Exists(static s => s.BiomeSplatDirty);
 
     /// <summary>
     /// 标记指定通道的数据为脏，需要在渲染时同步到 GPU。
@@ -259,16 +267,16 @@ public sealed class EditorTerrainEntity : IDisposable
         }
     }
 
-    public void SetClimateMask(GraphicsDevice graphicsDevice, ClimateMask? mask)
+    public void SetBiomeMask(GraphicsDevice graphicsDevice, BiomeMask? mask)
     {
-        climateMask = mask;
+        biomeMask = mask;
 
-        ClimateMaskTexture?.Dispose();
-        ClimateMaskTexture = null;
+        BiomeMaskTexture?.Dispose();
+        BiomeMaskTexture = null;
 
         if (mask != null)
         {
-            ClimateMaskTexture = Texture.New2D(
+            BiomeMaskTexture = Texture.New2D(
                 graphicsDevice,
                 mask.Width,
                 mask.Height,
@@ -276,29 +284,29 @@ public sealed class EditorTerrainEntity : IDisposable
                 TextureFlags.ShaderResource);
         }
 
-        climateMaskTextureDirty = mask != null;
-        climateRulesDirty = true;
-        MarkAllClimateSplatDirty();
+        biomeMaskTextureDirty = mask != null;
+        biomeRulesDirty = true;
+        MarkAllBiomeSplatDirty();
     }
 
-    public void MarkClimateMaskDirty()
+    public void MarkBiomeMaskDirty()
     {
-        if (climateMask == null)
+        if (biomeMask == null)
             return;
 
-        climateMaskTextureDirty = true;
+        biomeMaskTextureDirty = true;
     }
 
-    public void MarkClimateRulesDirty()
+    public void MarkBiomeRulesDirty()
     {
-        climateRulesDirty = true;
+        biomeRulesDirty = true;
     }
 
-    public void MarkClimateSplatDirty(int centerX = 0, int centerZ = 0, float radius = 0)
+    public void MarkBiomeSplatDirty(int centerX = 0, int centerZ = 0, float radius = 0)
     {
         if (radius <= 0.0f)
         {
-            MarkAllClimateSplatDirty();
+            MarkAllBiomeSplatDirty();
             return;
         }
 
@@ -310,43 +318,43 @@ public sealed class EditorTerrainEntity : IDisposable
         foreach (var slice in slices)
         {
             if (slice.Intersects(minX, minZ, maxX, maxZ))
-                slice.ClimateSplatDirty = true;
+                slice.BiomeSplatDirty = true;
         }
     }
 
-    public void MarkAllClimateSplatDirty()
+    public void MarkAllBiomeSplatDirty()
     {
         foreach (var slice in slices)
-            slice.ClimateSplatDirty = true;
+            slice.BiomeSplatDirty = true;
     }
 
-    public void ClearClimateSplatDirty(int sliceIndex)
+    public void ClearBiomeSplatDirty(int sliceIndex)
     {
         if ((uint)sliceIndex >= (uint)slices.Count)
             return;
 
-        slices[sliceIndex].ClimateSplatDirty = false;
+        slices[sliceIndex].BiomeSplatDirty = false;
     }
 
-    public void SyncClimateResourcesToGpu(GraphicsDevice graphicsDevice, CommandList commandList)
+    public void SyncBiomeResourcesToGpu(GraphicsDevice graphicsDevice, CommandList commandList)
     {
-        if (climateMaskTextureDirty && climateMask != null && ClimateMaskTexture != null)
+        if (biomeMaskTextureDirty && biomeMask != null && BiomeMaskTexture != null)
         {
-            ClimateMaskTexture.SetData(commandList, climateMask.GetRawData());
-            climateMaskTextureDirty = false;
+            BiomeMaskTexture.SetData(commandList, biomeMask.GetRawData());
+            biomeMaskTextureDirty = false;
         }
 
-        if (climateRulesDirty)
+        if (biomeRulesDirty)
         {
             UploadBiomeBuffers(graphicsDevice, commandList);
-            climateRulesDirty = false;
+            biomeRulesDirty = false;
         }
     }
 
     private void UploadBiomeBuffers(GraphicsDevice graphicsDevice, CommandList commandList)
     {
-        IReadOnlyList<ClimateDefinition> biomes = ClimateRuleService.Instance.Climates;
-        IReadOnlyList<ClimateRuleLayer> layers = ClimateRuleService.Instance.Rules;
+        IReadOnlyList<BiomeDefinition> biomes = BiomeRuleService.Instance.Biomes;
+        IReadOnlyList<BiomeRuleLayer> layers = BiomeRuleService.Instance.Layers;
 
         BiomeGpu[] biomeData = new BiomeGpu[Math.Max(1, biomes.Count)];
         LayerGpu[] layerData = new LayerGpu[Math.Max(1, layers.Count)];
@@ -354,7 +362,7 @@ public sealed class EditorTerrainEntity : IDisposable
 
         for (int i = 0; i < biomes.Count; i++)
         {
-            ClimateDefinition biome = biomes[i];
+            BiomeDefinition biome = biomes[i];
             biomeData[i] = new BiomeGpu
             {
                 BiomeId = biome.Id,
@@ -366,7 +374,7 @@ public sealed class EditorTerrainEntity : IDisposable
 
         for (int i = 0; i < layers.Count; i++)
         {
-            ClimateRuleLayer layer = layers[i];
+            BiomeRuleLayer layer = layers[i];
             int modifierStartIndex = modifierList.Count;
             foreach (BiomeModifier modifier in layer.Modifiers)
             {
@@ -376,7 +384,7 @@ public sealed class EditorTerrainEntity : IDisposable
             layerData[i] = new LayerGpu
             {
                 LayerId = layer.Id,
-                BiomeId = layer.ClimateId,
+                BiomeId = layer.BiomeId,
                 MaterialSlotIndex = layer.MaterialSlotIndex,
                 Enabled = layer.Enabled ? 1 : 0,
                 Visible = layer.Visible ? 1 : 0,
@@ -532,23 +540,23 @@ public sealed class EditorTerrainEntity : IDisposable
         }
     }
 
-    private static int FindFirstLayerIndexForBiome(IReadOnlyList<ClimateRuleLayer> layers, int biomeId)
+    private static int FindFirstLayerIndexForBiome(IReadOnlyList<BiomeRuleLayer> layers, int biomeId)
     {
         for (int i = 0; i < layers.Count; i++)
         {
-            if (layers[i].ClimateId == biomeId)
+            if (layers[i].BiomeId == biomeId)
                 return i;
         }
 
         return 0;
     }
 
-    private static int CountLayersForBiome(IReadOnlyList<ClimateRuleLayer> layers, int biomeId)
+    private static int CountLayersForBiome(IReadOnlyList<BiomeRuleLayer> layers, int biomeId)
     {
         int count = 0;
         for (int i = 0; i < layers.Count; i++)
         {
-            if (layers[i].ClimateId == biomeId)
+            if (layers[i].BiomeId == biomeId)
                 count++;
         }
 
@@ -1068,8 +1076,8 @@ public sealed class EditorTerrainEntity : IDisposable
             DetailWeightMapTextures = Array.Empty<Texture?>();
         }
 
-        ClimateMaskTexture?.Dispose();
-        ClimateMaskTexture = null;
+        BiomeMaskTexture?.Dispose();
+        BiomeMaskTexture = null;
 
         BiomeBuffer?.Dispose();
         BiomeBuffer = null;
@@ -1178,7 +1186,7 @@ public sealed class EditorTerrainSlice
     public SplitTerrainSliceInfo Info { get; }
     public Texture Texture { get; }
     public DirtyRegionTracker Dirty;
-    public bool ClimateSplatDirty;
+    public bool BiomeSplatDirty;
 
     public int Index => Info.Index;
     public int StartSampleX => Info.StartSampleX;
@@ -1195,9 +1203,9 @@ public sealed class EditorTerrainSlice
 }
 
 [StructLayout(LayoutKind.Sequential)]
-public struct ClimateSplatRuleGpu
+public struct BiomeSplatRuleGpu
 {
-    public int ClimateId;
+    public int BiomeId;
     public int MaterialSlotIndex;
     public int Enabled;
     public int Reserved;

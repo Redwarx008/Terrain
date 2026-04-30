@@ -17,6 +17,14 @@ namespace Terrain.Editor
 
             stage Texture2DArray MaterialPropertiesArray;
             stage SamplerState MaterialPropertiesSampler;
+
+            // Debug view: BiomeMask texture for BiomeMaskMap mode
+            stage Texture2D<float> BiomeMaskDebugTexture;
+            stage SamplerState BiomeMaskDebugSampler;
+
+            // Heatmap overlay texture (computed by BuildSplatMap shader)
+            stage Texture2D<float> HeatmapTexture;
+            stage SamplerState HeatmapSampler;
         }
 
         cbuffer PerMaterial
@@ -32,6 +40,12 @@ namespace Terrain.Editor
             stage int MaterialNormalArraySize;
             stage int MaterialPropertiesArraySize;
             stage float MaterialTilingScale;
+
+            // Debug view mode (matches SceneDebugViewMode enum)
+            // 0 = FinalOutput, 1 = BiomeMaskMap, 2 = SlopeMap, 3 = HeightMap,
+            // 4 = LayerHeatmap, 5 = DetailIndexMap, 6 = DetailWeightMap
+            stage int DebugViewMode;
+            stage int HeatmapLayerIndex;
         }
 
         float3 CalculateNormal(float2 sampleCoord, int preferredSliceIndex)
@@ -47,6 +61,13 @@ namespace Terrain.Editor
         {
             int maxX = (int)HeightmapDimensionsInSamples.x - 1;
             int maxY = (int)HeightmapDimensionsInSamples.y - 1;
+            return int2(clamp(pixel.x, 0, maxX), clamp(pixel.y, 0, maxY));
+        }
+
+        int2 ClampSplatPixel(int2 pixel)
+        {
+            int maxX = max((int)((HeightmapDimensionsInSamples.x + 2.0f) * 0.5f) - 1, 0);
+            int maxY = max((int)((HeightmapDimensionsInSamples.y + 2.0f) * 0.5f) - 1, 0);
             return int2(clamp(pixel.x, 0, maxX), clamp(pixel.y, 0, maxY));
         }
 
@@ -132,6 +153,21 @@ namespace Terrain.Editor
             AccumulateMaterial(uniqueIndices, uniqueWeights, (int)(indices.w + 0.5f), weights.w);
         }
 
+        void AccumulateControlTexelSplat(
+            inout int4 uniqueIndices,
+            inout float4 uniqueWeights,
+            int2 splatPixel,
+            float texelFactor)
+        {
+            int2 clampedSplatPixel = ClampSplatPixel(splatPixel);
+            float4 indices = LoadIndexMapAtGlobalSplat(clampedSplatPixel) * 255.0f;
+            float4 weights = LoadWeightMapAtGlobalSplat(clampedSplatPixel) * texelFactor;
+            AccumulateMaterial(uniqueIndices, uniqueWeights, (int)(indices.x + 0.5f), weights.x);
+            AccumulateMaterial(uniqueIndices, uniqueWeights, (int)(indices.y + 0.5f), weights.y);
+            AccumulateMaterial(uniqueIndices, uniqueWeights, (int)(indices.z + 0.5f), weights.z);
+            AccumulateMaterial(uniqueIndices, uniqueWeights, (int)(indices.w + 0.5f), weights.w);
+        }
+
         override void Compute()
         {
             float2 sampleCoord = streams.TerrainLocalPos;
@@ -141,18 +177,32 @@ namespace Terrain.Editor
             streams.meshNormalWS = worldNormal;
             streams.normalWS = worldNormal;
 
-            float2 indexPixels = sampleCoord;
-            float2 index00Pixel = floor(indexPixels);
-            float2 weights1 = saturate(indexPixels - index00Pixel);
+            // Debug view mode handling
+            // 0 = FinalOutput, 1 = BiomeMaskMap, 2 = SlopeMap, 3 = HeightMap,
+            // 4 = LayerHeatmap, 5 = DetailIndexMap, 6 = DetailWeightMap
+            if (DebugViewMode != 0)
+            {
+                float4 debugColor = ComputeDebugView(sampleCoord, streams.TerrainSliceIndex, worldNormal);
+                streams.matDiffuse = debugColor;
+                streams.matColorBase = debugColor;
+                return;
+            }
+
+            // Control maps are stored in splat space (1/2 heightmap resolution).
+            // Interpolate in splat space first; otherwise integer /2 quantization makes each 2x2
+            // heightmap block read the same control texel and causes visible mosaic artifacts.
+            float2 splatPixels = sampleCoord * 0.5f;
+            float2 index00Pixel = floor(splatPixels);
+            float2 weights1 = saturate(splatPixels - index00Pixel);
             float2 weights0 = 1.0f - weights1;
 
             int4 uniqueIndices = int4(-1, -1, -1, -1);
             float4 uniqueWeights = float4(0.0f, 0.0f, 0.0f, 0.0f);
 
-            AccumulateControlTexel(uniqueIndices, uniqueWeights, int2(index00Pixel), weights0.x * weights0.y);
-            AccumulateControlTexel(uniqueIndices, uniqueWeights, int2(index00Pixel + float2(1.0f, 0.0f)), weights1.x * weights0.y);
-            AccumulateControlTexel(uniqueIndices, uniqueWeights, int2(index00Pixel + float2(0.0f, 1.0f)), weights0.x * weights1.y);
-            AccumulateControlTexel(uniqueIndices, uniqueWeights, int2(index00Pixel + float2(1.0f, 1.0f)), weights1.x * weights1.y);
+            AccumulateControlTexelSplat(uniqueIndices, uniqueWeights, int2(index00Pixel), weights0.x * weights0.y);
+            AccumulateControlTexelSplat(uniqueIndices, uniqueWeights, int2(index00Pixel + float2(1.0f, 0.0f)), weights1.x * weights0.y);
+            AccumulateControlTexelSplat(uniqueIndices, uniqueWeights, int2(index00Pixel + float2(0.0f, 1.0f)), weights0.x * weights1.y);
+            AccumulateControlTexelSplat(uniqueIndices, uniqueWeights, int2(index00Pixel + float2(1.0f, 1.0f)), weights1.x * weights1.y);
 
             float totalControlWeight = max(dot(uniqueWeights, float4(1.0f, 1.0f, 1.0f, 1.0f)), 0.0001f);
             float4 controlWeights = uniqueWeights / totalControlWeight;
@@ -185,6 +235,119 @@ namespace Terrain.Editor
             streams.matDiffuse = outputColor;
             streams.matColorBase = outputColor;
             streams.normalWS = blendedNormal;
+        }
+
+        float4 ComputeDebugView(float2 sampleCoord, int sliceIndex, float3 worldNormal)
+        {
+            // DebugViewMode enum values:
+            // 0 = FinalOutput (handled in main Compute)
+            // 1 = BiomeMaskMap - shows biome IDs as colors
+            // 2 = SlopeMap - shows terrain slope (degrees)
+            // 3 = HeightMap - shows normalized height
+            // 4 = LayerHeatmap - shows selected layer weight heatmap
+            // 5 = DetailIndexMap - shows material indices
+            // 6 = DetailWeightMap - shows material weights
+
+            switch (DebugViewMode)
+            {
+                case 1: // BiomeMaskMap
+                {
+                    // BiomeMask is a single global R8 texture in splatmap space (1/2 heightmap resolution).
+                    // Match EditorTerrainBuildSplatMap semantics: convert global heightmap coord -> global splat coord
+                    // and fetch the exact biome id texel without slice-local remapping or linear interpolation.
+                    int2 globalSplatCoord = int2(sampleCoord) / 2;
+                    uint biomeMaskWidth, biomeMaskHeight;
+                    BiomeMaskDebugTexture.GetDimensions(biomeMaskWidth, biomeMaskHeight);
+                    int2 clampedSplatCoord = clamp(
+                        globalSplatCoord,
+                        int2(0, 0),
+                        int2(max((int)biomeMaskWidth - 1, 0), max((int)biomeMaskHeight - 1, 0)));
+                    float biomeIdNormalized = BiomeMaskDebugTexture.Load(int3(clampedSplatCoord, 0)).x;
+                    int biomeId = (int)(biomeIdNormalized * 255.0f + 0.5f);
+                    // Generate a color from biome ID using a palette
+                    float hue = (float)(biomeId % 12) / 12.0f;
+                    float3 biomeColor = float3(
+                        abs(hue * 6.0f - 3.0f) - 1.0f,
+                        2.0f - abs(hue * 6.0f - 2.0f),
+                        2.0f - abs(hue * 6.0f - 4.0f));
+                    biomeColor = saturate(biomeColor);
+                    return float4(biomeColor, 1.0f);
+                }
+                case 2: // SlopeMap
+                {
+                    float slope = 0.0f;
+                    // Compute slope in degrees
+                    float2 center = sampleCoord;
+                    float left = SampleHeightLinear(center + float2(-1.0f, 0.0f), sliceIndex);
+                    float right = SampleHeightLinear(center + float2(1.0f, 0.0f), sliceIndex);
+                    float up = SampleHeightLinear(center + float2(0.0f, -1.0f), sliceIndex);
+                    float down = SampleHeightLinear(center + float2(0.0f, 1.0f), sliceIndex);
+
+                    float worldNx = left - right;
+                    float worldNz = up - down;
+                    const float worldNy = 2.0f;
+
+                    float normalLength = sqrt(worldNx * worldNx + worldNz * worldNz + worldNy * worldNy);
+                    if (normalLength > 0.0001f)
+                    {
+                        float cosSlope = clamp(worldNy / normalLength, -1.0f, 1.0f);
+                        slope = acos(cosSlope) * (180.0f / 3.14159265359f);
+                    }
+                    // Map slope 0-90 degrees to color gradient (green->yellow->red)
+                    float slopeNormalized = saturate(slope / 90.0f);
+                    float3 slopeColor = lerp(float3(0.2f, 0.8f, 0.2f), float3(0.8f, 0.8f, 0.2f), slopeNormalized);
+                    slopeColor = lerp(slopeColor, float3(0.8f, 0.2f, 0.2f), saturate((slopeNormalized - 0.5f) * 2.0f));
+                    return float4(slopeColor, 1.0f);
+                }
+                case 3: // HeightMap
+                {
+                    float height = SampleHeightLinear(sampleCoord, sliceIndex);
+                    // Normalize height (assumes HeightScale ~100)
+                    float heightNormalized = saturate(height / 100.0f);
+                    // Simple grayscale with slight blue tint for lower areas
+                    float3 heightColor = lerp(float3(0.3f, 0.3f, 0.5f), float3(1.0f, 1.0f, 1.0f), heightNormalized);
+                    return float4(heightColor, 1.0f);
+                }
+                case 4: // LayerHeatmap
+                {
+                    // Show heatmap overlay for selected layer weight
+                    // Heatmap is computed by BuildSplatMap shader with HeatmapEnabled=1
+                    // For now, we use the weight of the first material slot as heatmap
+                    // A proper implementation would need separate heatmap texture generation
+                    int2 splatCoord = int2(sampleCoord / 2.0f);
+                    float4 weights = LoadWeightMapAtGlobal(int2(sampleCoord));
+                    // Use weight at HeatmapLayerIndex position
+                    float heatmapValue = weights.x; // Default to first weight
+                    if (HeatmapLayerIndex == 0) heatmapValue = weights.x;
+                    else if (HeatmapLayerIndex == 1) heatmapValue = weights.y;
+                    else if (HeatmapLayerIndex == 2) heatmapValue = weights.z;
+                    else if (HeatmapLayerIndex == 3) heatmapValue = weights.w;
+                    // Heatmap color: black (0) -> red -> yellow -> white (1)
+                    float3 heatmapColor = lerp(float3(0.0f, 0.0f, 0.0f), float3(1.0f, 0.0f, 0.0f), heatmapValue);
+                    heatmapColor = lerp(heatmapColor, float3(1.0f, 1.0f, 0.0f), saturate((heatmapValue - 0.33f) * 3.0f));
+                    heatmapColor = lerp(heatmapColor, float3(1.0f, 1.0f, 1.0f), saturate((heatmapValue - 0.66f) * 3.0f));
+                    return float4(heatmapColor, 1.0f);
+                }
+                case 5: // DetailIndexMap
+                {
+                    // Show material indices as colors
+                    float4 indices = LoadIndexMapAtGlobal(int2(sampleCoord)) * 255.0f;
+                    // Each index becomes a color channel
+                    float3 indexColor = float3(indices.x / 255.0f, indices.y / 255.0f, indices.z / 255.0f);
+                    return float4(indexColor, 1.0f);
+                }
+                case 6: // DetailWeightMap
+                {
+                    // Show material weights as colors
+                    float4 weights = LoadWeightMapAtGlobal(int2(sampleCoord));
+                    // Weight sum visualization
+                    float weightSum = weights.x + weights.y + weights.z + weights.w;
+                    float3 weightColor = float3(weights.x, weights.y, weights.z + weights.w * 0.5f);
+                    return float4(weightColor, 1.0f);
+                }
+                default:
+                    return float4(0.5f, 0.5f, 0.5f, 1.0f);
+            }
         }
     };
 }

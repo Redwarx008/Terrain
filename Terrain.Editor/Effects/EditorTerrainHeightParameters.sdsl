@@ -233,6 +233,11 @@ namespace Terrain.Editor
         {
             // SplatMap uses 1/2 resolution: heightmap pixel (x,y) -> splatmap pixel (x/2, y/2)
             int2 splatPixel = globalPixel / 2;
+            return LoadIndexMapAtGlobalSplat(splatPixel);
+        }
+
+        float4 LoadIndexMapAtGlobalSplat(int2 splatPixel)
+        {
             float2 sampleCoord = float2(splatPixel);
             int sliceIndex = ResolveIndexMapSliceIndex(sampleCoord, 0);
             int4 bounds = GetIndexMapSliceBounds(sliceIndex);
@@ -264,6 +269,11 @@ namespace Terrain.Editor
         {
             // SplatMap uses 1/2 resolution: heightmap pixel (x,y) -> splatmap pixel (x/2, y/2)
             int2 splatPixel = globalPixel / 2;
+            return LoadWeightMapAtGlobalSplat(splatPixel);
+        }
+
+        float4 LoadWeightMapAtGlobalSplat(int2 splatPixel)
+        {
             float2 sampleCoord = float2(splatPixel);
             int sliceIndex = ResolveIndexMapSliceIndex(sampleCoord, 0);
             int4 bounds = GetIndexMapSliceBounds(sliceIndex);

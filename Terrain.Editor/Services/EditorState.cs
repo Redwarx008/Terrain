@@ -29,7 +29,7 @@ public enum PaintTool
 public enum SceneDebugViewMode
 {
     FinalOutput,
-    ClimateMaskMap,
+    BiomeMaskMap,
     SlopeMap,
     HeightMap,
     LayerHeatmap,
@@ -56,7 +56,7 @@ public sealed class EditorState
     private PaintTool _currentPaintTool = PaintTool.Paint;
     private EditorMode _currentEditorMode = EditorMode.Sculpt;
     private bool _hasSelectedTool = false;
-    private int _currentClimateId;
+    private int _currentBiomeId;
     private int _selectedRuleIndex = -1;
     private bool _showMaskOverlay = true;
     private SceneDebugViewMode _currentDebugViewMode = SceneDebugViewMode.FinalOutput;
@@ -152,7 +152,7 @@ public sealed class EditorState
     /// </summary>
     public event EventHandler? ToolSelectionChanged;
     public event EventHandler? EditorModeChanged;
-    public event EventHandler? ClimateSelectionChanged;
+    public event EventHandler? BiomeSelectionChanged;
     public event EventHandler? RuleSelectionChanged;
     public event EventHandler? OverlayChanged;
     public event EventHandler? DebugViewModeChanged;
@@ -180,15 +180,15 @@ public sealed class EditorState
         remove => HeightToolChanged -= value;
     }
 
-    public int CurrentClimateId
+    public int CurrentBiomeId
     {
-        get => _currentClimateId;
+        get => _currentBiomeId;
         set
         {
-            if (_currentClimateId != value)
+            if (_currentBiomeId != value)
             {
-                _currentClimateId = value;
-                ClimateSelectionChanged?.Invoke(this, EventArgs.Empty);
+                _currentBiomeId = value;
+                BiomeSelectionChanged?.Invoke(this, EventArgs.Empty);
             }
         }
     }

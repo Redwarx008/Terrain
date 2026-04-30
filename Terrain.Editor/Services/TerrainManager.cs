@@ -29,6 +29,7 @@ public sealed class TerrainManager : IDisposable
     private readonly GraphicsDevice graphicsDevice;
     private readonly Scene scene;
     private readonly Texture? defaultTerrainTexture;
+    private readonly BiomeRuleService biomeRuleService = BiomeRuleService.Instance;
     private Texture? defaultDiffuseTexture;
     private HeightmapInfo? currentHeightmapInfo;
 
@@ -49,9 +50,9 @@ public sealed class TerrainManager : IDisposable
     /// 气候蒙版，R8 格式，尺寸为高度图的 1/2（对齐 SplatMap）。
     /// 每个像素存储一个气候 ID，驱动规则求值生成 MaterialIndices。
     /// </summary>
-    public ClimateMask? ClimateMask { get; private set; }
+    public BiomeMask? BiomeMask { get; private set; }
 
-    private string? currentClimateMaskPath;
+    private string? currentBiomeMaskPath;
 
     private TerrainComponent? terrainComponent;
     private string? currentTerrainPath;
@@ -64,7 +65,7 @@ public sealed class TerrainManager : IDisposable
     public float HeightScale { get; private set; } = 100.0f;
 
     public string? CurrentTerrainPath => currentTerrainPath;
-    public string? CurrentClimateMaskPath => currentClimateMaskPath;
+    public string? CurrentBiomeMaskPath => currentBiomeMaskPath;
 
     public IReadOnlyList<EditorTerrainEntity> TerrainEntities => terrainEntities;
     public bool HasTerrainLoaded => terrainEntities.Count > 0;
@@ -105,6 +106,7 @@ public sealed class TerrainManager : IDisposable
         this.graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
         this.scene = scene ?? throw new ArgumentNullException(nameof(scene));
         this.defaultTerrainTexture = defaultTerrainTexture;
+        biomeRuleService.StateChanged += OnBiomeRuleStateChanged;
     }
 
     public async Task<List<EditorTerrainEntity>> LoadTerrainAsync(
@@ -162,10 +164,10 @@ public sealed class TerrainManager : IDisposable
             currentHeightmapInfo = info;
             currentTerrainPath = heightmapPath;
 
-            // ClimateMask 使用 heightmap 的 1/2 分辨率（对齐 SplatMap，避免大地形 GPU 纹理尺寸溢出）
-            int climateMaskWidth = (heightDataWidth + 1) / 2;
-            int climateMaskHeight = (heightDataHeight + 1) / 2;
-            ClimateMask = new ClimateMask(climateMaskWidth, climateMaskHeight);
+            // BiomeMask 使用 heightmap 的 1/2 分辨率（对齐 SplatMap，避免大地形 GPU 纹理尺寸溢出）
+            int biomeMaskWidth = (heightDataWidth + 1) / 2;
+            int biomeMaskHeight = (heightDataHeight + 1) / 2;
+            BiomeMask = new BiomeMask(biomeMaskWidth, biomeMaskHeight);
 
             // SplatMap 使用 heightmap 的 1/2 分辨率（与 CK3 一致）
             int splatMapWidth = (heightDataWidth + 1) / 2;
@@ -174,7 +176,7 @@ public sealed class TerrainManager : IDisposable
 
             // 设置材质索引数据引用到实体
             terrainEntity.MaterialIndexMap = MaterialIndices;
-            terrainEntity.SetClimateMask(graphicsDevice, ClimateMask);
+            terrainEntity.SetBiomeMask(graphicsDevice, BiomeMask);
 
             var sceneEntity = new Entity("EditorTerrain")
             {
@@ -231,8 +233,8 @@ public sealed class TerrainManager : IDisposable
         heightDataWidth = 0;
         heightDataHeight = 0;
         MaterialIndices = null;
-        ClimateMask = null;
-        currentClimateMaskPath = null;
+        BiomeMask = null;
+        currentBiomeMaskPath = null;
     }
 
     public BoundingBox GetTerrainBounds()
@@ -300,7 +302,7 @@ public sealed class TerrainManager : IDisposable
         terrainEntities[0].MarkDataDirty(channel, centerX, centerZ, radius);
 
         if (channel == TerrainDataChannel.Height)
-            terrainEntities[0].MarkClimateSplatDirty(centerX, centerZ, radius);
+            terrainEntities[0].MarkBiomeSplatDirty(centerX, centerZ, radius);
     }
 
     public void UpdateHeightData(int modifiedX, int modifiedZ, float radius)
@@ -392,25 +394,31 @@ public sealed class TerrainManager : IDisposable
 
     public void Dispose()
     {
+        biomeRuleService.StateChanged -= OnBiomeRuleStateChanged;
         RemoveCurrentTerrain();
         defaultDiffuseTexture?.Dispose();
         heightDataCache = null;
     }
 
-    #region 气候规则求值
+    private void OnBiomeRuleStateChanged(object? sender, EventArgs e)
+    {
+        RegenerateMaterialIndices();
+    }
+
+    #region 生物群系规则求值
 
     public void RegenerateMaterialIndices()
     {
         foreach (var terrainEntity in terrainEntities)
         {
-            terrainEntity.MarkClimateRulesDirty();
-            terrainEntity.MarkAllClimateSplatDirty();
+            terrainEntity.MarkBiomeRulesDirty();
+            terrainEntity.MarkAllBiomeSplatDirty();
         }
     }
 
     public void RegenerateMaterialIndices(float centerX, float centerY, float radius)
     {
-        if (ClimateMask == null)
+        if (BiomeMask == null)
             return;
 
         int centerSampleX = (int)centerX;
@@ -418,20 +426,20 @@ public sealed class TerrainManager : IDisposable
         float sampleRadius = Math.Max(1.0f, radius);
 
         foreach (var terrainEntity in terrainEntities)
-            terrainEntity.MarkClimateSplatDirty(centerSampleX, centerSampleZ, sampleRadius);
+            terrainEntity.MarkBiomeSplatDirty(centerSampleX, centerSampleZ, sampleRadius);
     }
 
-    public void MarkClimateMaskDirty()
+    public void MarkBiomeMaskDirty()
     {
         foreach (var terrainEntity in terrainEntities)
         {
-            terrainEntity.MarkClimateMaskDirty();
-            terrainEntity.MarkAllClimateSplatDirty();
+            terrainEntity.MarkBiomeMaskDirty();
+            terrainEntity.MarkAllBiomeSplatDirty();
         }
     }
 
     /// <summary>
-    /// 在当前 ClimateMask texel 对应的高度图位置采样海拔。
+    /// 在当前 BiomeMask texel 对应的高度图位置采样海拔。
     /// </summary>
     private float SampleAverageAltitude(int maskX, int maskY)
     {
@@ -472,14 +480,14 @@ public sealed class TerrainManager : IDisposable
         return heightDataCache![clampedY * heightDataWidth + clampedX] * HeightSampleNormalization;
     }
 
-    private static int ResolveMaterialIndex(ClimateRuleService climateState, byte climateId, float altitude, float slope)
+    private static int ResolveMaterialIndex(BiomeRuleService biomeState, byte biomeId, float altitude, float slope)
     {
         int resolvedMaterial = 0;
 
         // Rule stack semantics:
-        // if multiple rules overlap on altitude / slope within the same climate,
+        // if multiple rules overlap on altitude / slope within the same biome,
         // later rules override earlier ones as long as the full condition set matches.
-        foreach (var rule in climateState.GetRulesForClimate(climateId))
+        foreach (var rule in biomeState.GetLayersForBiome(biomeId))
         {
             if (!rule.Enabled)
                 continue;
@@ -509,26 +517,25 @@ public sealed class TerrainManager : IDisposable
         if (!projectManager.IsProjectOpen)
             return;
 
-        // 保存气候蒙版（L8 PNG，1:1 高度图分辨率）
-        string? climateMaskPath = null;
-        if (ClimateMask != null)
+        // 保存生物群系蒙版（L8 PNG，1:1 高度图分辨率）
+        string? biomeMaskPath = null;
+        if (BiomeMask != null)
         {
-            climateMaskPath = !string.IsNullOrEmpty(currentClimateMaskPath)
-                ? currentClimateMaskPath
-                : Path.Combine(projectManager.ProjectPath, "terrain_climate_mask.png");
-            SaveClimateMask(ClimateMask, climateMaskPath);
-            currentClimateMaskPath = climateMaskPath;
+            biomeMaskPath = !string.IsNullOrEmpty(currentBiomeMaskPath)
+                ? currentBiomeMaskPath
+                : Path.Combine(projectManager.ProjectPath, "terrain_biome_mask.png");
+            SaveBiomeMask(BiomeMask, biomeMaskPath);
+            currentBiomeMaskPath = biomeMaskPath;
         }
 
         var config = new TomlProjectConfig
         {
             Name = projectManager.ProjectName,
             HeightmapPath = currentTerrainPath,
-            ClimateMaskPath = climateMaskPath,
+            BiomeMaskPath = biomeMaskPath,
             HeightScale = HeightScale,
             MaterialSlots = SaveMaterialSlotConfigs(),
-            Climates = SaveClimateConfigs(),
-            ClimateRules = SaveClimateRuleConfigs(),
+            Biomes = SaveBiomeConfigs(),
             BiomeLayers = SaveBiomeLayerConfigs(),
             BiomeModifiers = SaveBiomeModifierConfigs(),
         };
@@ -553,40 +560,19 @@ public sealed class TerrainManager : IDisposable
         return configs;
     }
 
-    private static List<TomlClimateDefinitionConfig> SaveClimateConfigs()
+    private static List<TomlBiomeDefinitionConfig> SaveBiomeConfigs()
     {
-        var configs = new List<TomlClimateDefinitionConfig>();
-        foreach (var climate in ClimateRuleService.Instance.Climates)
+        var configs = new List<TomlBiomeDefinitionConfig>();
+        foreach (var biome in BiomeRuleService.Instance.Biomes)
         {
-            configs.Add(new TomlClimateDefinitionConfig
+            configs.Add(new TomlBiomeDefinitionConfig
             {
-                Id = climate.Id,
-                Name = climate.Name,
-                DebugColorR = climate.DebugColor.X,
-                DebugColorG = climate.DebugColor.Y,
-                DebugColorB = climate.DebugColor.Z,
-                DebugColorA = climate.DebugColor.W,
-            });
-        }
-        return configs;
-    }
-
-    private static List<TomlClimateRuleConfig> SaveClimateRuleConfigs()
-    {
-        var configs = new List<TomlClimateRuleConfig>();
-        foreach (var rule in ClimateRuleService.Instance.Rules)
-        {
-            configs.Add(new TomlClimateRuleConfig
-            {
-                ClimateId = rule.ClimateId,
-                Name = rule.Name,
-                Enabled = rule.Enabled,
-                MinAltitude = rule.MinAltitude,
-                MaxAltitude = rule.MaxAltitude,
-                MinSlopeDegrees = rule.MinSlopeDegrees,
-                MaxSlopeDegrees = rule.MaxSlopeDegrees,
-                BlendRange = rule.BlendRange,
-                MaterialSlotIndex = rule.MaterialSlotIndex,
+                Id = biome.Id,
+                Name = biome.Name,
+                DebugColorR = biome.DebugColor.X,
+                DebugColorG = biome.DebugColor.Y,
+                DebugColorB = biome.DebugColor.Z,
+                DebugColorA = biome.DebugColor.W,
             });
         }
         return configs;
@@ -595,12 +581,12 @@ public sealed class TerrainManager : IDisposable
     private static List<TomlBiomeLayerConfig> SaveBiomeLayerConfigs()
     {
         var configs = new List<TomlBiomeLayerConfig>();
-        foreach (ClimateRuleLayer layer in ClimateRuleService.Instance.Rules)
+        foreach (BiomeRuleLayer layer in BiomeRuleService.Instance.Layers)
         {
             configs.Add(new TomlBiomeLayerConfig
             {
                 Id = layer.Id,
-                ClimateId = layer.ClimateId,
+                BiomeId = layer.BiomeId,
                 Name = layer.Name,
                 Enabled = layer.Enabled,
                 Visible = layer.Visible,
@@ -615,7 +601,7 @@ public sealed class TerrainManager : IDisposable
     private static List<TomlBiomeModifierConfig> SaveBiomeModifierConfigs()
     {
         var configs = new List<TomlBiomeModifierConfig>();
-        foreach (ClimateRuleLayer layer in ClimateRuleService.Instance.Rules)
+        foreach (BiomeRuleLayer layer in BiomeRuleService.Instance.Layers)
         {
             foreach (BiomeModifier modifier in layer.Modifiers)
             {
@@ -651,29 +637,29 @@ public sealed class TerrainManager : IDisposable
         return configs;
     }
 
-    private static void RestoreClimateData(TomlProjectConfig config)
+    private static void RestoreBiomeData(TomlProjectConfig config)
     {
-        var climateState = ClimateRuleService.Instance;
-        climateState.ClearAll();
+        var biomeState = BiomeRuleService.Instance;
+        biomeState.ClearAll();
 
-        foreach (var climateConfig in config.Climates)
+        foreach (var biomeConfig in config.Biomes)
         {
-            climateState.AddClimateFromConfig(
-                climateConfig.Id,
-                climateConfig.Name,
+            biomeState.AddBiomeFromConfig(
+                biomeConfig.Id,
+                biomeConfig.Name,
                 new System.Numerics.Vector4(
-                    climateConfig.DebugColorR,
-                    climateConfig.DebugColorG,
-                    climateConfig.DebugColorB,
-                    climateConfig.DebugColorA));
+                    biomeConfig.DebugColorR,
+                    biomeConfig.DebugColorG,
+                    biomeConfig.DebugColorB,
+                    biomeConfig.DebugColorA));
         }
 
         if (config.BiomeLayers.Count > 0)
         {
-            var layerLookup = new Dictionary<int, ClimateRuleLayer>();
+            var layerLookup = new Dictionary<int, BiomeRuleLayer>();
             foreach (TomlBiomeLayerConfig layerConfig in config.BiomeLayers.OrderBy(static entry => entry.PriorityOrder))
             {
-                ClimateRuleLayer layer = climateState.AddLayer(layerConfig.ClimateId);
+                BiomeRuleLayer layer = biomeState.AddLayer(layerConfig.BiomeId);
                 layer.Id = layerConfig.Id;
                 layer.Name = layerConfig.Name;
                 layer.Enabled = layerConfig.Enabled;
@@ -686,7 +672,7 @@ public sealed class TerrainManager : IDisposable
 
             foreach (TomlBiomeModifierConfig modifierConfig in config.BiomeModifiers)
             {
-                if (!layerLookup.TryGetValue(modifierConfig.LayerId, out ClimateRuleLayer? layer))
+                if (!layerLookup.TryGetValue(modifierConfig.LayerId, out BiomeRuleLayer? layer))
                     continue;
 
                 if (!Enum.TryParse(modifierConfig.Type, ignoreCase: true, out BiomeModifierType modifierType))
@@ -722,26 +708,15 @@ public sealed class TerrainManager : IDisposable
                 });
             }
 
-            foreach (ClimateRuleLayer layer in layerLookup.Values)
+            foreach (BiomeRuleLayer layer in layerLookup.Values)
                 layer.EnsureLegacyModifiers();
         }
-        else
-        {
-            foreach (var ruleConfig in config.ClimateRules)
-            {
-                climateState.AddRuleFromConfig(
-                    ruleConfig.ClimateId, ruleConfig.Name, ruleConfig.Enabled,
-                    ruleConfig.MinAltitude, ruleConfig.MaxAltitude,
-                    ruleConfig.MinSlopeDegrees, ruleConfig.MaxSlopeDegrees,
-                    ruleConfig.BlendRange, ruleConfig.MaterialSlotIndex);
-            }
-        }
 
-        climateState.NormalizeAllRanges();
-        climateState.NotifyMutated();
+        biomeState.NormalizeAllRanges();
+        biomeState.NotifyMutated();
     }
 
-    private static void SaveClimateMask(ClimateMask map, string path)
+    private static void SaveBiomeMask(BiomeMask map, string path)
     {
         using var image = new Image<L8>(map.Width, map.Height);
         for (int y = 0; y < map.Height; y++)
@@ -790,8 +765,8 @@ public sealed class TerrainManager : IDisposable
         MaterialSlotManager.Instance.SelectedSlotIndex = firstActiveSlot;
         MaterialSlotManager.Instance.NotifySlotsChanged();
 
-        // 恢复气候定义和规则
-        RestoreClimateData(config);
+        // 恢复生物群系定义和层
+        RestoreBiomeData(config);
 
         // 设置 HeightScale（在加载高度图前，以便 LoadTerrainAsync 使用）
         HeightScale = config.HeightScale;
@@ -802,31 +777,31 @@ public sealed class TerrainManager : IDisposable
             _ = LoadTerrainAsync(config.HeightmapPath);
         }
 
-        // 加载气候蒙版（异步高度图加载完成后 ClimateMask 才存在，
+        // 加载生物群系蒙版（异步高度图加载完成后 BiomeMask 才存在，
         // 此处记录路径，由 HeightmapLoaded 事件触发实际加载）
-        if (!string.IsNullOrEmpty(config.ClimateMaskPath) && File.Exists(config.ClimateMaskPath))
+        if (!string.IsNullOrEmpty(config.BiomeMaskPath) && File.Exists(config.BiomeMaskPath))
         {
-            pendingClimateMaskPath = config.ClimateMaskPath;
+            pendingBiomeMaskPath = config.BiomeMaskPath;
         }
 
         // 通知需要加载材质纹理（由外部调用 LoadMaterialTextures）
         MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
     }
 
-    // 气候蒙版加载路径暂存，等待高度图加载完成后使用
-    private string? pendingClimateMaskPath;
+    // 生物群系蒙版加载路径暂存，等待高度图加载完成后使用
+    private string? pendingBiomeMaskPath;
 
     /// <summary>
-    /// 尝试加载暂存的气候蒙版。由 HeightmapLoaded 事件调用。
+    /// 尝试加载暂存的生物群系蒙版。由 HeightmapLoaded 事件调用。
     /// </summary>
-    public bool TryLoadPendingClimateMask()
+    public bool TryLoadPendingBiomeMask()
     {
-        if (string.IsNullOrEmpty(pendingClimateMaskPath))
+        if (string.IsNullOrEmpty(pendingBiomeMaskPath))
             return false;
 
-        string path = pendingClimateMaskPath;
-        pendingClimateMaskPath = null;
-        return LoadClimateMask(path, markDirty: false);
+        string path = pendingBiomeMaskPath;
+        pendingBiomeMaskPath = null;
+        return LoadBiomeMask(path, markDirty: false);
     }
 
     /// <summary>
@@ -838,33 +813,32 @@ public sealed class TerrainManager : IDisposable
         MaterialSlotManager.Instance.LoadTexturesFromConfiguredPaths(graphicsDevice, commandList);
     }
 
-    public bool LoadClimateMask(string path, bool markDirty = true)
+    public bool LoadBiomeMask(string path, bool markDirty = true)
     {
-        if (ClimateMask == null || !File.Exists(path))
+        if (BiomeMask == null || !File.Exists(path))
             return false;
 
         using var image = HeightmapImage.Load<L8>(path);
 
-        // ClimateMask 为半分辨率 (splatmap 尺寸)
+        // BiomeMask 为半分辨率 (splatmap 尺寸)
         // 支持：半分辨率图像直接加载，全分辨率图像自动降采样
-        bool halfRes = image.Width == ClimateMask.Width && image.Height == ClimateMask.Height;
+        bool halfRes = image.Width == BiomeMask.Width && image.Height == BiomeMask.Height;
         bool fullRes = image.Width == heightDataWidth && image.Height == heightDataHeight;
         if (!halfRes && !fullRes)
             return false;
 
-        int step = fullRes ? 2 : 1;
-        for (int y = 0; y < ClimateMask.Height; y++)
+        for (int y = 0; y < BiomeMask.Height; y++)
         {
-            int srcY = y * step;
-            for (int x = 0; x < ClimateMask.Width; x++)
+            for (int x = 0; x < BiomeMask.Width; x++)
             {
-                int srcX = x * step;
-                ClimateMask.SetValue(x, y, image[srcX, srcY].PackedValue);
+                int srcX = fullRes ? x * 2 : x;
+                int srcY = fullRes ? y * 2 : y;
+                BiomeMask.SetValue(x, y, image[srcX, srcY].PackedValue);
             }
         }
 
-        currentClimateMaskPath = path;
-        MarkClimateMaskDirty();
+        currentBiomeMaskPath = path;
+        MarkBiomeMaskDirty();
         RegenerateMaterialIndices();
         if (markDirty)
             ProjectManager.Instance.MarkDirty();

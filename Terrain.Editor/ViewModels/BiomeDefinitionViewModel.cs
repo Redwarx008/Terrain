@@ -9,14 +9,14 @@ using Terrain.Editor.Services;
 namespace Terrain.Editor.ViewModels;
 
 /// <summary>
-/// Wraps a single <see cref="ClimateDefinition"/> for Avalonia data binding.
+/// Wraps a single <see cref="BiomeDefinition"/> for Avalonia data binding.
 /// </summary>
-public sealed partial class ClimateDefinitionViewModel : ObservableObject
+public sealed partial class BiomeDefinitionViewModel : ObservableObject
 {
-    private readonly ClimateDefinition _source;
+    private readonly BiomeDefinition _source;
     private bool _syncing;
 
-    public ClimateDefinitionViewModel(ClimateDefinition source)
+    public BiomeDefinitionViewModel(BiomeDefinition source)
     {
         _source = source;
         SyncFromSource();
@@ -36,7 +36,7 @@ public sealed partial class ClimateDefinitionViewModel : ObservableObject
         if (_source.Name != value)
         {
             _source.Name = value;
-            ClimateRuleService.Instance.NotifyMutated();
+            BiomeRuleService.Instance.NotifyMutated();
         }
     }
 
@@ -53,7 +53,7 @@ public sealed partial class ClimateDefinitionViewModel : ObservableObject
         if (_source.DebugColor != vector)
         {
             _source.DebugColor = vector;
-            ClimateRuleService.Instance.NotifyMutated();
+            BiomeRuleService.Instance.NotifyMutated();
         }
     }
 
