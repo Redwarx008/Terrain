@@ -434,3 +434,36 @@ Added Window.KeyBindings for Ctrl+Z (Undo), Ctrl+Y and Ctrl+Shift+Z (Redo) in Ma
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: Finish biome rule layer migration
+
+**Date**: 2026-05-01
+**Task**: Finish biome rule layer migration
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+Migrated climate-based painting to biome rule layers, updated the right inspector UI, fixed terrain rule recompute wiring, and corrected half-resolution splat sampling so final terrain blending reads control maps in splat space instead of producing mosaic artifacts.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f1b6323` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

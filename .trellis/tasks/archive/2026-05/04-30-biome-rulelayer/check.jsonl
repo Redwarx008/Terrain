@@ -1,0 +1,6 @@
+{"file":".trellis/spec/editor/index.md","reason":"Verify the final biome inspector still follows editor-side conventions."}
+{"file":".trellis/spec/editor/component-guidelines.md","reason":"Check that the panel uses Avalonia layout containers, binding patterns, and acceptable code-behind boundaries."}
+{"file":".trellis/spec/editor/state-management.md","reason":"Selection and overlay state must stay synchronized after the UI refactor."}
+{"file":".trellis/spec/editor/quality-guidelines.md","reason":"Use the editor quality checklist during final validation."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The check step should verify that layer/material/selection state remains coherent across service and UI boundaries."}
+{"file":".trellis/tasks/04-30-biome-rulelayer/research/project-context-and-specs.md","reason":"Provides the current biome/rulelayer architecture context needed to review the implementation accurately."}
