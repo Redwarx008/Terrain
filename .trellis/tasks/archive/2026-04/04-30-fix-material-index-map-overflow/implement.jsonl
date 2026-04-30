@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/editor/index.md", "reason": "Editor conventions for service/shader changes"}
+{"file": ".trellis/spec/runtime/index.md", "reason": "Runtime conventions for streaming/shader changes"}
+{"file": ".trellis/spec/editor/type-safety.md", "reason": "Type safety for array size changes and overflow prevention"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data flow: editor C# ↔ editor shader ↔ runtime C# ↔ runtime shader"}
+{"file": ".trellis/spec/runtime/error-handling.md", "reason": "Error handling for v3 version check and loading failures"}
