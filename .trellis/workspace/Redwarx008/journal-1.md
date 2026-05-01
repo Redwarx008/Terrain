@@ -467,3 +467,36 @@ Migrated climate-based painting to biome rule layers, updated the right inspecto
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: Fix biome rule layer regressions
+
+**Date**: 2026-05-01
+**Task**: Fix biome rule layer regressions
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+修复 biome rule layer 审查确认的核心回归：Noise/Octaves 恢复多八度 FBM、modifier 反向迭代纳入提交、恢复 modifier Opacity 可编辑 UI、修正 LayerHeatmap 语义与重算链路；按用户要求不处理 TextureMask，并将相关可执行约束沉淀进 editor component spec。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7e4016a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
