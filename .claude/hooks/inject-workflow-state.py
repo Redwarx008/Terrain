@@ -140,7 +140,7 @@ _FALLBACK_BREADCRUMBS = {
         "When in doubt: create task. Over-tasking is cheap; under-tasking "
         "leaks plans and research into main context.\n"
         "Flow: load `trellis-brainstorm` skill → it creates the task via "
-        "`python3 ./.trellis/scripts/task.py create` and drives requirements Q&A. "
+        "`python ./.trellis/scripts/task.py create` and drives requirements Q&A. "
         "For research-heavy work (tool comparison, docs, cross-platform survey), "
         "spawn `trellis-research` sub-agents via Task tool — NEVER do 3+ inline "
         "WebFetch/WebSearch/`gh api` calls in the main conversation."

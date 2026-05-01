@@ -79,7 +79,7 @@ PLAN_REQUIREMENT = <the requirement from environment>
       rm -rf $PLAN_TASK_DIR
    
    2. Run with revised requirement:
-      python3 ./.trellis/scripts/multi_agent/plan.py --name "<name>" --type "<type>" --requirement "<revised requirement>"
+      python ./.trellis/scripts/multi_agent/plan.py --name "<name>" --type "<type>" --requirement "<revised requirement>"
    EOF
    ```
 
@@ -152,7 +152,7 @@ ${PLAN_TASK_DIR}/
 ### Step 1: Initialize Context Files
 
 ```bash
-python3 ./.trellis/scripts/task.py init-context "$PLAN_TASK_DIR" "$PLAN_DEV_TYPE"
+python ./.trellis/scripts/task.py init-context "$PLAN_TASK_DIR" "$PLAN_DEV_TYPE"
 ```
 
 This creates base jsonl files with standard specs for the dev type.
@@ -201,13 +201,13 @@ Parse research agent output and add entries to jsonl files:
 
 ```bash
 # For each entry in implement.jsonl section:
-python3 ./.trellis/scripts/task.py add-context "$PLAN_TASK_DIR" implement "<path>" "<reason>"
+python ./.trellis/scripts/task.py add-context "$PLAN_TASK_DIR" implement "<path>" "<reason>"
 
 # For each entry in check.jsonl section:
-python3 ./.trellis/scripts/task.py add-context "$PLAN_TASK_DIR" check "<path>" "<reason>"
+python ./.trellis/scripts/task.py add-context "$PLAN_TASK_DIR" check "<path>" "<reason>"
 
 # For each entry in debug.jsonl section:
-python3 ./.trellis/scripts/task.py add-context "$PLAN_TASK_DIR" debug "<path>" "<reason>"
+python ./.trellis/scripts/task.py add-context "$PLAN_TASK_DIR" debug "<path>" "<reason>"
 ```
 
 ### Step 4: Write prd.md
@@ -249,10 +249,10 @@ EOF
 
 ```bash
 # Set branch name
-python3 ./.trellis/scripts/task.py set-branch "$PLAN_TASK_DIR" "feature/${PLAN_TASK_NAME}"
+python ./.trellis/scripts/task.py set-branch "$PLAN_TASK_DIR" "feature/${PLAN_TASK_NAME}"
 
 # Set scope (from research agent suggestion)
-python3 ./.trellis/scripts/task.py set-scope "$PLAN_TASK_DIR" "<scope>"
+python ./.trellis/scripts/task.py set-scope "$PLAN_TASK_DIR" "<scope>"
 
 # Update dev_type in task.json
 jq --arg type "$PLAN_DEV_TYPE" '.dev_type = $type' \
@@ -263,7 +263,7 @@ jq --arg type "$PLAN_DEV_TYPE" '.dev_type = $type' \
 ### Step 6: Validate Configuration
 
 ```bash
-python3 ./.trellis/scripts/task.py validate "$PLAN_TASK_DIR"
+python ./.trellis/scripts/task.py validate "$PLAN_TASK_DIR"
 ```
 
 If validation fails, fix the invalid paths and re-validate.
@@ -280,9 +280,9 @@ echo "Files created:"
 ls -la "$PLAN_TASK_DIR"
 echo ""
 echo "Context summary:"
-python3 ./.trellis/scripts/task.py list-context "$PLAN_TASK_DIR"
+python ./.trellis/scripts/task.py list-context "$PLAN_TASK_DIR"
 echo ""
-echo "Ready for: python3 ./.trellis/scripts/multi_agent/start.py $PLAN_TASK_DIR"
+echo "Ready for: python ./.trellis/scripts/multi_agent/start.py $PLAN_TASK_DIR"
 ```
 
 ---

@@ -141,7 +141,7 @@ The finish agent actively updates spec docs when it detects new patterns or cont
 This action creates a Pull Request from the feature branch. Run it via Bash:
 
 ```bash
-python3 ./.trellis/scripts/multi_agent/create_pr.py
+python ./.trellis/scripts/multi_agent/create_pr.py
 ```
 
 This will:
