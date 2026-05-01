@@ -104,7 +104,9 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
 
                 // Heatmap preview parameters
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.HeatmapLayerIndex, EditorState.Instance.SelectedRuleIndex);
-                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.HeatmapEnabled, EditorState.Instance.HeatmapEnabled ? 1 : 0);
+                buildSplatMapEffect.Parameters.Set(
+                    Editor.EditorTerrainBuildSplatMapKeys.HeatmapEnabled,
+                    EditorState.Instance.CurrentDebugViewMode == SceneDebugViewMode.LayerHeatmap ? 1 : 0);
 
                 buildSplatMapEffect.Draw(drawContext);
             }

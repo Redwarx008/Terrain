@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/editor/index.md", "reason": "Editor review checklist and package entry point for UI/binding changes"}
+{"file": ".trellis/spec/editor/component-guidelines.md", "reason": "Spec rules covering modifier shader behavior, UI contracts, and collection synchronization"}
+{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "Editor review quality bar for behavior regressions and missing checks"}
+{"file": ".trellis/spec/runtime/quality-guidelines.md", "reason": "Runtime quality expectations for terrain generation and shader changes"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Review runtime/editor data flow consistency across terrain pipeline changes"}

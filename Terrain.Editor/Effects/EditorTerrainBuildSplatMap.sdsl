@@ -160,6 +160,26 @@ namespace Terrain.Editor
             return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
         }
 
+        float Fbm(float2 p, float seed, float octaves)
+        {
+            int octaveCount = clamp((int)(octaves + 0.5f), 1, 8);
+            float amplitude = 0.5f;
+            float frequency = 1.0f;
+            float sum = 0.0f;
+            float normalization = 0.0f;
+
+            [loop]
+            for (int octave = 0; octave < octaveCount; octave++)
+            {
+                sum += Noise2D(p * frequency, seed + (float)octave * 17.0f) * amplitude;
+                normalization += amplitude;
+                frequency *= 2.0f;
+                amplitude *= 0.5f;
+            }
+
+            return normalization > 0.0001f ? sum / normalization : 0.0f;
+        }
+
         float ComputeRangeModifier(float value, float minValue, float maxValue, float minFalloff, float maxFalloff)
         {
             if (value < minValue || value > maxValue)
@@ -206,20 +226,14 @@ namespace Terrain.Editor
                 }
                 case ModifierTypeNoise:
                 {
-                    float noise = Noise2D(float2(heightCoord) * max(modifier.Scale, 0.0001f) + float2(modifier.OffsetX, modifier.OffsetY), modifier.Seed);
+                    float noise = Fbm(
+                        float2(heightCoord) * max(modifier.Scale, 0.0001f) + float2(modifier.OffsetX, modifier.OffsetY),
+                        modifier.Seed,
+                        modifier.Octaves);
                     return saturate(noise);
                 }
                 case ModifierTypeTextureMask:
                 {
-                    // TextureMask modifier: sample from the global TextureMaskResource.
-                    // UV is computed from heightmap coordinates with scale and offset.
-                    // The channel (R/G/B/A) is selected via TextureMaskChannel parameter.
-                    //
-                    // Note: This is a simplified implementation using a single global texture.
-                    // Full implementation would require per-modifier texture binding, which
-                    // would need changes to the GPU buffer upload and shader resource management.
-                    //
-                    // For now, we read from the TextureMaskResource and extract the specified channel.
                     float2 uv = float2(heightCoord) * max(modifier.Scale, 0.0001f) + float2(modifier.OffsetX, modifier.OffsetY);
                     float4 maskSample = TextureMaskResource.SampleLevel(TextureMaskSampler, uv, 0.0f);
 
@@ -357,6 +371,7 @@ namespace Terrain.Editor
             bestIndices = int4(255, 255, 255, 255);
             bestWeights = float4(0.0f, 0.0f, 0.0f, 0.0f);
             float remainingWeight = 1.0f;
+            float selectedLayerHeatmap = 0.0f;
 
             [loop]
             for (int layerIndex = LayerCount - 1; layerIndex >= 0; layerIndex--)
@@ -368,7 +383,7 @@ namespace Terrain.Editor
                 foundValidLayer = true;
                 float weight = 1.0f;
                 [loop]
-                for (int modifierOffset = 0; modifierOffset < layer.ModifierCount; modifierOffset++)
+                for (int modifierOffset = layer.ModifierCount - 1; modifierOffset >= 0; modifierOffset--)
                 {
                     int modifierIndex = layer.ModifierStartIndex + modifierOffset;
                     if (modifierIndex < 0 || modifierIndex >= ModifierCount)
@@ -396,6 +411,9 @@ namespace Terrain.Editor
                 if (contribution <= 0.0f)
                     continue;
 
+                if (layerIndex == HeatmapLayerIndex)
+                    selectedLayerHeatmap = contribution;
+
                 PushTop4(bestIndices, bestWeights, layer.MaterialSlotIndex, contribution);
                 remainingWeight *= (1.0f - weight);
 
@@ -422,7 +440,9 @@ namespace Terrain.Editor
             float4 encodedIndices = float4(bestIndices) / 255.0f;
 
             OutputIndexMap[int2(texelX, texelY)] = encodedIndices;
-            OutputWeightMap[int2(texelX, texelY)] = normalizedWeights;
+            OutputWeightMap[int2(texelX, texelY)] = HeatmapEnabled != 0
+                ? float4(selectedLayerHeatmap, 0.0f, 0.0f, 0.0f)
+                : normalizedWeights;
         }
     };
 }

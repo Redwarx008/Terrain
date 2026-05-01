@@ -260,8 +260,8 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
             parameters.Set(EditorTerrainDiffuseKeys.BiomeMaskDebugSampler, graphicsDevice.SamplerStates.LinearClamp);
         }
 
-        // Heatmap texture: reuses WeightMap texture for LayerHeatmap mode.
-        // Future: create a dedicated heatmap texture for better visualization quality.
+        // LayerHeatmap temporarily reuses the weight-map resource. The compute pass
+        // rewrites it with selected-layer contributions while the debug mode is active.
         if (entity.DetailWeightMapTextures.Length > 0 && entity.DetailWeightMapTextures[0] != null)
         {
             parameters.Set(EditorTerrainDiffuseKeys.HeatmapTexture, entity.DetailWeightMapTextures[0]);

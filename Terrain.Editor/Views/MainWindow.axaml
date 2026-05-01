@@ -798,6 +798,19 @@
                     <!-- Invert (common to most modifiers) -->
                     <CheckBox Content="Invert" IsChecked="{Binding IsInverted}" IsVisible="{Binding HasInvert}" />
 
+                    <!-- Opacity (all modifiers) -->
+                    <Grid ColumnDefinitions="*,56" ColumnSpacing="8" IsVisible="{Binding HasOpacity}">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Opacity" />
+                        <Slider Minimum="0" Maximum="1" Value="{Binding Opacity}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1"
+                               Classes="valueBox"
+                               IsReadOnly="True"
+                               Text="{Binding OpacityPercent, StringFormat='{}{0}%'}"
+                               VerticalAlignment="Bottom" />
+                    </Grid>
+
                     <!-- Min/Max Range (Height, Slope, Curvature, Direction, Noise) -->
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasMin}">
                       <StackPanel Spacing="2">

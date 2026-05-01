@@ -417,6 +417,183 @@ float2 splat00Pixel = floor(splatPixels);
 // 直接对相邻 splat texel 做插值
 ```
 
+### Scenario: 噪声修改器必须使用多八度分形噪声
+
+#### 1. Scope / Trigger
+- Trigger: 修改 `EditorTerrainBuildSplatMap.sdsl` 中 `BiomeModifierType.Noise` 的实现，或新增任何类型的噪声修改器。
+
+#### 2. Signatures
+- Shader 声明：`Noise2D()` → 单八度值噪声（禁用）
+- Shader 声明：`Fbm()` → 多八度分形布朗运动（正确选择）
+- C# 上传：`ModifierGpu.Octaves`（`EditorTerrainEntity.cs` ~L629）→ 控制噪声八度数
+
+#### 3. Contracts
+- 噪声修改器必须使用 `Fbm()` 而非 `Noise2D()`。
+- `Octaves` 参数必须被 shader 消费，与 UI 中的 `HasOctaves` 滑块联动。
+- UI 中展示 Octaves 滑块（`ModifierViewModel.HasOctaves => _source.Type is BiomeModifierType.Noise`），shader 不使用该参数会造成静默的功能退化。
+
+#### 4. Validation & Error Matrix
+- 使用 `Fbm()` + 消费 `Octaves` → 调节滑块有视觉变化，视觉质量正常
+- 使用 `Noise2D()` + 不消费 `Octaves` → 滑块无效，单八度质量下降
+
+#### 5. Good/Base/Bad Cases
+- Good: `Fbm(coord, modifier.Octaves)` — 多八度噪声，Octaves 滑块 1-8 均可调
+- Bad: `Noise2D(coord)` — 单八度噪声，Octaves 字段上传但从未读取
+
+#### 7. Wrong vs Correct
+#### Wrong
+```hlsl
+// 单八度值噪声，不使用 Octaves
+float noise = Noise2D(coord * modifier.Scale + modifier.Offset);
+return noise * modifier.Opacity;
+```
+
+#### Correct
+```hlsl
+// 多八度分形噪声，消费 Octaves 参数
+float noise = Fbm(coord * modifier.Scale + modifier.Offset, modifier.Octaves);
+return noise * modifier.Opacity;
+```
+
+### Scenario: Shader 中修改器栈必须反向迭代
+
+#### 1. Scope / Trigger
+- Trigger: 修改 `EditorTerrainBuildSplatMap.sdsl` 中 modifier stack 的迭代循环。
+
+#### 2. Signatures
+- 参考实现：`ModifierStack.ProcessLayers`（倒数迭代 `Count-1 → 0`）
+- Shader 迭代：`for (int idx = LayerCount - 1; idx >= 0; idx--)` → 正确
+- Shader 迭代：`for (int idx = 0; idx < LayerCount; idx++)` → 错误
+
+#### 3. Contracts
+- 修改器栈必须反向迭代（列表最后一项最先执行，第一项拥有最终决定权）。
+- 对于 Multiply（交换律），顺序不影响结果；对于 Add/Subtract（非交换律），顺序决定最终输出。
+
+#### 4. Validation & Error Matrix
+- 反向迭代 → 与参考输出一致
+- 正向迭代 + 仅有 Multiply 修改器 → 碰巧一致（交换律），不易察觉
+- 正向迭代 + 混合 Add/Subtract 修改器 → 结果与参考预期不符
+
+#### 5. Good/Base/Bad Cases
+- Good: `[Height(Mul), Noise(Add)]` 反向迭代 → Height 最后执行（最终决定权），效果为 NoisedBase × Height
+- Bad: `[Height(Mul), Noise(Add)]` 正向迭代 → Noise 最后执行，效果为 (Base × Height) + Noise
+
+#### 7. Wrong vs Correct
+#### Wrong
+```hlsl
+for (int m = 0; m < ModifierCount; m++)  // 正向迭代
+{
+    float weight = ApplyModifier(modifiers[m], ...);
+    baseWeight = BlendModifier(baseWeight, weight, modifiers[m].BlendMode);
+}
+```
+
+#### Correct
+```hlsl
+for (int m = ModifierCount - 1; m >= 0; m--)  // 反向迭代，与参考一致
+{
+    float weight = ApplyModifier(modifiers[m], ...);
+    baseWeight = BlendModifier(baseWeight, weight, modifiers[m].BlendMode);
+}
+```
+
+### Scenario: Modifier 参数只要参与 GPU 求值，就必须保留可写 UI 链路
+
+#### 1. Scope / Trigger
+- Trigger: 修改 biome / climate modifier 的 Inspector UI、`ModifierViewModel`，或 shader/TOML 中新增、保留任何 modifier 参数字段。
+
+#### 2. Signatures
+- UI 绑定：`MainWindow.axaml` 中 `Modifier Settings` 面板
+- ViewModel 属性：`ModifierViewModel.Opacity`
+- GPU 求值：`EditorTerrainBuildSplatMap.sdsl` 中 `modifier.Opacity`
+- 持久化：`TomlProjectConfig` 的 `opacity`
+
+#### 3. Contracts
+- 只要参数仍会被 shader 消费，且 TOML 仍会读写，该参数就不能只剩只读展示，必须在 Inspector 中保留可写入口。
+- biome modifier 的 `Opacity` 必须保持完整链路：
+  `Slider/TextBox -> ModifierViewModel.OnOpacityChanged -> BiomeRuleService.NotifyMutated() -> TerrainManager.RegenerateMaterialIndices() -> shader lerp(weight, blended, modifier.Opacity)`
+- “列表里显示百分比、详情面板里没有输入控件” 视为功能回归，不是单纯 UX 退化。
+
+#### 4. Validation & Error Matrix
+- UI 可写 + ViewModel 通知服务层 -> 修改后 viewport 立即重算
+- 只有只读 `OpacityPercent`，没有输入控件 -> 参数被锁死在默认值或旧存档值
+- UI 改值但未触发 `NotifyMutated()` -> 面板变了，地形结果不变
+
+#### 5. Good/Base/Bad Cases
+- Good: 选中 Noise modifier，把 Opacity 从 `1.0` 拉到 `0.35`，地形混合强度立即变弱
+- Base: 旧 TOML 中存了 `opacity = 0.5`，打开项目后仍能继续调，而不是只能看不能改
+- Bad: shader 仍在用 `modifier.Opacity`，但新 UI 里完全没有可编辑入口
+
+#### 6. Tests Required
+- 手工回归：新建 modifier 后直接调 `Opacity`，确认 viewport 材质混合立即变化
+- 手工回归：加载带非 1.0 `opacity` 的项目，确认 Inspector 读值正确且能继续编辑
+- 代码检查：`ModifierViewModel.OnOpacityChanged()` 必须继续调用 `BiomeRuleService.NotifyMutated()`
+
+#### 7. Wrong vs Correct
+#### Wrong
+```xml
+<!-- 只显示只读百分比，没有可写控件 -->
+<TextBox IsReadOnly="True" Text="{Binding OpacityPercent}" />
+```
+
+#### Correct
+```xml
+<Slider Minimum="0" Maximum="1" Value="{Binding Opacity}" />
+<TextBox IsReadOnly="True"
+         Text="{Binding OpacityPercent, StringFormat='{}{0}%'}" />
+```
+
+### Scenario: LayerHeatmap 复用 compute 输出时，必须在 debug 状态变化时重算
+
+#### 1. Scope / Trigger
+- Trigger: 修改 `LayerHeatmap` 调试模式、`TerrainManager` 对 `EditorState` 的订阅、或让 `BuildSplatMap` 在调试模式下重写 `WeightMap` / 其它 compute 输出。
+
+#### 2. Signatures
+- Debug 状态：`EditorState.CurrentDebugViewMode`
+- Rule 选择：`EditorState.SelectedRuleIndex`
+- Terrain 订阅：`TerrainManager.OnDebugViewModeChanged(...)`、`OnRuleSelectionChanged(...)`
+- 重算入口：`EditorTerrainEntity.MarkAllBiomeSplatDirty()`
+
+#### 3. Contracts
+- 如果 `LayerHeatmap` 不是独立纹理，而是临时复用 splat compute 输出，那么“进入热图模式”“离开热图模式”“热图模式下切换选中 rule”都必须重新标脏并重跑 compute。
+- 只在普通规则变更时重算是不够的，因为 debug 模式切换本身会改变 compute 输出语义。
+- 退出 `LayerHeatmap` 时也要重算一次，把 `WeightMap` 恢复为正常 top-4 material 权重，而不是继续保留热图值。
+
+#### 4. Validation & Error Matrix
+- 进入热图模式时重算 -> 显示当前选中 layer 的最新热图
+- 热图模式下切换选中 rule 时重算 -> 热图跟随选中项变化
+- 退出热图模式时重算 -> 最终材质重新读取正常权重，不残留热图污染
+- 不订阅 `DebugViewModeChanged` / `RuleSelectionChanged` -> 继续显示旧 layer 或错误的 weight 语义
+
+#### 5. Good/Base/Bad Cases
+- Good: 打开 `LayerHeatmap` 后切换第 2 层和第 5 层，热图立即切换到各自分布
+- Base: 当前 UI 还没把 debug mode 暴露出来也没关系，但只要有人通过状态入口切换到 `LayerHeatmap`，结果必须正确
+- Bad: 先看 layer A 的热图，再切到 layer B，屏幕仍显示 A；或者退出热图后最终材质明显错乱
+
+#### 6. Tests Required
+- 手工回归：进入 `LayerHeatmap`，切换不同 rule，确认每次都能看到不同热图
+- 手工回归：从 `LayerHeatmap` 切回最终材质输出，确认材质结果恢复正常
+- 代码检查：`TerrainManager` 必须订阅并在 `Dispose()` 中取消订阅 `DebugViewModeChanged` / `RuleSelectionChanged`
+
+#### 7. Wrong vs Correct
+#### Wrong
+```csharp
+// 只有规则数据变化才重算，debug 状态变化不会触发 compute
+biomeRuleService.StateChanged += OnBiomeRuleStateChanged;
+```
+
+#### Correct
+```csharp
+EditorState.Instance.DebugViewModeChanged += OnDebugViewModeChanged;
+EditorState.Instance.RuleSelectionChanged += OnRuleSelectionChanged;
+
+private void OnRuleSelectionChanged(object? sender, EventArgs e)
+{
+    if (EditorState.Instance.CurrentDebugViewMode == SceneDebugViewMode.LayerHeatmap)
+        RegenerateLayerHeatmapPreview();
+}
+```
+
 ### 过滤子集列表的选择桥接
 
 当 Inspector 展示的是后端全量集合的一个过滤子集（例如“当前 Biome 下的 RuleLayer 列表”），而渲染/调试状态仍然使用全局索引（例如 `EditorState.SelectedRuleIndex`）时，ViewModel 必须同时维护：

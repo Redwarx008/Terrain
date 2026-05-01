@@ -30,6 +30,7 @@ public sealed class TerrainManager : IDisposable
     private readonly Scene scene;
     private readonly Texture? defaultTerrainTexture;
     private readonly BiomeRuleService biomeRuleService = BiomeRuleService.Instance;
+    private bool lastLayerHeatmapPreviewEnabled;
     private Texture? defaultDiffuseTexture;
     private HeightmapInfo? currentHeightmapInfo;
 
@@ -106,7 +107,10 @@ public sealed class TerrainManager : IDisposable
         this.graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
         this.scene = scene ?? throw new ArgumentNullException(nameof(scene));
         this.defaultTerrainTexture = defaultTerrainTexture;
+        lastLayerHeatmapPreviewEnabled = EditorState.Instance.CurrentDebugViewMode == SceneDebugViewMode.LayerHeatmap;
         biomeRuleService.StateChanged += OnBiomeRuleStateChanged;
+        EditorState.Instance.DebugViewModeChanged += OnDebugViewModeChanged;
+        EditorState.Instance.RuleSelectionChanged += OnRuleSelectionChanged;
     }
 
     public async Task<List<EditorTerrainEntity>> LoadTerrainAsync(
@@ -395,6 +399,8 @@ public sealed class TerrainManager : IDisposable
     public void Dispose()
     {
         biomeRuleService.StateChanged -= OnBiomeRuleStateChanged;
+        EditorState.Instance.DebugViewModeChanged -= OnDebugViewModeChanged;
+        EditorState.Instance.RuleSelectionChanged -= OnRuleSelectionChanged;
         RemoveCurrentTerrain();
         defaultDiffuseTexture?.Dispose();
         heightDataCache = null;
@@ -403,6 +409,21 @@ public sealed class TerrainManager : IDisposable
     private void OnBiomeRuleStateChanged(object? sender, EventArgs e)
     {
         RegenerateMaterialIndices();
+    }
+
+    private void OnDebugViewModeChanged(object? sender, EventArgs e)
+    {
+        bool isLayerHeatmapPreviewEnabled = EditorState.Instance.CurrentDebugViewMode == SceneDebugViewMode.LayerHeatmap;
+        if (isLayerHeatmapPreviewEnabled || lastLayerHeatmapPreviewEnabled)
+            RegenerateLayerHeatmapPreview();
+
+        lastLayerHeatmapPreviewEnabled = isLayerHeatmapPreviewEnabled;
+    }
+
+    private void OnRuleSelectionChanged(object? sender, EventArgs e)
+    {
+        if (EditorState.Instance.CurrentDebugViewMode == SceneDebugViewMode.LayerHeatmap)
+            RegenerateLayerHeatmapPreview();
     }
 
     #region 生物群系规则求值
@@ -427,6 +448,12 @@ public sealed class TerrainManager : IDisposable
 
         foreach (var terrainEntity in terrainEntities)
             terrainEntity.MarkBiomeSplatDirty(centerSampleX, centerSampleZ, sampleRadius);
+    }
+
+    private void RegenerateLayerHeatmapPreview()
+    {
+        foreach (var terrainEntity in terrainEntities)
+            terrainEntity.MarkAllBiomeSplatDirty();
     }
 
     public void MarkBiomeMaskDirty()

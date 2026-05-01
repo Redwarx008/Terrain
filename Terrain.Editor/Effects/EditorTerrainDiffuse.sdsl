@@ -310,19 +310,17 @@ namespace Terrain.Editor
                 }
                 case 4: // LayerHeatmap
                 {
-                    // Show heatmap overlay for selected layer weight
-                    // Heatmap is computed by BuildSplatMap shader with HeatmapEnabled=1
-                    // For now, we use the weight of the first material slot as heatmap
-                    // A proper implementation would need separate heatmap texture generation
-                    int2 splatCoord = int2(sampleCoord / 2.0f);
-                    float4 weights = LoadWeightMapAtGlobal(int2(sampleCoord));
-                    // Use weight at HeatmapLayerIndex position
-                    float heatmapValue = weights.x; // Default to first weight
-                    if (HeatmapLayerIndex == 0) heatmapValue = weights.x;
-                    else if (HeatmapLayerIndex == 1) heatmapValue = weights.y;
-                    else if (HeatmapLayerIndex == 2) heatmapValue = weights.z;
-                    else if (HeatmapLayerIndex == 3) heatmapValue = weights.w;
-                    // Heatmap color: black (0) -> red -> yellow -> white (1)
+                    float2 splatPixels = sampleCoord * 0.5f;
+                    float2 splat00Pixel = floor(splatPixels);
+                    float2 weights1 = saturate(splatPixels - splat00Pixel);
+                    float2 weights0 = 1.0f - weights1;
+
+                    float heatmapValue =
+                        LoadWeightMapAtGlobalSplat(int2(splat00Pixel)).x * weights0.x * weights0.y +
+                        LoadWeightMapAtGlobalSplat(int2(splat00Pixel + float2(1.0f, 0.0f))).x * weights1.x * weights0.y +
+                        LoadWeightMapAtGlobalSplat(int2(splat00Pixel + float2(0.0f, 1.0f))).x * weights0.x * weights1.y +
+                        LoadWeightMapAtGlobalSplat(int2(splat00Pixel + float2(1.0f, 1.0f))).x * weights1.x * weights1.y;
+
                     float3 heatmapColor = lerp(float3(0.0f, 0.0f, 0.0f), float3(1.0f, 0.0f, 0.0f), heatmapValue);
                     heatmapColor = lerp(heatmapColor, float3(1.0f, 1.0f, 0.0f), saturate((heatmapValue - 0.33f) * 3.0f));
                     heatmapColor = lerp(heatmapColor, float3(1.0f, 1.0f, 1.0f), saturate((heatmapValue - 0.66f) * 3.0f));

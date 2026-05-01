@@ -100,6 +100,7 @@ public sealed partial class ModifierViewModel : ObservableObject
     public bool HasSeed => _source.Type is BiomeModifierType.Noise;
     public bool HasOctaves => _source.Type is BiomeModifierType.Noise;
     public bool HasInvert => _source.Type is not BiomeModifierType.TextureMask;
+    public bool HasOpacity => true;
 
     // Range helpers for slider min/max
     public float MinSliderMinimum => _source.Type switch
