@@ -170,8 +170,8 @@ public class TomlProjectConfig
                     Opacity = ReadFloat(modifierNode, "opacity", 1.0f),
                     Min = ReadFloat(modifierNode, "min", 0.0f),
                     Max = ReadFloat(modifierNode, "max", 1.0f),
-                    MinFalloff = ReadFloat(modifierNode, "min_falloff", 0.0f),
-                    MaxFalloff = ReadFloat(modifierNode, "max_falloff", 0.0f),
+                    MinFalloff = ReadFloat(modifierNode, "min_falloff", 0.001f),
+                    MaxFalloff = ReadFloat(modifierNode, "max_falloff", 0.001f),
                     Radius = ReadFloat(modifierNode, "radius", 1.0f),
                     AngleDegrees = ReadFloat(modifierNode, "angle_degrees", 0.0f),
                     AngleRangeDegrees = ReadFloat(modifierNode, "angle_range_degrees", 180.0f),
@@ -400,8 +400,8 @@ public class TomlBiomeModifierConfig
     public float Opacity { get; set; } = 1.0f;
     public float Min { get; set; }
     public float Max { get; set; } = 1.0f;
-    public float MinFalloff { get; set; }
-    public float MaxFalloff { get; set; }
+    public float MinFalloff { get; set; } = 0.001f;
+    public float MaxFalloff { get; set; } = 0.001f;
     public float Radius { get; set; } = 1.0f;
     public float AngleDegrees { get; set; }
     public float AngleRangeDegrees { get; set; } = 180.0f;

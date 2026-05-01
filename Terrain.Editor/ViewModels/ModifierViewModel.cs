@@ -124,6 +124,41 @@ public sealed partial class ModifierViewModel : ObservableObject
     public float MaxSliderMinimum => MinSliderMinimum;
     public float MaxSliderMaximum => MinSliderMaximum;
 
+    // Slider step size — per modifier type
+    public float SliderSmallChange => _source.Type switch
+    {
+        BiomeModifierType.HeightRange => 1.0f,
+        BiomeModifierType.SlopeRange => 0.5f,
+        BiomeModifierType.CurvatureRange => 0.001f,
+        BiomeModifierType.DirectionRange => 1.0f,
+        BiomeModifierType.Noise => 0.01f,
+        _ => 0.1f
+    };
+
+    // Falloff slider range helpers — per modifier type
+    public float FalloffSliderMinimum => 0.001f;
+    public float FalloffSliderMaximum => _source.Type switch
+    {
+        BiomeModifierType.HeightRange => 1000,
+        BiomeModifierType.SlopeRange => 90,
+        BiomeModifierType.CurvatureRange => 1,
+        _ => 100
+    };
+    public float FalloffSliderSmallChange => _source.Type switch
+    {
+        BiomeModifierType.HeightRange => 1.0f,
+        BiomeModifierType.SlopeRange => 0.5f,
+        BiomeModifierType.CurvatureRange => 0.001f,
+        _ => 0.1f
+    };
+
+    // Formatted display strings — per modifier type precision, read-write for manual input
+    private string Fmt(float v) => _source.Type == BiomeModifierType.CurvatureRange ? v.ToString("F3") : v.ToString("F1");
+    public string MinDisplay { get => Fmt(Min); set { if (float.TryParse(value, out float v) && MathF.Abs(Min - v) > 0.001f) Min = v; } }
+    public string MaxDisplay { get => Fmt(Max); set { if (float.TryParse(value, out float v) && MathF.Abs(Max - v) > 0.001f) Max = v; } }
+    public string MinFalloffDisplay { get => Fmt(MinFalloff); set { if (float.TryParse(value, out float v) && MathF.Abs(MinFalloff - v) > 0.001f) MinFalloff = v; } }
+    public string MaxFalloffDisplay { get => Fmt(MaxFalloff); set { if (float.TryParse(value, out float v) && MathF.Abs(MaxFalloff - v) > 0.001f) MaxFalloff = v; } }
+
     partial void OnNameChanged(string value)
     {
         if (_syncing) return;
@@ -173,6 +208,7 @@ public sealed partial class ModifierViewModel : ObservableObject
         if (MathF.Abs(_source.Min - value) > 0.001f)
         {
             _source.Min = value;
+            OnPropertyChanged(nameof(MinDisplay));
             BiomeRuleService.Instance.NotifyMutated();
         }
     }
@@ -183,6 +219,7 @@ public sealed partial class ModifierViewModel : ObservableObject
         if (MathF.Abs(_source.Max - value) > 0.001f)
         {
             _source.Max = value;
+            OnPropertyChanged(nameof(MaxDisplay));
             BiomeRuleService.Instance.NotifyMutated();
         }
     }
@@ -190,9 +227,19 @@ public sealed partial class ModifierViewModel : ObservableObject
     partial void OnMinFalloffChanged(float value)
     {
         if (_syncing) return;
-        if (MathF.Abs(_source.MinFalloff - value) > 0.001f)
+        float clamped = Math.Clamp(value, 0.001f, FalloffSliderMaximum);
+        if (MathF.Abs(value - clamped) > 0.0001f)
         {
-            _source.MinFalloff = value;
+            // Re-clamp the observable field so view stays in sync with source
+            _syncing = true;
+            MinFalloff = clamped;
+            _syncing = false;
+        }
+
+        if (MathF.Abs(_source.MinFalloff - clamped) > 0.001f)
+        {
+            _source.MinFalloff = clamped;
+            OnPropertyChanged(nameof(MinFalloffDisplay));
             BiomeRuleService.Instance.NotifyMutated();
         }
     }
@@ -200,9 +247,19 @@ public sealed partial class ModifierViewModel : ObservableObject
     partial void OnMaxFalloffChanged(float value)
     {
         if (_syncing) return;
-        if (MathF.Abs(_source.MaxFalloff - value) > 0.001f)
+        float clamped = Math.Clamp(value, 0.001f, FalloffSliderMaximum);
+        if (MathF.Abs(value - clamped) > 0.0001f)
         {
-            _source.MaxFalloff = value;
+            // Re-clamp the observable field so view stays in sync with source
+            _syncing = true;
+            MaxFalloff = clamped;
+            _syncing = false;
+        }
+
+        if (MathF.Abs(_source.MaxFalloff - clamped) > 0.001f)
+        {
+            _source.MaxFalloff = clamped;
+            OnPropertyChanged(nameof(MaxFalloffDisplay));
             BiomeRuleService.Instance.NotifyMutated();
         }
     }
@@ -320,5 +377,9 @@ public sealed partial class ModifierViewModel : ObservableObject
         Octaves = _source.Octaves;
         IsInverted = _source.Invert > 0.5f;
         _syncing = false;
+        OnPropertyChanged(nameof(MinDisplay));
+        OnPropertyChanged(nameof(MaxDisplay));
+        OnPropertyChanged(nameof(MinFalloffDisplay));
+        OnPropertyChanged(nameof(MaxFalloffDisplay));
     }
 }

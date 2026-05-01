@@ -45,8 +45,8 @@ public sealed class BiomeModifier
 
     public float Min { get; set; }
     public float Max { get; set; } = 1.0f;
-    public float MinFalloff { get; set; }
-    public float MaxFalloff { get; set; }
+    public float MinFalloff { get; set; } = 0.001f;
+    public float MaxFalloff { get; set; } = 0.001f;
     public float Radius { get; set; } = 1.0f;
     public float AngleDegrees { get; set; }
     public float AngleRangeDegrees { get; set; } = 180.0f;
@@ -108,7 +108,7 @@ public sealed class BiomeRuleLayer
         get => MathF.Max(GetOrCreateLegacyHeightModifier().MinFalloff, GetOrCreateLegacyHeightModifier().MaxFalloff);
         set
         {
-            float clamped = Math.Clamp(value, 0.0f, 1.0f);
+            float clamped = Math.Clamp(value, 0.001f, 1.0f);
             BiomeModifier height = GetOrCreateLegacyHeightModifier();
             height.MinFalloff = clamped;
             height.MaxFalloff = clamped;
@@ -163,6 +163,8 @@ public sealed class BiomeRuleLayer
                 Name = name ?? "Height range",
                 Min = BiomeRuleService.MinHeight,
                 Max = BiomeRuleService.DefaultMaxHeight,
+                MinFalloff = 1.0f,
+                MaxFalloff = 1.0f,
             },
             BiomeModifierType.SlopeRange => new BiomeModifier
             {
@@ -170,6 +172,8 @@ public sealed class BiomeRuleLayer
                 Name = name ?? "Slope range",
                 Min = 0.0f,
                 Max = 90.0f,
+                MinFalloff = 10.0f,
+                MaxFalloff = 10.0f,
             },
             BiomeModifierType.CurvatureRange => new BiomeModifier
             {
@@ -470,7 +474,7 @@ public sealed class BiomeRuleService
             layer.MaxAltitude = Math.Clamp(layer.MaxAltitude, layer.MinAltitude, DefaultMaxHeight);
             layer.MinSlopeDegrees = Math.Clamp(layer.MinSlopeDegrees, 0.0f, 90.0f);
             layer.MaxSlopeDegrees = Math.Clamp(layer.MaxSlopeDegrees, layer.MinSlopeDegrees, 90.0f);
-            layer.BlendRange = Math.Clamp(layer.BlendRange, 0.0f, 1.0f);
+            layer.BlendRange = Math.Clamp(layer.BlendRange, 0.001f, 1.0f);
         }
 
         RecomputePriorities();

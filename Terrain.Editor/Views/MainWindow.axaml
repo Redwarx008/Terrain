@@ -815,32 +815,32 @@
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasMin}">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Min" />
-                        <Slider Minimum="{Binding MinSliderMinimum}" Maximum="{Binding MinSliderMaximum}" Value="{Binding Min}" />
+                        <Slider Minimum="{Binding MinSliderMinimum}" Maximum="{Binding MinSliderMaximum}" SmallChange="{Binding SliderSmallChange}" Value="{Binding Min}" />
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding Min, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" Text="{Binding MinDisplay, Mode=TwoWay}" VerticalAlignment="Bottom" />
                     </Grid>
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasMax}">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Max" />
-                        <Slider Minimum="{Binding MaxSliderMinimum}" Maximum="{Binding MaxSliderMaximum}" Value="{Binding Max}" />
+                        <Slider Minimum="{Binding MaxSliderMinimum}" Maximum="{Binding MaxSliderMaximum}" SmallChange="{Binding SliderSmallChange}" Value="{Binding Max}" />
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding Max, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" Text="{Binding MaxDisplay, Mode=TwoWay}" VerticalAlignment="Bottom" />
                     </Grid>
 
                     <!-- MinFalloff/MaxFalloff (Height, Slope, Curvature) -->
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasFalloff}">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Min Falloff" />
-                        <Slider Minimum="0" Maximum="100" Value="{Binding MinFalloff}" />
+                        <Slider Minimum="{Binding FalloffSliderMinimum}" Maximum="{Binding FalloffSliderMaximum}" SmallChange="{Binding FalloffSliderSmallChange}" Value="{Binding MinFalloff}" />
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MinFalloff, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" Text="{Binding MinFalloffDisplay, Mode=TwoWay}" VerticalAlignment="Bottom" />
                     </Grid>
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding HasFalloff}">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Max Falloff" />
-                        <Slider Minimum="0" Maximum="100" Value="{Binding MaxFalloff}" />
+                        <Slider Minimum="{Binding FalloffSliderMinimum}" Maximum="{Binding FalloffSliderMaximum}" SmallChange="{Binding FalloffSliderSmallChange}" Value="{Binding MaxFalloff}" />
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding MaxFalloff, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" Text="{Binding MaxFalloffDisplay, Mode=TwoWay}" VerticalAlignment="Bottom" />
                     </Grid>
 
                     <!-- Radius (Curvature only) -->

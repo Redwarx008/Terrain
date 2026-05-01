@@ -21,6 +21,7 @@
 | [State Management](./state-management.md) | 分层状态管理 | Done |
 | [Quality Guidelines](./quality-guidelines.md) | 代码标准、ImGui 模式 | Done |
 | [Type Safety](./type-safety.md) | 类型模式、事件参数 | Done |
+| [Biome Rule Layer](./biome-rule-layer.md) | Modifier falloff 语义与默认值 | Done |
 
 ---
 

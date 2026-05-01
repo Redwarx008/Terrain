@@ -195,18 +195,18 @@ namespace Terrain.Editor
             return normalization > 0.0001f ? sum / normalization : 0.0f;
         }
 
+        // Falloff extends outward from Min/Max boundaries (matches Unity ProceduralTerrainPainter).
+        // MinFalloff: transition zone [Min - MinFalloff, Min], value < Min - MinFalloff = 0
+        // MaxFalloff: transition zone [Max, Max + MaxFalloff], value > Max + MaxFalloff = 0
+        // Note: minEnd - minValue = -minFalloff (negative), maxEnd - maxValue = maxFalloff (positive).
+        // Both denominators are non-zero since falloff >= 0.001.
         float ComputeRangeModifier(float value, float minValue, float maxValue, float minFalloff, float maxFalloff)
         {
-            if (value < minValue || value > maxValue)
-                return 0.0f;
-
-            float lower = 1.0f;
-            float upper = 1.0f;
-            if (minFalloff > 0.0001f)
-                lower = saturate((value - minValue) / minFalloff);
-            if (maxFalloff > 0.0001f)
-                upper = saturate((maxValue - value) / maxFalloff);
-            return saturate(min(lower, upper));
+            float minEnd = minValue - minFalloff;
+            float minWeight = saturate((minEnd - (value - minValue)) / (minEnd - minValue));
+            float maxEnd = maxValue + maxFalloff;
+            float maxWeight = saturate((maxEnd - (value - maxValue)) / (maxEnd - maxValue));
+            return saturate(minWeight * maxWeight);
         }
 
         float ApplyBlendMode(float baseWeight, float modifierValue, int blendMode)
