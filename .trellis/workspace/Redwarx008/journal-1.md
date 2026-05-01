@@ -500,3 +500,36 @@ Migrated climate-based painting to biome rule layers, updated the right inspecto
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: Align modifier falloff semantics to Unity reference
+
+**Date**: 2026-05-02
+**Task**: Align modifier falloff semantics to Unity reference
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+Shader ComputeRangeModifier 改为向外 falloff 语义；默认值对齐 Unity（Height 1/1, Slope 10/10, Curvature 0.001/0.001）；UI slider 按类型设 SmallChange 和范围；TextBox 支持手动输入；Curvature 用 F3 精度；新增 biome-rule-layer spec
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e6409ac` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

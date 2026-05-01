@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
-- **Last Active**: 2026-05-01
+- **Total Sessions**: 16
+- **Last Active**: 2026-05-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~502 | Active |
+| `journal-1.md` | ~535 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-05-02 | Align modifier falloff semantics to Unity reference | `e6409ac` | `implement-climate-texturing` |
 | 15 | 2026-05-01 | Fix biome rule layer regressions | `7e4016a` | `implement-climate-texturing` |
 | 14 | 2026-05-01 | Finish biome rule layer migration | `f1b6323` | `implement-climate-texturing` |
 | 13 | 2026-04-30 | ClimateMask half-res + SplatMap half-res pipeline | `7e2faad` | `implement-climate-texturing` |
