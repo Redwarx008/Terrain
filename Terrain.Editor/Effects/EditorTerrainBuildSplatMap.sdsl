@@ -123,14 +123,29 @@ namespace Terrain.Editor
             return acos(cosSlope) * (180.0f / 3.14159265359f);
         }
 
-        float SampleCurvature(int2 heightCoord)
+        float SampleCurvature(int2 heightCoord, float radius)
         {
-            float center = SampleHeightLinear(float2(heightCoord), CurrentSliceIndex);
-            float left = SampleHeightLinear(float2(heightCoord) + float2(-1.0f, 0.0f), CurrentSliceIndex);
-            float right = SampleHeightLinear(float2(heightCoord) + float2(1.0f, 0.0f), CurrentSliceIndex);
-            float up = SampleHeightLinear(float2(heightCoord) + float2(0.0f, -1.0f), CurrentSliceIndex);
-            float down = SampleHeightLinear(float2(heightCoord) + float2(0.0f, 1.0f), CurrentSliceIndex);
-            return ((left + right + up + down) * 0.25f - center);
+            int sampleRadius = clamp((int)(radius + 0.5f), 1, 16);
+            float2 center = float2(heightCoord);
+            float2 offsetX = float2((float)sampleRadius, 0.0f);
+            float2 offsetY = float2(0.0f, (float)sampleRadius);
+
+            float centerHeight = SampleHeightLinear(center, CurrentSliceIndex);
+            float left = SampleHeightLinear(center - offsetX, CurrentSliceIndex);
+            float right = SampleHeightLinear(center + offsetX, CurrentSliceIndex);
+            float up = SampleHeightLinear(center - offsetY, CurrentSliceIndex);
+            float down = SampleHeightLinear(center + offsetY, CurrentSliceIndex);
+
+            float leftSlope = centerHeight - left;
+            float rightSlope = right - centerHeight;
+            float upSlope = centerHeight - up;
+            float downSlope = down - centerHeight;
+
+            float signedCurvature = (leftSlope - rightSlope + upSlope - downSlope)
+                / max(abs(leftSlope) + abs(rightSlope) + abs(upSlope) + abs(downSlope), 0.0001f);
+
+            // Match the Unity reference's curvature mask convention: 0..1 with 0.5 as neutral.
+            return saturate(signedCurvature * 0.5f + 0.5f);
         }
 
         float SampleDirectionDegrees(int2 heightCoord)
@@ -217,7 +232,23 @@ namespace Terrain.Editor
                 case ModifierTypeSlopeRange:
                     return ComputeRangeModifier(slope, modifier.Min, modifier.Max, modifier.MinFalloff, modifier.MaxFalloff);
                 case ModifierTypeCurvatureRange:
-                    return ComputeRangeModifier(curvature, modifier.Min, modifier.Max, modifier.MinFalloff, modifier.MaxFalloff);
+                {
+                    float curvatureMin = modifier.Min;
+                    float curvatureMax = modifier.Max;
+                    float curvatureMinFalloff = modifier.MinFalloff;
+                    float curvatureMaxFalloff = modifier.MaxFalloff;
+
+                    // Older Terrain data stored curvature in -1..1; remap it to the reference 0..1 domain.
+                    if (curvatureMin < 0.0f || curvatureMax > 1.0f)
+                    {
+                        curvatureMin = saturate(curvatureMin * 0.5f + 0.5f);
+                        curvatureMax = saturate(curvatureMax * 0.5f + 0.5f);
+                        curvatureMinFalloff *= 0.5f;
+                        curvatureMaxFalloff *= 0.5f;
+                    }
+
+                    return ComputeRangeModifier(curvature, curvatureMin, curvatureMax, curvatureMinFalloff, curvatureMaxFalloff);
+                }
                 case ModifierTypeDirectionRange:
                 {
                     float delta = abs(directionDegrees - modifier.AngleDegrees);
@@ -338,7 +369,6 @@ namespace Terrain.Editor
             int biomeId = LoadBiomeId(int2(globalSplatX, globalSplatY));
             float altitude = SampleHeightLinear(float2(heightCoord), CurrentSliceIndex);
             float slope = SampleSlopeDegrees(heightCoord);
-            float curvature = SampleCurvature(heightCoord);
             float directionDegrees = SampleDirectionDegrees(heightCoord);
 
             // Initialize with default material (slot 0, weight 1.0)
@@ -393,6 +423,9 @@ namespace Terrain.Editor
                     if (modifier.Enabled == 0)
                         continue;
 
+                    float curvature = modifier.ModifierType == ModifierTypeCurvatureRange
+                        ? SampleCurvature(heightCoord, modifier.Radius)
+                        : 0.5f;
                     float modifierValue = EvaluateModifier(modifier, heightCoord, altitude, slope, curvature, directionDegrees);
 
                     // Apply invert if enabled

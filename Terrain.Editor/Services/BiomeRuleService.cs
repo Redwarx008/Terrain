@@ -175,8 +175,10 @@ public sealed class BiomeRuleLayer
             {
                 Type = type,
                 Name = name ?? "Curvature range",
-                Min = -1.0f,
-                Max = 1.0f,
+                Min = 0.0f,
+                Max = 0.25f,
+                MinFalloff = 0.001f,
+                MaxFalloff = 0.001f,
                 Radius = 2.0f,
             },
             BiomeModifierType.DirectionRange => new BiomeModifier

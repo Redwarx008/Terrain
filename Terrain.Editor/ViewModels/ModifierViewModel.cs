@@ -107,7 +107,7 @@ public sealed partial class ModifierViewModel : ObservableObject
     {
         BiomeModifierType.HeightRange => 0,
         BiomeModifierType.SlopeRange => 0,
-        BiomeModifierType.CurvatureRange => -1,
+        BiomeModifierType.CurvatureRange => 0,
         BiomeModifierType.DirectionRange => -180,
         BiomeModifierType.Noise => 0,
         _ => 0
