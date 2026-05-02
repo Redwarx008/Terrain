@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.ObjectModel;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Terrain.Editor.Services;
 
@@ -13,6 +14,7 @@ namespace Terrain.Editor.ViewModels;
 public sealed partial class RuleViewModel : ObservableObject
 {
     private readonly BiomeRuleLayer _source;
+    private readonly MaterialSlotManager _materialSlotManager = MaterialSlotManager.Instance;
     private int _globalIndex;
     private bool _syncing;
 
@@ -27,9 +29,9 @@ public sealed partial class RuleViewModel : ObservableObject
 
     public int BiomeId => _source.BiomeId;
 
-    public string MaterialSlotLabel => $"Slot {MaterialSlotIndex}";
-
     public string ModifierCountLabel => Modifiers.Count == 1 ? "1 modifier" : $"{Modifiers.Count} modifiers";
+
+    public Bitmap? MaterialPreviewImage => TextureThumbnailProvider.LoadFromPath(_materialSlotManager[MaterialSlotIndex].AlbedoTexturePath);
 
     [ObservableProperty]
     private string _name = "";
@@ -87,7 +89,7 @@ public sealed partial class RuleViewModel : ObservableObject
         if (_source.MaterialSlotIndex != value)
         {
             _source.MaterialSlotIndex = value;
-            OnPropertyChanged(nameof(MaterialSlotLabel));
+            OnPropertyChanged(nameof(MaterialPreviewImage));
             BiomeRuleService.Instance.NotifyMutated();
         }
     }
@@ -135,13 +137,18 @@ public sealed partial class RuleViewModel : ObservableObject
             Modifiers.RemoveAt(Modifiers.Count - 1);
         }
 
-        OnPropertyChanged(nameof(MaterialSlotLabel));
         OnPropertyChanged(nameof(ModifierCountLabel));
+        OnPropertyChanged(nameof(MaterialPreviewImage));
 
         // Re-sync selected modifier by index
         int currentIdx = SelectedModifierIndex;
         SelectedModifier = currentIdx >= 0 && currentIdx < Modifiers.Count ? Modifiers[currentIdx] : null;
 
         _syncing = false;
+    }
+
+    public void NotifyMaterialPreviewChanged()
+    {
+        OnPropertyChanged(nameof(MaterialPreviewImage));
     }
 }

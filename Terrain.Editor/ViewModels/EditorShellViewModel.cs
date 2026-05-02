@@ -22,7 +22,6 @@ using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
 using Terrain.Editor.Services.Export;
 using Terrain.Editor.Services.Export.Exporters;
-using Stride.TextureConverter;
 using ImageSharpImage = SixLabors.ImageSharp.Image;
 
 namespace Terrain.Editor.ViewModels;
@@ -35,7 +34,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private readonly MaterialSlotManager _materialSlotManager = MaterialSlotManager.Instance;
     private readonly NativeStrideViewportHost _viewportHost;
     private readonly TerrainExporter _terrainExporter = new();
-    private readonly Dictionary<string, TextureThumbnailCacheEntry> _textureThumbnailCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _thumbnailDiagnostics = new(StringComparer.Ordinal);
 
     [ObservableProperty]
@@ -727,12 +725,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         BrushParams.Dispose();
         Biome.Dispose();
         Viewport.Dispose();
-        foreach (var thumbnail in _textureThumbnailCache.Values)
-        {
-            thumbnail.Bitmap?.Dispose();
-        }
-
-        _textureThumbnailCache.Clear();
         _viewportHost.Dispose();
     }
 
@@ -980,7 +972,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             .GetActiveSlots()
             .Select(static slot => new MaterialSlotOptionViewModel(
                 slot.Index,
-                string.IsNullOrWhiteSpace(slot.Name) ? $"Texture {slot.Index}" : slot.Name,
+                GetMaterialSlotDisplayName(slot),
                 !string.IsNullOrWhiteSpace(slot.NormalTexturePath),
                 !string.IsNullOrWhiteSpace(slot.PropertiesTexturePath)))
             .OrderBy(static slot => slot.Index)
@@ -998,12 +990,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void SyncSelectedMaterialSlot()
     {
         MaterialSlotOptionViewModel? selected = MaterialSlots.FirstOrDefault(slot => slot.Index == SelectedMaterialSlotIndex);
-        if (selected == null && MaterialSlots.Count > 0)
-        {
-            selected = MaterialSlots[0];
-            SelectedMaterialSlotIndex = selected.Index;
-        }
-
         if (SelectedMaterialSlot != selected)
         {
             SelectedMaterialSlot = selected;
@@ -1210,7 +1196,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 .GetActiveSlots()
                 .OrderBy(static slot => slot.Index)
                 .Select(slot => new AssetBrowserItemViewModel(
-                    string.IsNullOrWhiteSpace(slot.Name) ? $"Texture {slot.Index}" : slot.Name,
+                    GetMaterialSlotDisplayName(slot),
                     category,
                     "Texture",
                     AssetColors.TexturePreviewBackground,
@@ -1241,7 +1227,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private Bitmap? LoadTextureThumbnail(MaterialSlot slot)
     {
-        Bitmap? fileThumbnail = LoadTextureThumbnail(slot.AlbedoTexturePath, out string? fileError);
+        Bitmap? fileThumbnail = TextureThumbnailProvider.LoadFromPath(slot.AlbedoTexturePath, out string? fileError);
         if (fileThumbnail != null)
             return fileThumbnail;
 
@@ -1251,192 +1237,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
         LogThumbnailDiagnostic(slot, $"{fileError ?? "File thumbnail unavailable."} {gpuError ?? "GPU thumbnail unavailable."}");
         return null;
-    }
-
-    private Bitmap? LoadTextureThumbnail(string? texturePath, out string? error)
-    {
-        string? resolvedPath = ResolveTextureThumbnailPath(texturePath);
-        if (resolvedPath == null)
-        {
-            error = string.IsNullOrWhiteSpace(texturePath)
-                ? "Texture path is empty."
-                : $"Texture file was not found: {texturePath}.";
-            return null;
-        }
-
-        string fullPath = Path.GetFullPath(resolvedPath);
-        DateTime lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
-
-        if (_textureThumbnailCache.TryGetValue(fullPath, out var cached)
-            && cached.LastWriteUtc == lastWriteUtc)
-        {
-            error = cached.Bitmap == null
-                ? $"File thumbnail decode failed for cached path: {fullPath}."
-                : null;
-            return cached.Bitmap;
-        }
-
-        cached?.Bitmap?.Dispose();
-        Bitmap? bitmap = TryCreateTextureThumbnail(fullPath, out error);
-        _textureThumbnailCache[fullPath] = new TextureThumbnailCacheEntry(lastWriteUtc, bitmap);
-        return bitmap;
-    }
-
-    private string? ResolveTextureThumbnailPath(string? texturePath)
-    {
-        if (string.IsNullOrWhiteSpace(texturePath))
-            return null;
-
-        if (File.Exists(texturePath))
-            return texturePath;
-
-        if (Path.IsPathRooted(texturePath))
-            return null;
-
-        if (_projectManager.IsProjectOpen)
-        {
-            string projectRelative = Path.Combine(
-                _projectManager.ProjectPath,
-                texturePath.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(projectRelative))
-                return projectRelative;
-
-            string materialsRelative = Path.Combine(
-                _projectManager.MaterialsPath,
-                texturePath.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(materialsRelative))
-                return materialsRelative;
-        }
-
-        return null;
-    }
-
-    private static Bitmap? TryCreateTextureThumbnail(string texturePath, out string? error)
-    {
-        Bitmap? textureToolBitmap = TryCreateTextureThumbnailWithTextureTool(texturePath, out string? textureToolError);
-        if (textureToolBitmap != null)
-        {
-            error = null;
-            return textureToolBitmap;
-        }
-
-        Bitmap? avaloniaBitmap = TryCreateTextureThumbnailWithAvalonia(texturePath, out string? avaloniaError);
-        if (avaloniaBitmap != null)
-        {
-            error = null;
-            return avaloniaBitmap;
-        }
-
-        Bitmap? strideBitmap = TryCreateTextureThumbnailWithStride(texturePath, out string? strideError);
-        if (strideBitmap != null)
-        {
-            error = null;
-            return strideBitmap;
-        }
-
-        try
-        {
-            using var image = ImageSharpImage.Load<Rgba32>(texturePath);
-            image.Mutate(static context => context.Resize(new ResizeOptions
-            {
-                Size = new SixLabors.ImageSharp.Size(128, 128),
-                Mode = ResizeMode.Crop
-            }));
-
-            using var stream = new MemoryStream();
-            image.Save(stream, new PngEncoder());
-            stream.Position = 0;
-            error = null;
-            return new Bitmap(stream);
-        }
-        catch (Exception exception)
-        {
-            error = $"File thumbnail decode failed. TextureTool: {textureToolError ?? "not attempted"} Avalonia: {avaloniaError ?? "not attempted"} Stride: {strideError ?? "not attempted"} ImageSharp: {exception.Message}";
-            return null;
-        }
-    }
-
-    private static Bitmap? TryCreateTextureThumbnailWithAvalonia(string texturePath, out string? error)
-    {
-        try
-        {
-            using var stream = File.OpenRead(texturePath);
-            error = null;
-            return new Bitmap(stream);
-        }
-        catch (Exception exception)
-        {
-            error = exception.Message;
-            return null;
-        }
-    }
-
-    private static Bitmap? TryCreateTextureThumbnailWithTextureTool(string texturePath, out string? error)
-    {
-        try
-        {
-            using var textureTool = new TextureTool();
-            using var texImage = textureTool.Load(texturePath, isSRgb: true);
-
-            if (IsCompressedTextureFormat(texImage.Format))
-            {
-                textureTool.Decompress(texImage, isSRgb: IsSrgbTextureFormat(texImage.Format));
-            }
-
-            textureTool.Resize(texImage, 128, 128, Filter.Rescaling.Lanczos3);
-
-            using var image = textureTool.ConvertToStrideImage(texImage);
-            using var pngStream = new MemoryStream();
-            image.Save(pngStream, Stride.Graphics.ImageFileType.Png);
-
-            error = null;
-            return CreateOpaqueBitmapFromPngStream(pngStream);
-        }
-        catch (Exception exception)
-        {
-            error = exception.Message;
-            return null;
-        }
-    }
-
-    private static Bitmap? TryCreateTextureThumbnailWithStride(string texturePath, out string? error)
-    {
-        try
-        {
-            using var fileStream = File.OpenRead(texturePath);
-            using var image = Stride.Graphics.Image.Load(fileStream, loadAsSRGB: true);
-            using var pngStream = new MemoryStream();
-            image.Save(pngStream, Stride.Graphics.ImageFileType.Png);
-            error = null;
-            return CreateOpaqueBitmapFromPngStream(pngStream);
-        }
-        catch (Exception exception)
-        {
-            error = exception.Message;
-            return null;
-        }
-    }
-
-    private static Bitmap CreateOpaqueBitmapFromPngStream(MemoryStream pngStream)
-    {
-        pngStream.Position = 0;
-        using var image = ImageSharpImage.Load<Rgba32>(pngStream);
-        image.ProcessPixelRows(static accessor =>
-        {
-            for (int y = 0; y < accessor.Height; y++)
-            {
-                Span<Rgba32> row = accessor.GetRowSpan(y);
-                for (int x = 0; x < row.Length; x++)
-                {
-                    row[x].A = byte.MaxValue;
-                }
-            }
-        });
-
-        using var opaqueStream = new MemoryStream();
-        image.Save(opaqueStream, new PngEncoder());
-        opaqueStream.Position = 0;
-        return new Bitmap(opaqueStream);
     }
 
     private Bitmap? TryCreateTextureThumbnailFromGpu(MaterialSlot slot, out string? error)
@@ -1518,54 +1318,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             or Stride.Graphics.PixelFormat.B8G8R8A8_UNorm_SRgb;
     }
 
-    private static bool IsCompressedTextureFormat(Stride.Graphics.PixelFormat format)
-    {
-        return format is Stride.Graphics.PixelFormat.BC1_Typeless
-            or Stride.Graphics.PixelFormat.BC1_UNorm
-            or Stride.Graphics.PixelFormat.BC1_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.BC2_Typeless
-            or Stride.Graphics.PixelFormat.BC2_UNorm
-            or Stride.Graphics.PixelFormat.BC2_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.BC3_Typeless
-            or Stride.Graphics.PixelFormat.BC3_UNorm
-            or Stride.Graphics.PixelFormat.BC3_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.BC4_Typeless
-            or Stride.Graphics.PixelFormat.BC4_UNorm
-            or Stride.Graphics.PixelFormat.BC4_SNorm
-            or Stride.Graphics.PixelFormat.BC5_Typeless
-            or Stride.Graphics.PixelFormat.BC5_UNorm
-            or Stride.Graphics.PixelFormat.BC5_SNorm
-            or Stride.Graphics.PixelFormat.BC6H_Typeless
-            or Stride.Graphics.PixelFormat.BC6H_Uf16
-            or Stride.Graphics.PixelFormat.BC6H_Sf16
-            or Stride.Graphics.PixelFormat.BC7_Typeless
-            or Stride.Graphics.PixelFormat.BC7_UNorm
-            or Stride.Graphics.PixelFormat.BC7_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.ETC1
-            or Stride.Graphics.PixelFormat.ETC2_RGB
-            or Stride.Graphics.PixelFormat.ETC2_RGB_SRgb
-            or Stride.Graphics.PixelFormat.ETC2_RGB_A1
-            or Stride.Graphics.PixelFormat.ETC2_RGBA
-            or Stride.Graphics.PixelFormat.ETC2_RGBA_SRgb
-            or Stride.Graphics.PixelFormat.EAC_R11_Unsigned
-            or Stride.Graphics.PixelFormat.EAC_R11_Signed
-            or Stride.Graphics.PixelFormat.EAC_RG11_Unsigned
-            or Stride.Graphics.PixelFormat.EAC_RG11_Signed;
-    }
-
-    private static bool IsSrgbTextureFormat(Stride.Graphics.PixelFormat format)
-    {
-        return format is Stride.Graphics.PixelFormat.R8G8B8A8_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.B8G8R8A8_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.B8G8R8X8_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.BC1_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.BC2_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.BC3_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.BC7_UNorm_SRgb
-            or Stride.Graphics.PixelFormat.ETC2_RGB_SRgb
-            or Stride.Graphics.PixelFormat.ETC2_RGBA_SRgb;
-    }
-
     private static bool IsBgra8TextureFormat(Stride.Graphics.PixelFormat format)
     {
         return format is Stride.Graphics.PixelFormat.B8G8R8A8_UNorm
@@ -1578,6 +1330,22 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             (pixels[i], pixels[i + 2]) = (pixels[i + 2], pixels[i]);
         }
+    }
+
+    private static string GetMaterialSlotDisplayName(MaterialSlot slot)
+    {
+        if (!string.IsNullOrWhiteSpace(slot.Name)
+            && !slot.Name.StartsWith("Texture ", StringComparison.Ordinal))
+        {
+            return slot.Name;
+        }
+
+        if (!string.IsNullOrWhiteSpace(slot.AlbedoTexturePath))
+        {
+            return Path.GetFileNameWithoutExtension(slot.AlbedoTexturePath);
+        }
+
+        return "未分配材质";
     }
 
     private static IStorageProvider? GetStorageProvider()
@@ -1601,5 +1369,4 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    private sealed record TextureThumbnailCacheEntry(DateTime LastWriteUtc, Bitmap? Bitmap);
 }

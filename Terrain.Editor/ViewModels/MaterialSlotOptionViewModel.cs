@@ -8,7 +8,7 @@ public sealed record MaterialSlotOptionViewModel(
     bool HasNormal,
     bool HasProperties)
 {
-    public string Label => $"Slot {Index} - {Name}";
+    public string Label => Name;
 
     public string Detail => HasNormal
         ? (HasProperties ? "Albedo / Normal / Properties" : "Albedo / Normal")

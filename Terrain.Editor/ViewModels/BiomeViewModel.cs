@@ -3,6 +3,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -55,7 +56,7 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
     public string SelectedBiomeLayerSummary => $"{VisibleLayers.Count}/{MaxLayersPerBiome} layers";
 
     public string SelectedLayerMaterialTitle => SelectedLayerMaterialSlotOption?.Label
-        ?? (SelectedLayer != null ? $"Slot {SelectedLayer.MaterialSlotIndex}" : "No layer selected");
+        ?? (SelectedLayer != null ? "未分配材质" : "No layer selected");
 
     public string SelectedLayerMaterialDetail => SelectedLayerMaterialSlotOption?.Detail
         ?? (SelectedLayer != null ? "Assign an imported material slot to this biome layer." : "Select a biome layer to configure its material.");
@@ -325,6 +326,11 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
     {
         RefreshMaterialSlots();
         SyncSelectedLayerMaterialSlotOption();
+
+        foreach (var layer in Layers)
+        {
+            layer.NotifyMaterialPreviewChanged();
+        }
     }
 
     private void OnSelectedLayerPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -593,8 +599,24 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
     {
         return new MaterialSlotOptionViewModel(
             slot.Index,
-            string.IsNullOrWhiteSpace(slot.Name) ? $"Texture {slot.Index}" : slot.Name,
+            GetMaterialSlotDisplayName(slot),
             !string.IsNullOrWhiteSpace(slot.NormalTexturePath),
             !string.IsNullOrWhiteSpace(slot.PropertiesTexturePath));
+    }
+
+    private static string GetMaterialSlotDisplayName(MaterialSlot slot)
+    {
+        if (!string.IsNullOrWhiteSpace(slot.Name)
+            && !slot.Name.StartsWith("Texture ", StringComparison.Ordinal))
+        {
+            return slot.Name;
+        }
+
+        if (!string.IsNullOrWhiteSpace(slot.AlbedoTexturePath))
+        {
+            return Path.GetFileNameWithoutExtension(slot.AlbedoTexturePath);
+        }
+
+        return "未分配材质";
     }
 }

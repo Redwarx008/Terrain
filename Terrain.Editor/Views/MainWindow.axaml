@@ -579,18 +579,24 @@
                                  SelectedItem="{Binding Biome.SelectedLayer}">
                           <ListBox.ItemTemplate>
                             <DataTemplate>
-                              <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" VerticalAlignment="Center">
+                              <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8" VerticalAlignment="Center">
                                 <CheckBox IsChecked="{Binding IsEnabled}" Padding="0" VerticalAlignment="Center" />
                                 <Border Classes="biomeLayerThumb">
-                                  <TextBlock Classes="assetPreviewGlyph" Text="&#xE71B;" FontSize="14" />
+                                  <Panel>
+                                    <TextBlock Classes="assetPreviewGlyph"
+                                               Text="&#xE71B;"
+                                               FontSize="14"
+                                               IsVisible="{Binding MaterialPreviewImage, Converter={StaticResource InvertedNullToBool}}" />
+                                    <Image Source="{Binding MaterialPreviewImage}"
+                                           Stretch="UniformToFill"
+                                           HorizontalAlignment="Stretch"
+                                           VerticalAlignment="Stretch" />
+                                  </Panel>
                                 </Border>
                                 <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
                                   <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
                                   <TextBlock Classes="panelHint" Text="{Binding ModifierCountLabel}" />
                                 </StackPanel>
-                                <Border Grid.Column="3" Classes="biomeSlotBadge">
-                                  <TextBlock Text="{Binding MaterialSlotLabel}" />
-                                </Border>
                               </Grid>
                             </DataTemplate>
                           </ListBox.ItemTemplate>
@@ -636,7 +642,16 @@
                       <Grid ColumnDefinitions="64,*" ColumnSpacing="12">
                         <Border Classes="materialSwatch,biomeMaterialSwatch"
                                 Background="{DynamicResource EditorPanelAltBackgroundBrush}">
-                          <TextBlock Classes="assetPreviewGlyph" Text="&#xE71B;" FontSize="18" />
+                          <Panel>
+                            <TextBlock Classes="assetPreviewGlyph"
+                                       Text="&#xE71B;"
+                                       FontSize="18"
+                                       IsVisible="{Binding Biome.SelectedLayer.MaterialPreviewImage, Converter={StaticResource InvertedNullToBool}}" />
+                            <Image Source="{Binding Biome.SelectedLayer.MaterialPreviewImage}"
+                                   Stretch="UniformToFill"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch" />
+                          </Panel>
                         </Border>
                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                           <TextBlock Text="{Binding Biome.SelectedLayerMaterialTitle}" FontSize="13" FontWeight="SemiBold" />

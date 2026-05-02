@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python.trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/editor/index.md", "reason": "编辑器 UI 面板改动需遵循总规范"}
+{"file": ".trellis/spec/editor/state-management.md", "reason": "材质槽选择需要与 EditorState 和 ViewModel 同步"}
+{"file": ".trellis/spec/editor/component-guidelines.md", "reason": "侧栏与列表使用 Avalonia 绑定和布局约定"}
