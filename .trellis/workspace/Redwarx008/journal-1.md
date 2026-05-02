@@ -566,3 +566,36 @@ Stabilized biome painting, fixed overlay behavior, and merged Landscape UX into 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: 修复 biome 侧栏材质预览
+
+**Date**: 2026-05-02
+**Task**: 修复 biome 侧栏材质预览
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+修复 BIOME LAYERS 列表和右侧 MATERIAL 卡片的材质缩略图显示，移除 Slot 占位文案，补充共享纹理缩略图 provider，并完成 trellis-check 与任务归档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `39f20467530f56afb9524002a53c17c1f08e631b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
