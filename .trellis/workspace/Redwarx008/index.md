@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
+- **Total Sessions**: 17
 - **Last Active**: 2026-05-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~535 | Active |
+| `journal-1.md` | ~568 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-05-02 | Fix biome mask brush and merge biome mode | `bf99da6` | `implement-climate-texturing` |
 | 16 | 2026-05-02 | Align modifier falloff semantics to Unity reference | `e6409ac` | `implement-climate-texturing` |
 | 15 | 2026-05-01 | Fix biome rule layer regressions | `7e4016a` | `implement-climate-texturing` |
 | 14 | 2026-05-01 | Finish biome rule layer migration | `f1b6323` | `implement-climate-texturing` |
