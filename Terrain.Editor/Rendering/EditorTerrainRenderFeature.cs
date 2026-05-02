@@ -700,8 +700,14 @@ public sealed class EditorTerrainRenderFeature : RootEffectRenderFeature
     {
         var availableInputElements = drawData.VertexBuffers.CreateInputElements();
         var inputElements = new List<InputElementDescription>(availableInputElements);
+        var effectBytecode = pipelineState.EffectBytecode;
+        if (effectBytecode == null || effectBytecode.Reflection == null)
+        {
+            return inputElements.ToArray();
+        }
+        var reflection = effectBytecode.Reflection;
 
-        foreach (var inputAttribute in pipelineState.EffectBytecode.Reflection.InputAttributes)
+        foreach (var inputAttribute in reflection.InputAttributes)
         {
             if (FindElementBySemantic(availableInputElements, inputAttribute.SemanticName, inputAttribute.SemanticIndex) >= 0)
             {

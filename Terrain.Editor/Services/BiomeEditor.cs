@@ -21,14 +21,21 @@ public sealed class BiomeEditor
 
     public void ApplyStroke(Vector3 worldPosition, BiomeMask mask, TerrainManager terrainManager, byte biomeId)
     {
-        // BiomeMask 使用 1/2 分辨率，画笔坐标需从高度图空间转换
-        int maskX = (int)MathF.Round(worldPosition.X / 2.0f);
-        int maskY = (int)MathF.Round(worldPosition.Z / 2.0f);
-
         var brush = BrushParameters.Instance;
-        float halfResRadius = MathF.Ceiling(brush.Size * 0.5f) / 2.0f;
+        if (brush.Strength <= 0.0f)
+            return;
+
+        // 先在 heightmap 空间确定笔刷中心，再转换到 1/2 分辨率的 biome/splat 空间。
+        int heightmapX = (int)MathF.Round(worldPosition.X);
+        int heightmapY = (int)MathF.Round(worldPosition.Z);
+        int maskX = heightmapX / 2;
+        int maskY = heightmapY / 2;
+
+        float heightmapRadius = brush.Size * 0.5f;
+        float halfResRadius = heightmapRadius / 2.0f;
         float innerRadius = halfResRadius * brush.EffectiveFalloff;
         int ceilRadius = (int)MathF.Ceiling(halfResRadius);
+        bool changed = false;
 
         for (int dz = -ceilRadius; dz <= ceilRadius; dz++)
         {
@@ -43,7 +50,8 @@ public sealed class BiomeEditor
                 if (distance > halfResRadius)
                     continue;
 
-                // Biome ID 为离散值，用强度控制覆盖概率实现软边缘混合
+                // 单通道 BiomeMask 只能存离散 ID。对 biome 分类绘制来说，
+                // 只要落在笔刷覆盖范围内就应稳定写入目标 biome，而不是随机缺块。
                 float strength = ComputeLinearFalloff(distance, halfResRadius, innerRadius) * brush.Strength;
                 if (strength > 0.0f)
                 {
@@ -51,18 +59,16 @@ public sealed class BiomeEditor
                     if (current == biomeId)
                         continue;
 
-                    // 按强度概率覆盖：强度越高越可能写入新 ID
-                    if (Random.Shared.NextSingle() < strength)
-                        mask.SetValue(x, y, biomeId);
+                    mask.SetValue(x, y, biomeId);
+                    changed = true;
                 }
             }
         }
 
+        if (!changed)
+            return;
+
         terrainManager.MarkBiomeMaskDirty();
-        // 脏标记使用高度图空间坐标（与 slice 相交判定需要全分辨率坐标）
-        int heightmapX = (int)MathF.Round(worldPosition.X);
-        int heightmapY = (int)MathF.Round(worldPosition.Z);
-        float heightmapRadius = MathF.Ceiling(brush.Size * 0.5f);
         terrainManager.RegenerateMaterialIndices(heightmapX, heightmapY, heightmapRadius);
     }
 

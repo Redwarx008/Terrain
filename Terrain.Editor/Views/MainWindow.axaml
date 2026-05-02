@@ -294,7 +294,7 @@
         <Grid RowDefinitions="Auto,*,Auto">
           <!-- Inspector Header -->
           <Border Classes="inspectorHeader">
-            <TextBlock Classes="sectionTitle" VerticalAlignment="Center" Text="{Binding SelectedMode, StringFormat='{}{0} Tool'}" />
+            <TextBlock Classes="sectionTitle" VerticalAlignment="Center" Text="{Binding SelectedModeDisplayName, StringFormat='{}{0} Tool'}" />
           </Border>
 
           <!-- Inspector Content (scrollable) -->
@@ -337,7 +337,7 @@
                     <!-- Radius -->
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Radius" />
+                        <TextBlock Classes="fieldLabel" Text="Diameter" />
                         <Slider Minimum="1" Maximum="1000" Value="{Binding BrushParams.Size}" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Size, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
@@ -396,14 +396,14 @@
                 </Border>
               </StackPanel>
 
-              <!-- ═══ Paint Mode Inspector ═══ -->
+              <!-- ═══ Biome Mode Inspector ═══ -->
               <StackPanel IsVisible="{Binding IsPaintMode}" Spacing="0">
                 <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
                     <TextBlock Classes="sectionLabel" Text="BRUSH SETTINGS" />
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Radius" />
+                        <TextBlock Classes="fieldLabel" Text="Diameter" />
                         <Slider Minimum="1" Maximum="200" Value="{Binding BrushParams.Size}" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Size, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
@@ -433,7 +433,7 @@
                     <TextBlock Classes="sectionLabel" Text="BRUSH SETTINGS" />
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Radius" />
+                        <TextBlock Classes="fieldLabel" Text="Diameter" />
                         <Slider Minimum="1" Maximum="200" Value="{Binding BrushParams.Size}" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding BrushParams.Size, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
@@ -533,59 +533,7 @@
                 </Border>
               </StackPanel>
 
-              <!-- ═══ Landscape Mode Inspector ═══ -->
-              <StackPanel IsVisible="{Binding IsLandscapeMode}" Spacing="0">
-                <Border Classes="inspectorSection" Padding="10,10">
-                  <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="GENERATION SETTINGS" />
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Scale" />
-                        <Slider Minimum="0.1" Maximum="10" Value="2.0" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="2.00" VerticalAlignment="Bottom" />
-                    </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Octaves" />
-                        <Slider Minimum="1" Maximum="8" Value="4" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="4" VerticalAlignment="Bottom" />
-                    </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Persistence" />
-                        <Slider Minimum="0" Maximum="1" Value="0.5" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="0.50" VerticalAlignment="Bottom" />
-                    </Grid>
-                  </StackPanel>
-                </Border>
-
-                <Border Classes="inspectorSection" Padding="10,10">
-                  <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="EROSION" />
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Iterations" />
-                        <Slider Minimum="100" Maximum="50000" Value="10000" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="10000" VerticalAlignment="Bottom" />
-                    </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Sediment" />
-                        <Slider Minimum="0" Maximum="1" Value="0.3" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="0.30" VerticalAlignment="Bottom" />
-                    </Grid>
-                    <CheckBox Content="Thermal Erosion" IsChecked="True" />
-                    <CheckBox Content="Hydraulic Erosion" IsChecked="True" />
-                  </StackPanel>
-                </Border>
-              </StackPanel>
-
-              <!-- ═══ Biome Panels (Paint + Landscape modes) ═══ -->
+              <!-- ═══ Biome Panels (Biome mode) ═══ -->
               <StackPanel IsVisible="{Binding IsBiomeVisible}" Spacing="0">
                 <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="10">

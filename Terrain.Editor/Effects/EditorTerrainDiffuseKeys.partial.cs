@@ -16,4 +16,5 @@ public static partial class EditorTerrainDiffuseKeys
     public static readonly ObjectParameterKey<SamplerState> HeatmapSampler = ParameterKeys.NewObject<SamplerState>();
     public static readonly ValueParameterKey<int> DebugViewMode = ParameterKeys.NewValue<int>();
     public static readonly ValueParameterKey<int> HeatmapLayerIndex = ParameterKeys.NewValue<int>();
+    public static readonly ValueParameterKey<int> ShowMaskOverlay = ParameterKeys.NewValue<int>();
 }

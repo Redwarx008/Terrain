@@ -1,0 +1,4 @@
+{"file":".trellis/spec/editor/index.md","reason":"检查 editor 代码是否仍符合项目基础约定。"}
+{"file":".trellis/spec/editor/state-management.md","reason":"确认 biome 选择状态与工具状态在修复后仍保持正确同步。"}
+{"file":".trellis/spec/editor/quality-guidelines.md","reason":"检查事件、命名、可空和结构质量。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"核对半分辨率空间换算和 dirty 链路没有被回归。"}

@@ -269,7 +269,7 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     private bool IsBrushDecalMode()
     {
-        return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint or EditorMode.Landscape;
+        return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint;
     }
 
     private void UpdateBrushDecalPosition(Vector3? worldPosition)
@@ -285,7 +285,9 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
 
         var brushParams = BrushParameters.Instance;
-        float brushRadius = brushParams.Size;
+        // BrushParameters.Size is authored as the full brush diameter; editing code
+        // uses half of it as the effective radius in heightmap space.
+        float brushRadius = brushParams.Size * 0.5f;
 
         // Position the decal cube at the brush world position.
         // The cube must be large enough to encompass the brush circle.
@@ -300,8 +302,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         Color4 decalColor = _editorState.CurrentEditorMode switch
         {
             EditorMode.Sculpt => _editorState.GetToolColor(),
-            EditorMode.Paint => _editorState.GetPaintToolColor(),
-            EditorMode.Landscape => new Color4(0.2f, 0.7f, 0.4f, 0.5f),
+            EditorMode.Paint => new Color4(0.2f, 0.7f, 0.4f, 0.5f),
             _ => Color4.White,
         };
         _brushDecalComponent.Color = decalColor;
@@ -360,11 +361,8 @@ public sealed class EmbeddedStrideViewportGame : Game
                 HeightEditor.Instance.BeginStroke(heightToolName, worldPosition, TerrainManager!);
                 break;
 
-            case EditorMode.Landscape:
-                // Biome brush — no separate BeginStroke; ApplyStroke is stateless.
-                break;
-
             case EditorMode.Paint:
+            // Biome brush — no separate BeginStroke; ApplyStroke is stateless.
             case EditorMode.Water:
                 break;
         }
@@ -378,11 +376,9 @@ public sealed class EmbeddedStrideViewportGame : Game
                 HeightEditor.Instance.ApplyStroke(worldPosition, TerrainManager!, deltaTime);
                 break;
 
-            case EditorMode.Landscape:
+            case EditorMode.Paint:
                 ApplyBiomeStroke(worldPosition);
                 break;
-
-            case EditorMode.Paint:
             case EditorMode.Water:
                 break;
         }
@@ -404,7 +400,6 @@ public sealed class EmbeddedStrideViewportGame : Game
                 break;
 
             case EditorMode.Paint:
-            case EditorMode.Landscape:
             case EditorMode.Water:
                 break;
         }

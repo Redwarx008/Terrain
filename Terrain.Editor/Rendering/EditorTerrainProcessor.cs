@@ -14,6 +14,7 @@ using Stride.Graphics;
 using Stride.Rendering;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
+using Terrain.Editor.Models;
 using Terrain.Editor.Rendering.Materials;
 using Terrain.Editor.Services;
 
@@ -252,6 +253,9 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         var debugViewMode = (int)EditorState.Instance.CurrentDebugViewMode;
         parameters.Set(EditorTerrainDiffuseKeys.DebugViewMode, debugViewMode);
         parameters.Set(EditorTerrainDiffuseKeys.HeatmapLayerIndex, EditorState.Instance.SelectedRuleIndex);
+        bool showMaskOverlay = EditorState.Instance.CurrentEditorMode == EditorMode.Paint
+            && EditorState.Instance.ShowMaskOverlay;
+        parameters.Set(EditorTerrainDiffuseKeys.ShowMaskOverlay, showMaskOverlay ? 1 : 0);
 
         // Set BiomeMask debug texture if available
         if (entity.BiomeMaskTexture != null)
@@ -264,7 +268,8 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         // rewrites it with selected-layer contributions while the debug mode is active.
         if (entity.DetailWeightMapTextures.Length > 0 && entity.DetailWeightMapTextures[0] != null)
         {
-            parameters.Set(EditorTerrainDiffuseKeys.HeatmapTexture, entity.DetailWeightMapTextures[0]);
+            Texture heatmapTexture = entity.DetailWeightMapTextures[0]!;
+            parameters.Set(EditorTerrainDiffuseKeys.HeatmapTexture, heatmapTexture);
             parameters.Set(EditorTerrainDiffuseKeys.HeatmapSampler, graphicsDevice.SamplerStates.LinearClamp);
         }
     }

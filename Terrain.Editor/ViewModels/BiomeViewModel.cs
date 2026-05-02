@@ -38,7 +38,7 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
     private RuleViewModel? _selectedLayer;
 
     [ObservableProperty]
-    private bool _showMaskOverlay = true;
+    private bool _showMaskOverlay = false;
 
     [ObservableProperty]
     private int _selectedLayerIndex = -1;

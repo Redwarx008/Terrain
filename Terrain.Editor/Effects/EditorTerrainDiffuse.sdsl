@@ -46,6 +46,7 @@ namespace Terrain.Editor
             // 4 = LayerHeatmap, 5 = DetailIndexMap, 6 = DetailWeightMap
             stage int DebugViewMode;
             stage int HeatmapLayerIndex;
+            stage int ShowMaskOverlay;
         }
 
         float3 CalculateNormal(float2 sampleCoord, int preferredSliceIndex)
@@ -69,6 +70,29 @@ namespace Terrain.Editor
             int maxX = max((int)((HeightmapDimensionsInSamples.x + 2.0f) * 0.5f) - 1, 0);
             int maxY = max((int)((HeightmapDimensionsInSamples.y + 2.0f) * 0.5f) - 1, 0);
             return int2(clamp(pixel.x, 0, maxX), clamp(pixel.y, 0, maxY));
+        }
+
+        float3 ComputeBiomePaletteColor(int biomeId)
+        {
+            float hue = (float)(biomeId % 12) / 12.0f;
+            float3 biomeColor = float3(
+                abs(hue * 6.0f - 3.0f) - 1.0f,
+                2.0f - abs(hue * 6.0f - 2.0f),
+                2.0f - abs(hue * 6.0f - 4.0f));
+            return saturate(biomeColor);
+        }
+
+        int LoadBiomeIdAtSampleCoord(float2 sampleCoord)
+        {
+            int2 globalSplatCoord = int2(sampleCoord) / 2;
+            uint biomeMaskWidth, biomeMaskHeight;
+            BiomeMaskDebugTexture.GetDimensions(biomeMaskWidth, biomeMaskHeight);
+            int2 clampedSplatCoord = clamp(
+                globalSplatCoord,
+                int2(0, 0),
+                int2(max((int)biomeMaskWidth - 1, 0), max((int)biomeMaskHeight - 1, 0)));
+            float biomeIdNormalized = BiomeMaskDebugTexture.Load(int3(clampedSplatCoord, 0)).x;
+            return (int)(biomeIdNormalized * 255.0f + 0.5f);
         }
 
         uint ResolveAlbedoIndex(uint materialIndex)
@@ -232,6 +256,13 @@ namespace Terrain.Editor
             float3 blendedNormal = normalLen2 < 0.000001f ? worldNormal : normalize(normalAverage);
 
             float4 outputColor = float4(finalColor, 1.0f) * BaseColor;
+            if (ShowMaskOverlay != 0)
+            {
+                int biomeId = LoadBiomeIdAtSampleCoord(sampleCoord);
+                float3 biomeOverlayColor = ComputeBiomePaletteColor(biomeId);
+                outputColor.rgb = lerp(outputColor.rgb, biomeOverlayColor, 0.35f);
+            }
+
             streams.matDiffuse = outputColor;
             streams.matColorBase = outputColor;
             streams.normalWS = blendedNormal;
@@ -252,25 +283,8 @@ namespace Terrain.Editor
             {
                 case 1: // BiomeMaskMap
                 {
-                    // BiomeMask is a single global R8 texture in splatmap space (1/2 heightmap resolution).
-                    // Match EditorTerrainBuildSplatMap semantics: convert global heightmap coord -> global splat coord
-                    // and fetch the exact biome id texel without slice-local remapping or linear interpolation.
-                    int2 globalSplatCoord = int2(sampleCoord) / 2;
-                    uint biomeMaskWidth, biomeMaskHeight;
-                    BiomeMaskDebugTexture.GetDimensions(biomeMaskWidth, biomeMaskHeight);
-                    int2 clampedSplatCoord = clamp(
-                        globalSplatCoord,
-                        int2(0, 0),
-                        int2(max((int)biomeMaskWidth - 1, 0), max((int)biomeMaskHeight - 1, 0)));
-                    float biomeIdNormalized = BiomeMaskDebugTexture.Load(int3(clampedSplatCoord, 0)).x;
-                    int biomeId = (int)(biomeIdNormalized * 255.0f + 0.5f);
-                    // Generate a color from biome ID using a palette
-                    float hue = (float)(biomeId % 12) / 12.0f;
-                    float3 biomeColor = float3(
-                        abs(hue * 6.0f - 3.0f) - 1.0f,
-                        2.0f - abs(hue * 6.0f - 2.0f),
-                        2.0f - abs(hue * 6.0f - 4.0f));
-                    biomeColor = saturate(biomeColor);
+                    int biomeId = LoadBiomeIdAtSampleCoord(sampleCoord);
+                    float3 biomeColor = ComputeBiomePaletteColor(biomeId);
                     return float4(biomeColor, 1.0f);
                 }
                 case 2: // SlopeMap

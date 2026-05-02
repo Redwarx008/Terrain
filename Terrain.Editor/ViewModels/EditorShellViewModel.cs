@@ -81,7 +81,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private string _redoLabel = "Redo";
 
     [ObservableProperty]
-    private bool _showMaskOverlay = true;
+    private bool _showMaskOverlay = false;
 
     [ObservableProperty]
     private bool _heatmapEnabled;
@@ -157,9 +157,13 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public bool IsWaterMode => SelectedMode == EditorMode.Water;
 
-    public bool IsLandscapeMode => SelectedMode == EditorMode.Landscape;
+    public bool IsBiomeVisible => IsPaintMode;
 
-    public bool IsBiomeVisible => IsPaintMode || IsLandscapeMode;
+    public string SelectedModeDisplayName => SelectedMode switch
+    {
+        EditorMode.Paint => "Biome",
+        _ => SelectedMode.ToString(),
+    };
 
     public bool IsListView => !IsGridView;
 
@@ -177,7 +181,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         InitializeAssetBrowser();
         RefreshMaterialSlots();
 
-        SelectedMode = _editorState.CurrentEditorMode;
+        SelectedMode = NormalizeEditorMode(_editorState.CurrentEditorMode);
         ShowMaskOverlay = _editorState.ShowMaskOverlay;
         HeatmapEnabled = _editorState.HeatmapEnabled;
         SelectedMaterialSlotIndex = _editorState.SelectedMaterialSlotIndex;
@@ -734,9 +738,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedModeChanged(EditorMode value)
     {
-        if (_editorState.CurrentEditorMode != value)
+        EditorMode normalized = NormalizeEditorMode(value);
+        if (value != normalized)
         {
-            _editorState.CurrentEditorMode = value;
+            SelectedMode = normalized;
+            return;
+        }
+
+        if (_editorState.CurrentEditorMode != normalized)
+        {
+            _editorState.CurrentEditorMode = normalized;
         }
 
         SyncSelectedModeOption();
@@ -744,8 +755,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsPaintMode));
         OnPropertyChanged(nameof(IsFoliageMode));
         OnPropertyChanged(nameof(IsWaterMode));
-        OnPropertyChanged(nameof(IsLandscapeMode));
         OnPropertyChanged(nameof(IsBiomeVisible));
+        OnPropertyChanged(nameof(SelectedModeDisplayName));
     }
 
     partial void OnCanUndoChanged(bool value)
@@ -872,15 +883,15 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private void OnEditorModeChanged(object? sender, EventArgs e)
     {
-        SelectedMode = _editorState.CurrentEditorMode;
+        SelectedMode = NormalizeEditorMode(_editorState.CurrentEditorMode);
         RefreshTools();
     }
 
     private void OnToolChanged(object? sender, EventArgs e)
     {
-        SelectedToolName = SelectedMode == EditorMode.Paint
-            ? _editorState.CurrentPaintTool.ToString()
-            : _editorState.CurrentHeightTool.ToString();
+        SelectedToolName = SelectedMode == EditorMode.Sculpt
+            ? _editorState.CurrentHeightTool.ToString()
+            : GetDefaultToolLabel(SelectedMode);
     }
 
     private void OnOverlayChanged(object? sender, EventArgs e)
@@ -1012,8 +1023,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             ],
             EditorMode.Paint =>
             [
-                new("Paint", "Paint material", "\uE790", mode, null, PaintTool.Paint),
-                new("Erase", "Erase material", "\uE74D", mode, null, PaintTool.Erase),
+                new("Biome Brush", "Paint biome mask", "\uE950", mode),
             ],
             EditorMode.Foliage =>
             [
@@ -1022,10 +1032,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             ],
             EditorMode.Water =>
                 [],
-            EditorMode.Landscape =>
-            [
-                new("Biome Map", "Edit biome map", "\uE950", mode),
-            ],
             _ => [],
         };
     }
@@ -1033,10 +1039,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void InitializeModes()
     {
         Modes.Add(new ModeOptionViewModel("Sculpt", "Terrain height editing", "", EditorMode.Sculpt));
-        Modes.Add(new ModeOptionViewModel("Paint", "Surface material painting", "", EditorMode.Paint));
+        Modes.Add(new ModeOptionViewModel("Biome", "Biome mask painting", "\uE950", EditorMode.Paint));
         Modes.Add(new ModeOptionViewModel("Foliage", "Vegetation placement", "\uE8BE", EditorMode.Foliage));
         Modes.Add(new ModeOptionViewModel("Water", "Water level editing", "", EditorMode.Water));
-        Modes.Add(new ModeOptionViewModel("Landscape", "Landscape generation", "", EditorMode.Landscape));
     }
 
     private void InitializeAssetBrowser()
@@ -1081,11 +1086,15 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         return mode switch
         {
             EditorMode.Sculpt => "Sculpt",
-            EditorMode.Paint => "Paint",
+            EditorMode.Paint => "Biome Brush",
             EditorMode.Foliage => "Place",
-            EditorMode.Landscape => "Biome Map",
             _ => "None",
         };
+    }
+
+    private static EditorMode NormalizeEditorMode(EditorMode mode)
+    {
+        return mode == EditorMode.Landscape ? EditorMode.Paint : mode;
     }
 
     private bool TryGetTerrainManager(out TerrainManager terrainManager)

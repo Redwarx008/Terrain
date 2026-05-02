@@ -58,7 +58,7 @@ public sealed class EditorState
     private bool _hasSelectedTool = false;
     private int _currentBiomeId;
     private int _selectedRuleIndex = -1;
-    private bool _showMaskOverlay = true;
+    private bool _showMaskOverlay = false;
     private SceneDebugViewMode _currentDebugViewMode = SceneDebugViewMode.FinalOutput;
     private TerrainPainterTab _terrainPainterTab = TerrainPainterTab.Layers;
     private int _selectedMaterialSlotIndex;
@@ -96,9 +96,10 @@ public sealed class EditorState
         get => _currentEditorMode;
         set
         {
-            if (_currentEditorMode != value)
+            EditorMode normalized = value == EditorMode.Landscape ? EditorMode.Paint : value;
+            if (_currentEditorMode != normalized)
             {
-                _currentEditorMode = value;
+                _currentEditorMode = normalized;
                 EditorModeChanged?.Invoke(this, EventArgs.Empty);
             }
         }

@@ -109,6 +109,23 @@ HasSelectedTool = mode != EditorMode.Foliage; // Foliage 无笔刷后端
 
 ---
 
+## Common Mistake: 模式专属 Overlay 状态跨模式泄漏
+
+**Symptom**: 某个面板只在特定模式下可见，例如 `Biome` 模式下的 biome mask overlay，但切到别的模式后渲染上的 tinted overlay 仍然存在，而且 UI 已经没有控制项可关闭。
+
+**Cause**: 只改了 ViewModel / XAML 的 `IsVisible`，却没有让渲染参数或服务逻辑同时受 `CurrentEditorMode` 约束，导致隐藏的全局状态继续生效。
+
+**Fix**: 模式专属状态如果会影响 viewport 渲染，提交到 shader / processor / service 前必须和 `CurrentEditorMode` 一起判定，例如：
+
+```csharp
+bool showMaskOverlay = EditorState.Instance.CurrentEditorMode == EditorMode.Paint
+    && EditorState.Instance.ShowMaskOverlay;
+```
+
+**Prevention**: 任何“只在某模式显示”的面板开关，都要检查其后端效果是否也在离开该模式时自动失效；不要只做 UI 隐藏。
+
+---
+
 ## Anti-patterns
 
 1. **不要**为每个面板创建全局状态
