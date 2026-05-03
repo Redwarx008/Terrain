@@ -36,8 +36,8 @@ public sealed class RuntimeMaterialManager : IDisposable
     /// </summary>
     public void InitializeFromToml(GraphicsDevice graphicsDevice, CommandList commandList, string tomlFilePath)
     {
-        var slots = ReadMaterialSlots(tomlFilePath);
-        Initialize(graphicsDevice, commandList, slots);
+        RuntimeTerrainProjectConfig config = RuntimeTerrainProjectConfig.ReadFromToml(tomlFilePath);
+        Initialize(graphicsDevice, commandList, config.MaterialSlots);
     }
 
     /// <summary>
@@ -47,51 +47,7 @@ public sealed class RuntimeMaterialManager : IDisposable
     /// </summary>
     public static List<(int index, string albedoPath, string? normalPath, string? propertiesPath)> ReadMaterialSlots(string tomlFilePath)
     {
-        var result = new List<(int index, string albedoPath, string? normalPath, string? propertiesPath)>();
-        string baseDir = Path.GetDirectoryName(Path.GetFullPath(tomlFilePath)) ?? "";
-
-        using var reader = File.OpenText(tomlFilePath);
-        var root = TOML.Parse(reader);
-
-        if (!root.HasKey("material_slots") || !root["material_slots"].IsArray)
-            return result;
-
-        foreach (TomlNode slotNode in root["material_slots"].AsArray)
-        {
-            if (!slotNode.IsTable)
-                continue;
-
-            int index = slotNode.HasKey("index") && slotNode["index"].IsInteger
-                ? (int)slotNode["index"].AsInteger
-                : -1;
-
-            if (index < 0)
-                continue;
-
-            string? albedoPath = slotNode.HasKey("albedo") && slotNode["albedo"].IsString
-                ? ResolvePath(slotNode["albedo"].AsString.Value, baseDir)
-                : null;
-
-            string? normalPath = slotNode.HasKey("normal") && slotNode["normal"].IsString
-                ? ResolvePath(slotNode["normal"].AsString.Value, baseDir)
-                : null;
-            string? propertiesPath = slotNode.HasKey("properties") && slotNode["properties"].IsString
-                ? ResolvePath(slotNode["properties"].AsString.Value, baseDir)
-                : null;
-
-            result.Add((index, albedoPath ?? "", normalPath, propertiesPath));
-        }
-
-        return result;
-    }
-
-    private static string? ResolvePath(string? relativeOrAbsolute, string baseDir)
-    {
-        if (string.IsNullOrEmpty(relativeOrAbsolute))
-            return null;
-        if (Path.IsPathRooted(relativeOrAbsolute))
-            return relativeOrAbsolute;
-        return Path.GetFullPath(Path.Combine(baseDir, relativeOrAbsolute.Replace('/', Path.DirectorySeparatorChar)));
+        return RuntimeTerrainProjectConfig.ReadFromToml(tomlFilePath).MaterialSlots;
     }
 
     /// <summary>

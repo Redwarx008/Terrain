@@ -35,6 +35,7 @@ public sealed class EmbeddedStrideViewportGame : Game
     private bool _hasRenderedFirstFrame;
     private bool _isBrushStrokeActive;
     private bool _wasLeftMouseDown;
+    private bool _pendingMaterialTexturesLoad;
 
     // Brush decal overlay
     private Entity? _brushDecalEntity;
@@ -117,6 +118,8 @@ public sealed class EmbeddedStrideViewportGame : Game
                 GraphicsContext.CommandList.Clear(GraphicsDevice.Presenter.DepthStencilBuffer, DepthStencilClearOptions.DepthBuffer);
             }
         }
+
+        TryProcessPendingMaterialTextureLoad();
 
         if (!PresenterOnlyDiagnostic)
         {
@@ -733,10 +736,8 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     private void OnMaterialTexturesLoadRequired(object? sender, EventArgs e)
     {
-        if (TerrainManager == null || GraphicsContext?.CommandList == null)
-            return;
-
-        TerrainManager.LoadMaterialTextures(GraphicsContext.CommandList);
+        _pendingMaterialTexturesLoad = true;
+        TryProcessPendingMaterialTextureLoad();
     }
 
     private void OnTerrainLoaded(object? sender, TerrainLoadedEventArgs e)
@@ -754,5 +755,18 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
 
         TerrainManager?.TryLoadPendingBiomeMask();
+    }
+
+    private void TryProcessPendingMaterialTextureLoad()
+    {
+        if (!_pendingMaterialTexturesLoad || TerrainManager == null)
+            return;
+
+        CommandList? commandList = GraphicsContext?.CommandList;
+        if (commandList == null)
+            return;
+
+        TerrainManager.LoadMaterialTextures(commandList);
+        _pendingMaterialTexturesLoad = false;
     }
 }

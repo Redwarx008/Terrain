@@ -16,6 +16,7 @@
 |-------|-------------|--------|
 | [Directory Structure](./directory-structure.md) | 模块组织和文件布局 | Done |
 | [Database Guidelines](./database-guidelines.md) | TOML 配置、二进制数据格式 | Done |
+| [Terrain Runtime Persistence](./terrain-runtime-persistence.md) | `.terrain v6` 与 Runtime biome 重建合同 | Done |
 | [Error Handling](./error-handling.md) | 异常模式、错误恢复 | Done |
 | [Quality Guidelines](./quality-guidelines.md) | 代码标准、禁止模式 | Done |
 | [Logging Guidelines](./logging-guidelines.md) | 调试日志、日志级别 | Done |

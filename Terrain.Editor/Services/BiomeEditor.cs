@@ -6,8 +6,8 @@ using Stride.Core.Mathematics;
 namespace Terrain.Editor.Services;
 
 /// <summary>
-/// Applies biome ids to the authoring mask. The generated material map is then
-/// rebuilt from the edited mask rather than being painted directly.
+/// Applies biome ids to the authoring mask. GPU splatmap generation then consumes
+/// the edited mask directly instead of any CPU-side material cache.
 /// </summary>
 public sealed class BiomeEditor
 {

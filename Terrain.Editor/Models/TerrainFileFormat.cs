@@ -30,15 +30,15 @@ public struct TerrainFileHeader
     public int TileSize;          // 2^n + 1, without padding
     public int Padding;           // HeightMap padding
     public int HeightMapMipLevels;
-    public int SplatMapFormat;     // Detail index VTFormat enum value
-    public int SplatMapMipLevels;  // Detail index mip count
-    public int SplatMapResolutionRatio;  // 1 = same as heightmap
-    public int Reserved2;          // Detail weight VTFormat enum value
-    public int Reserved3;          // Detail weight mip count
+    public int SplatMapFormat;     // v6+: BiomeMask VTFormat enum value
+    public int SplatMapMipLevels;  // v6+: BiomeMask mip count
+    public int SplatMapResolutionRatio;  // 1 = same as heightmap, 2 = 1/2 res biome mask
+    public int Reserved2;
+    public int Reserved3;
     public int Reserved4;
 
     public const int MAGIC_VALUE = 0x52524554;
-    public const int CURRENT_VERSION = 5;
+    public const int CURRENT_VERSION = 6;
 
     public readonly bool IsValid => Magic == MAGIC_VALUE;
 }

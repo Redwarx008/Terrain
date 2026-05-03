@@ -22,6 +22,7 @@
 | [Quality Guidelines](./quality-guidelines.md) | 代码标准、ImGui 模式 | Done |
 | [Type Safety](./type-safety.md) | 类型模式、事件参数 | Done |
 | [Biome Rule Layer](./biome-rule-layer.md) | Modifier falloff 语义与默认值 | Done |
+| [Project Persistence](./project-persistence.md) | Save / Save As / 重开 的资源快照与路径合同 | Done |
 
 ---
 

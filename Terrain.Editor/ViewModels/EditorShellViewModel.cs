@@ -336,18 +336,21 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         string path = result.TryGetLocalPath() ?? result.Path.ToString();
-        if (_projectManager.IsProjectOpen)
+        if (TryGetTerrainManager(out var terrainManager) && terrainManager.HasTerrainLoaded)
+        {
+            string projectName = _projectManager.IsProjectOpen
+                ? _projectManager.ProjectName
+                : Path.GetFileNameWithoutExtension(path);
+            terrainManager.SaveProjectAs(path, projectName);
+        }
+        else if (_projectManager.IsProjectOpen)
         {
             _projectManager.SaveProjectAs(path);
         }
         else
         {
-            _projectManager.CreateProject(path, System.IO.Path.GetFileNameWithoutExtension(path));
-        }
-
-        if (TryGetTerrainManager(out var terrainManager) && terrainManager.HasTerrainLoaded)
-        {
-            terrainManager.SaveProject();
+            AddConsole("Warning", "Nothing to save.");
+            return;
         }
 
         RefreshProjectState();

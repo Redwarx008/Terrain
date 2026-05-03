@@ -140,9 +140,15 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             int maxLod = minMaxErrorMaps.Length - 1;
             int baseChunkSize = fileReader.Header.LeafNodeSize;
             int maxResidentChunks = Math.Max(component.MaxResidentChunks, minMaxErrorMaps[maxLod].Width * minMaxErrorMaps[maxLod].Height);
+            string? resolvedMaterialConfigPath = ResolveOptionalTerrainDataPath(component.MaterialConfigPath);
+            RuntimeTerrainProjectConfig? projectConfig = TryLoadProjectConfig(resolvedMaterialConfigPath);
+            RuntimeDetailMapData generatedDetailMaps = BuildRuntimeDetailMaps(component, fileReader, projectConfig);
             loadedData = new LoadedTerrainData(
                 terrainDataPath,
                 fileReader,
+                resolvedMaterialConfigPath,
+                projectConfig,
+                generatedDetailMaps,
                 fileReader.Header.Width,
                 fileReader.Header.Height,
                 minHeight,
@@ -209,6 +215,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             gpuHeightArray,
             gpuDetailIndexArray,
             renderObject.DetailWeightMapArray,
+            loadedData.GeneratedDetailMaps,
             component.BaseChunkSize);
         streamingManager.PreloadTopLevelChunks(commandList, loadedData.MinMaxErrorMaps[loadedData.MaxLod]);
 
@@ -229,21 +236,22 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         // Initialize material textures from TOML config (required)
         component.MaterialManager?.Dispose();
         component.MaterialManager = null;
-        if (string.IsNullOrWhiteSpace(component.MaterialConfigPath))
+        if (string.IsNullOrWhiteSpace(loadedData.MaterialConfigPath))
         {
             Log.Warning("Terrain component is missing MaterialConfigPath. Cannot load material textures.");
-            return;
         }
-
-        string configPath = ResolveTerrainDataPath(component.MaterialConfigPath!);
-        if (!File.Exists(configPath))
+        else if (!File.Exists(loadedData.MaterialConfigPath))
         {
-            Log.Warning($"Material config file not found: {configPath}");
-            return;
+            Log.Warning($"Material config file not found: {loadedData.MaterialConfigPath}");
         }
-
-        component.MaterialManager = new RuntimeMaterialManager();
-        component.MaterialManager.InitializeFromToml(graphicsDevice, commandList, configPath);
+        else
+        {
+            component.MaterialManager = new RuntimeMaterialManager();
+            component.MaterialManager.Initialize(
+                graphicsDevice,
+                commandList,
+                loadedData.ProjectConfig?.MaterialSlots ?? RuntimeMaterialManager.ReadMaterialSlots(loadedData.MaterialConfigPath));
+        }
 
         // Reinitialization replaces the underlying GPU resources, so the old "material is ready" markers
         // must be cleared or EnsureMaterial() will incorrectly reuse a pass bound to stale buffers/textures.
@@ -446,9 +454,48 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         }
     }
 
+    private RuntimeDetailMapData BuildRuntimeDetailMaps(TerrainComponent component, TerrainFileReader fileReader, RuntimeTerrainProjectConfig? projectConfig)
+    {
+        ushort[] heightData = fileReader.ReadAllHeightData();
+        byte[] biomeMaskData = fileReader.ReadAllBiomeMaskData();
+        return RuntimeDetailMapBuilder.Generate(
+            heightData,
+            fileReader.Header.Width,
+            fileReader.Header.Height,
+            biomeMaskData,
+            fileReader.SplatMapHeader.Width,
+            fileReader.SplatMapHeader.Height,
+            projectConfig,
+            component.HeightScale,
+            fileReader.SplatMapResolutionRatio);
+    }
+
+    private static RuntimeTerrainProjectConfig? TryLoadProjectConfig(string? materialConfigPath)
+    {
+        if (string.IsNullOrWhiteSpace(materialConfigPath) || !File.Exists(materialConfigPath))
+        {
+            return null;
+        }
+
+        return RuntimeTerrainProjectConfig.ReadFromToml(materialConfigPath);
+    }
+
+    private static string? ResolveOptionalTerrainDataPath(string? terrainDataPath)
+    {
+        if (string.IsNullOrWhiteSpace(terrainDataPath))
+        {
+            return null;
+        }
+
+        return ResolveTerrainDataPath(terrainDataPath);
+    }
+
     private readonly record struct LoadedTerrainData(
         string TerrainDataPath,
         TerrainFileReader FileReader,
+        string? MaterialConfigPath,
+        RuntimeTerrainProjectConfig? ProjectConfig,
+        RuntimeDetailMapData GeneratedDetailMaps,
         int Width,
         int Height,
         float MinHeight,

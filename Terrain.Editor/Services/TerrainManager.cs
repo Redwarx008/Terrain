@@ -25,6 +25,8 @@ public sealed class TerrainManager : IDisposable
     private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
     private const int DefaultLeafNodeSize = 32;
     private const float HeightSampleNormalization = 1.0f / ushort.MaxValue;
+    private const string DefaultHeightmapFileName = "terrain_heightmap.png";
+    private const string DefaultBiomeMaskFileName = "terrain_biome_mask.png";
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly Scene scene;
@@ -43,13 +45,8 @@ public sealed class TerrainManager : IDisposable
     private int heightDataHeight;
 
     /// <summary>
-    /// 材质索引图，存储每个像素的材质槽位索引。
-    /// </summary>
-    public MaterialIndexMap? MaterialIndices { get; private set; }
-
-    /// <summary>
     /// 气候蒙版，R8 格式，尺寸为高度图的 1/2（对齐 SplatMap）。
-    /// 每个像素存储一个气候 ID，驱动规则求值生成 MaterialIndices。
+    /// 每个像素存储一个气候 ID，驱动 GPU compute 重建材质控制图。
     /// </summary>
     public BiomeMask? BiomeMask { get; private set; }
 
@@ -115,6 +112,7 @@ public sealed class TerrainManager : IDisposable
 
     public async Task<List<EditorTerrainEntity>> LoadTerrainAsync(
         string heightmapPath,
+        bool preservePendingBiomeMaskPath = false,
         IProgress<(int current, int total, string message)>? progress = null)
     {
         lastLoadError = null;
@@ -135,7 +133,12 @@ public sealed class TerrainManager : IDisposable
             return new List<EditorTerrainEntity>();
         }
 
+        // Project reopen prepares pendingBiomeMaskPath before calling LoadTerrainAsync().
+        // Preserve it across RemoveCurrentTerrain() so the loaded terrain can still consume the saved mask.
+        string? preservedPendingBiomeMaskPath = preservePendingBiomeMaskPath ? pendingBiomeMaskPath : null;
         RemoveCurrentTerrain();
+        if (preservePendingBiomeMaskPath)
+            pendingBiomeMaskPath = preservedPendingBiomeMaskPath;
         LoadHeightDataCache(heightmapPath);
         if (heightDataCache == null)
         {
@@ -173,13 +176,6 @@ public sealed class TerrainManager : IDisposable
             int biomeMaskHeight = (heightDataHeight + 1) / 2;
             BiomeMask = new BiomeMask(biomeMaskWidth, biomeMaskHeight);
 
-            // SplatMap 使用 heightmap 的 1/2 分辨率（与 CK3 一致）
-            int splatMapWidth = (heightDataWidth + 1) / 2;
-            int splatMapHeight = (heightDataHeight + 1) / 2;
-            MaterialIndices = new MaterialIndexMap(splatMapWidth, splatMapHeight);
-
-            // 设置材质索引数据引用到实体
-            terrainEntity.MaterialIndexMap = MaterialIndices;
             terrainEntity.SetBiomeMask(graphicsDevice, BiomeMask);
 
             var sceneEntity = new Entity("EditorTerrain")
@@ -236,9 +232,9 @@ public sealed class TerrainManager : IDisposable
         heightDataCache = null;
         heightDataWidth = 0;
         heightDataHeight = 0;
-        MaterialIndices = null;
         BiomeMask = null;
         currentBiomeMaskPath = null;
+        pendingBiomeMaskPath = null;
     }
 
     public BoundingBox GetTerrainBounds()
@@ -326,8 +322,6 @@ public sealed class TerrainManager : IDisposable
             // 使用统一接口同步所有脏数据
             if (entity.IsDataDirty(TerrainDataChannel.Height))
                 entity.SyncDataToGpu(TerrainDataChannel.Height, commandList);
-            if (entity.IsDataDirty(TerrainDataChannel.MaterialIndex))
-                entity.SyncDataToGpu(TerrainDataChannel.MaterialIndex, commandList);
         }
     }
 
@@ -447,7 +441,9 @@ public sealed class TerrainManager : IDisposable
         float sampleRadius = Math.Max(1.0f, radius);
 
         foreach (var terrainEntity in terrainEntities)
+        {
             terrainEntity.MarkBiomeSplatDirty(centerSampleX, centerSampleZ, sampleRadius);
+        }
     }
 
     private void RegenerateLayerHeatmapPreview()
@@ -465,72 +461,6 @@ public sealed class TerrainManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// 在当前 BiomeMask texel 对应的高度图位置采样海拔。
-    /// </summary>
-    private float SampleAverageAltitude(int maskX, int maskY)
-    {
-        int hx = Math.Clamp(maskX, 0, heightDataWidth - 1);
-        int hy = Math.Clamp(maskY, 0, heightDataHeight - 1);
-        return heightDataCache![hy * heightDataWidth + hx] * HeightSampleNormalization * HeightScale;
-    }
-
-    /// <summary>
-    /// 采样地形坡度。使用中心差分法在高度图上计算法线。
-    /// </summary>
-    private float SampleSlopeDegrees(int maskX, int maskY)
-    {
-        int hx = Math.Clamp(maskX, 0, heightDataWidth - 1);
-        int hy = Math.Clamp(maskY, 0, heightDataHeight - 1);
-
-        float left = SampleHeightNormalized(hx - 1, hy);
-        float right = SampleHeightNormalized(hx + 1, hy);
-        float up = SampleHeightNormalized(hx, hy - 1);
-        float down = SampleHeightNormalized(hx, hy + 1);
-
-        float worldNx = (left - right) * HeightScale;
-        float worldNz = (up - down) * HeightScale;
-        const float worldNy = 2.0f;
-
-        float normalLength = MathF.Sqrt(worldNx * worldNx + worldNz * worldNz + worldNy * worldNy);
-        if (normalLength <= 0.0001f)
-            return 0.0f;
-
-        float cosSlope = Math.Clamp(worldNy / normalLength, -1.0f, 1.0f);
-        return MathF.Acos(cosSlope) * (180.0f / MathF.PI);
-    }
-
-    private float SampleHeightNormalized(int x, int y)
-    {
-        int clampedX = Math.Clamp(x, 0, heightDataWidth - 1);
-        int clampedY = Math.Clamp(y, 0, heightDataHeight - 1);
-        return heightDataCache![clampedY * heightDataWidth + clampedX] * HeightSampleNormalization;
-    }
-
-    private static int ResolveMaterialIndex(BiomeRuleService biomeState, byte biomeId, float altitude, float slope)
-    {
-        int resolvedMaterial = 0;
-
-        // Rule stack semantics:
-        // if multiple rules overlap on altitude / slope within the same biome,
-        // later rules override earlier ones as long as the full condition set matches.
-        foreach (var rule in biomeState.GetLayersForBiome(biomeId))
-        {
-            if (!rule.Enabled)
-                continue;
-
-            if (altitude < rule.MinAltitude || altitude > rule.MaxAltitude)
-                continue;
-
-            if (slope < rule.MinSlopeDegrees || slope > rule.MaxSlopeDegrees)
-                continue;
-
-            resolvedMaterial = rule.MaterialSlotIndex;
-        }
-
-        return resolvedMaterial;
-    }
-
     #endregion
 
     #region 项目持久化
@@ -544,30 +474,15 @@ public sealed class TerrainManager : IDisposable
         if (!projectManager.IsProjectOpen)
             return;
 
-        // 保存生物群系蒙版（L8 PNG，1:1 高度图分辨率）
-        string? biomeMaskPath = null;
-        if (BiomeMask != null)
-        {
-            biomeMaskPath = !string.IsNullOrEmpty(currentBiomeMaskPath)
-                ? currentBiomeMaskPath
-                : Path.Combine(projectManager.ProjectPath, "terrain_biome_mask.png");
-            SaveBiomeMask(BiomeMask, biomeMaskPath);
-            currentBiomeMaskPath = biomeMaskPath;
-        }
+        SaveProject(projectManager.ProjectFilePath, projectManager.ProjectName, snapshotEditableAssetsIntoProject: false);
+    }
 
-        var config = new TomlProjectConfig
-        {
-            Name = projectManager.ProjectName,
-            HeightmapPath = currentTerrainPath,
-            BiomeMaskPath = biomeMaskPath,
-            HeightScale = HeightScale,
-            MaterialSlots = SaveMaterialSlotConfigs(),
-            Biomes = SaveBiomeConfigs(),
-            BiomeLayers = SaveBiomeLayerConfigs(),
-            BiomeModifiers = SaveBiomeModifierConfigs(),
-        };
-
-        projectManager.SaveConfig(config);
+    /// <summary>
+    /// 另存为新项目，并将当前可编辑资源快照写入新项目目录。
+    /// </summary>
+    public void SaveProjectAs(string projectFilePath, string projectName)
+    {
+        SaveProject(projectFilePath, projectName, snapshotEditableAssetsIntoProject: true);
     }
 
     private List<TomlMaterialSlotConfig> SaveMaterialSlotConfigs()
@@ -745,6 +660,8 @@ public sealed class TerrainManager : IDisposable
 
     private static void SaveBiomeMask(BiomeMask map, string path)
     {
+        EnsureParentDirectory(path);
+
         using var image = new Image<L8>(map.Width, map.Height);
         for (int y = 0; y < map.Height; y++)
         {
@@ -755,6 +672,103 @@ public sealed class TerrainManager : IDisposable
         }
 
         image.SaveAsPng(path);
+    }
+
+    private void SaveProject(string projectFilePath, string projectName, bool snapshotEditableAssetsIntoProject)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath) || heightDataCache == null)
+            return;
+
+        string fullProjectFilePath = Path.GetFullPath(projectFilePath);
+        string resolvedProjectName = !string.IsNullOrWhiteSpace(projectName)
+            ? projectName
+            : Path.GetFileNameWithoutExtension(fullProjectFilePath);
+        int version = ProjectManager.Instance.LoadConfig()?.Version ?? 2;
+
+        string heightmapPath = ResolveHeightmapSavePath(fullProjectFilePath, snapshotEditableAssetsIntoProject);
+        SaveHeightmap(heightDataCache, heightDataWidth, heightDataHeight, heightmapPath);
+        currentTerrainPath = heightmapPath;
+
+        string? biomeMaskPath = null;
+        if (BiomeMask != null)
+        {
+            biomeMaskPath = ResolveBiomeMaskSavePath(fullProjectFilePath, snapshotEditableAssetsIntoProject);
+            SaveBiomeMask(BiomeMask, biomeMaskPath);
+            currentBiomeMaskPath = biomeMaskPath;
+        }
+
+        var config = new TomlProjectConfig
+        {
+            Version = version,
+            Name = resolvedProjectName,
+            HeightmapPath = currentTerrainPath,
+            BiomeMaskPath = biomeMaskPath,
+            HeightScale = HeightScale,
+            MaterialSlots = SaveMaterialSlotConfigs(),
+            Biomes = SaveBiomeConfigs(),
+            BiomeLayers = SaveBiomeLayerConfigs(),
+            BiomeModifiers = SaveBiomeModifierConfigs(),
+        };
+
+        ProjectManager.Instance.SaveConfigAs(fullProjectFilePath, config);
+    }
+
+    private string ResolveHeightmapSavePath(string projectFilePath, bool snapshotEditableAssetsIntoProject)
+    {
+        if (!snapshotEditableAssetsIntoProject && !string.IsNullOrWhiteSpace(currentTerrainPath))
+            return currentTerrainPath;
+
+        string fileName = !string.IsNullOrWhiteSpace(currentTerrainPath)
+            ? Path.GetFileName(currentTerrainPath)
+            : DefaultHeightmapFileName;
+
+        if (string.IsNullOrWhiteSpace(Path.GetExtension(fileName)))
+            fileName = $"{fileName}.png";
+
+        return Path.Combine(ProjectManager.GetHeightmapsPath(projectFilePath), fileName);
+    }
+
+    private string ResolveBiomeMaskSavePath(string projectFilePath, bool snapshotEditableAssetsIntoProject)
+    {
+        if (!snapshotEditableAssetsIntoProject && !string.IsNullOrWhiteSpace(currentBiomeMaskPath))
+            return currentBiomeMaskPath;
+
+        string fileName = !string.IsNullOrWhiteSpace(currentBiomeMaskPath)
+            ? Path.GetFileName(currentBiomeMaskPath)
+            : DefaultBiomeMaskFileName;
+
+        if (string.IsNullOrWhiteSpace(Path.GetExtension(fileName)))
+            fileName = $"{fileName}.png";
+
+        return Path.Combine(ProjectManager.GetSplatMapsPath(projectFilePath), fileName);
+    }
+
+    private static void SaveHeightmap(ushort[] heightData, int width, int height, string path)
+    {
+        EnsureParentDirectory(path);
+
+        using var image = new Image<L16>(width, height);
+        image.ProcessPixelRows(accessor =>
+        {
+            for (int y = 0; y < accessor.Height; y++)
+            {
+                Span<L16> row = accessor.GetRowSpan(y);
+                int rowOffset = y * width;
+                for (int x = 0; x < row.Length; x++)
+                {
+                    row[x] = new L16(heightData[rowOffset + x]);
+                }
+            }
+        });
+
+        image.SaveAsPng(path);
+    }
+
+    private static void EnsureParentDirectory(string path)
+    {
+        string? directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
     }
 
     /// <summary>
@@ -798,17 +812,21 @@ public sealed class TerrainManager : IDisposable
         // 设置 HeightScale（在加载高度图前，以便 LoadTerrainAsync 使用）
         HeightScale = config.HeightScale;
 
-        // 加载高度图
-        if (!string.IsNullOrEmpty(config.HeightmapPath) && File.Exists(config.HeightmapPath))
-        {
-            _ = LoadTerrainAsync(config.HeightmapPath);
-        }
-
         // 加载生物群系蒙版（异步高度图加载完成后 BiomeMask 才存在，
         // 此处记录路径，由 HeightmapLoaded 事件触发实际加载）
-        if (!string.IsNullOrEmpty(config.BiomeMaskPath) && File.Exists(config.BiomeMaskPath))
+        pendingBiomeMaskPath = !string.IsNullOrEmpty(config.BiomeMaskPath) && File.Exists(config.BiomeMaskPath)
+            ? config.BiomeMaskPath
+            : null;
+
+        // 加载高度图。pendingBiomeMaskPath 必须先准备好，
+        // 因为当前 LoadTerrainAsync 会在 TerrainLoaded 事件中立刻尝试消费它。
+        if (!string.IsNullOrEmpty(config.HeightmapPath) && File.Exists(config.HeightmapPath))
         {
-            pendingBiomeMaskPath = config.BiomeMaskPath;
+            _ = LoadTerrainAsync(config.HeightmapPath, preservePendingBiomeMaskPath: true);
+
+            // 兜底：如果当前调用路径下没有订阅 TerrainLoaded，仍然尝试消费暂存蒙版。
+            if (HasTerrainLoaded)
+                TryLoadPendingBiomeMask();
         }
 
         // 通知需要加载材质纹理（由外部调用 LoadMaterialTextures）
@@ -860,7 +878,8 @@ public sealed class TerrainManager : IDisposable
             {
                 int srcX = fullRes ? x * 2 : x;
                 int srcY = fullRes ? y * 2 : y;
-                BiomeMask.SetValue(x, y, image[srcX, srcY].PackedValue);
+                byte biomeId = image[srcX, srcY].PackedValue;
+                BiomeMask.SetValue(x, y, biomeId);
             }
         }
 

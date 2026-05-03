@@ -302,7 +302,9 @@ public class TomlProjectConfig
             root["biome_modifiers"] = modifiersArray;
         }
 
-        // 确保目录存在
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(tomlFilePath));
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
 
         using var writer = File.CreateText(tomlFilePath);
         root.WriteTo(writer);

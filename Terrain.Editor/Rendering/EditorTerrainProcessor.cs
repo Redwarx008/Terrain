@@ -52,8 +52,7 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
 
     private static readonly TerrainDataChannel[] AllDataChannels = new[]
     {
-        TerrainDataChannel.Height,
-        TerrainDataChannel.MaterialIndex
+        TerrainDataChannel.Height
     };
 
     public override void Draw(RenderContext context)

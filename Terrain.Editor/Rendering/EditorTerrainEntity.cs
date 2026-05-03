@@ -22,22 +22,7 @@ public enum TerrainDataChannel
     /// <summary>
     /// 高度图。
     /// </summary>
-    Height,
-
-    /// <summary>
-    /// 细节控制图：材质索引。
-    /// </summary>
-    DetailIndex,
-
-    /// <summary>
-    /// 细节控制图：材质权重。
-    /// </summary>
-    DetailWeight,
-
-    /// <summary>
-    /// 兼容旧名称。
-    /// </summary>
-    MaterialIndex = DetailIndex
+    Height
 }
 
 /// <summary>
@@ -94,31 +79,9 @@ public sealed class EditorTerrainEntity : IDisposable
     /// </summary>
     public Texture? TextureMaskResource { get; set; }
 
-    private MaterialIndexMap? materialIndexMap;
     private BiomeMask? biomeMask;
     private bool biomeMaskTextureDirty;
     private bool biomeRulesDirty;
-
-    /// <summary>
-    /// 材质索引图引用，由 TerrainManager 设置。
-    /// Setting this marks the material-index channel dirty so the texture is uploaded on the next draw.
-    /// </summary>
-    public MaterialIndexMap? MaterialIndexMap
-    {
-        get => materialIndexMap;
-        set
-        {
-            materialIndexMap = value;
-            if (value != null)
-            {
-                foreach (var slice in slices)
-                {
-                    slice.Dirty.MarkFullDirty(TerrainDataChannel.DetailIndex);
-                    slice.Dirty.MarkFullDirty(TerrainDataChannel.DetailWeight);
-                }
-            }
-        }
-    }
 
     public bool HasDirtyBiomeMaskTexture => biomeMaskTextureDirty;
     public bool HasDirtyBiomeRules => biomeRulesDirty;
@@ -148,8 +111,6 @@ public sealed class EditorTerrainEntity : IDisposable
         return channel switch
         {
             TerrainDataChannel.Height => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.Height)),
-            TerrainDataChannel.DetailIndex => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.DetailIndex)),
-            TerrainDataChannel.DetailWeight => slices.Exists(s => s.Dirty.IsChannelDirty(TerrainDataChannel.DetailWeight)),
             _ => false
         };
     }
@@ -164,11 +125,6 @@ public sealed class EditorTerrainEntity : IDisposable
             case TerrainDataChannel.Height:
                 if (HasAnyDirtySlice)
                     SyncToGpu(commandList);
-                break;
-            case TerrainDataChannel.DetailIndex:
-            case TerrainDataChannel.DetailWeight:
-                if (MaterialIndexMap != null)
-                    SyncDetailControlMapsToGpu(commandList, MaterialIndexMap);
                 break;
         }
     }
@@ -413,131 +369,6 @@ public sealed class EditorTerrainEntity : IDisposable
         BiomeCount = biomeCount;
         LayerCount = layerCount;
         ModifierCount = modifierCount;
-    }
-
-    /// <summary>
-    /// 同步材质索引图到 GPU。
-    /// SplatMap 使用 heightmap 的 1/2 分辨率，坐标需要 /2 转换。
-    /// </summary>
-    public void SyncDetailControlMapsToGpu(CommandList commandList, Services.MaterialIndexMap indexMap)
-    {
-        for (int i = 0; i < DetailIndexMapTextures.Length; i++)
-        {
-            Texture? indexTexture = DetailIndexMapTextures[i];
-            Texture? weightTexture = DetailWeightMapTextures[i];
-            if (indexTexture == null || weightTexture == null)
-                continue;
-
-            var slice = slices[i];
-            bool indexDirty = slice.Dirty.IsChannelDirty(TerrainDataChannel.DetailIndex);
-            bool weightDirty = slice.Dirty.IsChannelDirty(TerrainDataChannel.DetailWeight);
-            if (!indexDirty && !weightDirty)
-                continue;
-
-            // SplatMap 是 heightmap 的 1/2 分辨率
-            int splatSliceWidth = (slice.Width + 1) / 2;
-            int splatSliceHeight = (slice.Height + 1) / 2;
-
-            // splatmap 中该切片的起始位置（相对于 splatmap 原点，heightmap 坐标 /2）
-            int splatStartX = slice.StartSampleX / 2;
-            int splatStartZ = slice.StartSampleZ / 2;
-
-            if (slice.Dirty.HasRegion)
-            {
-                // Dirty region is in heightmap slice-local coordinates; convert to splatmap space
-                int regionLeft = Math.Max(0, slice.Dirty.MinX / 2);
-                int regionTop = Math.Max(0, slice.Dirty.MinZ / 2);
-                int regionRight = Math.Min(splatSliceWidth - 1, (slice.Dirty.MaxX + 1) / 2);
-                int regionBottom = Math.Min(splatSliceHeight - 1, (slice.Dirty.MaxZ + 1) / 2);
-                int regionWidth = regionRight - regionLeft + 1;
-                int regionHeight = regionBottom - regionTop + 1;
-
-                if (regionWidth <= 0 || regionHeight <= 0)
-                {
-                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailIndex);
-                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailWeight);
-                    continue;
-                }
-
-                int regionIndexByteSize = (int)((long)regionWidth * regionHeight * Services.MaterialIndexMap.IndicesBytesPerPixel);
-                int regionWeightByteSize = (int)((long)regionWidth * regionHeight * Services.MaterialIndexMap.WeightsBytesPerPixel);
-                byte[] indexUploadBuffer = ArrayPool<byte>.Shared.Rent(regionIndexByteSize);
-                byte[] weightUploadBuffer = ArrayPool<byte>.Shared.Rent(regionWeightByteSize);
-                try
-                {
-                    CopyDetailRegionDataAt(
-                        indexMap, splatStartX + regionLeft, splatStartZ + regionTop,
-                        regionWidth, regionHeight, indexUploadBuffer, weightUploadBuffer);
-
-                    var region = new ResourceRegion(
-                        left: regionLeft,
-                        top: regionTop,
-                        front: 0,
-                        right: regionLeft + regionWidth,
-                        bottom: regionTop + regionHeight,
-                        back: 1);
-
-                    if (indexDirty)
-                        indexTexture.SetData(commandList, indexUploadBuffer.AsSpan(0, regionIndexByteSize), arrayIndex: 0, mipLevel: 0, region);
-                    if (weightDirty)
-                        weightTexture.SetData(commandList, weightUploadBuffer.AsSpan(0, regionWeightByteSize), arrayIndex: 0, mipLevel: 0, region);
-                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailIndex);
-                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailWeight);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(indexUploadBuffer);
-                    ArrayPool<byte>.Shared.Return(weightUploadBuffer);
-                }
-            }
-            else
-            {
-                int indexByteSize = (int)((long)splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.IndicesBytesPerPixel);
-                int weightByteSize = (int)((long)splatSliceWidth * splatSliceHeight * Services.MaterialIndexMap.WeightsBytesPerPixel);
-                byte[] indexUploadBuffer = ArrayPool<byte>.Shared.Rent(indexByteSize);
-                byte[] weightUploadBuffer = ArrayPool<byte>.Shared.Rent(weightByteSize);
-                try
-                {
-                    CopyDetailRegionDataAt(
-                        indexMap, splatStartX, splatStartZ,
-                        splatSliceWidth, splatSliceHeight, indexUploadBuffer, weightUploadBuffer);
-
-                    if (indexDirty)
-                        indexTexture.SetData(commandList, indexUploadBuffer.AsSpan(0, indexByteSize));
-                    if (weightDirty)
-                        weightTexture.SetData(commandList, weightUploadBuffer.AsSpan(0, weightByteSize));
-                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailIndex);
-                    slice.Dirty.ClearChannel(TerrainDataChannel.DetailWeight);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(indexUploadBuffer);
-                    ArrayPool<byte>.Shared.Return(weightUploadBuffer);
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// 从 MaterialIndexMap 的指定全局位置复制区域数据到 byte 数组。
-    /// 直接在 splatmap 坐标空间操作。
-    /// </summary>
-    private static void CopyDetailRegionDataAt(
-        Services.MaterialIndexMap indexMap,
-        int startX, int startZ,
-        int regionWidth, int regionHeight,
-        byte[] indexDestination,
-        byte[] weightDestination)
-    {
-        for (int row = 0; row < regionHeight; row++)
-        {
-            ReadOnlySpan<byte> indexSpan = indexMap.GetIndexSliceBytesPerRow(startX, startZ + row, 0, regionWidth);
-            ReadOnlySpan<byte> weightSpan = indexMap.GetWeightSliceBytesPerRow(startX, startZ + row, 0, regionWidth);
-            int indexOffset = (int)((long)row * regionWidth * Services.MaterialIndexMap.IndicesBytesPerPixel);
-            int weightOffset = (int)((long)row * regionWidth * Services.MaterialIndexMap.WeightsBytesPerPixel);
-            indexSpan.CopyTo(indexDestination.AsSpan(indexOffset));
-            weightSpan.CopyTo(weightDestination.AsSpan(weightOffset));
-        }
     }
 
     private static int FindFirstLayerIndexForBiome(IReadOnlyList<BiomeRuleLayer> layers, int biomeId)

@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\VirtualTextureLayout.cs" Link="Shared\VirtualTextureLayout.cs" />
+    <Compile Include="..\Shared\TerrainDetailGeneration.cs" Link="Shared\TerrainDetailGeneration.cs" />
     <!--<Compile Update="Effects\Build\TerrainBuildLodLookup.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>

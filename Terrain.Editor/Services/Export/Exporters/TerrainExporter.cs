@@ -35,40 +35,37 @@ public class TerrainExporter : IExporter
         var tm = TerrainManager ?? throw new InvalidOperationException("TerrainManager not set");
         ushort[] heightData = tm.HeightDataCache
             ?? throw new InvalidOperationException("No height data loaded");
+        var biomeMask = tm.BiomeMask
+            ?? throw new InvalidOperationException("No biome mask loaded");
+        byte[] biomeMaskData = biomeMask.GetRawData();
         int width = tm.HeightCacheWidth;
         int height = tm.HeightCacheHeight;
-        var detailControlMaps = tm.MaterialIndices
-            ?? throw new InvalidOperationException("No material index map loaded");
         int leafNodeSize = tm.SplitConfig?.BaseChunkSize ?? SplitTerrainConfig.DefaultBaseChunkSize;
-
-        byte[] detailIndexData = detailControlMaps.GetIndexRawData();
-        byte[] detailWeightData = detailControlMaps.GetWeightRawData();
-        // SplatMap 已经在 1/2 分辨率创建，直接使用其尺寸
-        int splatW = detailControlMaps.Width;
-        int splatH = detailControlMaps.Height;
+        int biomeMaskWidth = biomeMask.Width;
+        int biomeMaskHeight = biomeMask.Height;
 
         await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
 
             // 1. Generate MinMaxErrorMaps (reuse existing Editor logic)
-            progress.Report(ExportProgress.Running(0, 6, "Generating MinMaxErrorMap..."));
+            progress.Report(ExportProgress.Running(0, 5, "Generating MinMaxErrorMap..."));
             var minMaxErrorMaps = HeightmapLoader.GenerateMinMaxErrorMaps(
                 heightData, width, height, leafNodeSize);
             ct.ThrowIfCancellationRequested();
 
             // 2. Calculate mip levels
             int heightMapMipLevels = VirtualTextureLayout.GetMipCount(width, height, DefaultTileSize);
-            int splatMapMipLevels = VirtualTextureLayout.GetMipCount(splatW, splatH, DefaultTileSize);
+            int biomeMaskMipLevels = VirtualTextureLayout.GetMipCount(biomeMaskWidth, biomeMaskHeight, DefaultTileSize);
 
             // 4. Write the .terrain file
-            progress.Report(ExportProgress.Running(1, 6, "Writing .terrain file..."));
+            progress.Report(ExportProgress.Running(1, 5, "Writing .terrain file..."));
 
             WriteTerrainFile(
                 outputPath, width, height,
-                heightData, detailIndexData, detailWeightData, splatW, splatH,
+                heightData, biomeMaskData, biomeMaskWidth, biomeMaskHeight,
                 minMaxErrorMaps, leafNodeSize,
-                heightMapMipLevels, splatMapMipLevels,
+                heightMapMipLevels, biomeMaskMipLevels,
                 progress, ct);
 
             progress.Report(ExportProgress.Completed());
@@ -79,13 +76,13 @@ public class TerrainExporter : IExporter
         string outputPath,
         int width, int height,
         ushort[] heightData,
-        byte[] detailIndexData,
-        byte[] detailWeightData,
-        int splatW, int splatH,
+        byte[] biomeMaskData,
+        int biomeMaskWidth,
+        int biomeMaskHeight,
         EditorMinMaxErrorMap[] minMaxErrorMaps,
         int leafNodeSize,
         int heightMapMipLevels,
-        int splatMapMipLevels,
+        int biomeMaskMipLevels,
         IProgress<ExportProgress> progress,
         CancellationToken ct)
     {
@@ -103,16 +100,14 @@ public class TerrainExporter : IExporter
             TileSize = DefaultTileSize,
             Padding = HeightMapPadding,
             HeightMapMipLevels = heightMapMipLevels,
-            SplatMapFormat = (int)VTFormat.Rgba32,
-            SplatMapMipLevels = splatMapMipLevels,
+            SplatMapFormat = (int)VTFormat.R8,
+            SplatMapMipLevels = biomeMaskMipLevels,
             SplatMapResolutionRatio = 2,
-            Reserved2 = (int)VTFormat.Rgba32,
-            Reserved3 = splatMapMipLevels,
         };
         WriteStruct(writer, ref header);
 
         // Write MinMaxErrorMap data
-        progress.Report(ExportProgress.Running(2, 6, "Writing MinMaxErrorMap data..."));
+        progress.Report(ExportProgress.Running(2, 5, "Writing MinMaxErrorMap data..."));
         writer.Write(minMaxErrorMaps.Length);
         foreach (var map in minMaxErrorMaps)
         {
@@ -120,7 +115,7 @@ public class TerrainExporter : IExporter
         }
 
         // Write HeightMap VT data
-        progress.Report(ExportProgress.Running(3, 6, "Writing HeightMap VT data..."));
+        progress.Report(ExportProgress.Running(3, 5, "Writing HeightMap VT data..."));
         var heightVTHeader = new VTHeader
         {
             Width = width,
@@ -134,33 +129,19 @@ public class TerrainExporter : IExporter
         StreamMipLevels<ushort>(writer, heightData, width, height,
             DefaultTileSize, HeightMapPadding, ct);
 
-        // Write SplatMap VT data
-        progress.Report(ExportProgress.Running(4, 6, "Writing DetailIndex VT data..."));
-        var splatVTHeader = new VTHeader
+        // v6: persist the authored biome mask. Runtime rebuilds detail maps from it.
+        progress.Report(ExportProgress.Running(4, 5, "Writing BiomeMask VT data..."));
+        var biomeMaskHeader = new VTHeader
         {
-            Width = splatW,
-            Height = splatH,
+            Width = biomeMaskWidth,
+            Height = biomeMaskHeight,
             TileSize = DefaultTileSize,
             Padding = SplatMapPadding,
             BytesPerPixel = 1, // R8
-            Mipmaps = splatMapMipLevels,
+            Mipmaps = biomeMaskMipLevels,
         };
-        WriteStruct(writer, ref splatVTHeader);
-        StreamMipLevels<byte>(writer, detailIndexData, splatW, splatH,
-            DefaultTileSize, SplatMapPadding, ct);
-
-        progress.Report(ExportProgress.Running(5, 6, "Writing DetailWeight VT data..."));
-        var detailWeightVTHeader = new VTHeader
-        {
-            Width = splatW,
-            Height = splatH,
-            TileSize = DefaultTileSize,
-            Padding = SplatMapPadding,
-            BytesPerPixel = 4,
-            Mipmaps = splatMapMipLevels,
-        };
-        WriteStruct(writer, ref detailWeightVTHeader);
-        StreamMipLevels<byte>(writer, detailWeightData, splatW, splatH,
+        WriteStruct(writer, ref biomeMaskHeader);
+        StreamMipLevels<byte>(writer, biomeMaskData, biomeMaskWidth, biomeMaskHeight,
             DefaultTileSize, SplatMapPadding, ct);
     }
 

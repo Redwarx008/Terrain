@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python.trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/editor/index.md", "reason": "Editor overall conventions for Avalonia/MVVM service changes."}
+{"file": ".trellis/spec/editor/state-management.md", "reason": "Persistence changes touch ProjectManager/TerrainManager/ViewModel state boundaries."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Persistence/export task crosses ViewModel, service, config, and file I/O boundaries."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Need shared file snapshot helpers instead of duplicating save/save-as/export path logic."}

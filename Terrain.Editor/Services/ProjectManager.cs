@@ -23,11 +23,11 @@ public sealed class ProjectManager
     /// </summary>
     public string ProjectPath => string.IsNullOrEmpty(ProjectFilePath)
         ? ""
-        : Path.GetDirectoryName(Path.GetFullPath(ProjectFilePath)) ?? "";
+        : GetProjectDirectory(ProjectFilePath);
 
-    public string MaterialsPath => Path.Combine(ProjectPath, "materials");
-    public string SplatMapsPath => Path.Combine(ProjectPath, "splatmaps");
-    public string HeightmapsPath => Path.Combine(ProjectPath, "heightmaps");
+    public string MaterialsPath => GetMaterialsPath(ProjectFilePath);
+    public string SplatMapsPath => GetSplatMapsPath(ProjectFilePath);
+    public string HeightmapsPath => GetHeightmapsPath(ProjectFilePath);
 
     public bool IsProjectOpen => !string.IsNullOrEmpty(ProjectFilePath);
 
@@ -61,17 +61,8 @@ public sealed class ProjectManager
         if (string.IsNullOrEmpty(projectFilePath))
             return false;
 
-        // 先设置路径，这样 MaterialsPath/SplatMapsPath/HeightmapsPath 才能正确计算
-        ProjectFilePath = projectFilePath;
-        ProjectName = projectName;
-
-
-        // 此时还没选 heightmap，先写一个最小配置
         var config = new TomlProjectConfig { Name = projectName };
-        config.WriteTo(projectFilePath);
-
-        cachedConfig = config;
-        MarkClean();
+        SaveConfigAs(projectFilePath, config);
         return true;
     }
 
@@ -81,19 +72,23 @@ public sealed class ProjectManager
     public bool OpenProject(string projectFilePath)
     {
         if (string.IsNullOrEmpty(projectFilePath) || !File.Exists(projectFilePath))
+        {
+            CloseProject();
             return false;
+        }
 
         try
         {
-            cachedConfig = TomlProjectConfig.ReadFrom(projectFilePath);
-            ProjectFilePath = projectFilePath;
+            string fullPath = Path.GetFullPath(projectFilePath);
+            cachedConfig = TomlProjectConfig.ReadFrom(fullPath);
+            ProjectFilePath = fullPath;
             ProjectName = cachedConfig.Name;
             MarkClean();
             return true;
         }
         catch (Exception)
         {
-            cachedConfig = null;
+            CloseProject();
             return false;
         }
     }
@@ -136,8 +131,23 @@ public sealed class ProjectManager
         if (!IsProjectOpen)
             return;
 
-        config.WriteTo(ProjectFilePath);
+        SaveConfigAs(ProjectFilePath, config);
+    }
+
+    /// <summary>
+    /// 将配置保存到指定路径，并将该路径设为当前项目。
+    /// </summary>
+    public void SaveConfigAs(string projectFilePath, TomlProjectConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath))
+            return;
+
+        string fullPath = Path.GetFullPath(projectFilePath);
+        EnsureProjectDirectories(fullPath);
+        config.WriteTo(fullPath);
         cachedConfig = config;
+        ProjectFilePath = fullPath;
+        ProjectName = config.Name;
         MarkClean();
     }
 
@@ -149,10 +159,7 @@ public sealed class ProjectManager
         if (cachedConfig == null)
             return;
 
-        cachedConfig.WriteTo(newFilePath);
-        ProjectFilePath = newFilePath;
-        ProjectName = cachedConfig.Name;
-        MarkClean();
+        SaveConfigAs(newFilePath, cachedConfig);
     }
 
     /// <summary>
@@ -177,5 +184,40 @@ public sealed class ProjectManager
             IsDirty = false;
             DirtyChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    public static string GetProjectDirectory(string projectFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath))
+            return "";
+
+        return Path.GetDirectoryName(Path.GetFullPath(projectFilePath)) ?? "";
+    }
+
+    public static string GetMaterialsPath(string projectFilePath)
+    {
+        return Path.Combine(GetProjectDirectory(projectFilePath), "materials");
+    }
+
+    public static string GetSplatMapsPath(string projectFilePath)
+    {
+        return Path.Combine(GetProjectDirectory(projectFilePath), "splatmaps");
+    }
+
+    public static string GetHeightmapsPath(string projectFilePath)
+    {
+        return Path.Combine(GetProjectDirectory(projectFilePath), "heightmaps");
+    }
+
+    private static void EnsureProjectDirectories(string projectFilePath)
+    {
+        string projectDirectory = GetProjectDirectory(projectFilePath);
+        if (string.IsNullOrEmpty(projectDirectory))
+            return;
+
+        Directory.CreateDirectory(projectDirectory);
+        Directory.CreateDirectory(GetMaterialsPath(projectFilePath));
+        Directory.CreateDirectory(GetSplatMapsPath(projectFilePath));
+        Directory.CreateDirectory(GetHeightmapsPath(projectFilePath));
     }
 }

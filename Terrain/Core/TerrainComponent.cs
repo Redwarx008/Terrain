@@ -117,6 +117,7 @@ public sealed class TerrainComponent : ActivableEntityComponent
 internal struct TerrainConfig : IEquatable<TerrainConfig>
 {
     public string? TerrainDataPath;
+    public string? MaterialConfigPath;
     public int MaxVisibleChunkInstances;
     public int MaxResidentChunks;
 
@@ -125,6 +126,7 @@ internal struct TerrainConfig : IEquatable<TerrainConfig>
         return new TerrainConfig
         {
             TerrainDataPath = component.TerrainDataPath,
+            MaterialConfigPath = component.MaterialConfigPath,
             MaxVisibleChunkInstances = component.MaxVisibleChunkInstances,
             MaxResidentChunks = component.MaxResidentChunks
         };
@@ -133,6 +135,7 @@ internal struct TerrainConfig : IEquatable<TerrainConfig>
     public bool Equals(TerrainConfig other)
     {
         return string.Equals(TerrainDataPath, other.TerrainDataPath, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(MaterialConfigPath, other.MaterialConfigPath, StringComparison.OrdinalIgnoreCase)
             && MaxVisibleChunkInstances == other.MaxVisibleChunkInstances
             && MaxResidentChunks == other.MaxResidentChunks;
     }
@@ -143,6 +146,7 @@ internal struct TerrainConfig : IEquatable<TerrainConfig>
     public override int GetHashCode()
         => HashCode.Combine(
             StringComparer.OrdinalIgnoreCase.GetHashCode(TerrainDataPath ?? string.Empty),
+            StringComparer.OrdinalIgnoreCase.GetHashCode(MaterialConfigPath ?? string.Empty),
             MaxVisibleChunkInstances,
             MaxResidentChunks);
 

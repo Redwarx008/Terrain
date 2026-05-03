@@ -104,7 +104,7 @@ internal readonly struct TerrainPageKey : IEquatable<TerrainPageKey>
 internal struct TerrainFileHeader
 {
     public const int MagicValue = 0x52524554;
-    public const int SupportedVersion = 5;
+    public const int SupportedVersion = 6;
 
     public int Magic;
     public int Version;
@@ -144,9 +144,6 @@ internal sealed class TerrainFileReader : IDisposable
     private readonly TerrainVirtualTextureHeader splatMapHeader;
     private readonly TerrainMipLayout[] splatMapMipLayouts;
     private readonly int splatMapTileByteSize;
-    private readonly TerrainVirtualTextureHeader detailWeightHeader;
-    private readonly TerrainMipLayout[] detailWeightMipLayouts;
-    private readonly int detailWeightTileByteSize;
 
     public TerrainFileReader(string path)
     {
@@ -185,7 +182,7 @@ internal sealed class TerrainFileReader : IDisposable
             currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * tileByteSize));
         }
 
-        // Parse detail index VT data.
+        // v6+: this VT block stores the authored biome mask.
         splatMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
         int splatMapPaddedTileSize = checked(splatMapHeader.TileSize + splatMapHeader.Padding * 2);
         splatMapTileByteSize = checked(splatMapPaddedTileSize * splatMapPaddedTileSize * splatMapHeader.BytesPerPixel);
@@ -201,31 +198,16 @@ internal sealed class TerrainFileReader : IDisposable
             splatMapMipLayouts[mip] = new TerrainMipLayout(layoutInfo.Width, layoutInfo.Height, layoutInfo.TilesX, layoutInfo.TilesY, currentOffset);
             currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * splatMapTileByteSize));
         }
-
-        detailWeightHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
-        int detailWeightPaddedTileSize = checked(detailWeightHeader.TileSize + detailWeightHeader.Padding * 2);
-        detailWeightTileByteSize = checked(detailWeightPaddedTileSize * detailWeightPaddedTileSize * detailWeightHeader.BytesPerPixel);
-
-        detailWeightMipLayouts = new TerrainMipLayout[detailWeightHeader.Mipmaps];
-        for (int mip = 0; mip < detailWeightHeader.Mipmaps; mip++)
-        {
-            VirtualTextureMipLayoutInfo layoutInfo = VirtualTextureLayout.GetMipLayout(
-                detailWeightHeader.Width,
-                detailWeightHeader.Height,
-                detailWeightHeader.TileSize,
-                mip);
-            detailWeightMipLayouts[mip] = new TerrainMipLayout(layoutInfo.Width, layoutInfo.Height, layoutInfo.TilesX, layoutInfo.TilesY, currentOffset);
-            currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * detailWeightTileByteSize));
-        }
     }
 
     public TerrainFileHeader Header { get; }
 
     public TerrainVirtualTextureHeader HeightmapHeader => heightmapHeader;
 
+    /// <summary>
+    /// v6 起这里持久化的是 BiomeMask，而不是预烘焙的 detail index map。
+    /// </summary>
     public TerrainVirtualTextureHeader SplatMapHeader => splatMapHeader;
-
-    public TerrainVirtualTextureHeader DetailWeightHeader => detailWeightHeader;
 
     /// <summary>
     /// Splatmap 与 heightmap 的分辨率比。1 = 同分辨率（legacy v2），2 = 半分辨率（v3）。
@@ -235,10 +217,14 @@ internal sealed class TerrainFileReader : IDisposable
 
     public int SplatMapMipCount => splatMapMipLayouts.Length;
 
-    public int DetailWeightMipCount => detailWeightMipLayouts.Length;
-
     public TerrainMinMaxErrorMap[] ReadAllMinMaxErrorMaps()
         => minMaxErrorMaps;
+
+    public ushort[] ReadAllHeightData()
+        => ReadAllVirtualTextureData<ushort>(heightmapHeader, heightmapMipLayouts, tileByteSize);
+
+    public byte[] ReadAllBiomeMaskData()
+        => ReadAllVirtualTextureData<byte>(splatMapHeader, splatMapMipLayouts, splatMapTileByteSize);
 
     public void ReadHeightPage(TerrainPageKey key, Span<byte> destination)
     {
@@ -284,28 +270,6 @@ internal sealed class TerrainFileReader : IDisposable
         ReadExactly(fileHandle, destination[..splatMapTileByteSize], offset);
     }
 
-    public void ReadDetailWeightPage(TerrainPageKey key, Span<byte> destination)
-    {
-        if ((uint)key.MipLevel >= (uint)detailWeightMipLayouts.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(key), $"Invalid mip level {key.MipLevel}.");
-        }
-
-        if (destination.Length < detailWeightTileByteSize)
-        {
-            throw new ArgumentException($"Destination buffer must be at least {detailWeightTileByteSize} bytes.", nameof(destination));
-        }
-
-        ref readonly var layout = ref detailWeightMipLayouts[key.MipLevel];
-        if ((uint)key.PageX >= (uint)layout.TilesX || (uint)key.PageY >= (uint)layout.TilesY)
-        {
-            throw new ArgumentOutOfRangeException(nameof(key), $"Invalid page coordinates ({key.PageX}, {key.PageY}) for mip {key.MipLevel}.");
-        }
-
-        long offset = layout.Offset + (long)(key.PageY * layout.TilesX + key.PageX) * detailWeightTileByteSize;
-        ReadExactly(fileHandle, destination[..detailWeightTileByteSize], offset);
-    }
-
     public void Dispose()
     {
         fileHandle.Dispose();
@@ -336,6 +300,63 @@ internal sealed class TerrainFileReader : IDisposable
         ReadExactly(fileHandle, byteView, fileOffset);
         fileOffset += byteView.Length;
         return map;
+    }
+
+    private T[] ReadAllVirtualTextureData<T>(TerrainVirtualTextureHeader header, TerrainMipLayout[] layouts, int tileByteSize)
+        where T : unmanaged
+    {
+        if (layouts.Length == 0)
+        {
+            return Array.Empty<T>();
+        }
+
+        int bytesPerPixel = Unsafe.SizeOf<T>();
+        if (header.BytesPerPixel != bytesPerPixel)
+        {
+            throw new InvalidDataException($"Unexpected VT bytes-per-pixel {header.BytesPerPixel}. Expected {bytesPerPixel}.");
+        }
+
+        T[] result = new T[checked(header.Width * header.Height)];
+        int paddedTileSize = header.TileSize + header.Padding * 2;
+        byte[] pageBytes = new byte[tileByteSize];
+        Span<T> pagePixels = MemoryMarshal.Cast<byte, T>(pageBytes.AsSpan());
+        ref readonly TerrainMipLayout layout = ref layouts[0];
+        int pageStride = header.TileSize - 1;
+
+        for (int pageY = 0; pageY < layout.TilesY; pageY++)
+        {
+            for (int pageX = 0; pageX < layout.TilesX; pageX++)
+            {
+                long offset = layout.Offset + (long)(pageY * layout.TilesX + pageX) * tileByteSize;
+                ReadExactly(fileHandle, pageBytes, offset);
+
+                int destOriginX = pageX * pageStride;
+                int destOriginY = pageY * pageStride;
+                for (int localY = 0; localY < header.TileSize; localY++)
+                {
+                    int destY = destOriginY + localY;
+                    if ((uint)destY >= (uint)header.Height)
+                    {
+                        continue;
+                    }
+
+                    int srcRow = (localY + header.Padding) * paddedTileSize + header.Padding;
+                    int destRow = destY * header.Width;
+                    for (int localX = 0; localX < header.TileSize; localX++)
+                    {
+                        int destX = destOriginX + localX;
+                        if ((uint)destX >= (uint)header.Width)
+                        {
+                            continue;
+                        }
+
+                        result[destRow + destX] = pagePixels[srcRow + localX];
+                    }
+                }
+            }
+        }
+
+        return result;
     }
 
     private static void ReadExactly(SafeFileHandle fileHandle, Span<byte> destination, long fileOffset)
@@ -633,10 +654,12 @@ internal sealed class GpuVirtualTextureArray : IDisposable
 internal sealed class TerrainStreamingManager : IDisposable
 {
     private static readonly Logger Log = GlobalLogger.GetLogger("Quantum");
+    private const int DetailControlBytesPerPixel = 4;
     private readonly TerrainFileReader fileReader;
     private readonly GpuVirtualTextureArray gpuHeightArray;
     private readonly GpuVirtualTextureArray? gpuDetailIndexArray;
     private readonly Texture? detailWeightArray;
+    private readonly RuntimeDetailMapData? generatedDetailMaps;
     private readonly BlockingCollection<StreamingRequest> pendingRequests = new();
     private readonly ConcurrentQueue<StreamingRequest> completedRequests = new();
     private readonly ConcurrentDictionary<(TerrainPageKey Key, bool IsDetailMap), byte> queuedKeys = new();
@@ -655,12 +678,14 @@ internal sealed class TerrainStreamingManager : IDisposable
         GpuVirtualTextureArray gpuHeightArray,
         GpuVirtualTextureArray? gpuDetailIndexArray,
         Texture? detailWeightArray,
+        RuntimeDetailMapData? generatedDetailMaps,
         int baseChunkSize)
     {
         this.fileReader = fileReader;
         this.gpuHeightArray = gpuHeightArray;
         this.gpuDetailIndexArray = gpuDetailIndexArray;
         this.detailWeightArray = detailWeightArray;
+        this.generatedDetailMaps = generatedDetailMaps;
         this.baseChunkSize = baseChunkSize;
         effectivePageSpanInSamples = Math.Max(1, fileReader.HeightmapHeader.TileSize - 1);
 
@@ -671,7 +696,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         if (gpuDetailIndexArray != null)
         {
             int splatMapPaddedTileSize = gpuDetailIndexArray.TileSize + gpuDetailIndexArray.Padding * 2;
-            int splatMapPageByteSize = splatMapPaddedTileSize * splatMapPaddedTileSize * fileReader.SplatMapHeader.BytesPerPixel;
+            int splatMapPageByteSize = splatMapPaddedTileSize * splatMapPaddedTileSize * DetailControlBytesPerPixel;
             splatMapBufferPool = new PageBufferAllocator(splatMapPageByteSize, Math.Max(64, gpuDetailIndexArray.Capacity * 2));
         }
 
@@ -813,17 +838,17 @@ internal sealed class TerrainStreamingManager : IDisposable
                     fileReader.ReadHeightPage(pageKey, heightmapPageData.Memory.Span);
                     gpuHeightArray.UploadPage(commandList, pageKey, heightmapPageData.Memory.Span, pinned: false);
 
-                    if (splatMapPageData != null && gpuDetailIndexArray != null && detailWeightArray != null)
+                    if (splatMapPageData != null && gpuDetailIndexArray != null && detailWeightArray != null && generatedDetailMaps != null)
                     {
                         TerrainPageKey splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
                         if (!gpuDetailIndexArray.IsPageResident(splatPageKey))
                         {
-                            fileReader.ReadSplatMapPage(splatPageKey, splatMapPageData.Memory.Span);
+                            FillGeneratedDetailPage(splatPageKey, splatMapPageData.Memory.Span, generatedDetailMaps.Value.IndexData);
                             gpuDetailIndexArray.UploadPage(commandList, splatPageKey, splatMapPageData.Memory.Span, pinned: false);
                             if (gpuDetailIndexArray.TryGetResidentSlice(splatPageKey, out int sliceIndex))
                             {
                                 using IMemoryOwner<byte> weightPageData = splatMapBufferPool!.Rent();
-                                fileReader.ReadDetailWeightPage(splatPageKey, weightPageData.Memory.Span);
+                                FillGeneratedDetailPage(splatPageKey, weightPageData.Memory.Span, generatedDetailMaps.Value.WeightData);
                                 detailWeightArray.SetData(commandList, weightPageData.Memory.Span, sliceIndex, 0, null);
                             }
                         }
@@ -900,10 +925,15 @@ internal sealed class TerrainStreamingManager : IDisposable
                 {
                     if (request.IsDetailMap)
                     {
-                        fileReader.ReadSplatMapPage(request.Key, request.Data.Memory.Span);
+                        if (generatedDetailMaps == null)
+                        {
+                            throw new InvalidOperationException("Detail map streaming requires generated runtime detail data.");
+                        }
+
+                        FillGeneratedDetailPage(request.Key, request.Data.Memory.Span, generatedDetailMaps.Value.IndexData);
                         if (request.WeightData != null)
                         {
-                            fileReader.ReadDetailWeightPage(request.Key, request.WeightData.Memory.Span);
+                            FillGeneratedDetailPage(request.Key, request.WeightData.Memory.Span, generatedDetailMaps.Value.WeightData);
                         }
                     }
                     else
@@ -1043,6 +1073,41 @@ internal sealed class TerrainStreamingManager : IDisposable
         {
             request.Data.Dispose();
             request.WeightData?.Dispose();
+        }
+    }
+
+    private void FillGeneratedDetailPage(TerrainPageKey key, Span<byte> destination, byte[] sourceData)
+    {
+        if (gpuDetailIndexArray == null || generatedDetailMaps == null)
+        {
+            throw new InvalidOperationException("Generated detail data is unavailable.");
+        }
+
+        int paddedTileSize = gpuDetailIndexArray.TileSize + gpuDetailIndexArray.Padding * 2;
+        int expectedByteSize = paddedTileSize * paddedTileSize * DetailControlBytesPerPixel;
+        if (destination.Length < expectedByteSize)
+        {
+            throw new ArgumentException($"Destination buffer must be at least {expectedByteSize} bytes.", nameof(destination));
+        }
+
+        int stride = 1 << key.MipLevel;
+        int originX = key.PageX * (gpuDetailIndexArray.TileSize - 1) - gpuDetailIndexArray.Padding;
+        int originY = key.PageY * (gpuDetailIndexArray.TileSize - 1) - gpuDetailIndexArray.Padding;
+        int sourceWidth = generatedDetailMaps.Value.Width;
+        int sourceHeight = generatedDetailMaps.Value.Height;
+
+        for (int y = 0; y < paddedTileSize; y++)
+        {
+            int sourceY = Math.Clamp((originY + y) * stride, 0, sourceHeight - 1);
+            int destRow = y * paddedTileSize * DetailControlBytesPerPixel;
+            int srcRow = sourceY * sourceWidth * DetailControlBytesPerPixel;
+            for (int x = 0; x < paddedTileSize; x++)
+            {
+                int sourceX = Math.Clamp((originX + x) * stride, 0, sourceWidth - 1);
+                int srcOffset = srcRow + sourceX * DetailControlBytesPerPixel;
+                int destOffset = destRow + x * DetailControlBytesPerPixel;
+                sourceData.AsSpan(srcOffset, DetailControlBytesPerPixel).CopyTo(destination[destOffset..]);
+            }
         }
     }
 

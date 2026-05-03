@@ -233,7 +233,7 @@ partial void OnSelectedClimateChanged(ClimateDefinitionViewModel? value)
 }
 ```
 
-### Scenario: Rule Service 变更必须显式触发 Terrain 重算
+### Scenario: Rule Service 变更必须显式触发 GPU Splat 重算
 
 #### 1. Scope / Trigger
 - Trigger: Inspector / ViewModel 直接修改 `BiomeRuleService`、`ClimateRuleService` 这类规则服务，且最终结果由 GPU splat / heatmap / render texture 消费。
@@ -250,6 +250,7 @@ partial void OnSelectedClimateChanged(ClimateDefinitionViewModel? value)
 - `RegenerateMaterialIndices()` 必须同时标记：
   - 规则 buffer 需要重传
   - splat / weight map 需要重算
+  - 不能触发 CPU `MaterialIndexMap` 全图重建；Editor 预览真源是 `BiomeMask + GPU rule buffers`
 
 #### 4. Validation & Error Matrix
 - 仅订阅到 ViewModel，未订阅 TerrainManager -> Inspector 数值变化，但 viewport 完全不变
@@ -264,7 +265,7 @@ partial void OnSelectedClimateChanged(ClimateDefinitionViewModel? value)
 #### 6. Tests Required
 - 手工回归：新增第二个 biome layer，给它不同 material slot 和更窄的 height/slope 范围，确认 viewport 立即出现叠加效果
 - 手工回归：只改 modifier 的 `BlendMode/Opacity/Min/Max`，确认不需要重新加载 terrain
-- 断点/日志验证：`BiomeRuleService.StateChanged` 后必须命中 `TerrainManager.RegenerateMaterialIndices()`
+- 断点/日志验证：`BiomeRuleService.StateChanged` 后必须命中 `TerrainManager.RegenerateMaterialIndices()`，并继续落到 `MarkBiomeRulesDirty()` / `MarkAllBiomeSplatDirty()`
 
 #### 7. Wrong vs Correct
 #### Wrong

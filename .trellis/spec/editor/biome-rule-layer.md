@@ -50,3 +50,25 @@ Modifier 参数的 Slider 和 TextBox 必须按类型适配精度：
 - TextBox 必须支持手动输入（TwoWay 绑定），不能 IsReadOnly
 - Display 属性必须可读写，setter 解析字符串并写回对应的 float 属性
 - slider 必须设置 `SmallChange` 绑定，确保小范围域（如 Curvature 0-1）可用
+
+## Editor 预览生成链路
+
+- Editor 侧 biome 规则编辑、新建 biome、新建 modifier、加载 biome mask 时：
+  - 只能标记 `BiomeBuffer/LayerBuffer/ModifierBuffer` 与 `BiomeSplatDirty`
+  - 由 `EditorTerrainBuildSplatMap` compute shader 直接重建 `DetailIndexMapTextures` / `DetailWeightMapTextures`
+- 禁止在这些交互里触发 CPU 全图 detail-map 重建
+- `Terrain.Editor` 不再维护 CPU `MaterialIndexMap` 作为预览真源
+- 高度编辑仍允许继续走 CPU height cache，但材质控制图必须由 GPU 根据 `height slices + biome mask + rule buffers` 现算
+
+### Wrong
+
+```csharp
+biomeRuleService.StateChanged += (_, _) => RegenerateMaterialIndices(); // CPU 全图重建
+```
+
+### Correct
+
+```csharp
+terrainEntity.MarkBiomeRulesDirty();
+terrainEntity.MarkAllBiomeSplatDirty(); // 交给 GPU compute 重建
+```
