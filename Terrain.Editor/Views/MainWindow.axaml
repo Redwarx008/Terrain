@@ -465,15 +465,6 @@
                   </StackPanel>
                 </Border>
 
-                <!-- Advanced -->
-                <Border Classes="inspectorSection" Padding="10,10">
-                  <StackPanel Spacing="6">
-                    <TextBlock Classes="sectionLabel" Text="ADVANCED" />
-                    <CheckBox Content="Use Target Value" IsChecked="True" />
-                    <CheckBox Content="Auto-LOD" IsChecked="False" />
-                    <CheckBox Content="Show Brush Wireframe" IsChecked="True" />
-                  </StackPanel>
-                </Border>
               </StackPanel>
 
               <!-- ═══ Biome Mode Inspector ═══ -->
