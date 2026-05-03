@@ -665,3 +665,36 @@ Addressed trellis-check findings by exporting full runtime terrain material conf
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: Fix toolbar View hover style
+
+**Date**: 2026-05-03
+**Task**: Fix toolbar View hover style
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+将toolbar中View的Menu+MenuItem替换为Button+MenuFlyout，统一hover样式
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c906758` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
