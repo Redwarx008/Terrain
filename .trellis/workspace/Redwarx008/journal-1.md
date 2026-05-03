@@ -731,3 +731,37 @@ Added MenuFlyout dropdowns to File/Edit/Help toolbar buttons with commands and k
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: Rename material descriptor export to biome config
+
+**Date**: 2026-05-03
+**Task**: Rename material descriptor export to biome config
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+Renamed the export-facing material descriptor concept to Biome Config across Editor UI, export registration, runtime config path/model, scene asset, Trellis specs, and architecture overview; archived the Trellis task after build and subagent check passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `42ec41b` | (see git log) |
+| `d1a3360` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
