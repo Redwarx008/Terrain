@@ -205,6 +205,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _materialSlotManager.SelectedSlotChanged += OnMaterialSlotManagerSelectedSlotChanged;
         _projectManager.DirtyChanged += OnProjectDirtyChanged;
         _historyManager.HistoryChanged += OnHistoryChanged;
+        _viewportHost.ShortcutRequested += OnViewportShortcutRequested;
 
         AddConsole("Info", "Avalonia shell initialized with SimpleTheme.");
         AddConsole("Info", "Stride viewport is now hosted through a native child HWND with SDL.");
@@ -737,6 +738,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _materialSlotManager.SelectedSlotChanged -= OnMaterialSlotManagerSelectedSlotChanged;
         _projectManager.DirtyChanged -= OnProjectDirtyChanged;
         _historyManager.HistoryChanged -= OnHistoryChanged;
+        _viewportHost.ShortcutRequested -= OnViewportShortcutRequested;
         BrushParams.Dispose();
         Biome.Dispose();
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
@@ -948,6 +950,25 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void OnHistoryChanged(object? sender, HistoryChangedEventArgs e)
     {
         RefreshHistoryState();
+    }
+
+    private void OnViewportShortcutRequested(object? sender, ViewportShortcutRequestedEventArgs e)
+    {
+        switch (e.Shortcut)
+        {
+            case ViewportShortcut.Undo:
+                if (UndoCommand.CanExecute(null))
+                {
+                    UndoCommand.Execute(null);
+                }
+                break;
+            case ViewportShortcut.Redo:
+                if (RedoCommand.CanExecute(null))
+                {
+                    RedoCommand.Execute(null);
+                }
+                break;
+        }
     }
 
     private void RefreshProjectState()

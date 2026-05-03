@@ -215,3 +215,13 @@ _decalShader.Parameters.Set(DepthBaseKeys.DepthStencil, depthStencil);
 **Fix**: UI 只保留简洁状态，例如 `SDL viewport ready 1620x1066; mode Shaded.`；详细宿主诊断使用 `Debug.WriteLine(...)`。
 
 **Prevention**: 视口问题排查完成后，检查是否仍有调试专用文案、颜色清屏或强制诊断开关暴露在正常运行路径上。
+
+## Common Mistake: 只在 Avalonia Window.KeyBindings 里补全局快捷键
+
+**Symptom**: `Ctrl+Z` / `Ctrl+Y` 等编辑器快捷键已经写在 `Window.KeyBindings`，但启动后或点击 3D 视口后不生效；只有先点击 toolbar/menu 等 Avalonia 控件后才恢复。
+
+**Cause**: 嵌入式 SDL/Stride 视口拥有独立原生子 `HWND`，并且视口聚焦时会通过 Win32 `SetFocus` 把键盘焦点交给 SDL 窗口。此时 Avalonia 的 `Window.KeyBindings` 收不到键盘消息，单纯补 XAML 绑定只能覆盖 Avalonia 焦点路径。
+
+**Fix**: 保留 `Window.KeyBindings` 处理普通 Avalonia 焦点路径；对于必须在视口聚焦时也可用的编辑器级快捷键，在 SDL/Stride 窗口消息边界做轻量桥接，再回调 ViewModel 现有命令。不要把这类问题修成系统级 `RegisterHotKey`，否则会抢占编辑器进程外的全局快捷键。
+
+**Prevention**: 新增“编辑器级快捷键”时先判断它是否需要在 3D 视口持有焦点时生效。若需要，必须同时验证 Avalonia 控件焦点路径和 SDL 视口焦点路径；PR/任务验收里写明“不点击 toolbar，视口聚焦后快捷键仍可用”。如果通过 SDL 窗口 WndProc 做桥接，必须在 Stride game/window dispose 之前恢复原 WndProc，避免重启 viewport runtime 后桥接安装状态失真。

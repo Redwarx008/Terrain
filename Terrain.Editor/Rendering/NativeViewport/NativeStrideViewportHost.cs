@@ -23,6 +23,8 @@ public sealed class NativeStrideViewportHost : IDisposable
     private GameContextSDL? _context;
     private Window? _window;
     private DispatcherTimer? _tickTimer;
+    private WindowProc? _shortcutWndProc;
+    private IntPtr _originalShortcutWndProc;
     private string _status = "Viewport host not attached.";
     private SceneViewMode _sceneViewMode = SceneViewMode.Perspective;
     private int _width;
@@ -30,6 +32,8 @@ public sealed class NativeStrideViewportHost : IDisposable
     private bool _isDisposed;
 
     public event EventHandler? RuntimeStateChanged;
+
+    public event EventHandler<ViewportShortcutRequestedEventArgs>? ShortcutRequested;
 
     public string Status => _status;
 
@@ -210,6 +214,7 @@ public sealed class NativeStrideViewportHost : IDisposable
             // Stride/SDL initialization can mutate Win32 styles, so restamp hosted-window
             // flags after the game starts to keep the embedded viewport borderless.
             AttachSdlWindowToHost();
+            InstallShortcutWndProc();
             _window.Visible = true;
 
             _tickTimer = new DispatcherTimer(TickInterval, DispatcherPriority.Render, OnTick);
@@ -233,6 +238,8 @@ public sealed class NativeStrideViewportHost : IDisposable
             _tickTimer.Tick -= OnTick;
             _tickTimer = null;
         }
+
+        UninstallShortcutWndProc();
 
         if (_game != null)
         {
@@ -323,6 +330,67 @@ public sealed class NativeStrideViewportHost : IDisposable
         SetWindowPos(_window.Handle, IntPtr.Zero, 0, 0, _width, _height, SwpNoActivate | SwpNoZOrder | SwpShowWindow | SwpFrameChanged);
     }
 
+    private void InstallShortcutWndProc()
+    {
+        if (_window == null || _originalShortcutWndProc != IntPtr.Zero)
+        {
+            return;
+        }
+
+        _shortcutWndProc = ShortcutWndProc;
+        _originalShortcutWndProc = SetWindowLongPtrW(
+            _window.Handle,
+            GwlWndProc,
+            Marshal.GetFunctionPointerForDelegate(_shortcutWndProc));
+    }
+
+    private void UninstallShortcutWndProc()
+    {
+        if (_window == null || _originalShortcutWndProc == IntPtr.Zero)
+        {
+            return;
+        }
+
+        SetWindowLongPtrW(_window.Handle, GwlWndProc, _originalShortcutWndProc);
+        _originalShortcutWndProc = IntPtr.Zero;
+        _shortcutWndProc = null;
+    }
+
+    private IntPtr ShortcutWndProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam)
+    {
+        if (message == WmKeyDown && TryGetViewportShortcut((int)wParam, out var shortcut))
+        {
+            Dispatcher.UIThread.Post(() => ShortcutRequested?.Invoke(this, new ViewportShortcutRequestedEventArgs(shortcut)));
+            return IntPtr.Zero;
+        }
+
+        return CallWindowProcW(_originalShortcutWndProc, hwnd, message, wParam, lParam);
+    }
+
+    private static bool TryGetViewportShortcut(int virtualKey, out ViewportShortcut shortcut)
+    {
+        shortcut = default;
+
+        if (!IsKeyDown(VkControl))
+        {
+            return false;
+        }
+
+        if (virtualKey == VkZ)
+        {
+            shortcut = IsKeyDown(VkShift) ? ViewportShortcut.Redo : ViewportShortcut.Undo;
+            return true;
+        }
+
+        if (virtualKey == VkY)
+        {
+            shortcut = ViewportShortcut.Redo;
+            return true;
+        }
+
+        return false;
+    }
+
     private void ApplyHostedWindowStyles()
     {
         if (_window == null)
@@ -344,6 +412,7 @@ public sealed class NativeStrideViewportHost : IDisposable
 
     private const int GwlStyle = -16;
     private const int GwlExStyle = -20;
+    private const int GwlWndProc = -4;
     private const nint WsChild = 0x40000000;
     private const nint WsVisible = 0x10000000;
     private const nint WsPopup = unchecked((int)0x80000000);
@@ -363,6 +432,13 @@ public sealed class NativeStrideViewportHost : IDisposable
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpShowWindow = 0x0040;
     private const uint SwpFrameChanged = 0x0020;
+    private const uint WmKeyDown = 0x0100;
+    private const int VkControl = 0x11;
+    private const int VkShift = 0x10;
+    private const int VkY = 0x59;
+    private const int VkZ = 0x5A;
+
+    private delegate IntPtr WindowProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetParent(IntPtr childHandle, IntPtr newParentHandle);
@@ -372,6 +448,9 @@ public sealed class NativeStrideViewportHost : IDisposable
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static extern IntPtr SetWindowLongPtrW(IntPtr hwnd, int index, IntPtr newLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr CallWindowProcW(IntPtr previousWndProc, IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -386,4 +465,23 @@ public sealed class NativeStrideViewportHost : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetFocus(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern short GetKeyState(int virtualKey);
+
+    private static bool IsKeyDown(int virtualKey)
+    {
+        return (GetKeyState(virtualKey) & unchecked((short)0x8000)) != 0;
+    }
+}
+
+public enum ViewportShortcut
+{
+    Undo,
+    Redo,
+}
+
+public sealed class ViewportShortcutRequestedEventArgs(ViewportShortcut shortcut) : EventArgs
+{
+    public ViewportShortcut Shortcut { get; } = shortcut;
 }
