@@ -831,3 +831,36 @@ Renamed the export-facing material descriptor concept to Biome Config across Edi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: Fix undo redo shortcuts in viewport focus
+
+**Date**: 2026-05-04
+**Task**: Fix undo redo shortcuts in viewport focus
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+Fixed Terrain Editor undo/redo shortcuts when the embedded SDL viewport owns keyboard focus by bridging Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z from the viewport WndProc back to existing ViewModel commands. Added native viewport hosting guidance for Avalonia/SDL shortcut focus boundaries and verified with trellis-check plus dotnet build.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ce37b1e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

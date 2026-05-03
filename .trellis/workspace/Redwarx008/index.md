@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 25
-- **Last Active**: 2026-05-03
+- **Total Sessions**: 26
+- **Last Active**: 2026-05-04
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~833 | Active |
+| `journal-1.md` | ~866 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 26 | 2026-05-04 | Fix undo redo shortcuts in viewport focus | `ce37b1e` | `implement-climate-texturing` |
 | 25 | 2026-05-03 | 删除Sculpt Advance栏 | `9389005` | `implement-climate-texturing` |
 | 24 | 2026-05-03 | Editor Settings Mode + HeightScale | `27b24b1` | `implement-climate-texturing` |
 | 23 | 2026-05-03 | Rename material descriptor export to biome config | `42ec41b`, `d1a3360` | `implement-climate-texturing` |
