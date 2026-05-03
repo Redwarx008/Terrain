@@ -765,3 +765,36 @@ Renamed the export-facing material descriptor concept to Biome Config across Edi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: Editor Settings Mode + HeightScale
+
+**Date**: 2026-05-03
+**Task**: Editor Settings Mode + HeightScale
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+替换 Water mode 为 Settings mode（齿轮图标），在 inspector 添加 TERRAIN 分类 + HeightScale 滑块，清理 Water 相关代码
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `27b24b1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

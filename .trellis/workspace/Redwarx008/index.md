@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 23
+- **Total Sessions**: 24
 - **Last Active**: 2026-05-03
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~767 | Active |
+| `journal-1.md` | ~800 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-05-03 | Editor Settings Mode + HeightScale | `27b24b1` | `implement-climate-texturing` |
 | 23 | 2026-05-03 | Rename material descriptor export to biome config | `42ec41b`, `d1a3360` | `implement-climate-texturing` |
 | 22 | 2026-05-03 | Restore File/Edit/Help menu items after Avalonia migration | `a886fdf` | `implement-climate-texturing` |
 | 21 | 2026-05-03 | Fix toolbar View hover style | `c906758` | `implement-climate-texturing` |
