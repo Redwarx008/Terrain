@@ -24,6 +24,10 @@
     </Style>
   </Window.Styles>
   <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+N" Command="{Binding NewProjectCommand}" />
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenProjectCommand}" />
+    <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveProjectCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveProjectAsCommand}" />
     <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
     <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}" />
@@ -86,8 +90,74 @@
 
         <!-- Menu Nav -->
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
-          <Button Classes="commandButton" Content="File" FontSize="12" />
-          <Button Classes="commandButton" Content="Edit" FontSize="12" />
+          <Button Classes="commandButton" Content="File" FontSize="12">
+            <Button.Flyout>
+              <MenuFlyout>
+                <MenuItem Command="{Binding NewProjectCommand}">
+                  <MenuItem.Header>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="New" />
+                      <TextBlock Grid.Column="1" Text="Ctrl+N" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
+                    </Grid>
+                  </MenuItem.Header>
+                </MenuItem>
+                <MenuItem Command="{Binding OpenProjectCommand}">
+                  <MenuItem.Header>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="Open..." />
+                      <TextBlock Grid.Column="1" Text="Ctrl+O" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
+                    </Grid>
+                  </MenuItem.Header>
+                </MenuItem>
+                <Separator />
+                <MenuItem Command="{Binding SaveProjectCommand}">
+                  <MenuItem.Header>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="Save" />
+                      <TextBlock Grid.Column="1" Text="Ctrl+S" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
+                    </Grid>
+                  </MenuItem.Header>
+                </MenuItem>
+                <MenuItem Command="{Binding SaveProjectAsCommand}">
+                  <MenuItem.Header>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="Save As..." />
+                      <TextBlock Grid.Column="1" Text="Ctrl+Shift+S" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
+                    </Grid>
+                  </MenuItem.Header>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="Export">
+                  <MenuItem Header="Terrain..." Command="{Binding ExportTerrainCommand}" />
+                  <MenuItem Header="Material Descriptor..." Command="{Binding ExportMaterialDescriptorCommand}" />
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="Exit" Command="{Binding ExitCommand}" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+          <Button Classes="commandButton" Content="Edit" FontSize="12">
+            <Button.Flyout>
+              <MenuFlyout>
+                <MenuItem Command="{Binding UndoCommand}">
+                  <MenuItem.Header>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="Undo" />
+                      <TextBlock Grid.Column="1" Text="Ctrl+Z" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
+                    </Grid>
+                  </MenuItem.Header>
+                </MenuItem>
+                <MenuItem Command="{Binding RedoCommand}">
+                  <MenuItem.Header>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="Redo" />
+                      <TextBlock Grid.Column="1" Text="Ctrl+Y" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
+                    </Grid>
+                  </MenuItem.Header>
+                </MenuItem>
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
           <Button Classes="commandButton" Content="View" FontSize="12">
             <Button.Flyout>
               <MenuFlyout>
@@ -99,7 +169,13 @@
           </Button>
           <Button Classes="commandButton" Content="Select" FontSize="12" />
           <Button Classes="commandButton" Content="Tools" FontSize="12" />
-          <Button Classes="commandButton" Content="Help" FontSize="12" />
+          <Button Classes="commandButton" Content="Help" FontSize="12">
+            <Button.Flyout>
+              <MenuFlyout>
+                <MenuItem Header="About" Command="{Binding OpenHelpCommand}" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
         </StackPanel>
 
         <!-- Project Name (right aligned) -->
