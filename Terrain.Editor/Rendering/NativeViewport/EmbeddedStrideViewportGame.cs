@@ -366,7 +366,6 @@ public sealed class EmbeddedStrideViewportGame : Game
 
             case EditorMode.Paint:
             // Biome brush — no separate BeginStroke; ApplyStroke is stateless.
-            case EditorMode.Water:
                 break;
         }
     }
@@ -381,8 +380,6 @@ public sealed class EmbeddedStrideViewportGame : Game
 
             case EditorMode.Paint:
                 ApplyBiomeStroke(worldPosition);
-                break;
-            case EditorMode.Water:
                 break;
         }
     }
@@ -403,7 +400,6 @@ public sealed class EmbeddedStrideViewportGame : Game
                 break;
 
             case EditorMode.Paint:
-            case EditorMode.Water:
                 break;
         }
     }

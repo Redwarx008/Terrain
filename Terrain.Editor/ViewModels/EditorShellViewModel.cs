@@ -115,6 +115,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public BiomeViewModel Biome { get; }
 
+    public SettingsViewModel Settings { get; }
+
     public ObservableCollection<ModeOptionViewModel> Modes { get; } = new();
 
     public ObservableCollection<ToolOptionViewModel> Tools { get; } = new();
@@ -154,7 +156,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public bool IsFoliageMode => SelectedMode == EditorMode.Foliage;
 
-    public bool IsWaterMode => SelectedMode == EditorMode.Water;
+    public bool IsSettingsMode => SelectedMode == EditorMode.Settings;
+
+    public bool HasTools => SelectedMode != EditorMode.Settings;
 
     public bool IsBiomeVisible => IsPaintMode;
 
@@ -172,6 +176,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         Viewport = new NativeStrideViewportViewModel(_viewportHost);
         BrushParams = new BrushParametersViewModel();
         Biome = new BiomeViewModel();
+        Settings = new SettingsViewModel();
+        Settings.PropertyChanged += OnSettingsPropertyChanged;
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
         ExportManager.Instance.Register(_terrainExporter);
         ExportManager.Instance.Register(_biomeConfigExporter);
@@ -253,6 +259,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         RefreshProjectState();
+        SyncSettingsFromTerrainManager();
         AddConsole("Info", $"Created unsaved project from heightmap: {path}");
     }
 
@@ -286,6 +293,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
         terrainManager.LoadProject(path);
         RefreshProjectState();
+        SyncSettingsFromTerrainManager();
         AddConsole("Info", $"Opened project: {_projectManager.ProjectName}.");
     }
 
@@ -731,6 +739,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _historyManager.HistoryChanged -= OnHistoryChanged;
         BrushParams.Dispose();
         Biome.Dispose();
+        Settings.PropertyChanged -= OnSettingsPropertyChanged;
         Viewport.Dispose();
         _viewportHost.Dispose();
     }
@@ -753,7 +762,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsSculptMode));
         OnPropertyChanged(nameof(IsPaintMode));
         OnPropertyChanged(nameof(IsFoliageMode));
-        OnPropertyChanged(nameof(IsWaterMode));
+        OnPropertyChanged(nameof(IsSettingsMode));
+        OnPropertyChanged(nameof(HasTools));
         OnPropertyChanged(nameof(IsBiomeVisible));
         OnPropertyChanged(nameof(SelectedModeDisplayName));
     }
@@ -1023,8 +1033,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 new("Place", "Place foliage", "\uE8BE", mode),
                 new("Remove", "Remove foliage", "\uE74D", mode),
             ],
-            EditorMode.Water =>
-                [],
             _ => [],
         };
     }
@@ -1034,7 +1042,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         Modes.Add(new ModeOptionViewModel("Sculpt", "Terrain height editing", "", EditorMode.Sculpt));
         Modes.Add(new ModeOptionViewModel("Biome", "Biome mask painting", "\uE950", EditorMode.Paint));
         Modes.Add(new ModeOptionViewModel("Foliage", "Vegetation placement", "\uE8BE", EditorMode.Foliage));
-        Modes.Add(new ModeOptionViewModel("Water", "Water level editing", "", EditorMode.Water));
+        Modes.Add(new ModeOptionViewModel("Settings", "Project settings", "", EditorMode.Settings));
     }
 
     private void InitializeAssetBrowser()
@@ -1365,6 +1373,25 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         return null;
+    }
+
+    private void OnSettingsPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SettingsViewModel.HeightScale))
+        {
+            if (TryGetTerrainManager(out var terrainManager))
+            {
+                terrainManager.SetHeightScale(Settings.HeightScale);
+            }
+        }
+    }
+
+    private void SyncSettingsFromTerrainManager()
+    {
+        if (_viewportHost.TerrainManager is { } manager)
+        {
+            Settings.HeightScale = manager.HeightScale;
+        }
     }
 
     private void AddConsole(string level, string message)

@@ -382,7 +382,7 @@
             <StackPanel Spacing="0">
 
               <!-- ═══ Current Tool Section ═══ -->
-              <Border Padding="10,10,10,0">
+              <Border Padding="10,10,10,0" IsVisible="{Binding HasTools}">
                 <StackPanel Spacing="8">
                   <TextBlock Classes="sectionLabel" Text="CURRENT TOOL" />
                   <ListBox
@@ -569,46 +569,18 @@
                 </Border>
               </StackPanel>
 
-              <!-- ═══ Water Mode Inspector ═══ -->
-              <StackPanel IsVisible="{Binding IsWaterMode}" Spacing="0">
+              <!-- ═══ Settings Mode Inspector ═══ -->
+              <StackPanel IsVisible="{Binding IsSettingsMode}" Spacing="0">
                 <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="WATER SETTINGS" />
+                    <TextBlock Classes="sectionLabel" Text="TERRAIN" />
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Water Level" />
-                        <Slider Minimum="-500" Maximum="4000" Value="100" />
+                        <TextBlock Classes="fieldLabel" Text="Height Scale" />
+                        <Slider Minimum="1" Maximum="1000" Value="{Binding Settings.HeightScale}" />
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="100" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding Settings.HeightScale, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Wave Height" />
-                        <Slider Minimum="0" Maximum="10" Value="1.5" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="1.50" VerticalAlignment="Bottom" />
-                    </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Flow Speed" />
-                        <Slider Minimum="0" Maximum="5" Value="1.0" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="1.00" VerticalAlignment="Bottom" />
-                    </Grid>
-                  </StackPanel>
-                </Border>
-
-                <Border Classes="inspectorSection" Padding="10,10">
-                  <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="APPEARANCE" />
-                    <ComboBox Classes="metroCombo" SelectedIndex="0">
-                      <ComboBoxItem Content="Water Type: Ocean" />
-                      <ComboBoxItem Content="Water Type: Lake" />
-                      <ComboBoxItem Content="Water Type: River" />
-                    </ComboBox>
-                    <CheckBox Content="Enable Reflections" IsChecked="True" />
-                    <CheckBox Content="Enable Refraction" IsChecked="True" />
-                    <CheckBox Content="Show Caustics" IsChecked="False" />
                   </StackPanel>
                 </Border>
               </StackPanel>
