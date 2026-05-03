@@ -9,7 +9,9 @@
   Height="1080"
   MinWidth="1280"
   MinHeight="780"
-  SystemDecorations="None">
+  SystemDecorations="BorderOnly"
+  ExtendClientAreaToDecorationsHint="True"
+  ExtendClientAreaChromeHints="NoChrome">
   <Window.Resources>
     <converters:InvertedNullToBoolConverter x:Key="InvertedNullToBool" />
   </Window.Resources>
@@ -96,7 +98,7 @@
             </Button.Flyout>
           </Button>
           <Button Classes="commandButton" Content="Select" FontSize="12" />
-          <Button Classes="commandButton" Content="Tools" FontSize="12" Foreground="{DynamicResource EditorAccentBrush}" FontWeight="SemiBold" />
+          <Button Classes="commandButton" Content="Tools" FontSize="12" />
           <Button Classes="commandButton" Content="Help" FontSize="12" />
         </StackPanel>
 
