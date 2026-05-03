@@ -655,6 +655,19 @@ public sealed class TerrainManager : IDisposable
         }
 
         biomeState.NormalizeAllRanges();
+        biomeState.RebaseNextIds();
+
+        var editorState = EditorState.Instance;
+        int selectedLayerIndex = editorState.SelectedRuleIndex;
+        if ((uint)selectedLayerIndex >= (uint)biomeState.Layers.Count)
+            selectedLayerIndex = biomeState.Layers.Count > 0 ? 0 : -1;
+
+        if (selectedLayerIndex >= 0)
+        {
+            editorState.CurrentBiomeId = biomeState.Layers[selectedLayerIndex].BiomeId;
+        }
+
+        editorState.SelectedRuleIndex = selectedLayerIndex;
         biomeState.NotifyMutated();
     }
 

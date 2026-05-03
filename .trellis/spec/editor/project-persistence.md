@@ -40,6 +40,8 @@
   - 如果 `LoadProject()` 通过 `pendingBiomeMaskPath` 把蒙版路径交给 `LoadTerrainAsync(...)`，则 `LoadTerrainAsync(...)` 内部的 `RemoveCurrentTerrain()` 不能把这份“当前重开流程正在使用的暂存路径”提前清掉；要么显式保留，要么改成别的传参方式。
   - 重新打开项目之前，必须先清空 `MaterialSlotManager` 的旧路径和旧 GPU 纹理缓存，不能把上一项目残留的槽位状态混进新项目。
   - 材质纹理恢复如果依赖 `MaterialTexturesLoadRequired` 之类的事件，不能假设事件触发当下就一定有可用 `CommandList`；必须支持挂起并在首个可渲染帧补执行，否则会出现 biome mask 已恢复但实际地表材质未重新绑定的假象。
+  - 恢复 `biome_layers` / `biome_modifiers` 后，必须把后续 layer/modifier ID 分配器 rebase 到已恢复最大 ID 之后；保存后重开再添加 modifier 时不能复用 TOML 中已有的 modifier ID。
+  - 恢复完成后必须把 `EditorState.SelectedRuleIndex` clamp 到有效 layer 范围，并同步 `CurrentBiomeId` 到选中 layer；不能让 UI 选中旧项目中已经不存在的 layer 后继续执行 Add/Remove modifier 命令。
 
 - 导出真源:
   - `.terrain v6` 只允许持久化：
@@ -70,6 +72,7 @@
 - Base:
   - 仅修改 biome 规则和材质槽位，`Save` 仍会刷新 `.toml`，并在已有蒙版路径存在时同步写回蒙版。
   - 重开项目时，即使材质纹理数组需要等到后续渲染帧才能上传，最终也必须自动补齐，不允许用户靠再次编辑 biome 才“碰巧刷新出来”。
+  - 重开包含已有 modifier stack 的项目后，点击 Add Modifier 会追加新 modifier 并分配新 ID，不会覆盖或复用已恢复 modifier。
 
 - Bad:
   - `Save As` 先把旧 `cachedConfig` 写到新路径，再单独写新快照。这会产生“新 `.toml` 指向旧资源”的窗口期，也容易让后续维护者复制出错误流程。

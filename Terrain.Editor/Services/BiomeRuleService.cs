@@ -434,6 +434,16 @@ public sealed class BiomeRuleService
         nextModifierId = 1;
     }
 
+    public void RebaseNextIds()
+    {
+        nextLayerId = layers.Count == 0 ? 1 : layers.Max(static layer => layer.Id) + 1;
+        nextModifierId = layers
+            .SelectMany(static layer => layer.Modifiers)
+            .Select(static modifier => modifier.Id)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+    }
+
     public void AddBiomeFromConfig(int id, string name, Vector4 debugColor)
     {
         BiomeDefinition biome = new()

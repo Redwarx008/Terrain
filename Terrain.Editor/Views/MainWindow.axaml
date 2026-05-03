@@ -769,7 +769,7 @@
                       </ListBox>
 
                       <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
-                        <ComboBox Grid.Column="0" Classes="metroCombo,biomeSoftCombo" SelectedIndex="{Binding $parent[Window].DataContext.Biome.AddModifierTypeIndex, Mode=TwoWay}">
+                        <ComboBox Grid.Column="0" Classes="metroCombo,biomeSoftCombo" SelectedIndex="{Binding AddModifierTypeIndex, Mode=TwoWay}">
                           <ComboBoxItem Content="Height range" />
                           <ComboBoxItem Content="Slope range" />
                           <ComboBoxItem Content="Curvature range" />
@@ -777,10 +777,10 @@
                           <ComboBoxItem Content="Noise" />
                           <ComboBoxItem Content="Texture mask" />
                         </ComboBox>
-                        <Button Grid.Column="1" Classes="commandButton,biomeMiniButton" Command="{Binding $parent[Window].DataContext.Biome.AddModifierCommand}">
+                        <Button Grid.Column="1" Classes="commandButton,biomeMiniButton" Command="{Binding AddModifierCommand}">
                           <TextBlock Classes="toolbarIcon" Text="&#xE710;" FontSize="14" />
                         </Button>
-                        <Button Grid.Column="2" Classes="commandButton,biomeMiniButton" Command="{Binding $parent[Window].DataContext.Biome.RemoveSelectedModifierCommand}">
+                        <Button Grid.Column="2" Classes="commandButton,biomeMiniButton" Command="{Binding RemoveSelectedModifierCommand}">
                           <TextBlock Classes="toolbarIcon" Text="&#xE711;" FontSize="14" />
                         </Button>
                       </Grid>

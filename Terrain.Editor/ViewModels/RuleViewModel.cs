@@ -3,6 +3,7 @@
 using System.Collections.ObjectModel;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Terrain.Editor.Services;
 
 namespace Terrain.Editor.ViewModels;
@@ -53,6 +54,11 @@ public sealed partial class RuleViewModel : ObservableObject
     [ObservableProperty]
     private int _selectedModifierIndex = -1;
 
+    [ObservableProperty]
+    private int _addModifierTypeIndex;
+
+    public bool CanRemoveSelectedModifier => SelectedModifierIndex >= 0 && SelectedModifierIndex < Modifiers.Count;
+
     partial void OnNameChanged(string value)
     {
         if (_syncing) return;
@@ -101,6 +107,26 @@ public sealed partial class RuleViewModel : ObservableObject
         {
             SelectedModifier = matchingModifier;
         }
+
+        RemoveSelectedModifierCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnSelectedModifierChanged(ModifierViewModel? value)
+    {
+        RemoveSelectedModifierCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void AddModifier()
+    {
+        BiomeRuleService.Instance.AddModifier(_source, (BiomeModifierType)AddModifierTypeIndex);
+        SelectedModifierIndex = Modifiers.Count - 1;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRemoveSelectedModifier))]
+    private void RemoveSelectedModifier()
+    {
+        BiomeRuleService.Instance.RemoveModifier(_source, SelectedModifierIndex);
     }
 
     /// <summary>
@@ -139,6 +165,8 @@ public sealed partial class RuleViewModel : ObservableObject
 
         OnPropertyChanged(nameof(ModifierCountLabel));
         OnPropertyChanged(nameof(MaterialPreviewImage));
+        OnPropertyChanged(nameof(CanRemoveSelectedModifier));
+        RemoveSelectedModifierCommand.NotifyCanExecuteChanged();
 
         // Re-sync selected modifier by index
         int currentIdx = SelectedModifierIndex;

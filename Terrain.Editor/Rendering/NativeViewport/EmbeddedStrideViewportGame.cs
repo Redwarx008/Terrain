@@ -365,7 +365,7 @@ public sealed class EmbeddedStrideViewportGame : Game
                 break;
 
             case EditorMode.Paint:
-            // Biome brush — no separate BeginStroke; ApplyStroke is stateless.
+                // Biome brush - no separate BeginStroke; ApplyStroke is stateless.
                 break;
         }
     }
