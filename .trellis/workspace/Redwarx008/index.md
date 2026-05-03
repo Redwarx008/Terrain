@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 18
-- **Last Active**: 2026-05-02
+- **Total Sessions**: 19
+- **Last Active**: 2026-05-03
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~601 | Active |
+| `journal-1.md` | ~634 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 19 | 2026-05-03 | Fix biome persistence and runtime terrain rebuild | `06b6fea` | `implement-climate-texturing` |
 | 18 | 2026-05-02 | 修复 biome 侧栏材质预览 | `39f20467530f56afb9524002a53c17c1f08e631b` | `implement-climate-texturing` |
 | 17 | 2026-05-02 | Fix biome mask brush and merge biome mode | `bf99da6` | `implement-climate-texturing` |
 | 16 | 2026-05-02 | Align modifier falloff semantics to Unity reference | `e6409ac` | `implement-climate-texturing` |

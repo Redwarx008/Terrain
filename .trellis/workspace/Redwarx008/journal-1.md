@@ -599,3 +599,36 @@ Stabilized biome painting, fixed overlay behavior, and merged Landscape UX into 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: Fix biome persistence and runtime terrain rebuild
+
+**Date**: 2026-05-03
+**Task**: Fix biome persistence and runtime terrain rebuild
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+Unified editor save/load/export persistence, removed CPU MaterialIndexMap dependency, upgraded runtime terrain rebuild from biome mask + TOML rules, and fixed project reopen so pending biome masks survive terrain reload.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `06b6fea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
