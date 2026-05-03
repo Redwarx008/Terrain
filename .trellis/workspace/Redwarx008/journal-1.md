@@ -864,3 +864,36 @@ Fixed Terrain Editor undo/redo shortcuts when the embedded SDL viewport owns key
 ### Next Steps
 
 - None - task complete
+
+
+## Session 27: Toolbar background color change to #F8FAFC
+
+**Date**: 2026-05-04
+**Task**: Toolbar background color change to #F8FAFC
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+将 toolbar 行背景色从 #F6F3F2 改为 #F8FAFC，新增 EditorToolbarBackgroundBrush 资源引用替代硬编码颜色
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9775f92` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
