@@ -632,3 +632,36 @@ Unified editor save/load/export persistence, removed CPU MaterialIndexMap depend
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: Fix runtime material descriptor export contract
+
+**Date**: 2026-05-03
+**Task**: Fix runtime material descriptor export contract
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+Addressed trellis-check findings by exporting full runtime terrain material config (height scale, biome layers, biome modifiers) and syncing runtime persistence specs with the new MaterialConfigPath contract.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b9a73ea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
