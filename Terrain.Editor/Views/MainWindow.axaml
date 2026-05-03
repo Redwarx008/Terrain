@@ -86,13 +86,15 @@
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
           <Button Classes="commandButton" Content="File" FontSize="12" />
           <Button Classes="commandButton" Content="Edit" FontSize="12" />
-          <Menu Classes="toolbarMenu">
-            <MenuItem Header="View" FontSize="12">
-              <MenuItem Header="Side Nav" IsChecked="{Binding IsSideNavVisible, Mode=TwoWay}" ToggleType="CheckBox" />
-              <MenuItem Header="Asset Browser" IsChecked="{Binding IsAssetBrowserVisible, Mode=TwoWay}" ToggleType="CheckBox" />
-              <MenuItem Header="Inspector" IsChecked="{Binding IsInspectorVisible, Mode=TwoWay}" ToggleType="CheckBox" />
-            </MenuItem>
-          </Menu>
+          <Button Classes="commandButton" Content="View" FontSize="12">
+            <Button.Flyout>
+              <MenuFlyout>
+                <MenuItem Header="Side Nav" IsChecked="{Binding IsSideNavVisible, Mode=TwoWay}" ToggleType="CheckBox" />
+                <MenuItem Header="Asset Browser" IsChecked="{Binding IsAssetBrowserVisible, Mode=TwoWay}" ToggleType="CheckBox" />
+                <MenuItem Header="Inspector" IsChecked="{Binding IsInspectorVisible, Mode=TwoWay}" ToggleType="CheckBox" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
           <Button Classes="commandButton" Content="Select" FontSize="12" />
           <Button Classes="commandButton" Content="Tools" FontSize="12" Foreground="{DynamicResource EditorAccentBrush}" FontWeight="SemiBold" />
           <Button Classes="commandButton" Content="Help" FontSize="12" />
