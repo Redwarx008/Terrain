@@ -5,17 +5,21 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Tommy;
 
 namespace Terrain.Editor.Services.Export.Exporters;
 
 /// <summary>
-/// Exports material slot configuration to a standalone material_descriptor.toml file.
-/// The exported file can be used by the runtime RuntimeMaterialManager without
-/// depending on the editor project TOML.
+/// Exports the runtime material/biome configuration that Terrain runtime rebuilds
+/// detail maps from. The output remains a standalone TOML file for MaterialConfigPath.
 /// </summary>
 public class MaterialDescriptorExporter : IExporter
 {
+    /// <summary>
+    /// Optional live terrain source. When present, export uses the current in-memory
+    /// height scale instead of stale config snapshots.
+    /// </summary>
+    public TerrainManager? TerrainManager { get; set; }
+
     public string Name => "Material Descriptor";
     public string FileFilter => "Material Descriptor Files (*.toml)|*.toml";
     public string DefaultExtension => "toml";
@@ -34,49 +38,73 @@ public class MaterialDescriptorExporter : IExporter
         {
             ct.ThrowIfCancellationRequested();
 
-            progress.Report(ExportProgress.Running(0, 2, "Converting material paths..."));
+            progress.Report(ExportProgress.Running(0, 2, "Collecting runtime material config..."));
 
-            string outputDir = Path.GetDirectoryName(Path.GetFullPath(outputPath)) ?? "";
-
-            var root = new TomlTable();
-            var slotsArray = new TomlArray();
-
-            foreach (var slot in activeSlots)
+            TomlProjectConfig? currentConfig = ProjectManager.Instance.LoadConfig();
+            var config = new TomlProjectConfig
             {
-                ct.ThrowIfCancellationRequested();
-
-                var slotTable = new TomlTable();
-                slotTable["index"] = slot.Index;
-
-                if (!string.IsNullOrEmpty(slot.AlbedoTexturePath))
-                    slotTable["albedo"] = TomlProjectConfig.MakeRelative(slot.AlbedoTexturePath, outputDir);
-                else
-                    slotTable["albedo"] = "";
-
-                if (!string.IsNullOrEmpty(slot.NormalTexturePath))
-                    slotTable["normal"] = TomlProjectConfig.MakeRelative(slot.NormalTexturePath, outputDir);
-                else
-                    slotTable["normal"] = "";
-
-                if (!string.IsNullOrEmpty(slot.PropertiesTexturePath))
-                    slotTable["properties"] = TomlProjectConfig.MakeRelative(slot.PropertiesTexturePath, outputDir);
-                else
-                    slotTable["properties"] = "";
-
-                slotsArray.Add(slotTable);
-            }
-
-            root["material_slots"] = slotsArray;
+                Version = currentConfig?.Version ?? 2,
+                Name = currentConfig?.Name ?? Path.GetFileNameWithoutExtension(outputPath),
+                HeightScale = TerrainManager?.HeightScale ?? currentConfig?.HeightScale ?? 100.0f,
+                MaterialSlots = activeSlots.Select(static slot => new TomlMaterialSlotConfig
+                {
+                    Index = slot.Index,
+                    Name = slot.Name,
+                    AlbedoPath = slot.AlbedoTexturePath,
+                    NormalPath = slot.NormalTexturePath,
+                    PropertiesPath = slot.PropertiesTexturePath,
+                }).ToList(),
+                Biomes = BiomeRuleService.Instance.Biomes.Select(static biome => new TomlBiomeDefinitionConfig
+                {
+                    Id = biome.Id,
+                    Name = biome.Name,
+                    DebugColorR = biome.DebugColor.X,
+                    DebugColorG = biome.DebugColor.Y,
+                    DebugColorB = biome.DebugColor.Z,
+                    DebugColorA = biome.DebugColor.W,
+                }).ToList(),
+                BiomeLayers = BiomeRuleService.Instance.Layers.Select(static layer => new TomlBiomeLayerConfig
+                {
+                    Id = layer.Id,
+                    BiomeId = layer.BiomeId,
+                    Name = layer.Name,
+                    Enabled = layer.Enabled,
+                    Visible = layer.Visible,
+                    MaterialSlotIndex = layer.MaterialSlotIndex,
+                    PriorityOrder = layer.PriorityOrder,
+                }).ToList(),
+                BiomeModifiers = BiomeRuleService.Instance.Layers
+                    .SelectMany(static layer => layer.Modifiers.Select(modifier => new TomlBiomeModifierConfig
+                    {
+                        Id = modifier.Id,
+                        LayerId = layer.Id,
+                        Name = modifier.Name,
+                        Type = modifier.Type.ToString(),
+                        BlendMode = modifier.BlendMode.ToString(),
+                        Enabled = modifier.Enabled,
+                        Visible = modifier.Visible,
+                        Opacity = modifier.Opacity,
+                        Min = modifier.Min,
+                        Max = modifier.Max,
+                        MinFalloff = modifier.MinFalloff,
+                        MaxFalloff = modifier.MaxFalloff,
+                        Radius = modifier.Radius,
+                        AngleDegrees = modifier.AngleDegrees,
+                        AngleRangeDegrees = modifier.AngleRangeDegrees,
+                        Scale = modifier.Scale,
+                        OffsetX = modifier.OffsetX,
+                        OffsetY = modifier.OffsetY,
+                        Seed = modifier.Seed,
+                        Octaves = modifier.Octaves,
+                        Invert = modifier.Invert,
+                        TextureMaskPath = modifier.TextureMaskPath,
+                        TextureMaskChannel = modifier.TextureMaskChannel,
+                    }))
+                    .ToList(),
+            };
 
             progress.Report(ExportProgress.Running(1, 2, "Writing material descriptor file..."));
-
-            // Ensure output directory exists
-            string? dir = Path.GetDirectoryName(outputPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-
-            using var writer = File.CreateText(outputPath);
-            root.WriteTo(writer);
+            config.WriteTo(outputPath);
 
             progress.Report(ExportProgress.Completed());
         }, ct);

@@ -88,7 +88,7 @@ toml.WriteTo(writer);
   - biome-mask VT header + data
 - 运行时 detail 真源:
   - detail index / weight **不再**从 `.terrain` 读取
-  - runtime 必须从 `TerrainComponent.MaterialConfigPath` 指向的项目 TOML 读取：
+  - runtime 必须从 `TerrainComponent.MaterialConfigPath` 指向的 TOML 配置读取：
     - `terrain.height_scale`
     - `biome_layers`
     - `biome_modifiers`
@@ -118,7 +118,7 @@ toml.WriteTo(writer);
 - `dotnet build Terrain.sln`
 - 手动回归：
   - 导出 `.terrain` 后确认文件能被 runtime 加载。
-  - 修改项目 TOML 中 biome 规则、保持 `.terrain` 不变，重新启动 runtime 后 detail 混合结果应随 TOML 变化。
+  - 修改 `MaterialConfigPath` 指向的 TOML 中 biome 规则、保持 `.terrain` 不变，重新启动 runtime 后 detail 混合结果应随 TOML 变化。
   - 修改 biome mask 并重新导出，runtime 生成的 detail 边界应随 mask 变化。
 
 ### 7. Wrong vs Correct

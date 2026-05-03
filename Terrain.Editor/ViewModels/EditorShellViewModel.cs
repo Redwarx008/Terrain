@@ -34,6 +34,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private readonly MaterialSlotManager _materialSlotManager = MaterialSlotManager.Instance;
     private readonly NativeStrideViewportHost _viewportHost;
     private readonly TerrainExporter _terrainExporter = new();
+    private readonly MaterialDescriptorExporter _materialDescriptorExporter = new();
     private readonly HashSet<string> _thumbnailDiagnostics = new(StringComparer.Ordinal);
 
     [ObservableProperty]
@@ -173,7 +174,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         Biome = new BiomeViewModel();
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
         ExportManager.Instance.Register(_terrainExporter);
-        ExportManager.Instance.Register(new MaterialDescriptorExporter());
+        ExportManager.Instance.Register(_materialDescriptorExporter);
 
         InitializeModes();
         InitializeAssetBrowser();
@@ -511,6 +512,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         string path = result.TryGetLocalPath() ?? result.Path.ToString();
+        _materialDescriptorExporter.TerrainManager = TryGetTerrainManager(out var terrainManagerForExport)
+            ? terrainManagerForExport
+            : null;
 
         try
         {

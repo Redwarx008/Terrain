@@ -50,7 +50,7 @@
 ### 5. Good / Base / Bad Cases
 
 - Good:
-  - Editor 导出 `.terrain v6` 后，Runtime 使用 `.terrain + project.toml` 得到与 Editor biome 规则一致的材质混合。
+  - Editor 导出 `.terrain v6` 后，Runtime 使用 `.terrain + MaterialConfigPath` 指向的 TOML 得到与 Editor biome 规则一致的材质混合。
 - Base:
   - `MaterialConfigPath` 丢失时，Runtime 仍能加载高度和 biome mask，但 detail maps 回退到默认结果。
 - Bad:
@@ -63,7 +63,7 @@
 - Manual regression:
   - 导出一个含 biome 规则的地形，确认 `.terrain` 能被 Runtime 打开。
   - 删除旧的 detail map 持久化假设后，确认 Runtime 仍能正确显示材质。
-  - 修改 TOML biome 规则后不重导出 `.terrain`，仅重新加载 Runtime，断言材质结果会跟随规则变化。
+  - 修改 `MaterialConfigPath` 指向的 TOML biome 规则后不重导出 `.terrain`，仅重新加载 Runtime，断言材质结果会跟随规则变化。
 
 ### 7. Wrong vs Correct
 

@@ -95,7 +95,7 @@ For each boundary:
 **Fix**:
 - 明确每个空间：heightmap space（1:1）vs splatmap space（1/2）
 - 在层边界处显式标注坐标空间转换：
-  - Editor C# → MaterialIndexMap: `heightmap / 2`
+  - Editor C# → BiomeMask / GPU splat rebuild trigger: `heightmap / 2`
   - Editor Shader → LoadIndexMapAtGlobal: `coord / 2`
   - Editor Shader → BuildSplatMap 输出: `splatCoord * 2` 回到 heightmap 采样高度
   - Paint brush: `pixel / 2, radius / 2`
