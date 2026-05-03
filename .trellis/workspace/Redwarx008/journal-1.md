@@ -698,3 +698,36 @@ Addressed trellis-check findings by exporting full runtime terrain material conf
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: Restore File/Edit/Help menu items after Avalonia migration
+
+**Date**: 2026-05-03
+**Task**: Restore File/Edit/Help menu items after Avalonia migration
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+Added MenuFlyout dropdowns to File/Edit/Help toolbar buttons with commands and keyboard shortcuts. Used composite Header for shortcut text display since Avalonia MenuFlyout doesn't auto-render HotKey gesture text.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a886fdf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
