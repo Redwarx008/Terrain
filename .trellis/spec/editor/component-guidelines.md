@@ -111,7 +111,7 @@ private async Task ExportTerrainAsync()
 
 关键约束：
 - 使用 `ExportManager.Instance.ExecuteAsync(exporterName, path)` 而非直接 `new TerrainExporter().Export(...)`。
-- 导出器名称字符串（`"Terrain"`、`"Material Descriptor"`）对应 `ExportManager` 注册时使用的键。
+- 导出器名称字符串（`"Terrain"`、`"Biome Config"`）对应 `ExportManager` 注册时使用的键。
 - 异步导出必须用 `async Task` 命令方法，不要用 `async void`。
 
 ---

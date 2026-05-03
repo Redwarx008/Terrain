@@ -34,7 +34,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private readonly MaterialSlotManager _materialSlotManager = MaterialSlotManager.Instance;
     private readonly NativeStrideViewportHost _viewportHost;
     private readonly TerrainExporter _terrainExporter = new();
-    private readonly MaterialDescriptorExporter _materialDescriptorExporter = new();
+    private readonly BiomeConfigExporter _biomeConfigExporter = new();
     private readonly HashSet<string> _thumbnailDiagnostics = new(StringComparer.Ordinal);
 
     [ObservableProperty]
@@ -174,7 +174,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         Biome = new BiomeViewModel();
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
         ExportManager.Instance.Register(_terrainExporter);
-        ExportManager.Instance.Register(_materialDescriptorExporter);
+        ExportManager.Instance.Register(_biomeConfigExporter);
 
         InitializeModes();
         InitializeAssetBrowser();
@@ -490,7 +490,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task ExportMaterialDescriptor()
+    private async Task ExportBiomeConfig()
     {
         var storageProvider = GetStorageProvider();
         if (storageProvider == null)
@@ -501,9 +501,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
         var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Export Material Descriptor",
-            SuggestedFileName = "materials",
-            FileTypeChoices = [new FilePickerFileType("TOML") { Patterns = ["*.toml"] }],
+            Title = "Export Biome Config",
+            SuggestedFileName = "biome_config",
+            FileTypeChoices = [new FilePickerFileType("Biome Config") { Patterns = ["*.toml"] }],
         });
 
         if (result == null)
@@ -512,7 +512,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         string path = result.TryGetLocalPath() ?? result.Path.ToString();
-        _materialDescriptorExporter.TerrainManager = TryGetTerrainManager(out var terrainManagerForExport)
+        _biomeConfigExporter.TerrainManager = TryGetTerrainManager(out var terrainManagerForExport)
             ? terrainManagerForExport
             : null;
 
@@ -523,7 +523,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 if (report.IsCompleted)
                 {
                     AddConsole(report.ErrorMessage == null ? "Info" : "Error",
-                        report.ErrorMessage ?? "Material descriptor export completed.");
+                        report.ErrorMessage ?? "Biome config export completed.");
                     return;
                 }
 
@@ -533,12 +533,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 }
             });
 
-            await ExportManager.Instance.ExecuteAsync("Material Descriptor", path, progress, CancellationToken.None);
-            AddConsole("Info", $"Material descriptor exported to {path}.");
+            await ExportManager.Instance.ExecuteAsync("Biome Config", path, progress, CancellationToken.None);
+            AddConsole("Info", $"Biome config exported to {path}.");
         }
         catch (Exception exception)
         {
-            AddConsole("Error", $"Material descriptor export failed: {exception.Message}");
+            AddConsole("Error", $"Biome config export failed: {exception.Message}");
         }
     }
 

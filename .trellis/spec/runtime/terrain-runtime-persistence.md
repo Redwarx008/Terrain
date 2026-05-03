@@ -34,7 +34,7 @@
   - `MaterialIndexMap`
 - Runtime 加载合同：
   - 先从 `.terrain` 读回完整 `heightmap + biome mask`
-  - 再从 `TerrainComponent.MaterialConfigPath` 指向的 TOML 读取 `material_slots + biome_layers + biome_modifiers`
+  - 再从 `TerrainComponent.BiomeConfigPath` 指向的 TOML 读取 `material_slots + biome_layers + biome_modifiers`
   - 最后在 Runtime 侧生成 detail index / weight 页并上传 GPU
 
 ### 4. Validation & Error Matrix
@@ -44,15 +44,15 @@
 | `.terrain` 版本不是 `6` | `TerrainFileReader` 直接拒绝加载 |
 | `heightmapHeader.BytesPerPixel != 2` | 抛 `InvalidDataException` |
 | `BiomeMask` VT `BytesPerPixel` 与读取类型不匹配 | 抛 `InvalidDataException` |
-| `MaterialConfigPath` 为空或文件不存在 | 记录 warning，Runtime 允许回退到默认材质结果 |
+| `BiomeConfigPath` 为空或文件不存在 | 记录 warning，Runtime 允许回退到默认材质结果 |
 | detail page 请求发生时缺少运行时重建数据 | 抛 `InvalidOperationException`，视为实现错误 |
 
 ### 5. Good / Base / Bad Cases
 
 - Good:
-  - Editor 导出 `.terrain v6` 后，Runtime 使用 `.terrain + MaterialConfigPath` 指向的 TOML 得到与 Editor biome 规则一致的材质混合。
+  - Editor 导出 `.terrain v6` 后，Runtime 使用 `.terrain + BiomeConfigPath` 指向的 TOML 得到与 Editor biome 规则一致的材质混合。
 - Base:
-  - `MaterialConfigPath` 丢失时，Runtime 仍能加载高度和 biome mask，但 detail maps 回退到默认结果。
+  - `BiomeConfigPath` 丢失时，Runtime 仍能加载高度和 biome mask，但 detail maps 回退到默认结果。
 - Bad:
   - Runtime 继续尝试从 `.terrain` 读取 detail weight block，或导出器继续写入 `MaterialIndexMap` 派生图。
 
@@ -63,7 +63,7 @@
 - Manual regression:
   - 导出一个含 biome 规则的地形，确认 `.terrain` 能被 Runtime 打开。
   - 删除旧的 detail map 持久化假设后，确认 Runtime 仍能正确显示材质。
-  - 修改 `MaterialConfigPath` 指向的 TOML biome 规则后不重导出 `.terrain`，仅重新加载 Runtime，断言材质结果会跟随规则变化。
+  - 修改 `BiomeConfigPath` 指向的 TOML biome 规则后不重导出 `.terrain`，仅重新加载 Runtime，断言材质结果会跟随规则变化。
 
 ### 7. Wrong vs Correct
 

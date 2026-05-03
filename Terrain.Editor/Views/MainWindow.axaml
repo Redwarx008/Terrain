@@ -129,7 +129,7 @@
                 <Separator />
                 <MenuItem Header="Export">
                   <MenuItem Header="Terrain..." Command="{Binding ExportTerrainCommand}" />
-                  <MenuItem Header="Material Descriptor..." Command="{Binding ExportMaterialDescriptorCommand}" />
+                  <MenuItem Header="Biome Config..." Command="{Binding ExportBiomeConfigCommand}" />
                 </MenuItem>
                 <Separator />
                 <MenuItem Header="Exit" Command="{Binding ExitCommand}" />

@@ -9,10 +9,10 @@ using System.Threading.Tasks;
 namespace Terrain.Editor.Services.Export.Exporters;
 
 /// <summary>
-/// Exports the runtime material/biome configuration that Terrain runtime rebuilds
-/// detail maps from. The output remains a standalone TOML file for MaterialConfigPath.
+/// Exports the runtime biome configuration that Terrain runtime rebuilds detail maps from.
+/// The output remains a standalone TOML file for BiomeConfigPath.
 /// </summary>
-public class MaterialDescriptorExporter : IExporter
+public class BiomeConfigExporter : IExporter
 {
     /// <summary>
     /// Optional live terrain source. When present, export uses the current in-memory
@@ -20,8 +20,8 @@ public class MaterialDescriptorExporter : IExporter
     /// </summary>
     public TerrainManager? TerrainManager { get; set; }
 
-    public string Name => "Material Descriptor";
-    public string FileFilter => "Material Descriptor Files (*.toml)|*.toml";
+    public string Name => "Biome Config";
+    public string FileFilter => "Biome Config Files (*.toml)|*.toml";
     public string DefaultExtension => "toml";
 
     public async Task ExportAsync(string outputPath, IProgress<ExportProgress> progress, CancellationToken ct)
@@ -31,14 +31,14 @@ public class MaterialDescriptorExporter : IExporter
 
         if (activeSlots.Count == 0)
         {
-            throw new InvalidOperationException("No material slots configured for export.");
+            throw new InvalidOperationException("No material slots configured for biome config export.");
         }
 
         await Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
 
-            progress.Report(ExportProgress.Running(0, 2, "Collecting runtime material config..."));
+            progress.Report(ExportProgress.Running(0, 2, "Collecting runtime biome config..."));
 
             TomlProjectConfig? currentConfig = ProjectManager.Instance.LoadConfig();
             var config = new TomlProjectConfig
@@ -103,7 +103,7 @@ public class MaterialDescriptorExporter : IExporter
                     .ToList(),
             };
 
-            progress.Report(ExportProgress.Running(1, 2, "Writing material descriptor file..."));
+            progress.Report(ExportProgress.Running(1, 2, "Writing biome config file..."));
             config.WriteTo(outputPath);
 
             progress.Report(ExportProgress.Completed());

@@ -8,7 +8,7 @@ using Tommy;
 
 namespace Terrain;
 
-public sealed class RuntimeTerrainProjectConfig
+public sealed class RuntimeBiomeConfig
 {
     public float HeightScale { get; set; } = 100.0f;
 
@@ -16,11 +16,11 @@ public sealed class RuntimeTerrainProjectConfig
 
     public List<TerrainBiomeRuleLayer> BiomeLayers { get; } = new();
 
-    public static RuntimeTerrainProjectConfig ReadFromToml(string tomlFilePath)
+    public static RuntimeBiomeConfig ReadFromToml(string tomlFilePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tomlFilePath);
 
-        var result = new RuntimeTerrainProjectConfig();
+        var result = new RuntimeBiomeConfig();
         string baseDir = Path.GetDirectoryName(Path.GetFullPath(tomlFilePath)) ?? "";
 
         using var reader = File.OpenText(tomlFilePath);

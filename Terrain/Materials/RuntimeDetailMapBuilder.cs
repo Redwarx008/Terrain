@@ -22,14 +22,14 @@ internal static class RuntimeDetailMapBuilder
         byte[] biomeMaskData,
         int biomeMaskWidth,
         int biomeMaskHeight,
-        RuntimeTerrainProjectConfig? projectConfig,
+        RuntimeBiomeConfig? biomeConfig,
         float fallbackHeightScale,
         int biomeMaskResolutionRatio)
     {
         var indexData = new byte[(long)biomeMaskWidth * biomeMaskHeight * BytesPerPixel];
         var weightData = new byte[(long)biomeMaskWidth * biomeMaskHeight * BytesPerPixel];
 
-        if (projectConfig == null || projectConfig.BiomeLayers.Count == 0)
+        if (biomeConfig == null || biomeConfig.BiomeLayers.Count == 0)
         {
             FillDefault(indexData, weightData);
             return new RuntimeDetailMapData(indexData, weightData, biomeMaskWidth, biomeMaskHeight);
@@ -39,7 +39,7 @@ internal static class RuntimeDetailMapBuilder
             heightData,
             heightWidth,
             heightHeight,
-            projectConfig.HeightScale > 0.0f ? projectConfig.HeightScale : fallbackHeightScale,
+            biomeConfig.HeightScale > 0.0f ? biomeConfig.HeightScale : fallbackHeightScale,
             biomeMaskData,
             biomeMaskWidth,
             biomeMaskHeight,
@@ -51,7 +51,7 @@ internal static class RuntimeDetailMapBuilder
             {
                 TerrainDetailControlPixel pixel = TerrainDetailMapGenerator.EvaluatePixel(
                     generationContext,
-                    projectConfig.BiomeLayers,
+                    biomeConfig.BiomeLayers,
                     x,
                     y);
                 int offset = (y * biomeMaskWidth + x) * BytesPerPixel;

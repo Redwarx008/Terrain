@@ -52,7 +52,7 @@
 | **Undo/Redo（Chunk事务）** | ✅ 已实现 | [2026-04-07-5](log/2026/04/07/2026-04-07-5-chunk-based-undo-redo-implementation.md) |
 | **项目持久化（TOML）** | ✅ 已实现 | [2026-04-08-2](log/2026/04/08/2026-04-08-2-toml-project-persistence.md) |
 | **植被编辑** | 🚧 进行中 | [terrain-editor-design-phase-3](design/terrain-editor-design-phase-3.md) |
-| **导出系统（IExporter）** | ✅ 已实现 | 包含 Terrain 和 Material Descriptor 导出器 |
+| **导出系统（IExporter）** | ✅ 已实现 | 包含 Terrain 和 Biome Config 导出器 |
 
 ### 未来系统
 
@@ -128,9 +128,9 @@
 **权衡：** 在 Editor 内重写导出逻辑 vs 引用 TerrainPreProcessor 库；选择重写以避免跨项目依赖
 **关键：** 流式 + 分层并行（逐层 mipmap → 并行计算 tiles → 顺序写入），HeightMap padding=2, SplatMap padding=1
 
-### 8. 材质描述符导出
+### 8. Biome Config 导出
 **问题：** Runtime 依赖编辑器项目 TOML 文件加载材质，运行时不应依赖编辑器项目文件
-**方案：** MaterialDescriptorExporter 导出独立的 material_descriptor.toml，Runtime 的 MaterialConfigPath 指向该文件
+**方案：** BiomeConfigExporter 导出独立的 biome_config.toml，Runtime 的 BiomeConfigPath 指向该文件
 **权衡：** 独立 TOML 文件 vs 嵌入 .terrain 文件；选择独立文件以保持关注点分离
 **关键：** 路径转换使用 TomlProjectConfig.MakeRelative（绝对→相对），Tommy TomlArray+TomlTable 自动生成 [[material_slots]] 格式
 
@@ -165,7 +165,7 @@
 | `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
 | `Terrain.Editor/Services/Export/ExportManager.cs` | 导出管理器（注册、执行、错误回滚） |
 | `Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs` | .terrain 文件导出实现 |
-| `Terrain.Editor/Services/Export/Exporters/MaterialDescriptorExporter.cs` | 材质描述符 TOML 导出实现 |
+| `Terrain.Editor/Services/Export/Exporters/BiomeConfigExporter.cs` | Biome 配置 TOML 导出实现 |
 | `Terrain.Editor/UI/Dialogs/ExportProgressDialog.cs` | 导出进度模态弹窗 |
 
 ### 着色器

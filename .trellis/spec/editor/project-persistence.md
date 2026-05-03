@@ -47,7 +47,7 @@
     - biome mask VT
     - MinMaxErrorMap / header 元数据
   - 导出器**不能**把 `MaterialIndexMap` / detail index / detail weight 当成导出真源写入 `.terrain`。
-  - Runtime 必须从 `.terrain` 的 `heightmap + biome mask`，再结合 `MaterialConfigPath` 指向的 TOML biome 规则重新生成 detail maps。
+  - Runtime 必须从 `.terrain` 的 `heightmap + biome mask`，再结合 `BiomeConfigPath` 指向的 TOML biome 规则重新生成 detail maps。
   - 如果 Runtime 仍依赖 detail index / weight，必须在加载期重建，而不是要求 Editor 预烘焙并持久化这些派生图。
 
 ### 4. Validation & Error Matrix

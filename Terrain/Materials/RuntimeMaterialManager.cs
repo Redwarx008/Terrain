@@ -36,7 +36,7 @@ public sealed class RuntimeMaterialManager : IDisposable
     /// </summary>
     public void InitializeFromToml(GraphicsDevice graphicsDevice, CommandList commandList, string tomlFilePath)
     {
-        RuntimeTerrainProjectConfig config = RuntimeTerrainProjectConfig.ReadFromToml(tomlFilePath);
+        RuntimeBiomeConfig config = RuntimeBiomeConfig.ReadFromToml(tomlFilePath);
         Initialize(graphicsDevice, commandList, config.MaterialSlots);
     }
 
@@ -47,7 +47,7 @@ public sealed class RuntimeMaterialManager : IDisposable
     /// </summary>
     public static List<(int index, string albedoPath, string? normalPath, string? propertiesPath)> ReadMaterialSlots(string tomlFilePath)
     {
-        return RuntimeTerrainProjectConfig.ReadFromToml(tomlFilePath).MaterialSlots;
+        return RuntimeBiomeConfig.ReadFromToml(tomlFilePath).MaterialSlots;
     }
 
     /// <summary>
