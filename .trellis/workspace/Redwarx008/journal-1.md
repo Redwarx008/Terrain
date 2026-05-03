@@ -798,3 +798,36 @@ Renamed the export-facing material descriptor concept to Biome Config across Edi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: 删除Sculpt Advance栏
+
+**Date**: 2026-05-03
+**Task**: 删除Sculpt Advance栏
+**Branch**: `implement-climate-texturing`
+
+### Summary
+
+移除Sculpt编辑器Inspector中无效的ADVANCED区域（3个无绑定的CheckBox），纯净UI删除，无逻辑变更
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9389005` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
