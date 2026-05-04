@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
@@ -44,6 +45,8 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
         commandList.ResourceBarrierTransition(entity.BiomeBuffer, GraphicsResourceState.NonPixelShaderResource);
         commandList.ResourceBarrierTransition(entity.LayerBuffer, GraphicsResourceState.NonPixelShaderResource);
         commandList.ResourceBarrierTransition(entity.ModifierBuffer, GraphicsResourceState.NonPixelShaderResource);
+
+        int defaultMaterialSlotIndex = GetDefaultMaterialSlotIndex();
 
         for (int i = 0; i < entity.Slices.Count; i++)
         {
@@ -92,6 +95,7 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.BiomeCount, entity.BiomeCount);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.LayerCount, entity.LayerCount);
                 buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.ModifierCount, entity.ModifierCount);
+                buildSplatMapEffect.Parameters.Set(Editor.EditorTerrainBuildSplatMapKeys.DefaultMaterialSlotIndex, defaultMaterialSlotIndex);
 
                 // Set TextureMask resource placeholder (white texture as default)
                 // A proper implementation would load and bind the actual texture from BiomeModifier.TextureMaskPath
@@ -115,6 +119,35 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
             commandList.ResourceBarrierTransition(outputWeightTexture, GraphicsResourceState.PixelShaderResource);
             entity.ClearBiomeSplatDirty(i);
         }
+    }
+
+    private static int GetDefaultMaterialSlotIndex()
+    {
+        IReadOnlyList<BiomeDefinition> biomes = BiomeRuleService.Instance.Biomes;
+        IReadOnlyList<BiomeRuleLayer> layers = BiomeRuleService.Instance.Layers;
+
+        int defaultBiomeId = 0;
+        foreach (BiomeDefinition biome in biomes)
+        {
+            if (string.Equals(biome.Name, "Default Biome", StringComparison.Ordinal))
+            {
+                defaultBiomeId = biome.Id;
+                break;
+            }
+        }
+
+        BiomeRuleLayer? firstDefaultBiomeLayer = null;
+        foreach (BiomeRuleLayer layer in layers)
+        {
+            if (layer.BiomeId != defaultBiomeId)
+                continue;
+
+            firstDefaultBiomeLayer ??= layer;
+            if (string.Equals(layer.Name, "Default Base", StringComparison.OrdinalIgnoreCase))
+                return Math.Clamp(layer.MaterialSlotIndex, 0, 255);
+        }
+
+        return Math.Clamp(firstDefaultBiomeLayer?.MaterialSlotIndex ?? 0, 0, 255);
     }
 
     private static void SetSliceBounds(ParameterCollection parameters, EditorTerrainEntity entity)

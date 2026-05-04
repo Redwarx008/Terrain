@@ -271,9 +271,21 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (SelectedLayer.MaterialSlotIndex != value.Index)
+        BiomeRuleLayer? sourceLayer = _service.Layers.FirstOrDefault(layer => layer.Id == SelectedLayer.Id);
+        if (SelectedLayer.MaterialSlotIndex != value.Index
+            || sourceLayer?.MaterialSlotIndex != value.Index)
         {
             SelectedLayer.MaterialSlotIndex = value.Index;
+            if (sourceLayer != null)
+            {
+                sourceLayer.MaterialSlotIndex = value.Index;
+            }
+
+            SelectedLayer.NotifyMaterialPreviewChanged();
+            ProjectManager.Instance.MarkDirty();
+            OnPropertyChanged(nameof(SelectedLayerMaterialTitle));
+            OnPropertyChanged(nameof(SelectedLayerMaterialDetail));
+            _service.NotifyMutated();
         }
     }
 
@@ -461,6 +473,8 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
 
     private void RefreshMaterialSlots()
     {
+        RepairSelectedDefaultBaseMaterialSlot();
+
         var sourceSlots = _materialSlotManager
             .GetActiveSlots()
             .OrderBy(static slot => slot.Index)
@@ -507,6 +521,36 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
         }
 
         SyncSelectedLayerMaterialSlotOption();
+    }
+
+    private void RepairSelectedDefaultBaseMaterialSlot()
+    {
+        if (SelectedLayer == null
+            || !string.Equals(SelectedBiome?.Name, "Default Biome", StringComparison.Ordinal)
+            || !string.Equals(SelectedLayer.Name, "Default Base", StringComparison.OrdinalIgnoreCase)
+            || !IsMaterialSlotEmpty(SelectedLayer.MaterialSlotIndex))
+        {
+            return;
+        }
+
+        int firstActiveSlotIndex = _materialSlotManager
+            .GetActiveSlots()
+            .Select(static slot => slot.Index)
+            .DefaultIfEmpty(-1)
+            .First();
+        if (firstActiveSlotIndex < 0)
+            return;
+
+        SelectedLayer.MaterialSlotIndex = firstActiveSlotIndex;
+        SelectedLayer.NotifyMaterialPreviewChanged();
+        ProjectManager.Instance.MarkDirty();
+        _service.NotifyMutated();
+    }
+
+    private bool IsMaterialSlotEmpty(int materialSlotIndex)
+    {
+        return (uint)materialSlotIndex >= 256
+            || _materialSlotManager[materialSlotIndex].IsEmpty;
     }
 
     private void SyncSelectedLayerMaterialSlotOption()

@@ -579,7 +579,7 @@ public sealed class TerrainManager : IDisposable
         return configs;
     }
 
-    private static void RestoreBiomeData(TomlProjectConfig config)
+    private static bool RestoreBiomeData(TomlProjectConfig config)
     {
         var biomeState = BiomeRuleService.Instance;
         biomeState.ClearAll();
@@ -655,6 +655,7 @@ public sealed class TerrainManager : IDisposable
         }
 
         biomeState.NormalizeAllRanges();
+        bool repairedDefaultBaseMaterialSlot = RepairDefaultBaseMaterialSlot(biomeState);
         biomeState.RebaseNextIds();
 
         var editorState = EditorState.Instance;
@@ -669,6 +670,41 @@ public sealed class TerrainManager : IDisposable
 
         editorState.SelectedRuleIndex = selectedLayerIndex;
         biomeState.NotifyMutated();
+        return repairedDefaultBaseMaterialSlot;
+    }
+
+    private static bool RepairDefaultBaseMaterialSlot(BiomeRuleService biomeState)
+    {
+        int firstActiveSlotIndex = MaterialSlotManager.Instance
+            .GetActiveSlots()
+            .Select(static slot => slot.Index)
+            .DefaultIfEmpty(-1)
+            .First();
+        if (firstActiveSlotIndex < 0)
+            return false;
+
+        bool repaired = false;
+        foreach (BiomeRuleLayer layer in biomeState.Layers)
+        {
+            BiomeDefinition? biome = biomeState.FindBiome(layer.BiomeId);
+            if (!string.Equals(biome?.Name, "Default Biome", StringComparison.Ordinal)
+                || !string.Equals(layer.Name, "Default Base", StringComparison.Ordinal))
+                continue;
+
+            if ((uint)layer.MaterialSlotIndex < 256
+                && !MaterialSlotManager.Instance[layer.MaterialSlotIndex].IsEmpty)
+            {
+                continue;
+            }
+
+            if (layer.MaterialSlotIndex == firstActiveSlotIndex)
+                continue;
+
+            layer.MaterialSlotIndex = firstActiveSlotIndex;
+            repaired = true;
+        }
+
+        return repaired;
     }
 
     private static void SaveBiomeMask(BiomeMask map, string path)
@@ -820,7 +856,10 @@ public sealed class TerrainManager : IDisposable
         MaterialSlotManager.Instance.NotifySlotsChanged();
 
         // 恢复生物群系定义和层
-        RestoreBiomeData(config);
+        if (RestoreBiomeData(config))
+        {
+            ProjectManager.Instance.MarkDirty();
+        }
 
         // 设置 HeightScale（在加载高度图前，以便 LoadTerrainAsync 使用）
         HeightScale = config.HeightScale;

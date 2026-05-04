@@ -61,11 +61,20 @@ shader MaterialTerrainDiffuse : IMaterialSurfacePixel, PositionStream4, Texturin
 
         float4 CalcHeightBlendFactors(float4 materialHeights, float4 materialFactors, float blendRange)
         {
-            float4 mat = materialHeights + materialFactors;
+            float4 activeMaterials = step(float4(0.00001f, 0.00001f, 0.00001f, 0.00001f), materialFactors);
+            float4 mat = lerp(
+                float4(-10000.0f, -10000.0f, -10000.0f, -10000.0f),
+                materialHeights + materialFactors,
+                activeMaterials);
             float blendStart = max(max(mat.x, mat.y), max(mat.z, mat.w)) - max(blendRange, 0.0f);
-            float4 matBlend = max(mat - float4(blendStart, blendStart, blendStart, blendStart), float4(0.0f, 0.0f, 0.0f, 0.0f));
+            float4 matBlend = max(mat - float4(blendStart, blendStart, blendStart, blendStart), float4(0.0f, 0.0f, 0.0f, 0.0f)) * activeMaterials;
             float epsilon = 0.00001f;
-            return matBlend / (dot(matBlend, float4(1.0f, 1.0f, 1.0f, 1.0f)) + epsilon);
+            float matBlendSum = dot(matBlend, float4(1.0f, 1.0f, 1.0f, 1.0f));
+            float materialFactorSum = dot(materialFactors, float4(1.0f, 1.0f, 1.0f, 1.0f));
+            float4 normalizedFactors = materialFactors / max(materialFactorSum, epsilon);
+            return matBlendSum > epsilon
+                ? matBlend / matBlendSum
+                : normalizedFactors;
         }
 
         void SampleMaterialSurface(

@@ -43,6 +43,18 @@ public struct TerrainDetailControlPixel
         Index3 = byte.MaxValue,
         Weight0 = byte.MaxValue,
     };
+
+    public static TerrainDetailControlPixel CreateDefault(int materialSlotIndex)
+    {
+        return new TerrainDetailControlPixel
+        {
+            Index0 = (byte)Math.Clamp(materialSlotIndex, 0, byte.MaxValue),
+            Index1 = byte.MaxValue,
+            Index2 = byte.MaxValue,
+            Index3 = byte.MaxValue,
+            Weight0 = byte.MaxValue,
+        };
+    }
 }
 
 public sealed class TerrainBiomeModifier
@@ -91,7 +103,8 @@ public sealed class TerrainDetailGenerationContext
         byte[] biomeMaskData,
         int biomeMaskWidth,
         int biomeMaskHeight,
-        int biomeMaskToHeightRatio)
+        int biomeMaskToHeightRatio,
+        int defaultMaterialSlotIndex = 0)
     {
         ArgumentNullException.ThrowIfNull(heightData);
         ArgumentNullException.ThrowIfNull(biomeMaskData);
@@ -119,6 +132,7 @@ public sealed class TerrainDetailGenerationContext
         BiomeMaskWidth = biomeMaskWidth;
         BiomeMaskHeight = biomeMaskHeight;
         BiomeMaskToHeightRatio = biomeMaskToHeightRatio;
+        DefaultMaterialSlotIndex = Math.Clamp(defaultMaterialSlotIndex, 0, byte.MaxValue);
     }
 
     public ushort[] HeightData { get; }
@@ -136,6 +150,8 @@ public sealed class TerrainDetailGenerationContext
     public int BiomeMaskHeight { get; }
 
     public int BiomeMaskToHeightRatio { get; }
+
+    public int DefaultMaterialSlotIndex { get; }
 
     public byte GetBiomeId(int maskX, int maskY)
     {
@@ -168,6 +184,7 @@ public static class TerrainDetailMapGenerator
         Span<float> bestWeights = stackalloc float[4];
         bool foundValidLayer = false;
         float remainingWeight = 1.0f;
+        int fallbackMaterialSlotIndex = context.DefaultMaterialSlotIndex;
 
         for (int layerIndex = layers.Count - 1; layerIndex >= 0; layerIndex--)
         {
@@ -176,6 +193,7 @@ public static class TerrainDetailMapGenerator
                 continue;
 
             foundValidLayer = true;
+            fallbackMaterialSlotIndex = layer.MaterialSlotIndex;
             float weight = 1.0f;
             for (int modifierIndex = layer.Modifiers.Count - 1; modifierIndex >= 0; modifierIndex--)
             {
@@ -206,10 +224,10 @@ public static class TerrainDetailMapGenerator
         }
 
         if (!foundValidLayer)
-            return TerrainDetailControlPixel.Default;
+            return TerrainDetailControlPixel.CreateDefault(context.DefaultMaterialSlotIndex);
 
         if (remainingWeight > 0.0001f)
-            PushTop4(bestIndices, bestWeights, 0, remainingWeight);
+            PushTop4(bestIndices, bestWeights, fallbackMaterialSlotIndex, remainingWeight);
 
         float totalWeight = MathF.Max(bestWeights[0] + bestWeights[1] + bestWeights[2] + bestWeights[3], 0.0001f);
         Span<byte> encodedIndices = stackalloc byte[4];
@@ -369,12 +387,10 @@ public static class TerrainDetailMapGenerator
 
     private static float ComputeRangeModifier(float value, float minValue, float maxValue, float minFalloff, float maxFalloff)
     {
-        float minEnd = minValue - minFalloff;
-        float minDenominator = minEnd - minValue;
-        float minWeight = Saturate((minEnd - (value - minValue)) / (MathF.Abs(minDenominator) > 0.0001f ? minDenominator : -0.0001f));
+        float minStart = minValue - minFalloff;
+        float minWeight = Saturate((value - minStart) / MathF.Max(minValue - minStart, 0.001f));
         float maxEnd = maxValue + maxFalloff;
-        float maxDenominator = maxEnd - maxValue;
-        float maxWeight = Saturate((maxEnd - (value - maxValue)) / (MathF.Abs(maxDenominator) > 0.0001f ? maxDenominator : 0.0001f));
+        float maxWeight = Saturate((maxEnd - value) / MathF.Max(maxEnd - maxValue, 0.001f));
         return Saturate(minWeight * maxWeight);
     }
 

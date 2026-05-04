@@ -711,11 +711,6 @@
                         </DataTemplate>
                       </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
-                      <Button Classes="outlineButton" Content="Import" Command="{Binding ImportAssetsCommand}" />
-                      <Button Grid.Column="1" Classes="outlineButton" Content="Normal" Command="{Binding ImportSelectedNormalCommand}" />
-                      <Button Grid.Column="2" Classes="outlineButton" Content="Clear" Command="{Binding ClearSelectedMaterialSlotCommand}" />
-                    </Grid>
                   </StackPanel>
                 </Border>
 

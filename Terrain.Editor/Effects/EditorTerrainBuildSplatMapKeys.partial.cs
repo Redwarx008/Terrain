@@ -14,4 +14,5 @@ public static partial class EditorTerrainBuildSplatMapKeys
     public static readonly ObjectParameterKey<SamplerState> TextureMaskSampler = ParameterKeys.NewObject<SamplerState>();
     public static readonly ValueParameterKey<int> HeatmapLayerIndex = ParameterKeys.NewValue<int>();
     public static readonly ValueParameterKey<int> HeatmapEnabled = ParameterKeys.NewValue<int>();
+    public static readonly ValueParameterKey<int> DefaultMaterialSlotIndex = ParameterKeys.NewValue<int>();
 }
