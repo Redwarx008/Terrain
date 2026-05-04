@@ -44,17 +44,6 @@ public struct TerrainDetailControlPixel
         Weight0 = byte.MaxValue,
     };
 
-    public static TerrainDetailControlPixel CreateDefault(int materialSlotIndex)
-    {
-        return new TerrainDetailControlPixel
-        {
-            Index0 = (byte)Math.Clamp(materialSlotIndex, 0, byte.MaxValue),
-            Index1 = byte.MaxValue,
-            Index2 = byte.MaxValue,
-            Index3 = byte.MaxValue,
-            Weight0 = byte.MaxValue,
-        };
-    }
 }
 
 public sealed class TerrainBiomeModifier
@@ -103,8 +92,7 @@ public sealed class TerrainDetailGenerationContext
         byte[] biomeMaskData,
         int biomeMaskWidth,
         int biomeMaskHeight,
-        int biomeMaskToHeightRatio,
-        int defaultMaterialSlotIndex = 0)
+        int biomeMaskToHeightRatio)
     {
         ArgumentNullException.ThrowIfNull(heightData);
         ArgumentNullException.ThrowIfNull(biomeMaskData);
@@ -132,7 +120,6 @@ public sealed class TerrainDetailGenerationContext
         BiomeMaskWidth = biomeMaskWidth;
         BiomeMaskHeight = biomeMaskHeight;
         BiomeMaskToHeightRatio = biomeMaskToHeightRatio;
-        DefaultMaterialSlotIndex = Math.Clamp(defaultMaterialSlotIndex, 0, byte.MaxValue);
     }
 
     public ushort[] HeightData { get; }
@@ -150,8 +137,6 @@ public sealed class TerrainDetailGenerationContext
     public int BiomeMaskHeight { get; }
 
     public int BiomeMaskToHeightRatio { get; }
-
-    public int DefaultMaterialSlotIndex { get; }
 
     public byte GetBiomeId(int maskX, int maskY)
     {
@@ -184,7 +169,7 @@ public static class TerrainDetailMapGenerator
         Span<float> bestWeights = stackalloc float[4];
         bool foundValidLayer = false;
         float remainingWeight = 1.0f;
-        int fallbackMaterialSlotIndex = context.DefaultMaterialSlotIndex;
+        int fallbackMaterialSlotIndex = 0;
 
         for (int layerIndex = layers.Count - 1; layerIndex >= 0; layerIndex--)
         {
@@ -224,7 +209,7 @@ public static class TerrainDetailMapGenerator
         }
 
         if (!foundValidLayer)
-            return TerrainDetailControlPixel.CreateDefault(context.DefaultMaterialSlotIndex);
+            return TerrainDetailControlPixel.Default;
 
         if (remainingWeight > 0.0001f)
             PushTop4(bestIndices, bestWeights, fallbackMaterialSlotIndex, remainingWeight);

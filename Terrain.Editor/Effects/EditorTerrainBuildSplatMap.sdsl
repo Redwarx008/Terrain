@@ -78,7 +78,6 @@ namespace Terrain.Editor
         stage int BiomeCount;
         stage int LayerCount;
         stage int ModifierCount;
-        stage int DefaultMaterialSlotIndex;
 
         // Global TextureMask resource for TextureMask modifiers.
         // This is a single shared texture that can be used by any TextureMask modifier.
@@ -335,11 +334,6 @@ namespace Terrain.Editor
             }
         }
 
-        float4 EncodeDefaultMaterialIndices()
-        {
-            return float4((float)clamp(DefaultMaterialSlotIndex, 0, 255) / 255.0f, 1.0f, 1.0f, 1.0f);
-        }
-
         /// <summary>
         /// Find the BiomeGpu index matching the given biomeId.
         /// Returns -1 if no matching biome is found (invalid biome ID).
@@ -375,9 +369,8 @@ namespace Terrain.Editor
             float slope = SampleSlopeDegrees(heightCoord);
             float directionDegrees = SampleDirectionDegrees(heightCoord);
 
-            // Initialize with the current Default Biome / Default Base material.
-            // This handles the case of empty biome or invalid biome ID
-            int4 bestIndices = int4(clamp(DefaultMaterialSlotIndex, 0, 255), 255, 255, 255);
+            // Initialize emergency fallback material for invalid or empty biome data.
+            int4 bestIndices = int4(0, 255, 255, 255);
             float4 bestWeights = float4(1.0f, 0.0f, 0.0f, 0.0f);
             bool foundValidLayer = false;
 
@@ -385,7 +378,7 @@ namespace Terrain.Editor
             int biomeIndex = FindBiomeIndex(biomeId);
             if (biomeIndex < 0)
             {
-                OutputIndexMap[int2(texelX, texelY)] = EncodeDefaultMaterialIndices();
+                OutputIndexMap[int2(texelX, texelY)] = float4(0.0f, 1.0f, 1.0f, 1.0f);
                 OutputWeightMap[int2(texelX, texelY)] = float4(1.0f, 0.0f, 0.0f, 0.0f);
                 return;
             }
@@ -394,7 +387,7 @@ namespace Terrain.Editor
             BiomeGpu biome = Biomes[biomeIndex];
             if (biome.LayerCount <= 0)
             {
-                OutputIndexMap[int2(texelX, texelY)] = EncodeDefaultMaterialIndices();
+                OutputIndexMap[int2(texelX, texelY)] = float4(0.0f, 1.0f, 1.0f, 1.0f);
                 OutputWeightMap[int2(texelX, texelY)] = float4(1.0f, 0.0f, 0.0f, 0.0f);
                 return;
             }
@@ -404,7 +397,7 @@ namespace Terrain.Editor
             bestWeights = float4(0.0f, 0.0f, 0.0f, 0.0f);
             float remainingWeight = 1.0f;
             float selectedLayerHeatmap = 0.0f;
-            int fallbackMaterialSlotIndex = clamp(DefaultMaterialSlotIndex, 0, 255);
+            int fallbackMaterialSlotIndex = 0;
 
             [loop]
             for (int layerIndex = LayerCount - 1; layerIndex >= 0; layerIndex--)
@@ -461,7 +454,7 @@ namespace Terrain.Editor
             // Edge case: no valid layers found (all disabled or invisible)
             if (!foundValidLayer)
             {
-                OutputIndexMap[int2(texelX, texelY)] = EncodeDefaultMaterialIndices();
+                OutputIndexMap[int2(texelX, texelY)] = float4(0.0f, 1.0f, 1.0f, 1.0f);
                 OutputWeightMap[int2(texelX, texelY)] = float4(1.0f, 0.0f, 0.0f, 0.0f);
                 return;
             }

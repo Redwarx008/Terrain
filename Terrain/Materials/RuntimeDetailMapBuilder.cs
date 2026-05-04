@@ -29,11 +29,9 @@ internal static class RuntimeDetailMapBuilder
         var indexData = new byte[(long)biomeMaskWidth * biomeMaskHeight * BytesPerPixel];
         var weightData = new byte[(long)biomeMaskWidth * biomeMaskHeight * BytesPerPixel];
 
-        int defaultMaterialSlotIndex = GetDefaultMaterialSlotIndex(biomeConfig);
-
         if (biomeConfig == null || biomeConfig.BiomeLayers.Count == 0)
         {
-            FillDefault(indexData, weightData, defaultMaterialSlotIndex);
+            FillDefault(indexData, weightData);
             return new RuntimeDetailMapData(indexData, weightData, biomeMaskWidth, biomeMaskHeight);
         }
 
@@ -45,8 +43,7 @@ internal static class RuntimeDetailMapBuilder
             biomeMaskData,
             biomeMaskWidth,
             biomeMaskHeight,
-            biomeMaskResolutionRatio,
-            defaultMaterialSlotIndex);
+            biomeMaskResolutionRatio);
 
         for (int y = 0; y < biomeMaskHeight; y++)
         {
@@ -72,31 +69,11 @@ internal static class RuntimeDetailMapBuilder
         return new RuntimeDetailMapData(indexData, weightData, biomeMaskWidth, biomeMaskHeight);
     }
 
-    private static int GetDefaultMaterialSlotIndex(RuntimeBiomeConfig? biomeConfig)
+    private static void FillDefault(byte[] indexData, byte[] weightData)
     {
-        if (biomeConfig == null)
-            return 0;
-
-        TerrainBiomeRuleLayer? firstDefaultBiomeLayer = null;
-        foreach (TerrainBiomeRuleLayer layer in biomeConfig.BiomeLayers)
-        {
-            if (layer.BiomeId != 0)
-                continue;
-
-            firstDefaultBiomeLayer ??= layer;
-            if (string.Equals(layer.Name, "Default Base", StringComparison.OrdinalIgnoreCase))
-                return Math.Clamp(layer.MaterialSlotIndex, 0, byte.MaxValue);
-        }
-
-        return Math.Clamp(firstDefaultBiomeLayer?.MaterialSlotIndex ?? 0, 0, byte.MaxValue);
-    }
-
-    private static void FillDefault(byte[] indexData, byte[] weightData, int defaultMaterialSlotIndex)
-    {
-        byte defaultIndex = (byte)Math.Clamp(defaultMaterialSlotIndex, 0, byte.MaxValue);
         for (int i = 0; i < indexData.Length; i += BytesPerPixel)
         {
-            indexData[i] = defaultIndex;
+            indexData[i] = 0;
             indexData[i + 1] = byte.MaxValue;
             indexData[i + 2] = byte.MaxValue;
             indexData[i + 3] = byte.MaxValue;

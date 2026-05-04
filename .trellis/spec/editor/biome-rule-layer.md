@@ -87,7 +87,7 @@ terrainEntity.MarkAllBiomeSplatDirty(); // 交给 GPU compute 重建
 - layer 按优先级从高到低处理，逐步消耗 `remainingWeight`
 - 如果有效 biome 仍有 `remainingWeight`，剩余权重必须回落到该 biome 的基础 layer 材质槽
 - 不能把有效 biome 的剩余权重硬编码到 material slot 0
-- biome 无效、没有 layer、或全部 layer 被禁用/隐藏时，也必须输出当前 `Default Biome / Default Base` 的材质槽，而不是硬编码 slot 0
+- biome 无效、没有 layer、或全部 layer 被禁用/隐藏时，允许使用固定 slot 0 作为异常兜底；正常 Default Base 显示不得依赖额外 shader 参数旁路
 
 ### Wrong
 
@@ -99,7 +99,7 @@ if (remainingWeight > 0.0001f)
 ### Correct
 
 ```csharp
-int fallbackMaterialSlotIndex = defaultMaterialSlotIndex;
+int fallbackMaterialSlotIndex = 0;
 // 遍历到同 biome 的有效 layer 时更新，循环结束后保留基础 layer 的材质槽。
 fallbackMaterialSlotIndex = layer.MaterialSlotIndex;
 
