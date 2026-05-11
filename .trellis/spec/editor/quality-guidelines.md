@@ -136,6 +136,27 @@ public void Dispose()
 
 ---
 
+## Common Mistake: Gizmo 句柄持有材质字段引用
+
+**Symptom**: 每次创建 gizmo 时把共享材质存进句柄私有字段，导致句柄无法被干净释放，或者在 `Clear()` 时错误地调用 `material.Dispose()`。
+
+**Cause**: `Material.New()` 创建的材质由 Stride 内容管理器管理（引用计数），不是 `IDisposable`。把共享材质存进短生命周期句柄，在清理时容易误调用 `Dispose()`。
+
+**Fix**: 把材质作为参数传入 `Update()` 方法，而不是存为句柄字段；共享材质由服务持有并在服务级别置 `null` 清理。
+
+```csharp
+// Wrong: 把共享材质存进句柄字段
+private Material normalMaterial;
+public PathNodeGizmoHandle(Material normal, ...) { normalMaterial = normal; }
+
+// Correct: 材质作为 Update 参数传入
+public void Update(Vector3 position, Material normalMaterial) { ... }
+```
+
+**Prevention**: 如果材质的生命周期属于服务而非句柄，就不应该让句柄持有材质引用。只存 `Entity`、`ModelComponent` 等句柄自有资源。
+
+---
+
 ## Anti-patterns
 
 1. **不要**新增 ImGui 代码
@@ -143,3 +164,4 @@ public void Dispose()
 3. **不要**使用 Canvas/绝对坐标实现普通应用布局
 4. **不要**在 code-behind 中堆业务逻辑，使用 ViewModel 命令和绑定
 5. **不要**使用硬编码颜色
+6. **不要**对 Stride `Material` 调用 `Dispose()` — 它由内容管理器管理

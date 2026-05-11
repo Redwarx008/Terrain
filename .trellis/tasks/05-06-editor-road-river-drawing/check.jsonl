@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/editor/index.md", "reason": "检查编辑器新增模式、状态与 UI 集成是否符合总约定。"}
+{"file": ".trellis/spec/editor/project-persistence.md", "reason": "检查路径与高度修改的保存/重开行为是否满足合同。"}
+{"file": ".trellis/spec/editor/native-viewport-hosting.md", "reason": "检查视口输入扩展是否没有破坏原生宿主约束。"}
+{"file": ".trellis/spec/editor/state-management.md", "reason": "检查新增模式/工具是否正确接入 EditorState 与后端实现。"}
+{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "检查编辑器代码结构、事件释放与 MVVM 约束。"}
+{"file": ".trellis/spec/runtime/index.md", "reason": "检查运行时核心新增类型与约定是否一致。"}
+{"file": ".trellis/spec/runtime/quality-guidelines.md", "reason": "检查运行时代码质量、nullable 和序列化约束。"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查跨层数据流：视口输入→路径模型→高度缓存→保存加载。"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查是否不必要地复制了现有编辑/持久化逻辑。"}

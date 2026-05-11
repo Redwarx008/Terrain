@@ -6,6 +6,7 @@ public enum EditorMode
 {
     Sculpt,
     Paint,
+    Path,
     Foliage,
     Settings,
     Landscape,

@@ -18,17 +18,22 @@ public sealed class EditorTerrainModeController
     private const string OpaqueStageName = "Opaque";
     private const string WireframeStageName = "EditorTerrainWireframe";
     private const string WireframeRendererName = "Editor Terrain Wireframe Renderer";
+    private const string DefaultMeshEffectName = "StrideForwardShadingEffect";
 
     private GraphicsCompositor? currentGraphicsCompositor;
     private EditorTerrainRenderFeature? terrainRenderFeature;
+    private MeshRenderFeature? pathMeshRenderFeature;
     private RenderStage? opaqueStage;
     private RenderStage? wireframeStage;
     private SimpleGroupToRenderStageSelector? opaqueSelector;
     private EditorTerrainWireframeStageSelector? wireframeSelector;
+    private SimpleGroupToRenderStageSelector? pathOpaqueSelector;
+    private EditorTerrainWireframeStageSelector? pathWireframeSelector;
     private WireframePipelineProcessor? wireframePipelineProcessor;
+    private WireframePipelineProcessor? pathWireframePipelineProcessor;
     private SingleStageRenderer? wireframeStageRenderer;
 
-    public void Apply(SceneViewMode mode, GraphicsCompositor graphicsCompositor)
+    public void Apply(SceneViewMode mode, bool isPathWireframeEnabled, GraphicsCompositor graphicsCompositor)
     {
         var targetMode = ResolveMode(mode);
 
@@ -38,7 +43,7 @@ public sealed class EditorTerrainModeController
             return;
         }
 
-        ApplyMode(targetMode);
+        ApplyMode(targetMode, isPathWireframeEnabled);
     }
 
     private void EnsureModeBindings(GraphicsCompositor graphicsCompositor)
@@ -52,10 +57,19 @@ public sealed class EditorTerrainModeController
             && graphicsCompositor.RenderStages.Contains(wireframeStage)
             && opaqueSelector != null
             && wireframeSelector != null
+            && pathMeshRenderFeature != null
+            && graphicsCompositor.RenderFeatures.Contains(pathMeshRenderFeature)
+            && pathOpaqueSelector != null
+            && pathWireframeSelector != null
             && (terrainRenderFeature.RenderStageSelectors.Contains(opaqueSelector)
                 || terrainRenderFeature.RenderStageSelectors.Contains(wireframeSelector))
+            && (pathMeshRenderFeature.RenderStageSelectors.Contains(pathOpaqueSelector)
+                || pathMeshRenderFeature.RenderStageSelectors.Contains(pathWireframeSelector))
             && wireframePipelineProcessor != null
             && terrainRenderFeature.PipelineProcessors.Contains(wireframePipelineProcessor)
+            && pathWireframePipelineProcessor != null
+            && pathMeshRenderFeature.PipelineProcessors.Contains(pathWireframePipelineProcessor)
+            && AreDefaultMeshSelectorsExcludingPathGroup(pathMeshRenderFeature)
             && wireframeStageRenderer != null
             && IsRendererAttached(graphicsCompositor, wireframeStageRenderer))
         {
@@ -64,14 +78,18 @@ public sealed class EditorTerrainModeController
 
         currentGraphicsCompositor = graphicsCompositor;
         terrainRenderFeature = graphicsCompositor.RenderFeatures.OfType<EditorTerrainRenderFeature>().FirstOrDefault();
+        pathMeshRenderFeature = graphicsCompositor.RenderFeatures.OfType<MeshRenderFeature>().FirstOrDefault();
         opaqueStage = null;
         wireframeStage = null;
         opaqueSelector = null;
         wireframeSelector = null;
+        pathOpaqueSelector = null;
+        pathWireframeSelector = null;
         wireframePipelineProcessor = null;
+        pathWireframePipelineProcessor = null;
         wireframeStageRenderer = null;
 
-        if (terrainRenderFeature == null)
+        if (terrainRenderFeature == null || pathMeshRenderFeature == null)
         {
             return;
         }
@@ -86,7 +104,12 @@ public sealed class EditorTerrainModeController
         opaqueSelector = EnsureOpaqueSelector(terrainRenderFeature, opaqueStage);
         wireframeStage = EnsureWireframeStage(graphicsCompositor, opaqueStage);
         wireframeSelector = EnsureWireframeSelector(opaqueSelector.RenderGroup, wireframeStage);
+        ExcludePathRenderGroupFromDefaultMeshSelectors(pathMeshRenderFeature);
+        string pathEffectName = ResolvePathEffectName(pathMeshRenderFeature, opaqueStage);
+        pathOpaqueSelector = EnsurePathOpaqueSelector(pathMeshRenderFeature, opaqueStage, pathEffectName);
+        pathWireframeSelector = EnsurePathWireframeSelector(pathEffectName, wireframeStage);
         wireframePipelineProcessor = EnsureWireframePipelineProcessor(terrainRenderFeature, wireframeStage);
+        pathWireframePipelineProcessor = EnsurePathWireframePipelineProcessor(pathMeshRenderFeature, wireframeStage);
         wireframeStageRenderer = EnsureWireframeStageRenderer(graphicsCompositor);
 
         // Ensure selector instances are registered once; ApplyMode controls which selector stays active.
@@ -99,19 +122,36 @@ public sealed class EditorTerrainModeController
         {
             terrainRenderFeature.RenderStageSelectors.Add(opaqueSelector);
         }
+
+        if (!pathMeshRenderFeature.RenderStageSelectors.Contains(pathWireframeSelector))
+        {
+            pathMeshRenderFeature.RenderStageSelectors.Add(pathWireframeSelector);
+        }
+
+        if (!pathMeshRenderFeature.RenderStageSelectors.Contains(pathOpaqueSelector))
+        {
+            pathMeshRenderFeature.RenderStageSelectors.Add(pathOpaqueSelector);
+        }
     }
 
-    private void ApplyMode(EditorTerrainViewMode mode)
+    private void ApplyMode(EditorTerrainViewMode mode, bool isPathWireframeEnabled)
     {
-        bool enableWireframe = mode == EditorTerrainViewMode.Wireframe;
+        bool enableTerrainWireframe = mode == EditorTerrainViewMode.Wireframe;
 
         ApplySelectorState(
             terrainRenderFeature!,
             opaqueSelector!,
             wireframeSelector!,
-            enableWireframe);
+            enableTerrainWireframe);
+        ApplySelectorState(
+            pathMeshRenderFeature!,
+            pathOpaqueSelector!,
+            pathWireframeSelector!,
+            isPathWireframeEnabled);
 
-        wireframeStageRenderer!.RenderStage = enableWireframe ? wireframeStage : null;
+        wireframeStageRenderer!.RenderStage = enableTerrainWireframe || isPathWireframeEnabled
+            ? wireframeStage
+            : null;
     }
 
     private static EditorTerrainViewMode ResolveMode(SceneViewMode mode)
@@ -133,7 +173,11 @@ public sealed class EditorTerrainModeController
             && wireframeStage != null
             && opaqueSelector != null
             && wireframeSelector != null
+            && pathMeshRenderFeature != null
+            && pathOpaqueSelector != null
+            && pathWireframeSelector != null
             && wireframePipelineProcessor != null
+            && pathWireframePipelineProcessor != null
             && wireframeStageRenderer != null;
     }
 
@@ -184,6 +228,69 @@ public sealed class EditorTerrainModeController
         };
     }
 
+    private static string ResolvePathEffectName(MeshRenderFeature meshRenderFeature, RenderStage opaqueStage)
+    {
+        return meshRenderFeature.RenderStageSelectors
+            .OfType<MeshTransparentRenderStageSelector>()
+            .FirstOrDefault(item =>
+                ReferenceEquals(item.OpaqueRenderStage, opaqueStage)
+                || string.Equals(item.OpaqueRenderStage?.Name, opaqueStage.Name, StringComparison.Ordinal))
+            ?.EffectName
+            ?? DefaultMeshEffectName;
+    }
+
+    private static void ExcludePathRenderGroupFromDefaultMeshSelectors(MeshRenderFeature meshRenderFeature)
+    {
+        foreach (MeshTransparentRenderStageSelector selector in meshRenderFeature.RenderStageSelectors.OfType<MeshTransparentRenderStageSelector>())
+        {
+            selector.RenderGroup &= ~RenderGroupMask.Group1;
+        }
+    }
+
+    private static bool AreDefaultMeshSelectorsExcludingPathGroup(MeshRenderFeature meshRenderFeature)
+    {
+        return meshRenderFeature.RenderStageSelectors
+            .OfType<MeshTransparentRenderStageSelector>()
+            .All(item => (item.RenderGroup & RenderGroupMask.Group1) == 0);
+    }
+
+    private static SimpleGroupToRenderStageSelector EnsurePathOpaqueSelector(
+        MeshRenderFeature meshRenderFeature,
+        RenderStage opaqueStage,
+        string pathEffectName)
+    {
+        var selector = meshRenderFeature.RenderStageSelectors
+            .OfType<SimpleGroupToRenderStageSelector>()
+            .FirstOrDefault(item =>
+                item.GetType() == typeof(SimpleGroupToRenderStageSelector)
+                && string.Equals(item.EffectName, pathEffectName, StringComparison.Ordinal)
+                && item.RenderGroup == RenderGroupMask.Group1);
+
+        selector ??= new SimpleGroupToRenderStageSelector
+        {
+            EffectName = pathEffectName,
+            RenderGroup = RenderGroupMask.Group1,
+        };
+
+        if (!meshRenderFeature.RenderStageSelectors.Contains(selector))
+        {
+            meshRenderFeature.RenderStageSelectors.Add(selector);
+        }
+
+        selector.RenderStage ??= opaqueStage;
+        return selector;
+    }
+
+    private static EditorTerrainWireframeStageSelector EnsurePathWireframeSelector(string pathEffectName, RenderStage wireframeStage)
+    {
+        return new EditorTerrainWireframeStageSelector
+        {
+            EffectName = pathEffectName,
+            RenderGroup = RenderGroupMask.Group1,
+            RenderStage = wireframeStage,
+        };
+    }
+
     private static WireframePipelineProcessor EnsureWireframePipelineProcessor(EditorTerrainRenderFeature renderFeature, RenderStage wireframeStage)
     {
         var processor = renderFeature.PipelineProcessors
@@ -197,6 +304,29 @@ public sealed class EditorTerrainModeController
         if (!renderFeature.PipelineProcessors.Contains(processor))
         {
             renderFeature.PipelineProcessors.Add(processor);
+        }
+
+        processor.RenderStage = wireframeStage;
+        return processor;
+    }
+
+    private static WireframePipelineProcessor EnsurePathWireframePipelineProcessor(MeshRenderFeature renderFeature, RenderStage wireframeStage)
+    {
+        var processor = renderFeature.PipelineProcessors
+            .OfType<WireframePipelineProcessor>()
+            .FirstOrDefault(item =>
+                ReferenceEquals(item.RenderStage, wireframeStage)
+                || string.Equals(item.RenderStage?.Name, WireframeStageName, StringComparison.Ordinal));
+
+        processor ??= new WireframePipelineProcessor();
+
+        if (!renderFeature.PipelineProcessors.Contains(processor))
+        {
+            int insertIndex = renderFeature.PipelineProcessors
+                .Select(static (item, index) => new { item, index })
+                .FirstOrDefault(entry => entry.item is PathDepthBiasPipelineProcessor)
+                ?.index ?? renderFeature.PipelineProcessors.Count;
+            renderFeature.PipelineProcessors.Insert(insertIndex, processor);
         }
 
         processor.RenderStage = wireframeStage;
@@ -302,7 +432,7 @@ public sealed class EditorTerrainModeController
     }
 
     private static void ApplySelectorState(
-        EditorTerrainRenderFeature renderFeature,
+        RootRenderFeature renderFeature,
         SimpleGroupToRenderStageSelector opaqueSelector,
         EditorTerrainWireframeStageSelector wireframeSelector,
         bool enableWireframe)

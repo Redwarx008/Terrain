@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Terrain.Editor.Rendering;
 
 namespace Terrain.Editor.Services.Commands;
@@ -62,6 +63,9 @@ public sealed class HeightEditCommand : TerrainEditCommand
         }
 
         beforeChunkData.Clear();
+        TerrainManager.PathFeatureService?.ApplyExternalHeightEditDeltas(
+            changedChunks.Select(static chunk => (chunk.Region, chunk.Before, chunk.After)),
+            applyAfterState: true);
         return changedChunks.Count > 0;
     }
 
@@ -114,6 +118,10 @@ public sealed class HeightEditCommand : TerrainEditCommand
             float radius = MathF.Max(delta.Region.Width, delta.Region.Height) * 0.5f;
             TerrainManager.MarkDataDirty(TerrainDataChannel.Height, (int)centerX, (int)centerZ, radius);
         }
+
+        TerrainManager.PathFeatureService?.ApplyExternalHeightEditDeltas(
+            changedChunks.Select(static chunk => (chunk.Region, chunk.Before, chunk.After)),
+            afterState);
     }
 
     private readonly record struct HeightChunkDelta(TerrainChunkRegion Region, ushort[] Before, ushort[] After);

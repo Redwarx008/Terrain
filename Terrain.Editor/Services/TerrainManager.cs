@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Terrain.Editor.Rendering;
+using Terrain.Editor.Services.PathFeatures;
 using StrideColor = Stride.Core.Mathematics.Color;
 using HeightmapImage = SixLabors.ImageSharp.Image;
 
@@ -55,6 +56,7 @@ public sealed class TerrainManager : IDisposable
     private TerrainComponent? terrainComponent;
     private string? currentTerrainPath;
     private string? lastLoadError;
+    private PathFeatureService? pathFeatureService;
 
     /// <summary>
     /// 高度缩放系数，将 ushort (0-65535) 值转换为世界空间高度。
@@ -73,6 +75,8 @@ public sealed class TerrainManager : IDisposable
     public ushort[]? HeightDataCache => heightDataCache;
     public SplitTerrainConfig? SplitConfig => currentSplitConfig;
     public string? LastLoadError => lastLoadError;
+
+    public PathFeatureService? PathFeatureService => pathFeatureService;
 
     /// <summary>
     /// 设置高度缩放系数，实时传播到所有地形实体。
@@ -213,6 +217,8 @@ public sealed class TerrainManager : IDisposable
 
     public void RemoveCurrentTerrain()
     {
+        pathFeatureService?.Clear();
+
         foreach (var sceneEntity in sceneEntities)
         {
             scene.Entities.Remove(sceneEntity);
@@ -289,6 +295,11 @@ public sealed class TerrainManager : IDisposable
     public void SetTerrainComponent(TerrainComponent component)
     {
         terrainComponent = component;
+    }
+
+    public void SetPathFeatureService(PathFeatureService service)
+    {
+        pathFeatureService = service ?? throw new ArgumentNullException(nameof(service));
     }
 
     /// <summary>
@@ -579,6 +590,55 @@ public sealed class TerrainManager : IDisposable
         return configs;
     }
 
+    private List<TomlPathNodeConfig> SavePathNodeConfigs()
+    {
+        var configs = new List<TomlPathNodeConfig>();
+        if (pathFeatureService == null)
+            return configs;
+
+        HashSet<Guid> persistedNodeIds = pathFeatureService.Features
+            .SelectMany(static feature => feature.NodeIds)
+            .ToHashSet();
+
+        foreach (PathNode node in pathFeatureService.Nodes.Values.Where(node => persistedNodeIds.Contains(node.Id)))
+        {
+            configs.Add(new TomlPathNodeConfig
+            {
+                Id = node.Id.ToString("D"),
+                X = node.Position.X,
+                Y = node.Position.Y,
+                Z = node.Position.Z,
+            });
+        }
+
+        return configs;
+    }
+
+    private List<TomlPathFeatureConfig> SavePathFeatureConfigs()
+    {
+        var configs = new List<TomlPathFeatureConfig>();
+        if (pathFeatureService == null)
+            return configs;
+
+        foreach (PathFeature feature in pathFeatureService.Features)
+        {
+            configs.Add(new TomlPathFeatureConfig
+            {
+                Id = feature.Id.ToString("D"),
+                Name = feature.Name,
+                Kind = feature.Kind.ToString(),
+                NodeIds = feature.NodeIds.Select(static id => id.ToString("D")).ToList(),
+                Width = feature.Style.Width,
+                Depth = feature.Style.Depth,
+                SideSlope = feature.Style.SideSlope,
+                CornerSpan = feature.Style.CornerSpan,
+                MaterialSlotIndex = feature.Style.MaterialSlotIndex,
+            });
+        }
+
+        return configs;
+    }
+
     private static bool RestoreBiomeData(TomlProjectConfig config)
     {
         var biomeState = BiomeRuleService.Instance;
@@ -673,6 +733,61 @@ public sealed class TerrainManager : IDisposable
         return repairedDefaultBaseMaterialSlot;
     }
 
+    private void RestorePathData(TomlProjectConfig config)
+    {
+        if (pathFeatureService == null)
+            return;
+
+        var snapshot = new PathNetworkSnapshot();
+        foreach (TomlPathNodeConfig nodeConfig in config.PathNodes)
+        {
+            if (!Guid.TryParse(nodeConfig.Id, out Guid nodeId))
+                continue;
+
+            snapshot.Nodes.Add(new PathNode
+            {
+                Id = nodeId,
+                Position = new Vector3(nodeConfig.X, nodeConfig.Y, nodeConfig.Z),
+            });
+        }
+
+        var validNodeIds = snapshot.Nodes.Select(static node => node.Id).ToHashSet();
+        foreach (TomlPathFeatureConfig featureConfig in config.PathFeatures)
+        {
+            if (!Guid.TryParse(featureConfig.Id, out Guid featureId))
+                continue;
+
+            if (!Enum.TryParse(featureConfig.Kind, ignoreCase: true, out PathFeatureKind kind))
+                kind = PathFeatureKind.Road;
+
+            var feature = new PathFeature
+            {
+                Id = featureId,
+                Name = string.IsNullOrWhiteSpace(featureConfig.Name) ? kind.ToString() : featureConfig.Name,
+                Kind = kind,
+                Style = new PathFeatureStyle
+                {
+                    Width = featureConfig.Width,
+                    Depth = featureConfig.Depth,
+                    SideSlope = featureConfig.SideSlope,
+                    CornerSpan = featureConfig.CornerSpan,
+                    MaterialSlotIndex = featureConfig.MaterialSlotIndex,
+                },
+            };
+
+            foreach (string nodeIdText in featureConfig.NodeIds)
+            {
+                if (Guid.TryParse(nodeIdText, out Guid nodeId) && validNodeIds.Contains(nodeId))
+                    feature.NodeIds.Add(nodeId);
+            }
+
+            if (feature.NodeIds.Count >= 2)
+                snapshot.Features.Add(feature);
+        }
+
+        pathFeatureService.RestoreSnapshotFromProject(snapshot);
+    }
+
     private static bool RepairDefaultBaseMaterialSlot(BiomeRuleService biomeState)
     {
         int firstActiveSlotIndex = MaterialSlotManager.Instance
@@ -735,7 +850,7 @@ public sealed class TerrainManager : IDisposable
         int version = ProjectManager.Instance.LoadConfig()?.Version ?? 2;
 
         string heightmapPath = ResolveHeightmapSavePath(fullProjectFilePath, snapshotEditableAssetsIntoProject);
-        SaveHeightmap(heightDataCache, heightDataWidth, heightDataHeight, heightmapPath);
+        SaveHeightmap(pathFeatureService?.GetHeightDataForSave() ?? heightDataCache, heightDataWidth, heightDataHeight, heightmapPath);
         currentTerrainPath = heightmapPath;
 
         string? biomeMaskPath = null;
@@ -757,6 +872,8 @@ public sealed class TerrainManager : IDisposable
             Biomes = SaveBiomeConfigs(),
             BiomeLayers = SaveBiomeLayerConfigs(),
             BiomeModifiers = SaveBiomeModifierConfigs(),
+            PathNodes = SavePathNodeConfigs(),
+            PathFeatures = SavePathFeatureConfigs(),
         };
 
         ProjectManager.Instance.SaveConfigAs(fullProjectFilePath, config);
@@ -880,6 +997,8 @@ public sealed class TerrainManager : IDisposable
             if (HasTerrainLoaded)
                 TryLoadPendingBiomeMask();
         }
+
+        RestorePathData(config);
 
         // 通知需要加载材质纹理（由外部调用 LoadMaterialTextures）
         MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);

@@ -85,6 +85,43 @@ public sealed class TerrainComponent
 
 ---
 
+## Stride GPU Resource Lifecycle
+
+### Stride Material 不是 IDisposable
+
+`Material.New()` 创建的材质由 Stride 内容管理系统通过引用计数管理生命周期，**不要**对 `Material` 调用 `Dispose()`：
+
+```csharp
+// Wrong: Material 不实现 IDisposable，编译不过
+material.Dispose();
+
+// Correct: 置 null 让 GC 回收引用
+material = null;
+```
+
+### GeometricPrimitive 必须释放
+
+`GeometricPrimitive.Sphere.New()` 等 GPU 几何体**必须**显式 `Dispose()`：
+
+```csharp
+// Correct
+spherePrimitive.Dispose();
+```
+
+### GPU 资源清理模式
+
+服务管理多个 GPU 句柄时，清理顺序和方式必须区分资源类型：
+
+| 资源类型 | 释放方式 | 说明 |
+|---------|---------|------|
+| `GeometricPrimitive` | `.Dispose()` | GPU 几何体必须显式释放 |
+| `Buffer` (顶点/索引) | `.Dispose()` | GPU 缓冲区必须显式释放 |
+| `Material` | `= null` | 内容管理资源，不可 Dispose |
+| `Model` | 通过 `Entity` 移除 | 从 Scene 移除 Entity 即可 |
+| `EffectInstance` | `.Dispose()` | 着色器效果必须显式释放 |
+
+---
+
 ## Tests
 
 项目当前没有自动化测试基础设施。如果添加测试：

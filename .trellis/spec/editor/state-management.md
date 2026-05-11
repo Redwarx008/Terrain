@@ -73,13 +73,40 @@ public sealed class BrushParameters
 
 ---
 
+## Path Feature Parameters (路径参数)
+
+路径工具参数遵循与 `BrushParameters` 相同的 `Lazy<>` 单例模式：
+
+```csharp
+public sealed class PathFeatureParameters
+{
+    private static readonly Lazy<PathFeatureParameters> InstanceFactory = new(() => new());
+    public static PathFeatureParameters Instance => InstanceFactory.Value;
+
+    public PathFeatureKind Kind { get; set; }
+    public float Width { get; set; }
+    public float Depth { get; set; }
+    public float SideSlope { get; set; }
+    public float CornerSpan { get; set; }
+    public bool IsSketchModeEnabled { get; set; }
+
+    public event EventHandler? ParametersChanged;
+}
+```
+
+- 属性 setter 内做 clamp 和相等判断，避免无意义的事件通知
+- `Kind` 切换到 `River` 时自动设默认深度；切到 `Road` 时深度 clamp 回 0
+- `CreateStyle()` 用于从当前参数快照一个 `PathFeatureStyle` 给路径 feature 赋值
+
+---
+
 ## State Categories
 
 | 类别 | 管理方式 | 示例 |
 |------|----------|------|
 | 全局状态 | 单例 EditorState | 当前工具、编辑器模式 |
 | 面板状态 | 面板实例字段 | 选中项、展开状态 |
-| 服务状态 | 功能单例 | 笔刷参数、撤销栈 |
+| 服务状态 | 功能单例 | 笔刷参数、路径参数、撤销栈 |
 | 场景状态 | SceneSystem | 场景、实体 |
 
 ---

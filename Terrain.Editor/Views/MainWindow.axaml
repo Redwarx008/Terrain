@@ -497,6 +497,66 @@
                 </Border>
               </StackPanel>
 
+              <!-- ═══ Path Mode Inspector ═══ -->
+              <StackPanel IsVisible="{Binding IsPathMode}" Spacing="0">
+                <Border Classes="inspectorSection" Padding="10,10">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionLabel" Text="PATH SETTINGS" />
+                    <ComboBox Classes="metroCombo" SelectedIndex="{Binding PathParams.KindIndex}">
+                      <ComboBoxItem Content="Road" />
+                      <ComboBoxItem Content="River" />
+                    </ComboBox>
+                    <CheckBox Content="Sketch Mode" IsChecked="{Binding PathParams.IsSketchModeEnabled}" />
+                    <CheckBox Content="Path Wireframe" IsChecked="{Binding IsPathWireframeEnabled}" />
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Width" />
+                        <Slider Minimum="1" Maximum="128" Value="{Binding PathParams.Width}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.Width, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Depth" />
+                        <Slider Minimum="0" Maximum="64" Value="{Binding PathParams.Depth}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.Depth, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Side Slope" />
+                        <Slider Minimum="0.1" Maximum="64" Value="{Binding PathParams.SideSlope}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.SideSlope, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Corner Span" />
+                        <Slider Minimum="0.05" Maximum="1" Value="{Binding PathParams.CornerSpan}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.CornerSpan, StringFormat='{}{0:F2}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Material" />
+                        <Slider Minimum="0" Maximum="255" Value="{Binding PathParams.MaterialSlotIndex}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.MaterialSlotIndex}" VerticalAlignment="Bottom" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="inspectorSection" Padding="10,10">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionLabel" Text="NODE EDITING" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                      <Button Classes="outlineButton" Content="Disconnect" Command="{Binding DisconnectPathNodeCommand}" />
+                      <Button Grid.Column="1" Classes="outlineButton" Content="Delete" Command="{Binding DeletePathNodeCommand}" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
               <!-- ═══ Foliage Mode Inspector ═══ -->
               <StackPanel IsVisible="{Binding IsFoliageMode}" Spacing="0">
                 <Border Classes="inspectorSection" Padding="10,10">

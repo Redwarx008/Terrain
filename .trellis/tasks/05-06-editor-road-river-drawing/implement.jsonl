@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/editor/index.md", "reason": "编辑器通用约定与新增模式/工具的基础规则。"}
+{"file": ".trellis/spec/editor/project-persistence.md", "reason": "道路/河流路径与高度修改需要接入项目保存/加载链路。"}
+{"file": ".trellis/spec/editor/native-viewport-hosting.md", "reason": "路径绘制与节点编辑要扩展嵌入式视口输入与覆盖层行为。"}
+{"file": ".trellis/spec/editor/state-management.md", "reason": "新增编辑模式、工具状态和可用性必须遵循全局状态管理约定。"}
+{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "编辑器侧代码风格、事件释放和 UI/MVVM 约束。"}
+{"file": ".trellis/spec/runtime/index.md", "reason": "运行时核心代码的通用约定，适用于路径 mesh 与地形整形逻辑。"}
+{"file": ".trellis/spec/runtime/quality-guidelines.md", "reason": "运行时代码质量、nullable、sealed 与序列化约束。"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本任务跨编辑器状态、持久化、视口输入与高度数据更新，需要显式梳理层边界。"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "优先复用现有地形编辑、撤销重做与持久化机制，避免复制逻辑。"}

@@ -22,6 +22,7 @@ using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
 using Terrain.Editor.Services.Export;
 using Terrain.Editor.Services.Export.Exporters;
+using Terrain.Editor.Services.PathFeatures;
 using ImageSharpImage = SixLabors.ImageSharp.Image;
 
 namespace Terrain.Editor.ViewModels;
@@ -54,6 +55,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private SceneViewMode _selectedSceneViewMode = SceneViewMode.Perspective;
+
+    [ObservableProperty]
+    private bool _isPathWireframeEnabled;
 
     [ObservableProperty]
     private SceneLightingMode _selectedSceneLightingMode = SceneLightingMode.Lit;
@@ -113,6 +117,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public BrushParametersViewModel BrushParams { get; }
 
+    public PathFeatureParametersViewModel PathParams { get; }
+
     public BiomeViewModel Biome { get; }
 
     public SettingsViewModel Settings { get; }
@@ -154,6 +160,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public bool IsPaintMode => SelectedMode == EditorMode.Paint;
 
+    public bool IsPathMode => SelectedMode == EditorMode.Path;
+
     public bool IsFoliageMode => SelectedMode == EditorMode.Foliage;
 
     public bool IsSettingsMode => SelectedMode == EditorMode.Settings;
@@ -175,10 +183,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _viewportHost = new NativeStrideViewportHost();
         Viewport = new NativeStrideViewportViewModel(_viewportHost);
         BrushParams = new BrushParametersViewModel();
+        PathParams = new PathFeatureParametersViewModel();
         Biome = new BiomeViewModel();
         Settings = new SettingsViewModel();
         Settings.PropertyChanged += OnSettingsPropertyChanged;
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
+        IsPathWireframeEnabled = _viewportHost.IsPathWireframeEnabled;
         ExportManager.Instance.Register(_terrainExporter);
         ExportManager.Instance.Register(_biomeConfigExporter);
 
@@ -570,6 +580,26 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private void DeletePathNode()
+    {
+        if (TryGetTerrainManager(out var terrainManager)
+            && terrainManager.PathFeatureService?.DeleteSelectedNode() == true)
+        {
+            AddConsole("Info", "Deleted path node.");
+        }
+    }
+
+    [RelayCommand]
+    private void DisconnectPathNode()
+    {
+        if (TryGetTerrainManager(out var terrainManager)
+            && terrainManager.PathFeatureService?.DisconnectSelectedNode() == true)
+        {
+            AddConsole("Info", "Disconnected path node.");
+        }
+    }
+
+    [RelayCommand]
     private void SelectMode(string modeName)
     {
         if (Enum.TryParse<EditorMode>(modeName, out var mode))
@@ -740,6 +770,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _historyManager.HistoryChanged -= OnHistoryChanged;
         _viewportHost.ShortcutRequested -= OnViewportShortcutRequested;
         BrushParams.Dispose();
+        PathParams.Dispose();
         Biome.Dispose();
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
         Viewport.Dispose();
@@ -763,6 +794,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         SyncSelectedModeOption();
         OnPropertyChanged(nameof(IsSculptMode));
         OnPropertyChanged(nameof(IsPaintMode));
+        OnPropertyChanged(nameof(IsPathMode));
         OnPropertyChanged(nameof(IsFoliageMode));
         OnPropertyChanged(nameof(IsSettingsMode));
         OnPropertyChanged(nameof(HasTools));
@@ -788,6 +820,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         AddConsole("Info", $"Scene view mode set to {value}.");
+    }
+
+    partial void OnIsPathWireframeEnabledChanged(bool value)
+    {
+        if (_viewportHost.IsPathWireframeEnabled != value)
+        {
+            _viewportHost.SetPathWireframeEnabled(value);
+        }
+
+        AddConsole("Info", $"Path wireframe {(value ? "enabled" : "disabled")}.");
     }
 
     partial void OnShowMaskOverlayChanged(bool value)
@@ -877,6 +919,13 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             {
                 _editorState.HasSelectedTool = true;
             }
+
+            if (value.Mode == EditorMode.Path)
+            {
+                PathFeatureParameters.Instance.Kind = string.Equals(value.Label, "River", StringComparison.Ordinal)
+                    ? PathFeatureKind.River
+                    : PathFeatureKind.Road;
+            }
         }
 
         AddConsole("Info", $"Selected {value.Label}.");
@@ -902,6 +951,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     {
         SelectedToolName = SelectedMode == EditorMode.Sculpt
             ? _editorState.CurrentHeightTool.ToString()
+            : SelectedMode == EditorMode.Path
+                ? PathFeatureParameters.Instance.Kind.ToString()
             : GetDefaultToolLabel(SelectedMode);
     }
 
@@ -1049,6 +1100,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             [
                 new("Biome Brush", "Paint biome mask", "\uE950", mode),
             ],
+            EditorMode.Path =>
+            [
+                new("Road", "Draw and edit road paths", "\uE913", mode),
+                new("River", "Draw and edit river paths", "\uE12B", mode),
+            ],
             EditorMode.Foliage =>
             [
                 new("Place", "Place foliage", "\uE8BE", mode),
@@ -1062,6 +1118,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     {
         Modes.Add(new ModeOptionViewModel("Sculpt", "Terrain height editing", "", EditorMode.Sculpt));
         Modes.Add(new ModeOptionViewModel("Biome", "Biome mask painting", "\uE950", EditorMode.Paint));
+        Modes.Add(new ModeOptionViewModel("Paths", "Road and river drawing", "\uE913", EditorMode.Path));
         Modes.Add(new ModeOptionViewModel("Foliage", "Vegetation placement", "\uE8BE", EditorMode.Foliage));
         Modes.Add(new ModeOptionViewModel("Settings", "Project settings", "", EditorMode.Settings));
     }
@@ -1109,6 +1166,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             EditorMode.Sculpt => "Sculpt",
             EditorMode.Paint => "Biome Brush",
+            EditorMode.Path => "Road",
             EditorMode.Foliage => "Place",
             _ => "None",
         };

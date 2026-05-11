@@ -16,6 +16,7 @@ using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Rendering.Decal;
 using Terrain.Editor.Services;
+using Terrain.Editor.Services.PathFeatures;
 using NumericsVector2 = System.Numerics.Vector2;
 
 namespace Terrain.Editor.Rendering.NativeViewport;
@@ -32,10 +33,12 @@ public sealed class EmbeddedStrideViewportGame : Game
     private Scene? _scene;
     private CameraComponent? _camera;
     private SceneViewMode _sceneViewMode = SceneViewMode.Perspective;
+    private bool _isPathWireframeEnabled;
     private bool _hasRenderedFirstFrame;
     private bool _isBrushStrokeActive;
     private bool _wasLeftMouseDown;
     private bool _pendingMaterialTexturesLoad;
+    private bool _isPathPointerActive;
 
     // Brush decal overlay
     private Entity? _brushDecalEntity;
@@ -100,11 +103,21 @@ public sealed class EmbeddedStrideViewportGame : Game
 
         if (_graphicsCompositor != null)
         {
-            _modeController.Apply(_sceneViewMode, _graphicsCompositor);
+            _modeController.Apply(_sceneViewMode, _isPathWireframeEnabled, _graphicsCompositor);
         }
 
         UpdateCamera((float)gameTime.Elapsed.TotalSeconds);
-        UpdateBrush((float)gameTime.Elapsed.TotalSeconds);
+        if (_editorState.CurrentEditorMode == EditorMode.Path)
+        {
+            TerrainManager?.PathFeatureService?.SetGizmosVisible(visible: true);
+            UpdatePathEditing();
+        }
+        else
+        {
+            EndPathEditIfNeeded(commit: false);
+            TerrainManager?.PathFeatureService?.SetGizmosVisible(visible: false);
+            UpdateBrush((float)gameTime.Elapsed.TotalSeconds);
+        }
     }
 
     protected override void Draw(GameTime gameTime)
@@ -138,7 +151,16 @@ public sealed class EmbeddedStrideViewportGame : Game
         _sceneViewMode = sceneViewMode;
         if (_graphicsCompositor != null)
         {
-            _modeController.Apply(sceneViewMode, _graphicsCompositor);
+            _modeController.Apply(sceneViewMode, _isPathWireframeEnabled, _graphicsCompositor);
+        }
+    }
+
+    public void SetPathWireframeEnabled(bool enabled)
+    {
+        _isPathWireframeEnabled = enabled;
+        if (_graphicsCompositor != null)
+        {
+            _modeController.Apply(_sceneViewMode, _isPathWireframeEnabled, _graphicsCompositor);
         }
     }
 
@@ -273,6 +295,59 @@ public sealed class EmbeddedStrideViewportGame : Game
     private bool IsBrushDecalMode()
     {
         return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint;
+    }
+
+    private void UpdatePathEditing()
+    {
+        if (TerrainManager?.PathFeatureService == null || _camera == null || !_editorState.HasSelectedTool)
+        {
+            EndPathEditIfNeeded(commit: false);
+            UpdateBrushDecalVisibility(visible: false);
+            return;
+        }
+
+        bool leftMouseDown = Input.IsMouseButtonDown(MouseButton.Left);
+        bool rightMouseDown = Input.IsMouseButtonDown(MouseButton.Right);
+        if (rightMouseDown)
+        {
+            EndPathEditIfNeeded(commit: false);
+            _wasLeftMouseDown = false;
+            UpdateBrushDecalVisibility(visible: false);
+            return;
+        }
+
+        Vector3? worldPosition = RaycastTerrain();
+        if (leftMouseDown && worldPosition != null)
+        {
+            if (!_isPathPointerActive)
+            {
+                bool sketchMode = PathFeatureParameters.Instance.IsSketchModeEnabled
+                    || Input.IsKeyDown(Keys.LeftShift)
+                    || Input.IsKeyDown(Keys.RightShift);
+                TerrainManager.PathFeatureService.BeginPointerEdit(worldPosition.Value, PathFeatureParameters.Instance.Kind, sketchMode);
+                _isPathPointerActive = true;
+            }
+            else
+            {
+                TerrainManager.PathFeatureService.ContinuePointerEdit(worldPosition.Value);
+            }
+        }
+        else
+        {
+            EndPathEditIfNeeded(commit: !leftMouseDown);
+        }
+
+        UpdateBrushDecalVisibility(visible: false);
+        _wasLeftMouseDown = leftMouseDown;
+    }
+
+    private void EndPathEditIfNeeded(bool commit)
+    {
+        if (!_isPathPointerActive)
+            return;
+
+        TerrainManager?.PathFeatureService?.EndPointerEdit(commit);
+        _isPathPointerActive = false;
     }
 
     private void UpdateBrushDecalPosition(Vector3? worldPosition)
@@ -452,7 +527,8 @@ public sealed class EmbeddedStrideViewportGame : Game
         _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
         EnsureBrushDecalRenderFeature(_graphicsCompositor);
-        _modeController.Apply(_sceneViewMode, _graphicsCompositor);
+        EnsurePathDepthBiasPipelineProcessor(_graphicsCompositor);
+        _modeController.Apply(_sceneViewMode, _isPathWireframeEnabled, _graphicsCompositor);
 
         SceneSystem.GraphicsCompositor = _graphicsCompositor;
         SceneSystem.SceneInstance = new SceneInstance(Services, _scene);
@@ -523,7 +599,8 @@ public sealed class EmbeddedStrideViewportGame : Game
         _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
         EnsureBrushDecalRenderFeature(_graphicsCompositor);
-        _modeController.Apply(_sceneViewMode, _graphicsCompositor);
+        EnsurePathDepthBiasPipelineProcessor(_graphicsCompositor);
+        _modeController.Apply(_sceneViewMode, _isPathWireframeEnabled, _graphicsCompositor);
 
         SceneSystem.GraphicsCompositor = _graphicsCompositor;
         SceneSystem.SceneInstance = new SceneInstance(Services, _scene);
@@ -534,6 +611,7 @@ public sealed class EmbeddedStrideViewportGame : Game
     private void InitializeTerrainManager(Texture? defaultTerrainTexture)
     {
         TerrainManager = new TerrainManager(GraphicsDevice, _scene!, defaultTerrainTexture);
+        TerrainManager.SetPathFeatureService(new PathFeatureService(GraphicsDevice, _scene!, TerrainManager));
         TerrainManager.MaterialTexturesLoadRequired += OnMaterialTexturesLoadRequired;
         TerrainManager.TerrainLoaded += OnTerrainLoaded;
     }
@@ -594,6 +672,25 @@ public sealed class EmbeddedStrideViewportGame : Game
         decalRenderFeature.RenderStageSelectors.Add(decalSelector);
 
         graphicsCompositor.RenderFeatures.Add(decalRenderFeature);
+    }
+
+    private static void EnsurePathDepthBiasPipelineProcessor(GraphicsCompositor graphicsCompositor)
+    {
+        MeshRenderFeature? meshRenderFeature = graphicsCompositor.RenderFeatures.OfType<MeshRenderFeature>().FirstOrDefault();
+        if (meshRenderFeature == null)
+        {
+            return;
+        }
+
+        if (meshRenderFeature.PipelineProcessors.OfType<PathDepthBiasPipelineProcessor>().Any())
+        {
+            return;
+        }
+
+        meshRenderFeature.PipelineProcessors.Add(new PathDepthBiasPipelineProcessor
+        {
+            TargetRenderGroup = PathFeatureService.PathRenderGroup,
+        });
     }
 
     private void CreateBrushDecalEntity()
@@ -710,6 +807,8 @@ public sealed class EmbeddedStrideViewportGame : Game
             SetChildWindowStyle?.Invoke(true);
             _isControllingCamera = false;
         }
+
+        EndPathEditIfNeeded(commit: false);
 
         // Clean up brush decal entity
         if (_brushDecalEntity != null && _scene != null)
