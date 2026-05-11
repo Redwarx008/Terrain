@@ -897,3 +897,36 @@ Fixed Terrain Editor undo/redo shortcuts when the embedded SDL viewport owns key
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: Road/River path feature implementation + spec update
+
+**Date**: 2026-05-12
+**Task**: Road/River path feature implementation + spec update
+**Branch**: `master`
+
+### Summary
+
+实现道路/河流路径编辑功能：Catmull-Rom 样条采样、节点 gizmo、地形塑形、草绘简化、路径持久化与撤销重做；trellis-check 修复 5 个问题（含道路塑形跳过严重 bug）；更新 3 个 spec 文档（GPU 资源生命周期、gizmo 材质模式、路径参数状态管理）
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `75190c6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

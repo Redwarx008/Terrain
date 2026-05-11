@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 27
-- **Last Active**: 2026-05-04
+- **Total Sessions**: 28
+- **Last Active**: 2026-05-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~899 | Active |
+| `journal-1.md` | ~932 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 28 | 2026-05-12 | Road/River path feature implementation + spec update | `75190c6` | `master` |
 | 27 | 2026-05-04 | Toolbar background color change to #F8FAFC | `9775f92` | `implement-climate-texturing` |
 | 26 | 2026-05-04 | Fix undo redo shortcuts in viewport focus | `ce37b1e` | `implement-climate-texturing` |
 | 25 | 2026-05-03 | 删除Sculpt Advance栏 | `9389005` | `implement-climate-texturing` |
