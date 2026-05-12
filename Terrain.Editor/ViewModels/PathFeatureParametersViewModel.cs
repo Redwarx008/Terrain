@@ -33,13 +33,21 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
     private float _cornerSpan;
 
     [ObservableProperty]
-    private int _materialSlotIndex;
+    private int _roadStyleIndex;
 
     [ObservableProperty]
     private bool _isSketchModeEnabled;
 
+    public bool IsRoadStyleVisible => KindIndex == 0;
+
+    public bool IsRiverTerrainShapeVisible => KindIndex == 1;
+
+    public string RoadStyleDisplayName => RoadStyleIndex == (int)PathRoadStyle.Paved ? "Paved" : "Dirt";
+
     partial void OnKindIndexChanged(int value)
     {
+        OnPropertyChanged(nameof(IsRoadStyleVisible));
+        OnPropertyChanged(nameof(IsRiverTerrainShapeVisible));
         if (!syncing)
             source.Kind = value == 1 ? PathFeatureKind.River : PathFeatureKind.Road;
     }
@@ -68,10 +76,11 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
             source.CornerSpan = value;
     }
 
-    partial void OnMaterialSlotIndexChanged(int value)
+    partial void OnRoadStyleIndexChanged(int value)
     {
-        if (!syncing)
-            source.MaterialSlotIndex = value;
+        OnPropertyChanged(nameof(RoadStyleDisplayName));
+        if (!syncing && Enum.IsDefined(typeof(PathRoadStyle), value))
+            source.RoadStyle = (PathRoadStyle)value;
     }
 
     partial void OnIsSketchModeEnabledChanged(bool value)
@@ -98,8 +107,11 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
         Depth = source.Depth;
         SideSlope = source.SideSlope;
         CornerSpan = source.CornerSpan;
-        MaterialSlotIndex = source.MaterialSlotIndex;
+        RoadStyleIndex = (int)source.RoadStyle;
         IsSketchModeEnabled = source.IsSketchModeEnabled;
         syncing = false;
+        OnPropertyChanged(nameof(IsRoadStyleVisible));
+        OnPropertyChanged(nameof(IsRiverTerrainShapeVisible));
+        OnPropertyChanged(nameof(RoadStyleDisplayName));
     }
 }

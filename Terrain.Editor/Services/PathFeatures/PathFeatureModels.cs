@@ -19,13 +19,19 @@ public enum PathEditorTool
     River
 }
 
+public enum PathRoadStyle
+{
+    Dirt,
+    Paved,
+}
+
 public sealed class PathFeatureStyle
 {
     public float Width { get; set; } = 8.0f;
     public float Depth { get; set; } = 0.0f;
     public float SideSlope { get; set; } = 4.0f;
     public float CornerSpan { get; set; } = 0.35f;
-    public int MaterialSlotIndex { get; set; } = 0;
+    public PathRoadStyle RoadStyle { get; set; } = PathRoadStyle.Dirt;
 
     public PathFeatureStyle Clone()
     {
@@ -35,7 +41,7 @@ public sealed class PathFeatureStyle
             Depth = Depth,
             SideSlope = SideSlope,
             CornerSpan = CornerSpan,
-            MaterialSlotIndex = MaterialSlotIndex,
+            RoadStyle = RoadStyle,
         };
     }
 }

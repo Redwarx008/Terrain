@@ -2,8 +2,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Engine;
@@ -41,19 +44,33 @@ public sealed class PathFeatureService : IDisposable
     private const int MaxMeshFollowTerrainSubdivisionDepth = 6;
     private const float MeshVerticalOffset = 0.02f;
     private const float NodeGizmoVerticalOffset = 1.35f;
+    private const float RoadTextureRepeatVScale = 0.08f;
+    private const string DirtRoadDiffuseFileName = "road_dirt_diffuse.dds";
+    private const string DirtRoadNormalFileName = "road_dirt_normal.dds";
+    private const string PavedRoadDiffuseFileName = "roadpaved_diffuse.dds";
+    private const string PavedRoadNormalFileName = "roadpaved_normal.dds";
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly Scene scene;
     private readonly TerrainManager terrainManager;
+    private readonly PathFeatureParameters pathParameters = PathFeatureParameters.Instance;
     private readonly Dictionary<Guid, PathNode> nodes = new();
     private readonly List<PathFeature> features = new();
     private readonly Dictionary<Guid, PathFeatureMeshHandle> meshHandles = new();
     private readonly Dictionary<Guid, PathNodeGizmoHandle> nodeGizmos = new();
     private ushort[]? baseHeightData;
+    private Texture? dirtRoadDiffuseTexture;
+    private Texture? dirtRoadNormalTexture;
+    private Texture? pavedRoadDiffuseTexture;
+    private Texture? pavedRoadNormalTexture;
+    private Material? dirtRoadMaterial;
+    private Material? pavedRoadMaterial;
+    private Material? riverMaterial;
     private Material? normalNodeGizmoMaterial;
     private Material? connectedNodeGizmoMaterial;
     private Material? selectedNodeGizmoMaterial;
     private bool gizmosVisible;
+    private bool isSyncingParameters;
     private PathEditOperation? activeOperation;
     private Guid? selectedFeatureId;
     private Guid? selectedNodeId;
@@ -63,6 +80,7 @@ public sealed class PathFeatureService : IDisposable
         this.graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
         this.scene = scene ?? throw new ArgumentNullException(nameof(scene));
         this.terrainManager = terrainManager ?? throw new ArgumentNullException(nameof(terrainManager));
+        pathParameters.ParametersChanged += OnPathParametersChanged;
     }
 
     public IReadOnlyList<PathFeature> Features => features;
@@ -341,6 +359,17 @@ public sealed class PathFeatureService : IDisposable
         foreach (PathNodeGizmoHandle handle in nodeGizmos.Values)
             handle.Dispose(scene);
         nodeGizmos.Clear();
+        dirtRoadMaterial = null;
+        pavedRoadMaterial = null;
+        riverMaterial = null;
+        dirtRoadDiffuseTexture?.Dispose();
+        dirtRoadDiffuseTexture = null;
+        dirtRoadNormalTexture?.Dispose();
+        dirtRoadNormalTexture = null;
+        pavedRoadDiffuseTexture?.Dispose();
+        pavedRoadDiffuseTexture = null;
+        pavedRoadNormalTexture?.Dispose();
+        pavedRoadNormalTexture = null;
         normalNodeGizmoMaterial = null;
         connectedNodeGizmoMaterial = null;
         selectedNodeGizmoMaterial = null;
@@ -371,7 +400,41 @@ public sealed class PathFeatureService : IDisposable
 
     public void Dispose()
     {
+        pathParameters.ParametersChanged -= OnPathParametersChanged;
         Clear();
+    }
+
+    private void OnPathParametersChanged(object? sender, EventArgs e)
+    {
+        if (isSyncingParameters)
+            return;
+
+        if (selectedFeatureId is not { } featureId)
+            return;
+
+        PathFeature? feature = FindFeature(featureId);
+        if (feature == null)
+            return;
+
+        if (feature.Kind != pathParameters.Kind)
+        {
+            selectedFeatureId = null;
+            selectedNodeId = null;
+            RefreshNodeGizmos();
+            NotifySelectionChanged();
+            return;
+        }
+
+        PathFeatureStyle nextStyle = pathParameters.CreateStyle();
+        if (AreStylesEqual(feature.Style, nextStyle))
+            return;
+
+        ExecuteImmediateEdit("Edit Path Style", () =>
+        {
+            feature.Style = nextStyle;
+            RebuildPathTerrainAndMeshes();
+            return true;
+        });
     }
 
     private void ContinueSketch(Vector3 worldPosition)
@@ -528,6 +591,7 @@ public sealed class PathFeatureService : IDisposable
         if (!edit())
             return false;
 
+        SyncParametersFromSelection();
         command.CaptureAfter(CaptureSnapshot(), CaptureAllHeightChunks());
         HistoryManager.Instance.BeginCommand(command);
         HistoryManager.Instance.CommitCommand();
@@ -601,6 +665,7 @@ public sealed class PathFeatureService : IDisposable
 
         RemoveNodeIfOrphan(draggedNodeId);
         selectedNodeId = targetNodeId;
+        SyncParametersFromSelection();
         NotifyNetworkChanged();
         NotifySelectionChanged();
         return true;
@@ -613,6 +678,7 @@ public sealed class PathFeatureService : IDisposable
 
         selectedFeatureId = featureId;
         selectedNodeId = nodeId;
+        SyncParametersFromSelection();
         RefreshNodeGizmos();
         NotifySelectionChanged();
     }
@@ -705,14 +771,24 @@ public sealed class PathFeatureService : IDisposable
             if (baseHeightData != null && baseHeightData.Length == heightData.Length)
             {
                 Array.Copy(baseHeightData, heightData, baseHeightData.Length);
+                bool heightChanged = false;
                 foreach (PathFeature feature in features)
-                    ApplyFeatureTerrain(feature);
+                {
+                    if (feature.Kind != PathFeatureKind.River)
+                        continue;
 
-                terrainManager.MarkDataDirty(
-                    TerrainDataChannel.Height,
-                    terrainManager.HeightCacheWidth / 2,
-                    terrainManager.HeightCacheHeight / 2,
-                    Math.Max(terrainManager.HeightCacheWidth, terrainManager.HeightCacheHeight) * 0.5f);
+                    ApplyFeatureTerrain(feature);
+                    heightChanged = true;
+                }
+
+                if (heightChanged)
+                {
+                    terrainManager.MarkDataDirty(
+                        TerrainDataChannel.Height,
+                        terrainManager.HeightCacheWidth / 2,
+                        terrainManager.HeightCacheHeight / 2,
+                        Math.Max(terrainManager.HeightCacheWidth, terrainManager.HeightCacheHeight) * 0.5f);
+                }
             }
         }
 
@@ -979,6 +1055,7 @@ public sealed class PathFeatureService : IDisposable
         features.AddRange(snapshot.Features.Select(static feature => feature.Clone()));
         selectedFeatureId = snapshot.SelectedFeatureId;
         selectedNodeId = snapshot.SelectedNodeId;
+        SyncParametersFromSelection();
         RebuildAllMeshes();
         NotifyNetworkChanged();
         NotifySelectionChanged();
@@ -1012,17 +1089,22 @@ public sealed class PathFeatureService : IDisposable
             Vector3 rightPosition = row.Position + row.Side * halfWidth;
             leftPosition.Y = (terrainManager.GetHeightAtPosition(leftPosition.X, leftPosition.Z) ?? row.Position.Y) + MeshVerticalOffset;
             rightPosition.Y = (terrainManager.GetHeightAtPosition(rightPosition.X, rightPosition.Z) ?? row.Position.Y) + MeshVerticalOffset;
+            float v = row.Distance * RoadTextureRepeatVScale;
+            Vector3 side = NormalizeSide(row.Side);
+            Vector4 tangent = new(side.X, side.Y, side.Z, 1.0f);
             vertices.Add(new PathMeshVertex
             {
                 Position = leftPosition,
                 Normal = Vector3.UnitY,
-                TexCoord = new Vector2(0.0f, row.Distance),
+                Tangent = tangent,
+                TexCoord = new Vector2(0.0f, v),
             });
             vertices.Add(new PathMeshVertex
             {
                 Position = rightPosition,
                 Normal = Vector3.UnitY,
-                TexCoord = new Vector2(1.0f, row.Distance),
+                Tangent = tangent,
+                TexCoord = new Vector2(1.0f, v),
             });
         }
 
@@ -1064,7 +1146,7 @@ public sealed class PathFeatureService : IDisposable
         };
         var model = new Model();
         model.Meshes.Add(mesh);
-        Material material = CreateMaterial(feature.Kind);
+        Material material = CreateMaterial(feature);
         model.Materials.Add(material);
 
         var entity = new Entity($"PathFeature_{feature.Name}")
@@ -1076,7 +1158,7 @@ public sealed class PathFeatureService : IDisposable
             },
         };
         scene.Entities.Add(entity);
-        meshHandles[feature.Id] = new PathFeatureMeshHandle(entity, vertexBuffer, indexBuffer, material);
+        meshHandles[feature.Id] = new PathFeatureMeshHandle(entity, vertexBuffer, indexBuffer);
     }
 
     private IReadOnlyList<PathRibbonRow> RefineRibbonRowsForTerrainFit(IReadOnlyList<PathRibbonRow> ribbonRows, float halfWidth)
@@ -1172,18 +1254,110 @@ public sealed class PathFeatureService : IDisposable
         handle.Dispose(scene);
     }
 
-    private Material CreateMaterial(PathFeatureKind kind)
+    private Material CreateMaterial(PathFeature feature)
     {
-        Color4 color = kind == PathFeatureKind.River
-            ? new Color4(0.05f, 0.32f, 0.68f, 1.0f)
-            : new Color4(0.16f, 0.16f, 0.15f, 1.0f);
+        ArgumentNullException.ThrowIfNull(feature);
+
+        if (feature.Kind == PathFeatureKind.River)
+            return riverMaterial ??= CreateFallbackRiverMaterial();
+
+        return feature.Style.RoadStyle == PathRoadStyle.Paved
+            ? pavedRoadMaterial ??= CreateRoadMaterial(PathRoadStyle.Paved)
+            : dirtRoadMaterial ??= CreateRoadMaterial(PathRoadStyle.Dirt);
+    }
+
+    private Material CreateRoadMaterial(PathRoadStyle roadStyle)
+    {
+        (Texture? diffuseTexture, Texture? normalTexture) = GetOrLoadRoadTextures(roadStyle);
+        if (diffuseTexture == null)
+            return CreateFallbackRoadMaterial(roadStyle);
+
+        var descriptor = new MaterialDescriptor();
+        descriptor.Attributes.Diffuse = new MaterialDiffuseMapFeature(new ComputeTextureColor(diffuseTexture));
+        descriptor.Attributes.DiffuseModel = new MaterialDiffuseLambertModelFeature();
+        descriptor.Attributes.MicroSurface = new MaterialGlossinessMapFeature(new ComputeFloat(0.28f));
+        descriptor.Attributes.Specular = new MaterialMetalnessMapFeature(new ComputeFloat(0.0f));
+        descriptor.Attributes.SpecularModel = new MaterialSpecularMicrofacetModelFeature();
+        var alpha = new ComputeTextureScalar(diffuseTexture, TextureCoordinate.Texcoord0, Vector2.One, Vector2.Zero)
+        {
+            Channel = ColorChannel.A,
+        };
+        descriptor.Attributes.Transparency = new MaterialTransparencyBlendFeature
+        {
+            Alpha = alpha,
+        };
+        if (normalTexture != null)
+        {
+            descriptor.Attributes.Surface = new MaterialNormalMapFeature(new ComputeTextureColor(normalTexture));
+        }
+
+        return Material.New(graphicsDevice, descriptor);
+    }
+
+    private Material CreateFallbackRoadMaterial(PathRoadStyle roadStyle)
+    {
+        Color4 color = roadStyle == PathRoadStyle.Paved
+            ? new Color4(0.32f, 0.30f, 0.28f, 1.0f)
+            : new Color4(0.28f, 0.24f, 0.18f, 1.0f);
         var descriptor = new MaterialDescriptor();
         descriptor.Attributes.Diffuse = new MaterialDiffuseMapFeature(new ComputeColor(color));
         descriptor.Attributes.DiffuseModel = new MaterialDiffuseLambertModelFeature();
-        descriptor.Attributes.MicroSurface = new MaterialGlossinessMapFeature(new ComputeFloat(kind == PathFeatureKind.River ? 0.78f : 0.2f));
+        descriptor.Attributes.MicroSurface = new MaterialGlossinessMapFeature(new ComputeFloat(0.2f));
         descriptor.Attributes.Specular = new MaterialMetalnessMapFeature(new ComputeFloat(0.0f));
         descriptor.Attributes.SpecularModel = new MaterialSpecularMicrofacetModelFeature();
         return Material.New(graphicsDevice, descriptor);
+    }
+
+    private Material CreateFallbackRiverMaterial()
+    {
+        var descriptor = new MaterialDescriptor();
+        descriptor.Attributes.Diffuse = new MaterialDiffuseMapFeature(new ComputeColor(new Color4(0.05f, 0.32f, 0.68f, 1.0f)));
+        descriptor.Attributes.DiffuseModel = new MaterialDiffuseLambertModelFeature();
+        descriptor.Attributes.MicroSurface = new MaterialGlossinessMapFeature(new ComputeFloat(0.78f));
+        descriptor.Attributes.Specular = new MaterialMetalnessMapFeature(new ComputeFloat(0.0f));
+        descriptor.Attributes.SpecularModel = new MaterialSpecularMicrofacetModelFeature();
+        return Material.New(graphicsDevice, descriptor);
+    }
+
+    private (Texture? Diffuse, Texture? Normal) GetOrLoadRoadTextures(PathRoadStyle roadStyle)
+    {
+        switch (roadStyle)
+        {
+            case PathRoadStyle.Paved:
+                pavedRoadDiffuseTexture ??= LoadRoadTexture(PavedRoadDiffuseFileName, isNormalMap: false);
+                pavedRoadNormalTexture ??= LoadRoadTexture(PavedRoadNormalFileName, isNormalMap: true);
+                return (pavedRoadDiffuseTexture, pavedRoadNormalTexture);
+            default:
+                dirtRoadDiffuseTexture ??= LoadRoadTexture(DirtRoadDiffuseFileName, isNormalMap: false);
+                dirtRoadNormalTexture ??= LoadRoadTexture(DirtRoadNormalFileName, isNormalMap: true);
+                return (dirtRoadDiffuseTexture, dirtRoadNormalTexture);
+        }
+    }
+
+    private Texture? LoadRoadTexture(string fileName, bool isNormalMap)
+    {
+        string filePath = Path.Combine(AppContext.BaseDirectory, "Resources", "Vic3", "Roads", fileName);
+        if (!File.Exists(filePath))
+        {
+            Trace.WriteLine($"PathFeatureService: missing road texture '{filePath}'.");
+            return null;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(filePath);
+            return Texture.Load(
+                graphicsDevice,
+                stream,
+                TextureFlags.ShaderResource,
+                GraphicsResourceUsage.Immutable,
+                loadAsSrgb: !isNormalMap);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"PathFeatureService: failed to load road texture '{filePath}': {ex}");
+            return null;
+        }
     }
 
     private Material CreateGizmoMaterial(Color4 color)
@@ -1608,6 +1782,32 @@ public sealed class PathFeatureService : IDisposable
         return ((long)chunkZ << 32) | (uint)chunkX;
     }
 
+    private static bool AreStylesEqual(PathFeatureStyle a, PathFeatureStyle b)
+    {
+        ArgumentNullException.ThrowIfNull(a);
+        ArgumentNullException.ThrowIfNull(b);
+
+        return Math.Abs(a.Width - b.Width) < 0.001f
+            && Math.Abs(a.Depth - b.Depth) < 0.001f
+            && Math.Abs(a.SideSlope - b.SideSlope) < 0.001f
+            && Math.Abs(a.CornerSpan - b.CornerSpan) < 0.001f
+            && a.RoadStyle == b.RoadStyle;
+    }
+
+    private void SyncParametersFromSelection()
+    {
+        if (selectedFeatureId is not { } featureId)
+            return;
+
+        PathFeature? feature = FindFeature(featureId);
+        if (feature == null)
+            return;
+
+        isSyncingParameters = true;
+        pathParameters.LoadFromFeature(feature.Kind, feature.Style);
+        isSyncingParameters = false;
+    }
+
     private void NotifyNetworkChanged()
     {
         NetworkChanged?.Invoke(this, EventArgs.Empty);
@@ -1660,14 +1860,12 @@ public sealed class PathFeatureService : IDisposable
         private readonly Entity entity;
         private readonly Buffer vertexBuffer;
         private readonly Buffer indexBuffer;
-        private readonly Material material;
 
-        public PathFeatureMeshHandle(Entity entity, Buffer vertexBuffer, Buffer indexBuffer, Material material)
+        public PathFeatureMeshHandle(Entity entity, Buffer vertexBuffer, Buffer indexBuffer)
         {
             this.entity = entity;
             this.vertexBuffer = vertexBuffer;
             this.indexBuffer = indexBuffer;
-            this.material = material;
         }
 
         public void Dispose(Scene scene)
@@ -1723,10 +1921,12 @@ internal struct PathMeshVertex
 {
     public Vector3 Position;
     public Vector3 Normal;
+    public Vector4 Tangent;
     public Vector2 TexCoord;
 
     public static readonly VertexDeclaration Layout = new(
         VertexElement.Position<Vector3>(),
         VertexElement.Normal<Vector3>(),
+        VertexElement.Tangent<Vector4>(),
         VertexElement.TextureCoordinate<Vector2>());
 }

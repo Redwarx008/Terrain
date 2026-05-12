@@ -632,7 +632,7 @@ public sealed class TerrainManager : IDisposable
                 Depth = feature.Style.Depth,
                 SideSlope = feature.Style.SideSlope,
                 CornerSpan = feature.Style.CornerSpan,
-                MaterialSlotIndex = feature.Style.MaterialSlotIndex,
+                RoadStyle = feature.Style.RoadStyle.ToString(),
             });
         }
 
@@ -760,6 +760,13 @@ public sealed class TerrainManager : IDisposable
             if (!Enum.TryParse(featureConfig.Kind, ignoreCase: true, out PathFeatureKind kind))
                 kind = PathFeatureKind.Road;
 
+            PathRoadStyle roadStyle = PathRoadStyle.Dirt;
+            if (kind == PathFeatureKind.Road
+                && !Enum.TryParse(featureConfig.RoadStyle, ignoreCase: true, out roadStyle))
+            {
+                roadStyle = PathRoadStyle.Dirt;
+            }
+
             var feature = new PathFeature
             {
                 Id = featureId,
@@ -771,7 +778,7 @@ public sealed class TerrainManager : IDisposable
                     Depth = featureConfig.Depth,
                     SideSlope = featureConfig.SideSlope,
                     CornerSpan = featureConfig.CornerSpan,
-                    MaterialSlotIndex = featureConfig.MaterialSlotIndex,
+                    RoadStyle = roadStyle,
                 },
             };
 

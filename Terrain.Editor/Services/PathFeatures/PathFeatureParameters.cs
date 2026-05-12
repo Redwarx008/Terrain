@@ -13,7 +13,7 @@ public sealed class PathFeatureParameters
     private float _depth;
     private float _sideSlope = 4.0f;
     private float _cornerSpan = 0.35f;
-    private int _materialSlotIndex;
+    private PathRoadStyle _roadStyle = PathRoadStyle.Dirt;
     private bool _isSketchModeEnabled;
 
     public static PathFeatureParameters Instance => InstanceFactory.Value;
@@ -91,16 +91,15 @@ public sealed class PathFeatureParameters
         }
     }
 
-    public int MaterialSlotIndex
+    public PathRoadStyle RoadStyle
     {
-        get => _materialSlotIndex;
+        get => _roadStyle;
         set
         {
-            int clamped = Math.Clamp(value, 0, 255);
-            if (_materialSlotIndex == clamped)
+            if (_roadStyle == value)
                 return;
 
-            _materialSlotIndex = clamped;
+            _roadStyle = value;
             ParametersChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -125,11 +124,61 @@ public sealed class PathFeatureParameters
         return new PathFeatureStyle
         {
             Width = Width,
-            Depth = Depth,
+            Depth = _kind == PathFeatureKind.Road ? 0.0f : Depth,
             SideSlope = SideSlope,
             CornerSpan = CornerSpan,
-            MaterialSlotIndex = MaterialSlotIndex,
+            RoadStyle = RoadStyle,
         };
+    }
+
+    public void LoadFromFeature(PathFeatureKind kind, PathFeatureStyle style)
+    {
+        ArgumentNullException.ThrowIfNull(style);
+
+        bool changed = false;
+        float width = Math.Clamp(style.Width, 1.0f, 128.0f);
+        float depth = Math.Clamp(style.Depth, 0.0f, 64.0f);
+        float sideSlope = Math.Clamp(style.SideSlope, 0.1f, 64.0f);
+        float cornerSpan = Math.Clamp(style.CornerSpan, 0.05f, 1.0f);
+
+        if (_kind != kind)
+        {
+            _kind = kind;
+            changed = true;
+        }
+
+        if (Math.Abs(_width - width) >= 0.001f)
+        {
+            _width = width;
+            changed = true;
+        }
+
+        if (Math.Abs(_depth - depth) >= 0.001f)
+        {
+            _depth = depth;
+            changed = true;
+        }
+
+        if (Math.Abs(_sideSlope - sideSlope) >= 0.001f)
+        {
+            _sideSlope = sideSlope;
+            changed = true;
+        }
+
+        if (Math.Abs(_cornerSpan - cornerSpan) >= 0.001f)
+        {
+            _cornerSpan = cornerSpan;
+            changed = true;
+        }
+
+        if (_roadStyle != style.RoadStyle)
+        {
+            _roadStyle = style.RoadStyle;
+            changed = true;
+        }
+
+        if (changed)
+            ParametersChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private PathFeatureParameters()

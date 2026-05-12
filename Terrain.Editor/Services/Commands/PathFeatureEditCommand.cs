@@ -149,7 +149,7 @@ public sealed class PathFeatureEditCommand : ICommand
                 || aFeatures[i].Style.Depth != bFeatures[i].Style.Depth
                 || aFeatures[i].Style.SideSlope != bFeatures[i].Style.SideSlope
                 || aFeatures[i].Style.CornerSpan != bFeatures[i].Style.CornerSpan
-                || aFeatures[i].Style.MaterialSlotIndex != bFeatures[i].Style.MaterialSlotIndex
+                || aFeatures[i].Style.RoadStyle != bFeatures[i].Style.RoadStyle
                 || !aFeatures[i].NodeIds.SequenceEqual(bFeatures[i].NodeIds))
             {
                 return false;

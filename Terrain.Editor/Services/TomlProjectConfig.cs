@@ -234,7 +234,9 @@ public class TomlProjectConfig
                     Depth = ReadFloat(featureNode, "depth", 0.0f),
                     SideSlope = ReadFloat(featureNode, "side_slope", 4.0f),
                     CornerSpan = ReadFloat(featureNode, "corner_span", 0.35f),
-                    MaterialSlotIndex = featureNode.HasKey("material_slot") && featureNode["material_slot"].IsInteger ? (int)featureNode["material_slot"].AsInteger : 0,
+                    RoadStyle = featureNode.HasKey("road_style") && featureNode["road_style"].IsString
+                        ? featureNode["road_style"].AsString.Value
+                        : "Dirt",
                 };
 
                 if (featureNode.HasKey("nodes") && featureNode["nodes"].IsArray)
@@ -389,7 +391,7 @@ public class TomlProjectConfig
                 featureTable["depth"] = feature.Depth;
                 featureTable["side_slope"] = feature.SideSlope;
                 featureTable["corner_span"] = feature.CornerSpan;
-                featureTable["material_slot"] = feature.MaterialSlotIndex;
+                featureTable["road_style"] = feature.RoadStyle;
 
                 var nodesArray = new TomlArray();
                 foreach (string nodeId in feature.NodeIds)
@@ -533,5 +535,5 @@ public class TomlPathFeatureConfig
     public float Depth { get; set; }
     public float SideSlope { get; set; } = 4.0f;
     public float CornerSpan { get; set; } = 0.35f;
-    public int MaterialSlotIndex { get; set; }
+    public string RoadStyle { get; set; } = "Dirt";
 }

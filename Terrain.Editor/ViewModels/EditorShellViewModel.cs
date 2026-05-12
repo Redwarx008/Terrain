@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -208,6 +209,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.EditorModeChanged += OnEditorModeChanged;
         _editorState.HeightToolChanged += OnToolChanged;
         _editorState.PaintToolChanged += OnToolChanged;
+        PathParams.PropertyChanged += OnPathParametersPropertyChanged;
         _editorState.OverlayChanged += OnOverlayChanged;
         _editorState.HeatmapChanged += OnHeatmapChanged;
         _editorState.MaterialSlotSelectionChanged += OnMaterialSlotSelectionChanged;
@@ -764,6 +766,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.OverlayChanged -= OnOverlayChanged;
         _editorState.HeatmapChanged -= OnHeatmapChanged;
         _editorState.MaterialSlotSelectionChanged -= OnMaterialSlotSelectionChanged;
+        PathParams.PropertyChanged -= OnPathParametersPropertyChanged;
         _materialSlotManager.SlotsChanged -= OnMaterialSlotsChanged;
         _materialSlotManager.SelectedSlotChanged -= OnMaterialSlotManagerSelectedSlotChanged;
         _projectManager.DirtyChanged -= OnProjectDirtyChanged;
@@ -956,6 +959,28 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             : GetDefaultToolLabel(SelectedMode);
     }
 
+    private void OnPathParametersPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!string.Equals(e.PropertyName, nameof(PathFeatureParametersViewModel.KindIndex), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (SelectedMode != EditorMode.Path)
+        {
+            return;
+        }
+
+        string targetLabel = PathFeatureParameters.Instance.Kind == PathFeatureKind.River ? "River" : "Road";
+        ToolOptionViewModel? targetTool = Tools.FirstOrDefault(tool => string.Equals(tool.Label, targetLabel, StringComparison.Ordinal));
+        if (targetTool != null && SelectedTool != targetTool)
+        {
+            SelectedTool = targetTool;
+        }
+
+        SelectedToolName = targetLabel;
+    }
+
     private void OnOverlayChanged(object? sender, EventArgs e)
     {
         ShowMaskOverlay = _editorState.ShowMaskOverlay;
@@ -1050,7 +1075,14 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             Tools.Add(tool);
         }
 
-        SelectedTool = Tools.FirstOrDefault(static tool => tool.Label == GetDefaultToolLabel(tool.Mode))
+        string activeToolLabel = SelectedMode switch
+        {
+            EditorMode.Sculpt => _editorState.CurrentHeightTool.ToString(),
+            EditorMode.Path => PathFeatureParameters.Instance.Kind.ToString(),
+            _ => GetDefaultToolLabel(SelectedMode),
+        };
+
+        SelectedTool = Tools.FirstOrDefault(tool => string.Equals(tool.Label, activeToolLabel, StringComparison.Ordinal))
             ?? Tools.FirstOrDefault();
         SelectedToolName = SelectedTool?.Label ?? "None";
     }

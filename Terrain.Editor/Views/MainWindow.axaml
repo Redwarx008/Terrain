@@ -515,14 +515,14 @@
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.Width, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding PathParams.IsRiverTerrainShapeVisible}">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Depth" />
                         <Slider Minimum="0" Maximum="64" Value="{Binding PathParams.Depth}" />
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.Depth, StringFormat='{}{0:F1}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8" IsVisible="{Binding PathParams.IsRiverTerrainShapeVisible}">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Side Slope" />
                         <Slider Minimum="0.1" Maximum="64" Value="{Binding PathParams.SideSlope}" />
@@ -536,12 +536,15 @@
                       </StackPanel>
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.CornerSpan, StringFormat='{}{0:F2}'}" VerticalAlignment="Bottom" />
                     </Grid>
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,72" ColumnSpacing="8" IsVisible="{Binding PathParams.IsRoadStyleVisible}">
                       <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Material" />
-                        <Slider Minimum="0" Maximum="255" Value="{Binding PathParams.MaterialSlotIndex}" />
+                        <TextBlock Classes="fieldLabel" Text="Road Style" />
+                        <ComboBox Classes="metroCombo" SelectedIndex="{Binding PathParams.RoadStyleIndex}">
+                          <ComboBoxItem Content="Dirt" />
+                          <ComboBoxItem Content="Paved" />
+                        </ComboBox>
                       </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.MaterialSlotIndex}" VerticalAlignment="Bottom" />
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.RoadStyleDisplayName}" VerticalAlignment="Bottom" />
                     </Grid>
                   </StackPanel>
                 </Border>
