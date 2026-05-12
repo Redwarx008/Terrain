@@ -1,10 +1,11 @@
 #nullable enable
 
-using System;
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Fonts.Inter;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Terrain.Editor;
 
@@ -27,7 +28,12 @@ internal static class Program
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
-            .LogToTrace();
+            .LogToTrace()
+            .With(new Win32PlatformOptions
+            {
+                RenderingMode = new List<Win32RenderingMode> { Win32RenderingMode.Vulkan },
+                CompositionMode = new List<Win32CompositionMode> { Win32CompositionMode.WinUIComposition }
+            });
     }
 
 #if DEBUG
