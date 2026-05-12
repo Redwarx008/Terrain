@@ -1,0 +1,12 @@
+{"file": ".trellis/spec/editor/index.md", "reason": "编辑器通用约定与新增路径工具/UI 变更的基础规则。"}
+{"file": ".trellis/spec/editor/project-persistence.md", "reason": "本任务会修改路径数据模型与保存/加载链路，必须遵守项目持久化合同。"}
+{"file": ".trellis/spec/editor/native-viewport-hosting.md", "reason": "路径 mesh 仍在嵌入式视口内显示，渲染与可视化改动不能破坏视口宿主约束。"}
+{"file": ".trellis/spec/editor/state-management.md", "reason": "路径参数与模式状态仍需沿用 EditorState/单例参数模式。"}
+{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "编辑器侧 ViewModel、事件释放、XAML 绑定与材质生命周期约束。"}
+{"file": ".trellis/spec/runtime/index.md", "reason": "路径渲染与资源接入会触及运行时风格约定。"}
+{"file": ".trellis/spec/runtime/quality-guidelines.md", "reason": "运行时代码的 nullable、sealed 与 GPU 资源生命周期规则。"}
+{"file": ".trellis/spec/runtime/database-guidelines.md", "reason": "路径样式字段与纹理/资源路径接入需要遵守 TOML 与资源管理约定。"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本任务跨 Path 参数 UI、路径模型、TOML 持久化与视口渲染。"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "需要复用现有路径编辑与样条 mesh 逻辑，避免复制分叉。"}
+{"file": ".trellis/tasks/archive/2026-05/05-06-editor-road-river-drawing/research/vic3-road-river-rendering.md", "reason": "Vic3 道路渲染方式、贴图类型、alpha 与深度偏移的直接参考。"}
+{"file": ".trellis/tasks/05-12-vic3-road-river-rework/research/road-first-implementation-notes.md", "reason": "当前任务已确认的首版范围、现状代码落点与实现约束摘要。"}

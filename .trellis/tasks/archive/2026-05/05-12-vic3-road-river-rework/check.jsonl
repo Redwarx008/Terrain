@@ -1,0 +1,12 @@
+{"file": ".trellis/spec/editor/index.md", "reason": "检查编辑器侧 UI、状态与路径工具集成是否符合总约定。"}
+{"file": ".trellis/spec/editor/project-persistence.md", "reason": "检查路径样式新字段与保存/重开行为是否满足持久化合同。"}
+{"file": ".trellis/spec/editor/native-viewport-hosting.md", "reason": "检查视口渲染改动是否没有破坏嵌入式宿主约束。"}
+{"file": ".trellis/spec/editor/state-management.md", "reason": "检查路径参数单例与模式状态接入是否仍符合现有模式。"}
+{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "检查编辑器代码结构、XAML 绑定、事件释放与材质生命周期约束。"}
+{"file": ".trellis/spec/runtime/index.md", "reason": "检查运行时风格约定与资源接入是否一致。"}
+{"file": ".trellis/spec/runtime/quality-guidelines.md", "reason": "检查 nullable、sealed 与 GPU 资源生命周期问题。"}
+{"file": ".trellis/spec/runtime/database-guidelines.md", "reason": "检查 TOML 读写和资源路径管理是否符合约定。"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查 Path 参数 UI → 样式模型 → TOML → 视口渲染的跨层一致性。"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查是否不必要地复制了现有路径编辑或资源接入逻辑。"}
+{"file": ".trellis/tasks/archive/2026-05/05-06-editor-road-river-drawing/research/vic3-road-river-rendering.md", "reason": "检查实现是否仍对齐 Vic3 道路渲染研究结论。"}
+{"file": ".trellis/tasks/05-12-vic3-road-river-rework/research/road-first-implementation-notes.md", "reason": "检查结果是否满足本任务已确认的首版范围与约束。"}
