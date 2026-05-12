@@ -930,3 +930,36 @@ Fixed Terrain Editor undo/redo shortcuts when the embedded SDL viewport owns key
 ### Next Steps
 
 - None - task complete
+
+
+## Session 29: Vic3 road rendering rework
+
+**Date**: 2026-05-12
+**Task**: Vic3 road rendering rework
+**Branch**: `master`
+
+### Summary
+
+Rework road from solid-color+heightmap-writeback to Vic3-style Diffuse/Normal textures with alpha blend, depth bias, PathRoadStyle enum (Dirt/Paved), dedicated path render stage selectors, and road parameter isolation in Inspector. River deferred to next phase.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fa11559` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
