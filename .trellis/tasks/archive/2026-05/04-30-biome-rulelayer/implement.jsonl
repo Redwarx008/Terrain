@@ -1,8 +1,0 @@
-{"file":".trellis/spec/editor/index.md","reason":"Paint inspector and biome authoring UI live in Terrain.Editor and must follow the editor MVVM/layout conventions."}
-{"file":".trellis/spec/editor/component-guidelines.md","reason":"The biome layer panel is an Avalonia inspector component; this covers layout, bindings, and ViewModel sync patterns."}
-{"file":".trellis/spec/editor/state-management.md","reason":"Biome selection, rule selection, and material slot data cross EditorState, services, and viewmodels."}
-{"file":".trellis/spec/editor/quality-guidelines.md","reason":"Use the editor review checklist while reshaping the inspector UI and bindings."}
-{"file":".trellis/spec/guides/index.md","reason":"Shared thinking guides apply before making UI and data-flow changes."}
-{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The layout change also affects selection/data flow between BiomeRuleService, MaterialSlotManager, EditorState, and the inspector."}
-{"file":".trellis/tasks/04-30-biome-rulelayer/research/project-context-and-specs.md","reason":"Summarizes the existing biome/climate architecture, relevant services, and current UI gaps for this task."}
-{"file":".trellis/tasks/04-30-biome-rulelayer/research/unity-rulelayer-reference.md","reason":"Captures the RuleLayer and modifier-stack interaction model that the new inspector layout is aligning toward."}

@@ -1,4 +1,0 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
-{"file": ".trellis/spec/runtime/index.md", "reason": "运行时渲染约定总览"}
-{"file": ".trellis/spec/runtime/quality-guidelines.md", "reason": "运行时代码与渲染修改的质量约束"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "编辑器渲染代码与shader参数边界检查"}

@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/editor/index.md", "reason": "Editor package entry and linked guidelines for biome panel and binding changes"}
-{"file": ".trellis/spec/editor/component-guidelines.md", "reason": "Rules for ViewModel synchronization, shader modifier behavior, and biome UI component contracts"}
-{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "Editor quality bar for Avalonia layout, MVVM, and disposal/event patterns"}
-{"file": ".trellis/spec/runtime/quality-guidelines.md", "reason": "Runtime and shader-side quality expectations for terrain rendering changes"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer contracts for half-resolution splat sampling and C# to shader parameter flow"}

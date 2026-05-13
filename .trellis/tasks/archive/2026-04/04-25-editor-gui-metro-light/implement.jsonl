@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/editor/index.md", "reason": "编辑器 UI 改造需要遵守 Avalonia/Simple 主题和编辑器开发约定。"}
-{"file": ".trellis/spec/editor/component-guidelines.md", "reason": "主窗口需要基于布局容器重构 Mode、Viewport、Inspector、Asset Browser。"}
-{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "确保 XAML 布局、资源样式和 MVVM 改动符合质量规范。"}
-{"file": ".trellis/spec/editor/state-management.md", "reason": "Inspector 跟随 Mode 的行为要继续建立在 EditorState 上。"}
-{"file": ".trellis/spec/guides/index.md", "reason": "在改动主题资源和布局结构前检查通用思考指南。"}

@@ -1,77 +1,48 @@
 {
-  "env": {
-    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1"
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "python .claude/hooks/statusline.py"
-  },
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python .claude/hooks/session-start.py",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "clear",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python .claude/hooks/session-start.py",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python .claude/hooks/session-start.py",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python .claude/hooks/inject-subagent-context.py",
-            "timeout": 30
-          }
-        ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python .claude/hooks/inject-subagent-context.py",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python .claude/hooks/inject-workflow-state.py",
-            "timeout": 5
-          }
-        ]
-      }
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet restore:*)",
+      "Read(//c/Users/Redwa/.nuget/packages/**)",
+      "Read(//e/WorkSpace/stride/**)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git checkout:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git submodule:*)",
+      "Bash(git subtree:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(xxd:*)",
+      "Bash(gh repo:*)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(uvx --version)",
+      "Bash(uv --version)",
+      "Bash(pipx --version)",
+      "mcp__VS__debugger_status",
+      "mcp__VS__debugger_get_callstack",
+      "mcp__VS__debugger_get_locals",
+      "mcp__VS__document_active",
+      "mcp__VS__errors_list",
+      "mcp__VS__output_list_panes",
+      "mcp__VS__output_read",
+      "mcp__VS__selection_get",
+      "mcp__blender-mcp__get_scene_info",
+      "mcp__blender-mcp__execute_blender_code",
+      "mcp__blender-mcp__get_sketchfab_model_preview",
+      "mcp__blender-mcp__download_sketchfab_model",
+      "mcp__blender-mcp__get_polyhaven_status",
+      "mcp__blender-mcp__get_viewport_screenshot",
+      "mcp__blender-mcp__get_object_info",
+      "WebFetch(domain:api.polyhaven.com)"
     ]
-  },
-  "enabledPlugins": {}
+  }
 }

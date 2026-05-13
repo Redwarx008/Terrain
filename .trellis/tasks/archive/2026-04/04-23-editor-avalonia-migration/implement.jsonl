@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/editor/component-guidelines.md", "reason": "Avalonia component and layout conventions"}
-{"file": ".trellis/spec/editor/index.md", "reason": "Editor UI conventions entry point"}
-{"file": ".trellis/spec/editor/directory-structure.md", "reason": "Avalonia Views/ViewModels/Styles directory conventions"}
-{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "Simple theme and no manual pixel layout rules"}
-{"file": ".trellis/tasks/04-23-editor-avalonia-migration/prd.md", "reason": "Avalonia migration requirements and UI layout rules"}

@@ -1,4 +1,0 @@
-{"file": ".trellis/spec/editor/index.md", "reason": "校验编辑器 UI 改造是否符合基础规范。"}
-{"file": ".trellis/spec/editor/component-guidelines.md", "reason": "校验主窗口布局是否继续使用标准 Avalonia 组件模式。"}
-{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "校验样式资源、绑定和布局实现质量。"}
-{"file": ".trellis/spec/guides/index.md", "reason": "最终检查是否遗漏跨面板结构和资源复用问题。"}

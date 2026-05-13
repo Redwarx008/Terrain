@@ -1,5 +1,0 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
-{"file": ".trellis/spec/editor/index.md", "reason": "编辑器核心约定 — 检查实现是否符合禁止模式"}
-{"file": ".trellis/spec/editor/quality-guidelines.md", "reason": "代码审查清单、Dispose 模式、事件订阅/取消订阅约定"}
-{"file": ".trellis/spec/editor/state-management.md", "reason": "状态管理约定 — 验证 BrushParameters/EditorState 使用是否正确"}
-{"file": ".trellis/tasks/04-29-fix-brush-projection/research/stride-decal-support.md", "reason": "Stride 无内置 decal — 确认约束"}

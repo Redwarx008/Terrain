@@ -1,4 +1,0 @@
-{"file":".trellis/spec/editor/index.md","reason":"编辑器任务的总约定入口，确认可空、MVVM、Dispose 等基础规范。"}
-{"file":".trellis/spec/editor/state-management.md","reason":"本次修复涉及 CurrentBiomeId、HasSelectedTool 与 Landscape 模式状态同步。"}
-{"file":".trellis/spec/editor/quality-guidelines.md","reason":"修改 C# editor 代码时遵循命名、事件与可维护性规范。"}
-{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"BiomeMask 在半分辨率空间，修复时要检查笔刷输入、mask 写入和材质重建之间的坐标边界。"}

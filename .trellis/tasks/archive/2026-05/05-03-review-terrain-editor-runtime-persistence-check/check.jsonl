@@ -1,6 +1,0 @@
-{"file":".trellis/spec/editor/index.md","reason":"Editor layer quality and review entry point"}
-{"file":".trellis/spec/editor/project-persistence.md","reason":"Editor project persistence behavior and invariants"}
-{"file":".trellis/spec/runtime/index.md","reason":"Runtime layer quality and review entry point"}
-{"file":".trellis/spec/runtime/terrain-runtime-persistence.md","reason":"Runtime persistence flow, save/load/export expectations"}
-{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Cross-layer review checklist for editor/runtime data flow"}
-{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Check duplicated persistence/export logic and cleanup consistency"}
