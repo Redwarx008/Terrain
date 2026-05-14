@@ -19,6 +19,7 @@ namespace Terrain.Editor
             stage float EdgeFadeStart;
             stage float NormalStrength;
             stage float EndFadeoutFactor;
+            stage float AlphaClipThreshold;
         }
 
         static float RemapClamped(float value, float inMin, float inMax, float outMin, float outMax)
@@ -38,7 +39,8 @@ namespace Terrain.Editor
         override void Compute()
         {
             float2 uv = streams.TexCoord;
-            float maxU = streams.TexCoord1.x;
+            float pathDistance = streams.TexCoord1.x;
+            float maxPathDistance = streams.TexCoord1.y;
 
             // Diffuse
             float4 color = DiffuseTexture.Sample(DiffuseSampler, uv) * BaseColor;
@@ -61,15 +63,16 @@ namespace Terrain.Editor
             float edgeDistance = abs(uv.y * 2.0f - 1.0f);
             float sideFade = 1.0f - smoothstep(EdgeFadeStart, 1.0f, edgeDistance);
 
-            // End-of-road fade (along road length, matches V3 JominiFlatSplineEdgeOpacity)
-            float t = (maxU > 0.001f) ? (uv.x / maxU) : 0.0f;
+            // End-of-road fade (along road length, based on actual spline distance like Vic3)
+            float distanceToEnd = min(pathDistance, maxPathDistance - pathDistance) + 0.0001f;
             float endFade = RemapClamped(
-                min(t, 1.0f - t) * EndFadeoutFactor,
+                distanceToEnd * EndFadeoutFactor,
                 0.0f, 1.2f,
                 0.0f, 1.0f);
 
             // Combined opacity
             color.a *= saturate(sideFade * endFade);
+            clip(color.a - AlphaClipThreshold);
             streams.matDiffuse = color;
             streams.matColorBase = color;
         }

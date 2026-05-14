@@ -54,8 +54,9 @@ public sealed class PathFeatureService : IDisposable
     private const string PavedRoadDiffuseFileName = "roadpaved_diffuse.dds";
     private const string PavedRoadNormalFileName = "roadpaved_normal.dds";
     private const string PavedRoadPropertiesFileName = "roadpaved_properties.dds";
-    private const float RoadEdgeFadeStart = 0.72f;
+    private const float RoadEdgeFadeStart = 0.86f;
     private const float RoadEndFadeoutFactor = 4.0f;
+    private const float RoadAlphaClipThreshold = 0.08f;
     private const float RiverEdgeFadeStart = 0.68f;
     private const float RiverFlowTiling = 0.22f;
     private const float RiverFlowStrength = 0.18f;
@@ -73,6 +74,7 @@ public sealed class PathFeatureService : IDisposable
     private Texture? dirtRoadDiffuseTexture;
     private Texture? dirtRoadNormalTexture;
     private Texture? dirtRoadPropertiesTexture;
+    private SamplerState? roadSurfaceSampler;
     private Texture? pavedRoadDiffuseTexture;
     private Texture? pavedRoadNormalTexture;
     private Texture? pavedRoadPropertiesTexture;
@@ -383,6 +385,8 @@ public sealed class PathFeatureService : IDisposable
         dirtRoadNormalTexture = null;
         dirtRoadPropertiesTexture?.Dispose();
         dirtRoadPropertiesTexture = null;
+        roadSurfaceSampler?.Dispose();
+        roadSurfaceSampler = null;
         pavedRoadDiffuseTexture?.Dispose();
         pavedRoadDiffuseTexture = null;
         pavedRoadNormalTexture?.Dispose();
@@ -1118,7 +1122,7 @@ public sealed class PathFeatureService : IDisposable
         float roadRepeatScale = feature.Kind == PathFeatureKind.Road
             ? GetRoadTextureRepeatScale(feature.Style)
             : RiverTextureRepeatUScale;
-        float maxU = cumulativeDistances[^1] * roadRepeatScale;
+        float maxDistance = cumulativeDistances[^1];
         for (int i = 0; i < meshRows.Count; i++)
         {
             PathRibbonRow row = meshRows[i];
@@ -1126,8 +1130,9 @@ public sealed class PathFeatureService : IDisposable
             Vector3 rightPosition = row.Position + row.Side * halfWidth;
             leftPosition.Y = (terrainManager.GetHeightAtPosition(leftPosition.X, leftPosition.Z) ?? row.Position.Y) + MeshVerticalOffset;
             rightPosition.Y = (terrainManager.GetHeightAtPosition(rightPosition.X, rightPosition.Z) ?? row.Position.Y) + MeshVerticalOffset;
-            float u = cumulativeDistances[i] * roadRepeatScale;
-            Vector2 texCoord1 = new(maxU, 0.0f);
+            float distanceAlongPath = cumulativeDistances[i];
+            float u = distanceAlongPath * roadRepeatScale;
+            Vector2 texCoord1 = new(distanceAlongPath, maxDistance);
             Vector3 tangentDirection = SideToTangent(row.Side);
             Vector4 tangent = new(tangentDirection.X, tangentDirection.Y, tangentDirection.Z, 1.0f);
             Vector3 leftNormal = ComputeTerrainNormal(leftPosition.X, leftPosition.Z);
@@ -1333,16 +1338,18 @@ public sealed class PathFeatureService : IDisposable
         Material material = Material.New(graphicsDevice, descriptor);
         ParameterCollection parameters = material.Passes[0].Parameters;
         parameters.Set(MaterialKeys.HasNormalMap, true);
+        SamplerState roadSampler = GetRoadSurfaceSampler();
         parameters.Set(PathRoadSurfaceKeys.DiffuseTexture, diffuseTexture);
-        parameters.Set(PathRoadSurfaceKeys.DiffuseSampler, graphicsDevice.SamplerStates.LinearWrap);
+        parameters.Set(PathRoadSurfaceKeys.DiffuseSampler, roadSampler);
         parameters.Set(PathRoadSurfaceKeys.NormalTexture, normalTexture);
-        parameters.Set(PathRoadSurfaceKeys.NormalSampler, graphicsDevice.SamplerStates.LinearWrap);
+        parameters.Set(PathRoadSurfaceKeys.NormalSampler, roadSampler);
         parameters.Set(PathRoadSurfaceKeys.PropertiesTexture, propertiesTexture);
-        parameters.Set(PathRoadSurfaceKeys.PropertiesSampler, graphicsDevice.SamplerStates.LinearWrap);
+        parameters.Set(PathRoadSurfaceKeys.PropertiesSampler, roadSampler);
         parameters.Set(PathRoadSurfaceKeys.BaseColor, baseColor);
         parameters.Set(PathRoadSurfaceKeys.EdgeFadeStart, RoadEdgeFadeStart);
         parameters.Set(PathRoadSurfaceKeys.NormalStrength, 1.0f);
         parameters.Set(PathRoadSurfaceKeys.EndFadeoutFactor, RoadEndFadeoutFactor);
+        parameters.Set(PathRoadSurfaceKeys.AlphaClipThreshold, RoadAlphaClipThreshold);
         return material;
     }
 
@@ -1415,6 +1422,20 @@ public sealed class PathFeatureService : IDisposable
             Trace.WriteLine($"PathFeatureService: failed to load road texture '{filePath}': {ex}");
             return null;
         }
+    }
+
+    private SamplerState GetRoadSurfaceSampler()
+    {
+        if (roadSurfaceSampler != null)
+            return roadSurfaceSampler;
+
+        var description = new SamplerStateDescription(TextureFilter.Linear, TextureAddressMode.Wrap)
+        {
+            AddressV = TextureAddressMode.Clamp,
+            AddressW = TextureAddressMode.Wrap,
+        };
+        roadSurfaceSampler = SamplerState.New(graphicsDevice, description, "PathRoadSurfaceSampler");
+        return roadSurfaceSampler;
     }
 
     private Texture GetFallbackPathDiffuseTexture()

@@ -28,5 +28,6 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<float> EdgeFadeStart = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<float> NormalStrength = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<float> EndFadeoutFactor = ParameterKeys.NewValue<float>();
+        public static readonly ValueParameterKey<float> AlphaClipThreshold = ParameterKeys.NewValue<float>();
     }
 }
