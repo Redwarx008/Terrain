@@ -129,18 +129,18 @@ internal sealed class EditorTerrainSplatMapComputeDispatcher : IDisposable
         SetSliceBounds(parameters, 7, GetSliceBounds(entity, 7));
     }
 
-    private static Int4 GetSliceBounds(EditorTerrainEntity entity, int sliceIndex)
+    private static Vector4 GetSliceBounds(EditorTerrainEntity entity, int sliceIndex)
     {
         if (sliceIndex >= entity.Slices.Count)
-            return new Int4(0, 0, 1, 1);
+            return new Vector4(0, 0, 1, 1);
 
         EditorTerrainSlice slice = entity.Slices[sliceIndex];
         // HeightmapSliceBounds* always uses full-resolution heightmap space.
         // The shader converts to splatmap space later via GetIndexMapSliceBounds().
-        return new Int4(slice.StartSampleX, slice.StartSampleZ, slice.Width, slice.Height);
+        return new Vector4(slice.StartSampleX, slice.StartSampleZ, slice.Width, slice.Height);
     }
 
-    private static void SetSliceBounds(ParameterCollection parameters, int sliceIndex, Int4 bounds)
+    private static void SetSliceBounds(ParameterCollection parameters, int sliceIndex, Vector4 bounds)
     {
         switch (sliceIndex)
         {

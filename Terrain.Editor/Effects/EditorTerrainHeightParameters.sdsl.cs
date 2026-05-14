@@ -46,13 +46,13 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<int> BaseChunkSize = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> SliceCount = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> HeightmapSlicePadding = ParameterKeys.NewValue<int>();
-        public static readonly ValueParameterKey<Int4> HeightmapSliceBounds0 = ParameterKeys.NewValue<Int4>();
-        public static readonly ValueParameterKey<Int4> HeightmapSliceBounds1 = ParameterKeys.NewValue<Int4>();
-        public static readonly ValueParameterKey<Int4> HeightmapSliceBounds2 = ParameterKeys.NewValue<Int4>();
-        public static readonly ValueParameterKey<Int4> HeightmapSliceBounds3 = ParameterKeys.NewValue<Int4>();
-        public static readonly ValueParameterKey<Int4> HeightmapSliceBounds4 = ParameterKeys.NewValue<Int4>();
-        public static readonly ValueParameterKey<Int4> HeightmapSliceBounds5 = ParameterKeys.NewValue<Int4>();
-        public static readonly ValueParameterKey<Int4> HeightmapSliceBounds6 = ParameterKeys.NewValue<Int4>();
-        public static readonly ValueParameterKey<Int4> HeightmapSliceBounds7 = ParameterKeys.NewValue<Int4>();
+        public static readonly ValueParameterKey<Vector4> HeightmapSliceBounds0 = ParameterKeys.NewValue<Vector4>();
+        public static readonly ValueParameterKey<Vector4> HeightmapSliceBounds1 = ParameterKeys.NewValue<Vector4>();
+        public static readonly ValueParameterKey<Vector4> HeightmapSliceBounds2 = ParameterKeys.NewValue<Vector4>();
+        public static readonly ValueParameterKey<Vector4> HeightmapSliceBounds3 = ParameterKeys.NewValue<Vector4>();
+        public static readonly ValueParameterKey<Vector4> HeightmapSliceBounds4 = ParameterKeys.NewValue<Vector4>();
+        public static readonly ValueParameterKey<Vector4> HeightmapSliceBounds5 = ParameterKeys.NewValue<Vector4>();
+        public static readonly ValueParameterKey<Vector4> HeightmapSliceBounds6 = ParameterKeys.NewValue<Vector4>();
+        public static readonly ValueParameterKey<Vector4> HeightmapSliceBounds7 = ParameterKeys.NewValue<Vector4>();
     }
 }

@@ -38,19 +38,19 @@ namespace Terrain.Editor
             stage int BaseChunkSize;
             stage int SliceCount;
             stage int HeightmapSlicePadding;
-            stage int4 HeightmapSliceBounds0;
-            stage int4 HeightmapSliceBounds1;
-            stage int4 HeightmapSliceBounds2;
-            stage int4 HeightmapSliceBounds3;
-            stage int4 HeightmapSliceBounds4;
-            stage int4 HeightmapSliceBounds5;
-            stage int4 HeightmapSliceBounds6;
-            stage int4 HeightmapSliceBounds7;
+            stage float4 HeightmapSliceBounds0;
+            stage float4 HeightmapSliceBounds1;
+            stage float4 HeightmapSliceBounds2;
+            stage float4 HeightmapSliceBounds3;
+            stage float4 HeightmapSliceBounds4;
+            stage float4 HeightmapSliceBounds5;
+            stage float4 HeightmapSliceBounds6;
+            stage float4 HeightmapSliceBounds7;
         }
 
-        int4 GetSliceBounds(int sliceIndex)
+        float4 GetSliceBounds(int sliceIndex)
         {
-            int4 bounds = HeightmapSliceBounds0;
+            float4 bounds = HeightmapSliceBounds0;
             switch (sliceIndex)
             {
                 case 1: bounds = HeightmapSliceBounds1; break;
@@ -68,9 +68,9 @@ namespace Terrain.Editor
         int4 GetIndexMapSliceBounds(int sliceIndex)
         {
             // SplatMap uses 1/2 resolution: convert heightmap bounds to splatmap space
-            int4 heightmapBounds = GetSliceBounds(sliceIndex);
-            return int4(heightmapBounds.x / 2, heightmapBounds.y / 2,
-                        (heightmapBounds.z + 1) / 2, (heightmapBounds.w + 1) / 2);
+            float4 heightmapBounds = GetSliceBounds(sliceIndex);
+            return int4(heightmapBounds.x / 2.0f, heightmapBounds.y / 2.0f,
+                        (heightmapBounds.z + 1.0f) / 2.0f, (heightmapBounds.w + 1.0f) / 2.0f);
         }
 
         bool IsInsideSlice(float2 sampleCoord, int4 bounds)
