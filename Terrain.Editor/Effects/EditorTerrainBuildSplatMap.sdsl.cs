@@ -32,5 +32,9 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<int> BiomeCount = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> LayerCount = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> ModifierCount = ParameterKeys.NewValue<int>();
+        public static readonly ObjectParameterKey<Texture> TextureMaskResource = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> TextureMaskSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ValueParameterKey<int> HeatmapLayerIndex = ParameterKeys.NewValue<int>();
+        public static readonly ValueParameterKey<int> HeatmapEnabled = ParameterKeys.NewValue<int>();
     }
 }

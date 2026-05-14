@@ -27,6 +27,10 @@ namespace Terrain.Editor
         public static readonly ObjectParameterKey<SamplerState> MaterialNormalSampler = ParameterKeys.NewObject<SamplerState>();
         public static readonly ObjectParameterKey<Texture> MaterialPropertiesArray = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<SamplerState> MaterialPropertiesSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ObjectParameterKey<Texture> BiomeMaskDebugTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> BiomeMaskDebugSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ObjectParameterKey<Texture> HeatmapTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> HeatmapSampler = ParameterKeys.NewObject<SamplerState>();
         public static readonly ValueParameterKey<float> DiffuseWorldRepeatSize = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<Color4> BaseColor = ParameterKeys.NewValue<Color4>();
         public static readonly ValueParameterKey<Vector2> HeightmapDimensionsInSamples = ParameterKeys.NewValue<Vector2>();
@@ -36,5 +40,8 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<int> MaterialNormalArraySize = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<int> MaterialPropertiesArraySize = ParameterKeys.NewValue<int>();
         public static readonly ValueParameterKey<float> MaterialTilingScale = ParameterKeys.NewValue<float>();
+        public static readonly ValueParameterKey<int> DebugViewMode = ParameterKeys.NewValue<int>();
+        public static readonly ValueParameterKey<int> HeatmapLayerIndex = ParameterKeys.NewValue<int>();
+        public static readonly ValueParameterKey<int> ShowMaskOverlay = ParameterKeys.NewValue<int>();
     }
 }
