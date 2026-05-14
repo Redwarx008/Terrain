@@ -60,6 +60,16 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
+    <Compile Update="Effects\PathRoadSurface.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\PathRiverSurface.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -68,6 +78,12 @@
     </None>
     <None Update="Effects\BrushDecalShader.sdsl">
       <LastGenOutput>BrushDecalShader.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\PathRoadSurface.sdsl">
+      <LastGenOutput>PathRoadSurface.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\PathRiverSurface.sdsl">
+      <LastGenOutput>PathRiverSurface.sdsl.cs</LastGenOutput>
     </None>
   </ItemGroup>
 

@@ -16,8 +16,11 @@ using Stride.Graphics.GeometricPrimitives;
 using Stride.Rendering;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
+using Terrain.Editor;
 using Terrain.Editor.Rendering;
+using Terrain.Editor.Rendering.Materials;
 using Terrain.Editor.Services.Commands;
+using StrideColor = Stride.Core.Mathematics.Color;
 using Buffer = Stride.Graphics.Buffer;
 
 namespace Terrain.Editor.Services.PathFeatures;
@@ -38,17 +41,25 @@ public sealed class PathFeatureService : IDisposable
     private const float TerrainBrushSpacing = 0.75f;
     private const float MeshFollowTerrainSpacing = 1.0f;
     private const float MeshFollowTerrainHeightTolerance = 0.08f;
-    private const float RoundJoinThresholdDegrees = 6.0f;
-    private const float RoundJoinStepDegrees = 5.0f;
     private const int MaxCurveSubdivisionDepth = 8;
     private const int MaxMeshFollowTerrainSubdivisionDepth = 6;
     private const float MeshVerticalOffset = 0.02f;
     private const float NodeGizmoVerticalOffset = 1.35f;
-    private const float RoadTextureRepeatVScale = 0.08f;
+    private const float RiverTextureRepeatUScale = 1.0f / 35.0f;
+    private const float DirtRoadTextureAspect = 4096.0f / 128.0f;
+    private const float PavedRoadTextureAspect = 512.0f / 64.0f;
     private const string DirtRoadDiffuseFileName = "road_dirt_diffuse.dds";
     private const string DirtRoadNormalFileName = "road_dirt_normal.dds";
+    private const string DirtRoadPropertiesFileName = "road_dirt_properties.dds";
     private const string PavedRoadDiffuseFileName = "roadpaved_diffuse.dds";
     private const string PavedRoadNormalFileName = "roadpaved_normal.dds";
+    private const string PavedRoadPropertiesFileName = "roadpaved_properties.dds";
+    private const float RoadEdgeFadeStart = 0.72f;
+    private const float RoadEndFadeoutFactor = 4.0f;
+    private const float RiverEdgeFadeStart = 0.68f;
+    private const float RiverFlowTiling = 0.22f;
+    private const float RiverFlowStrength = 0.18f;
+    private const float RiverHighlightStrength = 0.22f;
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly Scene scene;
@@ -61,8 +72,12 @@ public sealed class PathFeatureService : IDisposable
     private ushort[]? baseHeightData;
     private Texture? dirtRoadDiffuseTexture;
     private Texture? dirtRoadNormalTexture;
+    private Texture? dirtRoadPropertiesTexture;
     private Texture? pavedRoadDiffuseTexture;
     private Texture? pavedRoadNormalTexture;
+    private Texture? pavedRoadPropertiesTexture;
+    private Texture? fallbackPathDiffuseTexture;
+    private Texture? fallbackPathNormalTexture;
     private Material? dirtRoadMaterial;
     private Material? pavedRoadMaterial;
     private Material? riverMaterial;
@@ -366,10 +381,20 @@ public sealed class PathFeatureService : IDisposable
         dirtRoadDiffuseTexture = null;
         dirtRoadNormalTexture?.Dispose();
         dirtRoadNormalTexture = null;
+        dirtRoadPropertiesTexture?.Dispose();
+        dirtRoadPropertiesTexture = null;
         pavedRoadDiffuseTexture?.Dispose();
         pavedRoadDiffuseTexture = null;
         pavedRoadNormalTexture?.Dispose();
         pavedRoadNormalTexture = null;
+        pavedRoadPropertiesTexture?.Dispose();
+        pavedRoadPropertiesTexture = null;
+        fallbackPathDiffuseTexture?.Dispose();
+        fallbackPathDiffuseTexture = null;
+        fallbackPathNormalTexture?.Dispose();
+        fallbackPathNormalTexture = null;
+        fallbackPathPropertiesTexture?.Dispose();
+        fallbackPathPropertiesTexture = null;
         normalNodeGizmoMaterial = null;
         connectedNodeGizmoMaterial = null;
         selectedNodeGizmoMaterial = null;
@@ -1082,6 +1107,18 @@ public sealed class PathFeatureService : IDisposable
             return;
 
         var vertices = new List<PathMeshVertex>(meshRows.Count * 2);
+        var cumulativeDistances = new float[meshRows.Count];
+        float uvDistance = 0.0f;
+        for (int i = 1; i < meshRows.Count; i++)
+        {
+            uvDistance += DistanceXZ(meshRows[i - 1].Position, meshRows[i].Position);
+            cumulativeDistances[i] = uvDistance;
+        }
+
+        float roadRepeatScale = feature.Kind == PathFeatureKind.Road
+            ? GetRoadTextureRepeatScale(feature.Style)
+            : RiverTextureRepeatUScale;
+        float maxU = cumulativeDistances[^1] * roadRepeatScale;
         for (int i = 0; i < meshRows.Count; i++)
         {
             PathRibbonRow row = meshRows[i];
@@ -1089,22 +1126,27 @@ public sealed class PathFeatureService : IDisposable
             Vector3 rightPosition = row.Position + row.Side * halfWidth;
             leftPosition.Y = (terrainManager.GetHeightAtPosition(leftPosition.X, leftPosition.Z) ?? row.Position.Y) + MeshVerticalOffset;
             rightPosition.Y = (terrainManager.GetHeightAtPosition(rightPosition.X, rightPosition.Z) ?? row.Position.Y) + MeshVerticalOffset;
-            float v = row.Distance * RoadTextureRepeatVScale;
-            Vector3 side = NormalizeSide(row.Side);
-            Vector4 tangent = new(side.X, side.Y, side.Z, 1.0f);
+            float u = cumulativeDistances[i] * roadRepeatScale;
+            Vector2 texCoord1 = new(maxU, 0.0f);
+            Vector3 tangentDirection = SideToTangent(row.Side);
+            Vector4 tangent = new(tangentDirection.X, tangentDirection.Y, tangentDirection.Z, 1.0f);
+            Vector3 leftNormal = ComputeTerrainNormal(leftPosition.X, leftPosition.Z);
+            Vector3 rightNormal = ComputeTerrainNormal(rightPosition.X, rightPosition.Z);
             vertices.Add(new PathMeshVertex
             {
                 Position = leftPosition,
-                Normal = Vector3.UnitY,
+                Normal = leftNormal,
                 Tangent = tangent,
-                TexCoord = new Vector2(0.0f, v),
+                TexCoord = new Vector2(u, 0.0f),
+                TexCoord1 = texCoord1,
             });
             vertices.Add(new PathMeshVertex
             {
                 Position = rightPosition,
-                Normal = Vector3.UnitY,
+                Normal = rightNormal,
                 Tangent = tangent,
-                TexCoord = new Vector2(1.0f, v),
+                TexCoord = new Vector2(u, 1.0f),
+                TexCoord1 = texCoord1,
             });
         }
 
@@ -1268,69 +1310,82 @@ public sealed class PathFeatureService : IDisposable
 
     private Material CreateRoadMaterial(PathRoadStyle roadStyle)
     {
-        (Texture? diffuseTexture, Texture? normalTexture) = GetOrLoadRoadTextures(roadStyle);
-        if (diffuseTexture == null)
-            return CreateFallbackRoadMaterial(roadStyle);
+        (Texture? diffuseTexture, Texture? normalTexture, Texture? propertiesTexture) = GetOrLoadRoadTextures(roadStyle);
+        bool useFallbackColors = diffuseTexture == null || normalTexture == null || propertiesTexture == null;
+        diffuseTexture ??= GetFallbackPathDiffuseTexture();
+        normalTexture ??= GetFallbackPathNormalTexture();
+        propertiesTexture ??= GetFallbackPathPropertiesTexture();
+
+        Color4 baseColor = useFallbackColors
+            ? roadStyle == PathRoadStyle.Paved
+                ? new Color4(0.32f, 0.30f, 0.28f, 1.0f)
+                : new Color4(0.28f, 0.24f, 0.18f, 1.0f)
+            : Color4.White;
 
         var descriptor = new MaterialDescriptor();
-        descriptor.Attributes.Diffuse = new MaterialDiffuseMapFeature(new ComputeTextureColor(diffuseTexture));
+        descriptor.Attributes.Diffuse = new MaterialPathRoadFeature();
         descriptor.Attributes.DiffuseModel = new MaterialDiffuseLambertModelFeature();
         descriptor.Attributes.MicroSurface = new MaterialGlossinessMapFeature(new ComputeFloat(0.28f));
         descriptor.Attributes.Specular = new MaterialMetalnessMapFeature(new ComputeFloat(0.0f));
         descriptor.Attributes.SpecularModel = new MaterialSpecularMicrofacetModelFeature();
-        var alpha = new ComputeTextureScalar(diffuseTexture, TextureCoordinate.Texcoord0, Vector2.One, Vector2.Zero)
-        {
-            Channel = ColorChannel.A,
-        };
-        descriptor.Attributes.Transparency = new MaterialTransparencyBlendFeature
-        {
-            Alpha = alpha,
-        };
-        if (normalTexture != null)
-        {
-            descriptor.Attributes.Surface = new MaterialNormalMapFeature(new ComputeTextureColor(normalTexture));
-        }
+        descriptor.Attributes.Transparency = new MaterialTransparencyBlendFeature();
 
-        return Material.New(graphicsDevice, descriptor);
+        Material material = Material.New(graphicsDevice, descriptor);
+        ParameterCollection parameters = material.Passes[0].Parameters;
+        parameters.Set(MaterialKeys.HasNormalMap, true);
+        parameters.Set(PathRoadSurfaceKeys.DiffuseTexture, diffuseTexture);
+        parameters.Set(PathRoadSurfaceKeys.DiffuseSampler, graphicsDevice.SamplerStates.LinearWrap);
+        parameters.Set(PathRoadSurfaceKeys.NormalTexture, normalTexture);
+        parameters.Set(PathRoadSurfaceKeys.NormalSampler, graphicsDevice.SamplerStates.LinearWrap);
+        parameters.Set(PathRoadSurfaceKeys.PropertiesTexture, propertiesTexture);
+        parameters.Set(PathRoadSurfaceKeys.PropertiesSampler, graphicsDevice.SamplerStates.LinearWrap);
+        parameters.Set(PathRoadSurfaceKeys.BaseColor, baseColor);
+        parameters.Set(PathRoadSurfaceKeys.EdgeFadeStart, RoadEdgeFadeStart);
+        parameters.Set(PathRoadSurfaceKeys.NormalStrength, 1.0f);
+        parameters.Set(PathRoadSurfaceKeys.EndFadeoutFactor, RoadEndFadeoutFactor);
+        return material;
     }
 
     private Material CreateFallbackRoadMaterial(PathRoadStyle roadStyle)
     {
-        Color4 color = roadStyle == PathRoadStyle.Paved
-            ? new Color4(0.32f, 0.30f, 0.28f, 1.0f)
-            : new Color4(0.28f, 0.24f, 0.18f, 1.0f);
-        var descriptor = new MaterialDescriptor();
-        descriptor.Attributes.Diffuse = new MaterialDiffuseMapFeature(new ComputeColor(color));
-        descriptor.Attributes.DiffuseModel = new MaterialDiffuseLambertModelFeature();
-        descriptor.Attributes.MicroSurface = new MaterialGlossinessMapFeature(new ComputeFloat(0.2f));
-        descriptor.Attributes.Specular = new MaterialMetalnessMapFeature(new ComputeFloat(0.0f));
-        descriptor.Attributes.SpecularModel = new MaterialSpecularMicrofacetModelFeature();
-        return Material.New(graphicsDevice, descriptor);
+        return CreateRoadMaterial(roadStyle);
     }
 
     private Material CreateFallbackRiverMaterial()
     {
         var descriptor = new MaterialDescriptor();
-        descriptor.Attributes.Diffuse = new MaterialDiffuseMapFeature(new ComputeColor(new Color4(0.05f, 0.32f, 0.68f, 1.0f)));
+        descriptor.Attributes.Diffuse = new MaterialPathRiverFeature();
         descriptor.Attributes.DiffuseModel = new MaterialDiffuseLambertModelFeature();
         descriptor.Attributes.MicroSurface = new MaterialGlossinessMapFeature(new ComputeFloat(0.78f));
         descriptor.Attributes.Specular = new MaterialMetalnessMapFeature(new ComputeFloat(0.0f));
         descriptor.Attributes.SpecularModel = new MaterialSpecularMicrofacetModelFeature();
-        return Material.New(graphicsDevice, descriptor);
+        descriptor.Attributes.Transparency = new MaterialTransparencyBlendFeature();
+
+        Material material = Material.New(graphicsDevice, descriptor);
+        ParameterCollection parameters = material.Passes[0].Parameters;
+        parameters.Set(PathRiverSurfaceKeys.ShallowColor, new Color4(0.10f, 0.42f, 0.78f, 0.58f));
+        parameters.Set(PathRiverSurfaceKeys.DeepColor, new Color4(0.03f, 0.18f, 0.42f, 0.90f));
+        parameters.Set(PathRiverSurfaceKeys.EdgeFadeStart, RiverEdgeFadeStart);
+        parameters.Set(PathRiverSurfaceKeys.FlowTiling, RiverFlowTiling);
+        parameters.Set(PathRiverSurfaceKeys.FlowStrength, RiverFlowStrength);
+        parameters.Set(PathRiverSurfaceKeys.HighlightStrength, RiverHighlightStrength);
+        return material;
     }
 
-    private (Texture? Diffuse, Texture? Normal) GetOrLoadRoadTextures(PathRoadStyle roadStyle)
+    private (Texture? Diffuse, Texture? Normal, Texture? Properties) GetOrLoadRoadTextures(PathRoadStyle roadStyle)
     {
         switch (roadStyle)
         {
             case PathRoadStyle.Paved:
                 pavedRoadDiffuseTexture ??= LoadRoadTexture(PavedRoadDiffuseFileName, isNormalMap: false);
                 pavedRoadNormalTexture ??= LoadRoadTexture(PavedRoadNormalFileName, isNormalMap: true);
-                return (pavedRoadDiffuseTexture, pavedRoadNormalTexture);
+                pavedRoadPropertiesTexture ??= LoadRoadTexture(PavedRoadPropertiesFileName, isNormalMap: false);
+                return (pavedRoadDiffuseTexture, pavedRoadNormalTexture, pavedRoadPropertiesTexture);
             default:
                 dirtRoadDiffuseTexture ??= LoadRoadTexture(DirtRoadDiffuseFileName, isNormalMap: false);
                 dirtRoadNormalTexture ??= LoadRoadTexture(DirtRoadNormalFileName, isNormalMap: true);
-                return (dirtRoadDiffuseTexture, dirtRoadNormalTexture);
+                dirtRoadPropertiesTexture ??= LoadRoadTexture(DirtRoadPropertiesFileName, isNormalMap: false);
+                return (dirtRoadDiffuseTexture, dirtRoadNormalTexture, dirtRoadPropertiesTexture);
         }
     }
 
@@ -1343,6 +1398,8 @@ public sealed class PathFeatureService : IDisposable
             return null;
         }
 
+        bool isDataTexture = isNormalMap || fileName.EndsWith("_properties.dds", StringComparison.OrdinalIgnoreCase);
+
         try
         {
             using var stream = File.OpenRead(filePath);
@@ -1351,13 +1408,70 @@ public sealed class PathFeatureService : IDisposable
                 stream,
                 TextureFlags.ShaderResource,
                 GraphicsResourceUsage.Immutable,
-                loadAsSrgb: !isNormalMap);
+                loadAsSrgb: !isDataTexture);
         }
         catch (Exception ex)
         {
             Trace.WriteLine($"PathFeatureService: failed to load road texture '{filePath}': {ex}");
             return null;
         }
+    }
+
+    private Texture GetFallbackPathDiffuseTexture()
+    {
+        if (fallbackPathDiffuseTexture != null)
+            return fallbackPathDiffuseTexture;
+
+        var data = new[]
+        {
+            new StrideColor(255, 255, 255, 255)
+        };
+        fallbackPathDiffuseTexture = Texture.New2D(
+            graphicsDevice,
+            1,
+            1,
+            PixelFormat.R8G8B8A8_UNorm_SRgb,
+            data);
+        return fallbackPathDiffuseTexture;
+    }
+
+    private Texture GetFallbackPathNormalTexture()
+    {
+        if (fallbackPathNormalTexture != null)
+            return fallbackPathNormalTexture;
+
+        var data = new[]
+        {
+            new StrideColor(128, 128, 255, 255)
+        };
+        fallbackPathNormalTexture = Texture.New2D(
+            graphicsDevice,
+            1,
+            1,
+            PixelFormat.R8G8B8A8_UNorm,
+            data);
+        return fallbackPathNormalTexture;
+    }
+
+    private Texture? fallbackPathPropertiesTexture;
+
+    private Texture GetFallbackPathPropertiesTexture()
+    {
+        if (fallbackPathPropertiesTexture != null)
+            return fallbackPathPropertiesTexture;
+
+        // Properties: R=unused, G=0 (non-metallic), B=255 (no AO), A=128 (medium roughness)
+        var data = new[]
+        {
+            new StrideColor(128, 0, 255, 128)
+        };
+        fallbackPathPropertiesTexture = Texture.New2D(
+            graphicsDevice,
+            1,
+            1,
+            PixelFormat.R8G8B8A8_UNorm,
+            data);
+        return fallbackPathPropertiesTexture;
     }
 
     private Material CreateGizmoMaterial(Color4 color)
@@ -1410,7 +1524,7 @@ public sealed class PathFeatureService : IDisposable
                 0);
         }
 
-        return result;
+        return RemoveBacktrackingCurvePoints(result, feature.Style.CornerSpan);
     }
 
     private IEnumerable<PathCurveSegment> EnumerateCurveSegments(PathFeature feature)
@@ -1420,6 +1534,40 @@ public sealed class PathFeatureService : IDisposable
         {
             yield return new PathCurveSegment(curvePoints[i], curvePoints[i + 1], curvePoints[i + 1].InsertIndex);
         }
+    }
+
+    private static IReadOnlyList<PathCurvePoint> RemoveBacktrackingCurvePoints(IReadOnlyList<PathCurvePoint> points, float cornerSpanFactor)
+    {
+        if (points.Count <= 2)
+            return points;
+
+        var result = new List<PathCurvePoint>(points.Count)
+        {
+            points[0]
+        };
+        float maxBacktrackDot = MathUtil.Lerp(-0.1f, -0.55f, Math.Clamp(cornerSpanFactor, 0.05f, 1.0f));
+        for (int i = 1; i < points.Count - 1; i++)
+        {
+            PathCurvePoint previous = result[^1];
+            PathCurvePoint current = points[i];
+            PathCurvePoint next = points[i + 1];
+            Vector3 incoming = NormalizeXZ(current.Position - previous.Position);
+            Vector3 outgoing = NormalizeXZ(next.Position - current.Position);
+            if (incoming.LengthSquared() < 0.0001f || outgoing.LengthSquared() < 0.0001f)
+                continue;
+
+            float dot = Vector3.Dot(incoming, outgoing);
+            if (dot <= maxBacktrackDot
+                && DistanceXZ(previous.Position, next.Position) <= CurveSampleSpacing)
+            {
+                continue;
+            }
+
+            result.Add(current);
+        }
+
+        result.Add(points[^1]);
+        return result;
     }
 
     private static Vector3 ComputeCurveTangent(IReadOnlyList<PathCurvePoint> points, int index)
@@ -1570,6 +1718,27 @@ public sealed class PathFeatureService : IDisposable
         return NormalizeXZ(new Vector3(side.Z, 0.0f, -side.X));
     }
 
+    private static float GetRoadTextureRepeatScale(PathFeatureStyle style)
+    {
+        ArgumentNullException.ThrowIfNull(style);
+
+        float textureAspect = style.RoadStyle == PathRoadStyle.Paved
+            ? PavedRoadTextureAspect
+            : DirtRoadTextureAspect;
+        float width = Math.Max(1.0f, style.Width);
+        return 1.0f / (textureAspect * width);
+    }
+
+    private Vector3 ComputeTerrainNormal(float worldX, float worldZ)
+    {
+        float step = 1.0f;
+        float hL = terrainManager.GetHeightAtPosition(worldX - step, worldZ) ?? 0f;
+        float hR = terrainManager.GetHeightAtPosition(worldX + step, worldZ) ?? 0f;
+        float hD = terrainManager.GetHeightAtPosition(worldX, worldZ - step) ?? 0f;
+        float hU = terrainManager.GetHeightAtPosition(worldX, worldZ + step) ?? 0f;
+        return Vector3.Normalize(new Vector3(hL - hR, 2.0f * step, hD - hU));
+    }
+
     private static void AppendTerrainSample(List<PathTerrainSample> result, Vector3 position, Vector3 tangent)
     {
         Vector3 normalizedTangent = NormalizeXZ(tangent);
@@ -1596,62 +1765,19 @@ public sealed class PathFeatureService : IDisposable
 
     private static IReadOnlyList<PathRibbonRow> BuildRibbonRows(IReadOnlyList<PathCurvePoint> curvePoints, float cornerSpanFactor)
     {
-        var result = new List<PathRibbonRow>(curvePoints.Count * 3);
+        var result = new List<PathRibbonRow>(curvePoints.Count);
         float distance = 0.0f;
-        float clampedCornerSpanFactor = Math.Clamp(cornerSpanFactor, 0.05f, 1.0f);
         for (int i = 0; i < curvePoints.Count; i++)
         {
             Vector3 position = curvePoints[i].Position;
             if (i > 0)
                 distance += DistanceXZ(curvePoints[i - 1].Position, position);
 
-            Vector3 previousTangent = i > 0
-                ? NormalizeXZ(position - curvePoints[i - 1].Position)
-                : Vector3.Zero;
-            Vector3 nextTangent = i < curvePoints.Count - 1
-                ? NormalizeXZ(curvePoints[i + 1].Position - position)
-                : Vector3.Zero;
+            Vector3 tangent = ComputeCurveTangent(curvePoints, i);
+            if (tangent.LengthSquared() < 0.0001f)
+                tangent = i > 0 ? NormalizeXZ(position - curvePoints[i - 1].Position) : Vector3.UnitZ;
 
-            if (previousTangent.LengthSquared() < 0.0001f)
-                previousTangent = nextTangent;
-            if (nextTangent.LengthSquared() < 0.0001f)
-                nextTangent = previousTangent;
-            if (previousTangent.LengthSquared() < 0.0001f)
-                previousTangent = Vector3.UnitZ;
-            if (nextTangent.LengthSquared() < 0.0001f)
-                nextTangent = previousTangent;
-
-            Vector3 previousSide = PerpendicularXZ(previousTangent);
-            Vector3 nextSide = PerpendicularXZ(nextTangent);
-            float previousAngle = AngleFromVectorXZ(previousSide);
-            float deltaAngle = NormalizeAngleRadians(AngleFromVectorXZ(nextSide) - previousAngle);
-            float turnDegrees = MathF.Abs(deltaAngle) * (180.0f / MathF.PI);
-
-            if (i == 0 || i == curvePoints.Count - 1 || turnDegrees < RoundJoinThresholdDegrees)
-            {
-                AppendRibbonRow(result, new PathRibbonRow(position, NormalizeSide(previousSide + nextSide), distance));
-                continue;
-            }
-
-            float previousLength = DistanceXZ(curvePoints[i - 1].Position, position);
-            float nextLength = DistanceXZ(position, curvePoints[i + 1].Position);
-            float cornerSpan = MathF.Min(previousLength, nextLength) * clampedCornerSpanFactor;
-            cornerSpan = Math.Clamp(cornerSpan, MinCurvePointSpacing * 2.0f, CurveSampleSpacing * 0.75f);
-
-            Vector3 startPosition = position - previousTangent * cornerSpan;
-            Vector3 endPosition = position + nextTangent * cornerSpan;
-            float startDistance = Math.Max(0.0f, distance - cornerSpan);
-            float endDistance = distance + cornerSpan;
-
-            int stepCount = Math.Max(1, (int)MathF.Ceiling(turnDegrees / RoundJoinStepDegrees));
-            for (int step = 0; step <= stepCount; step++)
-            {
-                float blend = step / (float)stepCount;
-                float angle = previousAngle + deltaAngle * blend;
-                Vector3 rowPosition = Vector3.Lerp(startPosition, endPosition, blend);
-                float rowDistance = MathUtil.Lerp(startDistance, endDistance, blend);
-                AppendRibbonRow(result, new PathRibbonRow(rowPosition, DirectionFromAngleXZ(angle), rowDistance));
-            }
+            AppendRibbonRow(result, new PathRibbonRow(position, PerpendicularXZ(tangent), distance));
         }
 
         return result;
@@ -1707,27 +1833,6 @@ public sealed class PathFeatureService : IDisposable
         float dot = Math.Clamp(Vector3.Dot(from, to), -1.0f, 1.0f);
         float cross = from.X * to.Z - from.Z * to.X;
         return MathF.Atan2(cross, dot);
-    }
-
-    private static float AngleFromVectorXZ(Vector3 vector)
-    {
-        Vector3 normalized = NormalizeSide(vector);
-        return MathF.Atan2(normalized.Z, normalized.X);
-    }
-
-    private static float NormalizeAngleRadians(float angle)
-    {
-        float fullTurn = MathF.PI * 2.0f;
-        while (angle <= -MathF.PI)
-            angle += fullTurn;
-        while (angle > MathF.PI)
-            angle -= fullTurn;
-        return angle;
-    }
-
-    private static Vector3 DirectionFromAngleXZ(float angle)
-    {
-        return new Vector3(MathF.Cos(angle), 0.0f, MathF.Sin(angle));
     }
 
     private static Vector3 NormalizeXZ(Vector3 vector)
@@ -1923,10 +2028,12 @@ internal struct PathMeshVertex
     public Vector3 Normal;
     public Vector4 Tangent;
     public Vector2 TexCoord;
+    public Vector2 TexCoord1;
 
     public static readonly VertexDeclaration Layout = new(
         VertexElement.Position<Vector3>(),
         VertexElement.Normal<Vector3>(),
         VertexElement.Tangent<Vector4>(),
-        VertexElement.TextureCoordinate<Vector2>());
+        VertexElement.TextureCoordinate<Vector2>(),
+        VertexElement.TextureCoordinate<Vector2>(1));
 }

@@ -1,0 +1,77 @@
+namespace Terrain.Editor
+{
+    shader PathRoadSurface : IMaterialSurfacePixel, PositionStream4, Texturing, NormalStream, Transformation
+    {
+        rgroup PerMaterial
+        {
+            stage Texture2D DiffuseTexture;
+            stage SamplerState DiffuseSampler;
+            stage Texture2D NormalTexture;
+            stage SamplerState NormalSampler;
+            stage Texture2D PropertiesTexture;
+            stage SamplerState PropertiesSampler;
+        }
+
+        cbuffer PerMaterial
+        {
+            [Color]
+            stage float4 BaseColor;
+            stage float EdgeFadeStart;
+            stage float NormalStrength;
+            stage float EndFadeoutFactor;
+        }
+
+        static float RemapClamped(float value, float inMin, float inMax, float outMin, float outMax)
+        {
+            float t = saturate((value - inMin) / (inMax - inMin));
+            return outMin + t * (outMax - outMin);
+        }
+
+        static float3 UnpackRRxGNormal(float4 normalSample)
+        {
+            float x = normalSample.g * 2.0f - 1.0f;
+            float y = -(normalSample.a * 2.0f - 1.0f);
+            float z = sqrt(saturate(1.0f - x * x - y * y));
+            return float3(x, y, z);
+        }
+
+        override void Compute()
+        {
+            float2 uv = streams.TexCoord;
+            float maxU = streams.TexCoord1.x;
+
+            // Diffuse
+            float4 color = DiffuseTexture.Sample(DiffuseSampler, uv) * BaseColor;
+
+            // Normal mapping — Vic3 road normals use RRxG packing (X in G, Y in A)
+            float4 normalSample = NormalTexture.Sample(NormalSampler, uv);
+            float3 normalTS = UnpackRRxGNormal(normalSample);
+            float3 flatNormal = float3(0.0f, 0.0f, 1.0f);
+            streams.matNormal = normalize(lerp(flatNormal, normalTS, saturate(NormalStrength)));
+
+            // Properties (roughness.a, metallic.g, ao.b)
+            float4 properties = PropertiesTexture.Sample(PropertiesSampler, uv);
+            float roughness = properties.a;
+            float metallic = properties.g;
+            streams.matGlossiness = 1.0f - roughness;
+            streams.matSpecular = lerp(float3(0.04f, 0.04f, 0.04f), color.rgb, metallic);
+            streams.matAmbientOcclusion = properties.b;
+
+            // Side-edge fade (across road width)
+            float edgeDistance = abs(uv.y * 2.0f - 1.0f);
+            float sideFade = 1.0f - smoothstep(EdgeFadeStart, 1.0f, edgeDistance);
+
+            // End-of-road fade (along road length, matches V3 JominiFlatSplineEdgeOpacity)
+            float t = (maxU > 0.001f) ? (uv.x / maxU) : 0.0f;
+            float endFade = RemapClamped(
+                min(t, 1.0f - t) * EndFadeoutFactor,
+                0.0f, 1.2f,
+                0.0f, 1.0f);
+
+            // Combined opacity
+            color.a *= saturate(sideFade * endFade);
+            streams.matDiffuse = color;
+            streams.matColorBase = color;
+        }
+    };
+}
