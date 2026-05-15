@@ -36,7 +36,7 @@ public sealed class PathFeatureService : IDisposable
     private const float CurveSampleSpacing = 4.0f;
     private const float CurveSubdivisionTolerance = 0.35f;
     private const float MinCurvePointSpacing = 0.05f;
-    private const float CurveSubdivisionTurnDegrees = 8.0f;
+    private const float MaxEdgeDeviation = 0.12f;
     private const float CurveTangentSampleStep = 0.02f;
     private const float TerrainBrushSpacing = 0.75f;
     private const float MeshFollowTerrainSpacing = 1.0f;
@@ -1520,6 +1520,7 @@ public sealed class PathFeatureService : IDisposable
             return controlPoints;
 
         var result = new List<PathCurvePoint>();
+        float halfWidth = Math.Max(0.5f, feature.Style.Width * 0.5f);
         for (int i = 0; i < controlPoints.Count - 1; i++)
         {
             Vector3 p0 = controlPoints[Math.Max(0, i - 1)].Position;
@@ -1542,7 +1543,8 @@ public sealed class PathFeatureService : IDisposable
                 p1,
                 p2,
                 insertIndex,
-                0);
+                0,
+                halfWidth);
         }
 
         return RemoveBacktrackingCurvePoints(result, feature.Style.CornerSpan);
@@ -1647,7 +1649,8 @@ public sealed class PathFeatureService : IDisposable
         Vector3 startPoint,
         Vector3 endPoint,
         int insertIndex,
-        int depth)
+        int depth,
+        float halfWidth)
     {
         if (depth >= MaxCurveSubdivisionDepth)
         {
@@ -1665,14 +1668,14 @@ public sealed class PathFeatureService : IDisposable
 
         if (chordLength <= CurveSampleSpacing
             && deviation <= CurveSubdivisionTolerance
-            && turnDegrees <= CurveSubdivisionTurnDegrees)
+            && turnDegrees <= ComputeAdaptiveTurnThreshold(halfWidth))
         {
             AppendCurvePoint(result, new PathCurvePoint(endPoint, insertIndex));
             return;
         }
 
-        SubdivideCurveSegment(result, p0, p1, p2, p3, startT, midT, startPoint, midPoint, insertIndex, depth + 1);
-        SubdivideCurveSegment(result, p0, p1, p2, p3, midT, endT, midPoint, endPoint, insertIndex, depth + 1);
+        SubdivideCurveSegment(result, p0, p1, p2, p3, startT, midT, startPoint, midPoint, insertIndex, depth + 1, halfWidth);
+        SubdivideCurveSegment(result, p0, p1, p2, p3, midT, endT, midPoint, endPoint, insertIndex, depth + 1, halfWidth);
     }
 
     private static void AppendCurvePoint(List<PathCurvePoint> result, PathCurvePoint point)
@@ -1854,6 +1857,14 @@ public sealed class PathFeatureService : IDisposable
         float dot = Math.Clamp(Vector3.Dot(from, to), -1.0f, 1.0f);
         float cross = from.X * to.Z - from.Z * to.X;
         return MathF.Atan2(cross, dot);
+    }
+
+    private static float ComputeAdaptiveTurnThreshold(float halfWidth)
+    {
+        float safeWidth = Math.Max(halfWidth, 0.25f);
+        float maxEdgeDeviation = MaxEdgeDeviation;
+        float thresholdRadians = MathF.Atan2(maxEdgeDeviation, safeWidth);
+        return thresholdRadians * (180.0f / MathF.PI);
     }
 
     private static Vector3 NormalizeXZ(Vector3 vector)
