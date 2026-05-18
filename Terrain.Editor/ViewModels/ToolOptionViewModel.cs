@@ -5,10 +5,21 @@ using Terrain.Editor.Services;
 
 namespace Terrain.Editor.ViewModels;
 
+public enum EditorToolKind
+{
+    None,
+    BiomeBrush,
+    RoadPath,
+    RiverBrush,
+    FoliagePlace,
+    FoliageRemove,
+}
+
 public sealed record ToolOptionViewModel(
     string Label,
     string Description,
     string Glyph,
     EditorMode Mode,
     HeightTool? HeightTool = null,
-    PaintTool? PaintTool = null);
+    PaintTool? PaintTool = null,
+    EditorToolKind ToolKind = EditorToolKind.None);

@@ -36,6 +36,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private readonly MaterialSlotManager _materialSlotManager = MaterialSlotManager.Instance;
     private readonly NativeStrideViewportHost _viewportHost;
     private readonly TerrainExporter _terrainExporter = new();
+    private TerrainManager? _subscribedTerrainManager;
     private readonly BiomeConfigExporter _biomeConfigExporter = new();
     private readonly HashSet<string> _thumbnailDiagnostics = new(StringComparer.Ordinal);
 
@@ -71,6 +72,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private MaterialSlotOptionViewModel? _selectedMaterialSlot;
+
+    [ObservableProperty]
+    private Bitmap? _riverMaskPreviewImage;
 
     [ObservableProperty]
     private bool _canUndo;
@@ -163,6 +167,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public bool IsPathMode => SelectedMode == EditorMode.Path;
 
+    public bool IsRiverMode => SelectedMode == EditorMode.River;
+
     public bool IsFoliageMode => SelectedMode == EditorMode.Foliage;
 
     public bool IsSettingsMode => SelectedMode == EditorMode.Settings;
@@ -174,6 +180,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     public string SelectedModeDisplayName => SelectedMode switch
     {
         EditorMode.Paint => "Biome",
+        EditorMode.Path => "Path",
+        EditorMode.River => "River",
         _ => SelectedMode.ToString(),
     };
 
@@ -218,6 +226,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _projectManager.DirtyChanged += OnProjectDirtyChanged;
         _historyManager.HistoryChanged += OnHistoryChanged;
         _viewportHost.ShortcutRequested += OnViewportShortcutRequested;
+        _viewportHost.RuntimeStateChanged += OnViewportRuntimeStateChanged;
 
         AddConsole("Info", "Avalonia shell initialized with SimpleTheme.");
         AddConsole("Info", "Stride viewport is now hosted through a native child HWND with SDL.");
@@ -226,6 +235,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         if (_viewportHost.HasSceneRuntime)
         {
             AddConsole("Info", "Stride SDL viewport host now owns a Scene and TerrainManager.");
+            EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
         }
         else
         {
@@ -273,6 +283,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
         RefreshProjectState();
         SyncSettingsFromTerrainManager();
+        RefreshRiverMaskPreview();
         AddConsole("Info", $"Created unsaved project from heightmap: {path}");
     }
 
@@ -307,7 +318,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         terrainManager.LoadProject(path);
         RefreshProjectState();
         SyncSettingsFromTerrainManager();
+        RefreshRiverMaskPreview();
         AddConsole("Info", $"Opened project: {_projectManager.ProjectName}.");
+        string? projectNotification = terrainManager.ConsumePendingProjectNotification();
+        if (!string.IsNullOrWhiteSpace(projectNotification))
+            AddConsole("Warning", projectNotification);
     }
 
     [RelayCommand]
@@ -772,6 +787,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _projectManager.DirtyChanged -= OnProjectDirtyChanged;
         _historyManager.HistoryChanged -= OnHistoryChanged;
         _viewportHost.ShortcutRequested -= OnViewportShortcutRequested;
+        _viewportHost.RuntimeStateChanged -= OnViewportRuntimeStateChanged;
+        EnsureTerrainManagerSubscriptions(null);
         BrushParams.Dispose();
         PathParams.Dispose();
         Biome.Dispose();
@@ -798,6 +815,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsSculptMode));
         OnPropertyChanged(nameof(IsPaintMode));
         OnPropertyChanged(nameof(IsPathMode));
+        OnPropertyChanged(nameof(IsRiverMode));
         OnPropertyChanged(nameof(IsFoliageMode));
         OnPropertyChanged(nameof(IsSettingsMode));
         OnPropertyChanged(nameof(HasTools));
@@ -923,11 +941,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 _editorState.HasSelectedTool = true;
             }
 
-            if (value.Mode == EditorMode.Path)
+            if (value.ToolKind == EditorToolKind.RoadPath)
             {
-                PathFeatureParameters.Instance.Kind = string.Equals(value.Label, "River", StringComparison.Ordinal)
-                    ? PathFeatureKind.River
-                    : PathFeatureKind.Road;
+                PathFeatureParameters.Instance.Kind = PathFeatureKind.Road;
             }
         }
 
@@ -947,6 +963,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void OnEditorModeChanged(object? sender, EventArgs e)
     {
         SelectedMode = NormalizeEditorMode(_editorState.CurrentEditorMode);
+        if (SelectedMode == EditorMode.Path)
+        {
+            _viewportHost.TerrainManager?.PathFeatureService?.RefreshSelectedFeatureParameters();
+        }
+
         RefreshTools();
     }
 
@@ -955,8 +976,10 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         SelectedToolName = SelectedMode == EditorMode.Sculpt
             ? _editorState.CurrentHeightTool.ToString()
             : SelectedMode == EditorMode.Path
-                ? PathFeatureParameters.Instance.Kind.ToString()
-            : GetDefaultToolLabel(SelectedMode);
+                ? "Road"
+                : SelectedMode == EditorMode.River
+                    ? "River"
+                    : GetDefaultToolLabel(SelectedMode);
     }
 
     private void OnPathParametersPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -971,14 +994,18 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        string targetLabel = PathFeatureParameters.Instance.Kind == PathFeatureKind.River ? "River" : "Road";
-        ToolOptionViewModel? targetTool = Tools.FirstOrDefault(tool => string.Equals(tool.Label, targetLabel, StringComparison.Ordinal));
+        if (PathFeatureParameters.Instance.Kind != PathFeatureKind.Road)
+        {
+            PathFeatureParameters.Instance.Kind = PathFeatureKind.Road;
+        }
+
+        ToolOptionViewModel? targetTool = Tools.FirstOrDefault(tool => tool.ToolKind == EditorToolKind.RoadPath);
         if (targetTool != null && SelectedTool != targetTool)
         {
             SelectedTool = targetTool;
         }
 
-        SelectedToolName = targetLabel;
+        SelectedToolName = "Road";
     }
 
     private void OnOverlayChanged(object? sender, EventArgs e)
@@ -1021,6 +1048,26 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void OnProjectDirtyChanged(object? sender, EventArgs e)
     {
         RefreshProjectState();
+    }
+
+    private void OnViewportRuntimeStateChanged(object? sender, EventArgs e)
+    {
+        EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
+    }
+
+    private void OnTerrainManagerProjectNotificationRaised(object? sender, EventArgs e)
+    {
+        if (sender is TerrainManager terrainManager)
+        {
+            string? projectNotification = terrainManager.ConsumePendingProjectNotification();
+            if (!string.IsNullOrWhiteSpace(projectNotification))
+                AddConsole("Warning", projectNotification);
+        }
+    }
+
+    private void OnTerrainManagerRiverMaskChanged(object? sender, EventArgs e)
+    {
+        RefreshRiverMaskPreview();
     }
 
     private void OnHistoryChanged(object? sender, HistoryChangedEventArgs e)
@@ -1078,7 +1125,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         string activeToolLabel = SelectedMode switch
         {
             EditorMode.Sculpt => _editorState.CurrentHeightTool.ToString(),
-            EditorMode.Path => PathFeatureParameters.Instance.Kind.ToString(),
+            EditorMode.Path => "Road",
+            EditorMode.River => "River",
             _ => GetDefaultToolLabel(SelectedMode),
         };
 
@@ -1130,17 +1178,20 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             ],
             EditorMode.Paint =>
             [
-                new("Biome Brush", "Paint biome mask", "\uE950", mode),
+                new("Biome Brush", "Paint biome mask", "\uE950", mode, ToolKind: EditorToolKind.BiomeBrush),
             ],
             EditorMode.Path =>
             [
-                new("Road", "Draw and edit road paths", "\uE913", mode),
-                new("River", "Draw and edit river paths", "\uE12B", mode),
+                new("Road", "Draw and edit road paths", "\uE913", mode, ToolKind: EditorToolKind.RoadPath),
+            ],
+            EditorMode.River =>
+            [
+                new("River", "Paint river mask strokes", "\uE12B", mode, ToolKind: EditorToolKind.RiverBrush),
             ],
             EditorMode.Foliage =>
             [
-                new("Place", "Place foliage", "\uE8BE", mode),
-                new("Remove", "Remove foliage", "\uE74D", mode),
+                new("Place", "Place foliage", "\uE8BE", mode, ToolKind: EditorToolKind.FoliagePlace),
+                new("Remove", "Remove foliage", "\uE74D", mode, ToolKind: EditorToolKind.FoliageRemove),
             ],
             _ => [],
         };
@@ -1150,7 +1201,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     {
         Modes.Add(new ModeOptionViewModel("Sculpt", "Terrain height editing", "", EditorMode.Sculpt));
         Modes.Add(new ModeOptionViewModel("Biome", "Biome mask painting", "\uE950", EditorMode.Paint));
-        Modes.Add(new ModeOptionViewModel("Paths", "Road and river drawing", "\uE913", EditorMode.Path));
+        Modes.Add(new ModeOptionViewModel("Paths", "Road path editing", "\uE913", EditorMode.Path));
+        Modes.Add(new ModeOptionViewModel("River", "River mask painting", "\uE12B", EditorMode.River));
         Modes.Add(new ModeOptionViewModel("Foliage", "Vegetation placement", "\uE8BE", EditorMode.Foliage));
         Modes.Add(new ModeOptionViewModel("Settings", "Project settings", "", EditorMode.Settings));
     }
@@ -1199,6 +1251,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             EditorMode.Sculpt => "Sculpt",
             EditorMode.Paint => "Biome Brush",
             EditorMode.Path => "Road",
+            EditorMode.River => "River",
             EditorMode.Foliage => "Place",
             _ => "None",
         };
@@ -1209,11 +1262,78 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         return mode == EditorMode.Landscape ? EditorMode.Paint : mode;
     }
 
+    private void RefreshRiverMaskPreview()
+    {
+        Bitmap? nextPreview = CreateRiverMaskPreview(_subscribedTerrainManager?.RiverMask);
+        Bitmap? previousPreview = RiverMaskPreviewImage;
+        RiverMaskPreviewImage = nextPreview;
+        previousPreview?.Dispose();
+    }
+
+    private static Bitmap? CreateRiverMaskPreview(RiverMask? riverMask)
+    {
+        if (riverMask == null)
+            return null;
+
+        byte[] raw = riverMask.GetRawData();
+        if (raw.Length != riverMask.Width * riverMask.Height)
+            return null;
+
+        Rgba32[] pixels = new Rgba32[raw.Length];
+        for (int i = 0; i < raw.Length; i++)
+        {
+            byte value = raw[i];
+            pixels[i] = value == 0
+                ? new Rgba32(18, 22, 30, 255)
+                : new Rgba32(50, 150, 255, value);
+        }
+
+        using var image = ImageSharpImage.LoadPixelData<Rgba32>(pixels.AsSpan(), riverMask.Width, riverMask.Height);
+        image.Mutate(static context => context.Resize(new ResizeOptions
+        {
+            Size = new SixLabors.ImageSharp.Size(512, 512),
+            Mode = ResizeMode.Max,
+            Sampler = KnownResamplers.NearestNeighbor
+        }));
+
+        using var stream = new MemoryStream();
+        image.Save(stream, new PngEncoder());
+        stream.Position = 0;
+        return new Bitmap(stream);
+    }
+
+    private void EnsureTerrainManagerSubscriptions(TerrainManager? terrainManager)
+    {
+        if (ReferenceEquals(_subscribedTerrainManager, terrainManager))
+            return;
+
+        if (_subscribedTerrainManager != null)
+        {
+            _subscribedTerrainManager.ProjectNotificationRaised -= OnTerrainManagerProjectNotificationRaised;
+            _subscribedTerrainManager.RiverMaskChanged -= OnTerrainManagerRiverMaskChanged;
+        }
+
+        _subscribedTerrainManager = terrainManager;
+        if (_subscribedTerrainManager == null)
+        {
+            RiverMaskPreviewImage = null;
+            return;
+        }
+
+        _subscribedTerrainManager.ProjectNotificationRaised += OnTerrainManagerProjectNotificationRaised;
+        _subscribedTerrainManager.RiverMaskChanged += OnTerrainManagerRiverMaskChanged;
+        RefreshRiverMaskPreview();
+        string? projectNotification = _subscribedTerrainManager.ConsumePendingProjectNotification();
+        if (!string.IsNullOrWhiteSpace(projectNotification))
+            AddConsole("Warning", projectNotification);
+    }
+
     private bool TryGetTerrainManager(out TerrainManager terrainManager)
     {
         terrainManager = null!;
         if (_viewportHost.TerrainManager is { } manager)
         {
+            EnsureTerrainManagerSubscriptions(manager);
             terrainManager = manager;
             return true;
         }
@@ -1230,6 +1350,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
         if (_viewportHost.TryGetRuntimeServices(out var manager, out var device, out var commands))
         {
+            EnsureTerrainManagerSubscriptions(manager);
             terrainManager = manager!;
             graphicsDevice = device!;
             commandList = commands!;

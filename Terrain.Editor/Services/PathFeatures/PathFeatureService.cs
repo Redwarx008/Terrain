@@ -2,6 +2,8 @@
 
 using System;
 using System.Collections.Generic;
+using Terrain.Editor.Models;
+using Terrain.Editor.Services;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -107,6 +109,11 @@ public sealed class PathFeatureService : IDisposable
     public Guid? SelectedFeatureId => selectedFeatureId;
 
     public Guid? SelectedNodeId => selectedNodeId;
+
+    public void RefreshSelectedFeatureParameters()
+    {
+        SyncParametersFromSelection();
+    }
 
     public event EventHandler? NetworkChanged;
 
@@ -436,6 +443,9 @@ public sealed class PathFeatureService : IDisposable
     private void OnPathParametersChanged(object? sender, EventArgs e)
     {
         if (isSyncingParameters)
+            return;
+
+        if (EditorState.Instance.CurrentEditorMode != EditorMode.Path)
             return;
 
         if (selectedFeatureId is not { } featureId)
@@ -921,7 +931,8 @@ public sealed class PathFeatureService : IDisposable
         if (curvePoints.Count < 2)
             return;
 
-        IReadOnlyList<PathRibbonRow> ribbonRows = BuildRibbonRows(curvePoints, feature.Style.CornerSpan);
+        float halfWidth = Math.Max(0.5f, feature.Style.Width * 0.5f);
+        IReadOnlyList<PathRibbonRow> ribbonRows = BuildRibbonRows(curvePoints, feature.Style.CornerSpan, halfWidth);
         if (ribbonRows.Count < 2)
             return;
 
@@ -933,7 +944,6 @@ public sealed class PathFeatureService : IDisposable
         int width = terrainManager.HeightCacheWidth;
         int height = terrainManager.HeightCacheHeight;
         float worldToRaw = ushort.MaxValue / terrainManager.HeightScale;
-        float halfWidth = Math.Max(0.5f, feature.Style.Width * 0.5f);
         float slopeWidth = Math.Max(0.1f, feature.Style.SideSlope);
         float editRadius = halfWidth + slopeWidth;
         int lateralSteps = Math.Max(1, (int)MathF.Ceiling(editRadius / TerrainBrushSpacing));
@@ -1101,14 +1111,15 @@ public sealed class PathFeatureService : IDisposable
         if (curvePoints.Count < 2)
             return;
 
-        IReadOnlyList<PathRibbonRow> ribbonRows = BuildRibbonRows(curvePoints, feature.Style.CornerSpan);
+        float halfWidth = Math.Max(0.5f, feature.Style.Width * 0.5f);
+        IReadOnlyList<PathRibbonRow> ribbonRows = BuildRibbonRows(curvePoints, feature.Style.CornerSpan, halfWidth);
         if (ribbonRows.Count < 2)
             return;
-
-        float halfWidth = Math.Max(0.5f, feature.Style.Width * 0.5f);
         IReadOnlyList<PathRibbonRow> meshRows = RefineRibbonRowsForTerrainFit(ribbonRows, halfWidth);
         if (meshRows.Count < 2)
             return;
+
+        float[] rowHalfWidths = CreateUniformHalfWidths(meshRows.Count, halfWidth);
 
         var vertices = new List<PathMeshVertex>(meshRows.Count * 2);
         var cumulativeDistances = new float[meshRows.Count];
@@ -1126,14 +1137,15 @@ public sealed class PathFeatureService : IDisposable
         for (int i = 0; i < meshRows.Count; i++)
         {
             PathRibbonRow row = meshRows[i];
-            Vector3 leftPosition = row.Position - row.Side * halfWidth;
-            Vector3 rightPosition = row.Position + row.Side * halfWidth;
+            float rowHalfWidth = rowHalfWidths[i];
+            Vector3 leftPosition = row.Position - row.Side * rowHalfWidth;
+            Vector3 rightPosition = row.Position + row.Side * rowHalfWidth;
             leftPosition.Y = (terrainManager.GetHeightAtPosition(leftPosition.X, leftPosition.Z) ?? row.Position.Y) + MeshVerticalOffset;
             rightPosition.Y = (terrainManager.GetHeightAtPosition(rightPosition.X, rightPosition.Z) ?? row.Position.Y) + MeshVerticalOffset;
             float distanceAlongPath = cumulativeDistances[i];
             float u = distanceAlongPath * roadRepeatScale;
             Vector2 texCoord1 = new(distanceAlongPath, maxDistance);
-            Vector3 tangentDirection = SideToTangent(row.Side);
+            Vector3 tangentDirection = ComputeRibbonTangent(meshRows, i);
             Vector4 tangent = new(tangentDirection.X, tangentDirection.Y, tangentDirection.Z, 1.0f);
             Vector3 leftNormal = ComputeTerrainNormal(leftPosition.X, leftPosition.Z);
             Vector3 rightNormal = ComputeTerrainNormal(rightPosition.X, rightPosition.Z);
@@ -1516,11 +1528,27 @@ public sealed class PathFeatureService : IDisposable
                 controlPoints.Add(new PathCurvePoint(node.Position, i));
         }
 
+        return BuildCurvePoints(controlPoints, feature.Style.Width, feature.Style.CornerSpan);
+    }
+
+    public static IReadOnlyList<Vector3> SampleLegacyCurve(IReadOnlyList<Vector3> controlPoints, float width, float cornerSpan)
+    {
+        var indexedControlPoints = new List<PathCurvePoint>(controlPoints.Count);
+        for (int i = 0; i < controlPoints.Count; i++)
+            indexedControlPoints.Add(new PathCurvePoint(controlPoints[i], i));
+
+        return BuildCurvePoints(indexedControlPoints, width, cornerSpan)
+            .Select(static point => point.Position)
+            .ToList();
+    }
+
+    private static IReadOnlyList<PathCurvePoint> BuildCurvePoints(IReadOnlyList<PathCurvePoint> controlPoints, float width, float cornerSpan)
+    {
         if (controlPoints.Count <= 2)
             return controlPoints;
 
         var result = new List<PathCurvePoint>();
-        float halfWidth = Math.Max(0.5f, feature.Style.Width * 0.5f);
+        float halfWidth = Math.Max(0.5f, width * 0.5f);
         for (int i = 0; i < controlPoints.Count - 1; i++)
         {
             Vector3 p0 = controlPoints[Math.Max(0, i - 1)].Position;
@@ -1547,7 +1575,7 @@ public sealed class PathFeatureService : IDisposable
                 halfWidth);
         }
 
-        return RemoveBacktrackingCurvePoints(result, feature.Style.CornerSpan);
+        return RemoveBacktrackingCurvePoints(result, cornerSpan);
     }
 
     private IEnumerable<PathCurveSegment> EnumerateCurveSegments(PathFeature feature)
@@ -1638,7 +1666,7 @@ public sealed class PathFeatureService : IDisposable
         return MathF.Sqrt(dx * dx + dz * dz);
     }
 
-    private void SubdivideCurveSegment(
+    private static void SubdivideCurveSegment(
         List<PathCurvePoint> result,
         Vector3 p0,
         Vector3 p1,
@@ -1701,7 +1729,7 @@ public sealed class PathFeatureService : IDisposable
             return Array.Empty<PathTerrainSample>();
 
         var result = new List<PathTerrainSample>(ribbonRows.Count * 2);
-        AppendTerrainSample(result, ribbonRows[0].Position, SideToTangent(ribbonRows[0].Side));
+        AppendTerrainSample(result, ribbonRows[0].Position, ComputeRibbonTangent(ribbonRows, 0));
 
         for (int i = 0; i < ribbonRows.Count - 1; i++)
         {
@@ -1714,8 +1742,8 @@ public sealed class PathFeatureService : IDisposable
                 continue;
 
             Vector3 segmentTangent = NormalizeXZ(end - start);
-            Vector3 startTangent = SideToTangent(startRow.Side);
-            Vector3 endTangent = SideToTangent(endRow.Side);
+            Vector3 startTangent = ComputeRibbonTangent(ribbonRows, i);
+            Vector3 endTangent = ComputeRibbonTangent(ribbonRows, i + 1);
             if (startTangent.LengthSquared() < 0.0001f)
                 startTangent = segmentTangent;
             if (endTangent.LengthSquared() < 0.0001f)
@@ -1753,6 +1781,38 @@ public sealed class PathFeatureService : IDisposable
         return 1.0f / (textureAspect * width);
     }
 
+    private static float[] CreateUniformHalfWidths(int count, float halfWidth)
+    {
+        var result = new float[count];
+        Array.Fill(result, halfWidth);
+        return result;
+    }
+
+    private static Vector3 ComputeRibbonTangent(IReadOnlyList<PathRibbonRow> rows, int index)
+    {
+        if (rows.Count <= 1)
+            return Vector3.UnitZ;
+
+        Vector3 tangent = Vector3.Zero;
+        if (index > 0)
+            tangent += NormalizeXZ(rows[index].Position - rows[index - 1].Position);
+        if (index < rows.Count - 1)
+            tangent += NormalizeXZ(rows[index + 1].Position - rows[index].Position);
+
+        tangent = NormalizeXZ(tangent);
+        if (tangent.LengthSquared() < 0.0001f)
+            tangent = index < rows.Count - 1
+                ? NormalizeXZ(rows[index + 1].Position - rows[index].Position)
+                : NormalizeXZ(rows[index].Position - rows[index - 1].Position);
+
+        return tangent.LengthSquared() < 0.0001f ? Vector3.UnitZ : tangent;
+    }
+
+    private static float Cross2D(Vector2 a, Vector2 b)
+    {
+        return a.X * b.Y - a.Y * b.X;
+    }
+
     private Vector3 ComputeTerrainNormal(float worldX, float worldZ)
     {
         float step = 1.0f;
@@ -1787,9 +1847,9 @@ public sealed class PathFeatureService : IDisposable
         result.Add(sample);
     }
 
-    private static IReadOnlyList<PathRibbonRow> BuildRibbonRows(IReadOnlyList<PathCurvePoint> curvePoints, float cornerSpanFactor)
+    private static IReadOnlyList<PathRibbonRow> BuildRibbonRows(IReadOnlyList<PathCurvePoint> curvePoints, float cornerSpanFactor, float halfWidth)
     {
-        var result = new List<PathRibbonRow>(curvePoints.Count);
+        var result = new List<PathRibbonRow>(curvePoints.Count * 2);
         float distance = 0.0f;
         for (int i = 0; i < curvePoints.Count; i++)
         {
@@ -1801,7 +1861,24 @@ public sealed class PathFeatureService : IDisposable
             if (tangent.LengthSquared() < 0.0001f)
                 tangent = i > 0 ? NormalizeXZ(position - curvePoints[i - 1].Position) : Vector3.UnitZ;
 
-            AppendRibbonRow(result, new PathRibbonRow(position, PerpendicularXZ(tangent), distance));
+            Vector3 side = PerpendicularXZ(tangent);
+            if (result.Count > 0 && Vector3.Dot(result[^1].Side, side) < 0.0f)
+                side = -side;
+
+            if (i > 0 && i < curvePoints.Count - 1)
+            {
+                Vector3 previousPosition = curvePoints[i - 1].Position;
+                Vector3 nextPosition = curvePoints[i + 1].Position;
+                Vector3 previousTangent = NormalizeXZ(position - previousPosition);
+                Vector3 nextTangent = NormalizeXZ(nextPosition - position);
+                if (previousTangent.LengthSquared() >= 0.0001f && nextTangent.LengthSquared() >= 0.0001f)
+                {
+                    AppendJoinedRibbonRows(result, previousPosition, position, nextPosition, previousTangent, nextTangent, distance, cornerSpanFactor, halfWidth);
+                    continue;
+                }
+            }
+
+            AppendRibbonRow(result, new PathRibbonRow(position, side, distance));
         }
 
         return result;
@@ -1829,7 +1906,8 @@ public sealed class PathFeatureService : IDisposable
     private static PathRibbonRow LerpRibbonRow(PathRibbonRow start, PathRibbonRow end, float t)
     {
         Vector3 position = Vector3.Lerp(start.Position, end.Position, t);
-        Vector3 side = NormalizeSide(Vector3.Lerp(start.Side, end.Side, t));
+        Vector3 endSide = Vector3.Dot(start.Side, end.Side) < 0.0f ? -end.Side : end.Side;
+        Vector3 side = NormalizeSide(Vector3.Lerp(start.Side, endSide, t));
         float distance = MathUtil.Lerp(start.Distance, end.Distance, t);
         return new PathRibbonRow(position, side, distance);
     }
@@ -1865,6 +1943,149 @@ public sealed class PathFeatureService : IDisposable
         float maxEdgeDeviation = MaxEdgeDeviation;
         float thresholdRadians = MathF.Atan2(maxEdgeDeviation, safeWidth);
         return thresholdRadians * (180.0f / MathF.PI);
+    }
+
+    private static void AppendJoinedRibbonRows(
+        List<PathRibbonRow> result,
+        Vector3 previousPosition,
+        Vector3 position,
+        Vector3 nextPosition,
+        Vector3 previousTangent,
+        Vector3 nextTangent,
+        float distance,
+        float cornerSpanFactor,
+        float halfWidth)
+    {
+        previousTangent = NormalizeXZ(previousTangent);
+        nextTangent = NormalizeXZ(nextTangent);
+        if (previousTangent.LengthSquared() < 0.0001f || nextTangent.LengthSquared() < 0.0001f)
+        {
+            Vector3 fallbackTangent = previousTangent.LengthSquared() >= 0.0001f ? previousTangent : nextTangent;
+            AppendRibbonRow(result, new PathRibbonRow(position, PerpendicularXZ(fallbackTangent), distance));
+            return;
+        }
+
+        Vector3 startSide = PerpendicularXZ(previousTangent);
+        bool flipStoredSide = result.Count > 0 && Vector3.Dot(result[^1].Side, startSide) < 0.0f;
+        if (flipStoredSide)
+            startSide = -startSide;
+
+        Vector3 endSide = PerpendicularXZ(nextTangent);
+        if (flipStoredSide)
+            endSide = -endSide;
+
+        float tangentTurn = SignedAngleXZ(previousTangent, nextTangent);
+        float absTurn = MathF.Abs(tangentTurn);
+        if (absTurn < 0.0001f)
+        {
+            AppendRibbonRow(result, new PathRibbonRow(position, startSide, distance));
+            return;
+        }
+
+        float previousLength = DistanceXZ(previousPosition, position);
+        float nextLength = DistanceXZ(position, nextPosition);
+        float minSegmentLength = Math.Min(previousLength, nextLength);
+        float trimFromSpan = minSegmentLength * Math.Clamp(cornerSpanFactor, 0.05f, 1.0f) * 0.5f;
+        float halfTurn = absTurn * 0.5f;
+        float tanHalfTurn = MathF.Tan(halfTurn);
+        Vector3 bevelSide = NormalizeSide(startSide + endSide);
+        float safeHalfWidth = Math.Max(halfWidth, 0.5f);
+        float fallbackTrim = Math.Max(MinCurvePointSpacing * 2.0f, Math.Min(minSegmentLength * 0.2f, safeHalfWidth * 0.5f));
+        if (tanHalfTurn <= 0.0001f)
+        {
+            AppendFallbackBevelRows(result, position, previousTangent, nextTangent, startSide, endSide, bevelSide, distance, fallbackTrim);
+            return;
+        }
+
+        float minRadius = safeHalfWidth + MinCurvePointSpacing;
+        float minTrim = minRadius * tanHalfTurn;
+        float maxTrim = minSegmentLength * 0.5f - MinCurvePointSpacing;
+        if (absTurn >= MathF.PI * 0.9f || maxTrim <= MinCurvePointSpacing || minTrim > maxTrim)
+        {
+            AppendFallbackBevelRows(result, position, previousTangent, nextTangent, startSide, endSide, bevelSide, distance, fallbackTrim);
+            return;
+        }
+
+        float trimDistance = Math.Clamp(Math.Max(trimFromSpan, minTrim), MinCurvePointSpacing, maxTrim);
+        float arcRadius = trimDistance / tanHalfTurn;
+        Vector3 startCenter = position - previousTangent * trimDistance;
+        Vector3 endCenter = position + nextTangent * trimDistance;
+        Vector3 rawStartSide = flipStoredSide ? -PerpendicularXZ(previousTangent) : PerpendicularXZ(previousTangent);
+        Vector3 rawEndSide = flipStoredSide ? -PerpendicularXZ(nextTangent) : PerpendicularXZ(nextTangent);
+        Vector3 insideStartNormal = tangentTurn >= 0.0f ? rawStartSide : -rawStartSide;
+        Vector3 insideEndNormal = tangentTurn >= 0.0f ? rawEndSide : -rawEndSide;
+        Vector3 arcCenter = startCenter + insideStartNormal * arcRadius;
+        Vector3 arcCenterFromEnd = endCenter + insideEndNormal * arcRadius;
+        arcCenter = new Vector3(
+            (arcCenter.X + arcCenterFromEnd.X) * 0.5f,
+            position.Y,
+            (arcCenter.Z + arcCenterFromEnd.Z) * 0.5f);
+
+        Vector3 startRadiusDirection = NormalizeXZ(startCenter - arcCenter);
+        Vector3 endRadiusDirection = NormalizeXZ(endCenter - arcCenter);
+        float arcTurn = SignedAngleXZ(startRadiusDirection, endRadiusDirection);
+        if (MathF.Abs(arcTurn) < 0.0001f)
+        {
+            AppendFallbackBevelRows(result, position, previousTangent, nextTangent, startSide, endSide, bevelSide, distance, fallbackTrim);
+            return;
+        }
+
+        int joinSegments = Math.Max(1, (int)MathF.Ceiling(absTurn / (MathF.PI / 10.0f)));
+        float baseDistance = Math.Max(0.0f, distance - trimDistance);
+        float arcLength = arcRadius * MathF.Abs(arcTurn);
+        for (int segmentIndex = 0; segmentIndex <= joinSegments; segmentIndex++)
+        {
+            float t = segmentIndex / (float)joinSegments;
+            float angle = arcTurn * t;
+            Vector3 radiusDirection = RotateAroundY(startRadiusDirection, angle);
+            Vector3 arcPosition = arcCenter + radiusDirection * arcRadius;
+            arcPosition.Y = MathUtil.Lerp(startCenter.Y, endCenter.Y, t);
+
+            Vector3 tangent = arcTurn >= 0.0f
+                ? PerpendicularXZ(radiusDirection)
+                : -PerpendicularXZ(radiusDirection);
+            Vector3 side = PerpendicularXZ(tangent);
+            if (flipStoredSide)
+                side = -side;
+
+            float rowDistance = baseDistance + arcLength * t;
+            AppendRibbonRow(result, new PathRibbonRow(arcPosition, side, rowDistance));
+        }
+    }
+
+    private static void AppendFallbackBevelRows(
+        List<PathRibbonRow> result,
+        Vector3 position,
+        Vector3 previousTangent,
+        Vector3 nextTangent,
+        Vector3 startSide,
+        Vector3 endSide,
+        Vector3 bevelSide,
+        float distance,
+        float trimDistance)
+    {
+        trimDistance = Math.Max(trimDistance, MinCurvePointSpacing * 2.0f);
+        Vector3 startPosition = position - previousTangent * trimDistance;
+        Vector3 endPosition = position + nextTangent * trimDistance;
+        Vector3 centerPosition = Vector3.Lerp(startPosition, endPosition, 0.5f);
+        centerPosition.Y = position.Y;
+        float startDistance = Math.Max(0.0f, distance - trimDistance);
+        float endDistance = distance + trimDistance;
+        float centerDistance = (startDistance + endDistance) * 0.5f;
+
+        AppendRibbonRow(result, new PathRibbonRow(startPosition, startSide, startDistance));
+        AppendRibbonRow(result, new PathRibbonRow(centerPosition, bevelSide, centerDistance));
+        AppendRibbonRow(result, new PathRibbonRow(endPosition, endSide, endDistance));
+    }
+
+    private static Vector3 RotateAroundY(Vector3 vector, float angle)
+    {
+        float cos = MathF.Cos(angle);
+        float sin = MathF.Sin(angle);
+        return NormalizeSide(new Vector3(
+            vector.X * cos - vector.Z * sin,
+            0.0f,
+            vector.X * sin + vector.Z * cos));
     }
 
     private static Vector3 NormalizeXZ(Vector3 vector)

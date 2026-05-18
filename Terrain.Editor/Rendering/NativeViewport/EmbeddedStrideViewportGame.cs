@@ -16,8 +16,10 @@ using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Rendering.Decal;
 using Terrain.Editor.Services;
+using Terrain.Editor.Services.Commands;
 using Terrain.Editor.Services.PathFeatures;
 using NumericsVector2 = System.Numerics.Vector2;
+using System.Collections.Generic;
 
 namespace Terrain.Editor.Rendering.NativeViewport;
 
@@ -39,10 +41,12 @@ public sealed class EmbeddedStrideViewportGame : Game
     private bool _wasLeftMouseDown;
     private bool _pendingMaterialTexturesLoad;
     private bool _isPathPointerActive;
+    private readonly List<Vector3> _riverStrokePoints = new();
 
     // Brush decal overlay
     private Entity? _brushDecalEntity;
     private BrushDecalComponent? _brushDecalComponent;
+    private RiverMaskMeshService? _riverMaskMeshService;
 
     public EmbeddedStrideViewportGame()
     {
@@ -107,8 +111,10 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
 
         UpdateCamera((float)gameTime.Elapsed.TotalSeconds);
-        if (_editorState.CurrentEditorMode == EditorMode.Path)
+        bool useLegacyPathEditing = _editorState.CurrentEditorMode == EditorMode.Path;
+        if (useLegacyPathEditing)
         {
+            CancelBrushStrokeIfNeeded();
             TerrainManager?.PathFeatureService?.SetGizmosVisible(visible: true);
             UpdatePathEditing();
         }
@@ -244,7 +250,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         // Camera rotation takes priority — right-button orbit cancels brush strokes.
         if (rightMouseDown)
         {
-            EndBrushStrokeIfNeeded();
+            CancelBrushStrokeIfNeeded();
             _wasLeftMouseDown = false;
             UpdateBrushDecalVisibility(visible: false);
             return;
@@ -294,7 +300,7 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     private bool IsBrushDecalMode()
     {
-        return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint;
+        return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint or EditorMode.River;
     }
 
     private void UpdatePathEditing()
@@ -363,9 +369,9 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
 
         var brushParams = BrushParameters.Instance;
-        // BrushParameters.Size is authored as the full brush diameter; editing code
-        // uses half of it as the effective radius in heightmap space.
-        float brushRadius = brushParams.Size * 0.5f;
+        float brushRadius = _editorState.CurrentEditorMode == EditorMode.River
+            ? RiverMaskWriter.GetQuantizedWorldPreviewRadius(PathFeatureParameters.Instance.Width)
+            : brushParams.Size * 0.5f;
 
         // Position the decal cube at the brush world position.
         // The cube must be large enough to encompass the brush circle.
@@ -381,6 +387,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             EditorMode.Sculpt => _editorState.GetToolColor(),
             EditorMode.Paint => new Color4(0.2f, 0.7f, 0.4f, 0.5f),
+            EditorMode.River => new Color4(0.2f, 0.5f, 0.85f, 0.5f),
             _ => Color4.White,
         };
         _brushDecalComponent.Color = decalColor;
@@ -442,6 +449,11 @@ public sealed class EmbeddedStrideViewportGame : Game
             case EditorMode.Paint:
                 // Biome brush - no separate BeginStroke; ApplyStroke is stateless.
                 break;
+
+            case EditorMode.River:
+                _riverStrokePoints.Clear();
+                _riverStrokePoints.Add(worldPosition);
+                break;
         }
     }
 
@@ -455,6 +467,10 @@ public sealed class EmbeddedStrideViewportGame : Game
 
             case EditorMode.Paint:
                 ApplyBiomeStroke(worldPosition);
+                break;
+
+            case EditorMode.River:
+                ApplyRiverStroke(worldPosition);
                 break;
         }
     }
@@ -476,6 +492,29 @@ public sealed class EmbeddedStrideViewportGame : Game
 
             case EditorMode.Paint:
                 break;
+
+            case EditorMode.River:
+                CommitRiverStroke();
+                break;
+        }
+    }
+
+    private void CancelBrushStrokeIfNeeded()
+    {
+        if (!_isBrushStrokeActive)
+            return;
+
+        _isBrushStrokeActive = false;
+
+        switch (_editorState.CurrentEditorMode)
+        {
+            case EditorMode.Sculpt:
+                HeightEditor.Instance.EndStroke();
+                break;
+
+            case EditorMode.River:
+                _riverStrokePoints.Clear();
+                break;
         }
     }
 
@@ -486,6 +525,51 @@ public sealed class EmbeddedStrideViewportGame : Game
 
         byte biomeId = (byte)_editorState.CurrentBiomeId;
         BiomeEditor.Instance.ApplyStroke(worldPosition, TerrainManager.BiomeMask, TerrainManager, biomeId);
+    }
+
+    private void ApplyRiverStroke(Vector3 worldPosition)
+    {
+        if (_riverStrokePoints.Count == 0)
+        {
+            _riverStrokePoints.Add(worldPosition);
+            return;
+        }
+
+        Vector3 previous = _riverStrokePoints[^1];
+        if (Vector3.Distance(previous, worldPosition) < 0.5f)
+            return;
+
+        _riverStrokePoints.Add(worldPosition);
+    }
+
+    private void CommitRiverStroke()
+    {
+        if (TerrainManager?.RiverMask == null || _riverStrokePoints.Count == 0)
+        {
+            _riverStrokePoints.Clear();
+            return;
+        }
+
+        var command = new RiverMaskEditCommand(TerrainManager);
+        HistoryManager.Instance.BeginCommand(command);
+
+        float maskRadius = RiverMaskWriter.GetMaskRadius(PathFeatureParameters.Instance.Width);
+        RiverMaskWriter.VisitStrokeMaskSamples(
+            _riverStrokePoints,
+            (maskX, maskY) => HistoryManager.Instance.MarkCommandChunks((int)MathF.Round(maskX), (int)MathF.Round(maskY), maskRadius));
+
+        bool changed = RiverMaskWriter.Instance.ApplyStroke(
+            _riverStrokePoints,
+            PathFeatureParameters.Instance.Width,
+            TerrainManager.RiverMask,
+            TerrainManager);
+
+        if (changed)
+            HistoryManager.Instance.CommitCommand();
+        else
+            HistoryManager.Instance.CancelCommand();
+
+        _riverStrokePoints.Clear();
     }
 
     private void InitializeScene()
@@ -612,6 +696,7 @@ public sealed class EmbeddedStrideViewportGame : Game
     {
         TerrainManager = new TerrainManager(GraphicsDevice, _scene!, defaultTerrainTexture);
         TerrainManager.SetPathFeatureService(new PathFeatureService(GraphicsDevice, _scene!, TerrainManager));
+        _riverMaskMeshService = new RiverMaskMeshService(GraphicsDevice, _scene!, TerrainManager);
         TerrainManager.MaterialTexturesLoadRequired += OnMaterialTexturesLoadRequired;
         TerrainManager.TerrainLoaded += OnTerrainLoaded;
     }
@@ -818,6 +903,9 @@ public sealed class EmbeddedStrideViewportGame : Game
             _brushDecalComponent = null;
         }
 
+        _riverMaskMeshService?.Dispose();
+        _riverMaskMeshService = null;
+
         if (TerrainManager != null)
         {
             TerrainManager.MaterialTexturesLoadRequired -= OnMaterialTexturesLoadRequired;
@@ -850,6 +938,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
 
         TerrainManager?.TryLoadPendingBiomeMask();
+        TerrainManager?.TryLoadPendingRiverMask();
     }
 
     private void TryProcessPendingMaterialTextureLoad()

@@ -541,6 +541,118 @@ FlowNormalTexture = gfx/map/water/flow_normal_temporary.dds
 **文件**: `game/map_data/rivers.png`
 **定义文件**: `jomini/common/defines/jomini/rivers.txt`
 
+### 3.7 RenderDoc 事件映射（`vic3-river.rdc`）
+
+在 `C:\Users\Redwa\Desktop\vic3-river.rdc` 中，河流不是单个 draw，而是**两组配对 draw**：
+
+#### 河底 Pass
+
+| Draw | Index Count | 说明 |
+|------|------------|------|
+| 2392 | 5958 | 主河段河底 |
+| 2394 | 3738 | 次级河段河底 |
+| 2396 | 662 | 短连接段河底 |
+| 2398 | 68 | 极短连接段河底 |
+| 2400 | 1428 | 中等长度河底 |
+| 2402 | 754 | 短河段河底 |
+| 2404 | 1082 | 短河段河底 |
+| 2406 | 164 | 极短连接段河底 |
+| 2408 | 86 | 极短连接段河底 |
+
+- 使用同一套河底 VS/PS。
+- 绑定 `BottomDiffuse / BottomNormal / BottomProperties / ShadowTexture`。
+- 输出不是最终画面，而是供后续水面 pass 使用的中间结果。
+
+#### 水面 Pass
+
+| Draw | Index Count | 说明 |
+|------|------------|------|
+| 2707 | 5958 | 主河段水面 |
+| 2709 | 3738 | 次级河段水面 |
+| 2711 | 662 | 短连接段水面 |
+| 2713 | 68 | 极短连接段水面 |
+| 2715 | 1428 | 中等长度水面 |
+| 2717 | 754 | 短河段水面 |
+| 2719 | 1082 | 短河段水面 |
+| 2721 | 164 | 极短连接段水面 |
+| 2723 | 86 | 极短连接段水面 |
+
+- 使用同一套河面 VS/PS。
+- 2707 与 2715 都属于**普通河流水面条带**，不是专门的 junction shader。
+- 2713 / 2721 / 2723 这类很短的条带更像交汇或收口过渡段。
+
+### 3.8 河流交汇处理
+
+河流交汇**不是**通过单独的 junction shader 或单独覆盖 draw 完成，而是：
+
+1. **几何侧预先拆段**：主河道、支流、短连接段分别生成网格。
+2. **顶点携带连接参数**：`DistanceToMain : TEXCOORD5`。
+3. **shader 侧做 connection fade**：靠 `DistanceToMain` 控制向主河道连接处的透明渐隐。
+
+关键证据：
+
+```hlsl
+// jomini_river.fxh
+float DistanceToMain : TEXCOORD5;
+```
+
+```hlsl
+// jomini_river_surface.fxh
+Out._Color.a = Input.Transparency * saturate( ( Input.DistanceToMain - 0.1f ) * 5.0f );
+```
+
+```hlsl
+// jomini_river_bottom.fxh
+float FadeToConnection = saturate( ( Input.DistanceToMain - 0.6f * abs( Input.UV.y - 0.5f ) ) * 5.0f );
+float Alpha = Diffuse.a * FadeOut * FadeToConnection * EdgeFade1 * EdgeFade2;
+```
+
+这说明交汇机制本质上是：
+
+- **连接形状由网格决定**
+- **连接过渡由顶点参数 + alpha fade 决定**
+
+而不是在像素阶段临时拼出 Y/T 形状。
+
+### 3.9 为什么先画河底，但后续 RT 里只看到混合后的水面结果
+
+河底 pass 并不是直接画到最终画面上，而是先写入一个**中间折射缓冲**：
+
+- `Out.Color.rgb` = 河底颜色
+- `Out.Color.a` = `CompressWorldSpace( WorldSpacePos )`
+- `Out.Blend` = 真正混合 alpha（dual-source blending）
+
+```hlsl
+// jomini_river_bottom.fxh
+Out.Color.rgb = Color;
+Out.Color.a = CompressWorldSpace( WorldSpacePos );
+Out.Blend = vec4( Alpha );
+```
+
+后续水面 pass 在 `CalcWater()` 里采样 `JominiRefraction`：
+
+```hlsl
+// jomini_water_default.fxh
+TextureSampler RefractionTexture
+{
+    Ref = JominiRefraction
+}
+```
+
+```hlsl
+float4 RefractionSample = PdxTex2DLod0( RefractionTexture, ScreenPos / _ScreenResolution );
+float3 RefractionWorldSpacePos = DecompressWorldSpace( WorldSpacePos, RefractionSample.a );
+```
+
+因此流程是：
+
+1. 河底 pass 把**水下颜色 + 压缩世界坐标**写进中间缓冲。
+2. 水面 pass 读取这个缓冲，重建水下位置/深度。
+3. 再做折射、反射、Fresnel、水色和泡沫混合。
+4. 最终 RT 上看到的是**河底与水面已经合成后的结果**。
+
+所以在 RenderDoc 里切到后面的 event 时，看不到“单独河底层”是正常的；它已经变成了后续水面着色的输入。
+
 ---
 
 ## 4. 捕获文件中的深度通道着色器

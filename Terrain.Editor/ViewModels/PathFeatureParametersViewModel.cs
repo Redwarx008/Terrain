@@ -40,6 +40,8 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
 
     public bool IsRoadStyleVisible => KindIndex == 0;
 
+    public bool IsRoadCornerSpanVisible => KindIndex == 0;
+
     public bool IsRiverTerrainShapeVisible => KindIndex == 1;
 
     public string RoadStyleDisplayName => RoadStyleIndex == (int)PathRoadStyle.Paved ? "Paved" : "Dirt";
@@ -47,6 +49,7 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
     partial void OnKindIndexChanged(int value)
     {
         OnPropertyChanged(nameof(IsRoadStyleVisible));
+        OnPropertyChanged(nameof(IsRoadCornerSpanVisible));
         OnPropertyChanged(nameof(IsRiverTerrainShapeVisible));
         if (!syncing)
             source.Kind = value == 1 ? PathFeatureKind.River : PathFeatureKind.Road;
@@ -111,6 +114,7 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
         IsSketchModeEnabled = source.IsSketchModeEnabled;
         syncing = false;
         OnPropertyChanged(nameof(IsRoadStyleVisible));
+        OnPropertyChanged(nameof(IsRoadCornerSpanVisible));
         OnPropertyChanged(nameof(IsRiverTerrainShapeVisible));
         OnPropertyChanged(nameof(RoadStyleDisplayName));
     }

@@ -22,7 +22,12 @@ public enum TerrainDataChannel
     /// <summary>
     /// 高度图。
     /// </summary>
-    Height
+    Height,
+
+    /// <summary>
+    /// 河流遮罩图。
+    /// </summary>
+    RiverMask
 }
 
 /// <summary>

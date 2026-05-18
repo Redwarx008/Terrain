@@ -28,6 +28,7 @@ public sealed class TerrainManager : IDisposable
     private const float HeightSampleNormalization = 1.0f / ushort.MaxValue;
     private const string DefaultHeightmapFileName = "terrain_heightmap.png";
     private const string DefaultBiomeMaskFileName = "terrain_biome_mask.png";
+    private const string DefaultRiverMaskFileName = "terrain_river_mask.png";
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly Scene scene;
@@ -50,8 +51,12 @@ public sealed class TerrainManager : IDisposable
     /// 每个像素存储一个气候 ID，驱动 GPU compute 重建材质控制图。
     /// </summary>
     public BiomeMask? BiomeMask { get; private set; }
+    public RiverMask? RiverMask { get; private set; }
 
     private string? currentBiomeMaskPath;
+    private string? currentRiverMaskPath;
+    private string? pendingProjectNotification;
+    private TomlProjectConfig? pendingLegacyRiverMigrationConfig;
 
     private TerrainComponent? terrainComponent;
     private string? currentTerrainPath;
@@ -66,6 +71,8 @@ public sealed class TerrainManager : IDisposable
 
     public string? CurrentTerrainPath => currentTerrainPath;
     public string? CurrentBiomeMaskPath => currentBiomeMaskPath;
+    public string? CurrentRiverMaskPath => currentRiverMaskPath;
+    public string? PendingProjectNotification => pendingProjectNotification;
 
     public IReadOnlyList<EditorTerrainEntity> TerrainEntities => terrainEntities;
     public bool HasTerrainLoaded => terrainEntities.Count > 0;
@@ -93,10 +100,27 @@ public sealed class TerrainManager : IDisposable
         {
             entity.SetHeightScale(HeightScale);
         }
+
+        TerrainSurfaceChanged?.Invoke(this, EventArgs.Empty);
         ProjectManager.Instance.MarkDirty();
     }
 
     public event EventHandler<TerrainLoadedEventArgs>? TerrainLoaded;
+
+    /// <summary>
+    /// 项目级提示消息产生后触发，例如旧数据迁移完成。
+    /// </summary>
+    public event EventHandler? ProjectNotificationRaised;
+
+    /// <summary>
+    /// RiverMask 数据发生变化后触发，供编辑器调试预览刷新。
+    /// </summary>
+    public event EventHandler? RiverMaskChanged;
+
+    /// <summary>
+    /// 地形表面状态发生变化后触发，例如高度编辑、缩放调整或卸载地形。
+    /// </summary>
+    public event EventHandler? TerrainSurfaceChanged;
 
     /// <summary>
     /// 项目加载完成后触发，通知需要加载材质纹理。
@@ -137,12 +161,16 @@ public sealed class TerrainManager : IDisposable
             return new List<EditorTerrainEntity>();
         }
 
-        // Project reopen prepares pendingBiomeMaskPath before calling LoadTerrainAsync().
-        // Preserve it across RemoveCurrentTerrain() so the loaded terrain can still consume the saved mask.
+        // Project reopen prepares pendingBiomeMaskPath / pendingRiverMaskPath before calling LoadTerrainAsync().
+        // Preserve them across RemoveCurrentTerrain() so the loaded terrain can still consume the saved masks.
         string? preservedPendingBiomeMaskPath = preservePendingBiomeMaskPath ? pendingBiomeMaskPath : null;
+        string? preservedPendingRiverMaskPath = preservePendingBiomeMaskPath ? pendingRiverMaskPath : null;
         RemoveCurrentTerrain();
         if (preservePendingBiomeMaskPath)
+        {
             pendingBiomeMaskPath = preservedPendingBiomeMaskPath;
+            pendingRiverMaskPath = preservedPendingRiverMaskPath;
+        }
         LoadHeightDataCache(heightmapPath);
         if (heightDataCache == null)
         {
@@ -179,6 +207,7 @@ public sealed class TerrainManager : IDisposable
             int biomeMaskWidth = (heightDataWidth + 1) / 2;
             int biomeMaskHeight = (heightDataHeight + 1) / 2;
             BiomeMask = new BiomeMask(biomeMaskWidth, biomeMaskHeight);
+            RiverMask = new RiverMask(biomeMaskWidth, biomeMaskHeight);
 
             terrainEntity.SetBiomeMask(graphicsDevice, BiomeMask);
 
@@ -239,8 +268,14 @@ public sealed class TerrainManager : IDisposable
         heightDataWidth = 0;
         heightDataHeight = 0;
         BiomeMask = null;
+        RiverMask = null;
         currentBiomeMaskPath = null;
+        currentRiverMaskPath = null;
+        pendingProjectNotification = null;
+        pendingLegacyRiverMigrationConfig = null;
         pendingBiomeMaskPath = null;
+        pendingRiverMaskPath = null;
+        TerrainSurfaceChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public BoundingBox GetTerrainBounds()
@@ -313,7 +348,10 @@ public sealed class TerrainManager : IDisposable
         terrainEntities[0].MarkDataDirty(channel, centerX, centerZ, radius);
 
         if (channel == TerrainDataChannel.Height)
+        {
             terrainEntities[0].MarkBiomeSplatDirty(centerX, centerZ, radius);
+            TerrainSurfaceChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public void UpdateHeightData(int modifiedX, int modifiedZ, float radius)
@@ -472,6 +510,21 @@ public sealed class TerrainManager : IDisposable
         }
     }
 
+    public void MarkRiverMaskDirty(bool markProjectDirty = true)
+    {
+        if (markProjectDirty)
+            ProjectManager.Instance.MarkDirty();
+
+        RiverMaskChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public string? ConsumePendingProjectNotification()
+    {
+        string? message = pendingProjectNotification;
+        pendingProjectNotification = null;
+        return message;
+    }
+
     #endregion
 
     #region 项目持久化
@@ -597,6 +650,7 @@ public sealed class TerrainManager : IDisposable
             return configs;
 
         HashSet<Guid> persistedNodeIds = pathFeatureService.Features
+            .Where(static feature => feature.Kind == PathFeatureKind.Road)
             .SelectMany(static feature => feature.NodeIds)
             .ToHashSet();
 
@@ -620,7 +674,7 @@ public sealed class TerrainManager : IDisposable
         if (pathFeatureService == null)
             return configs;
 
-        foreach (PathFeature feature in pathFeatureService.Features)
+        foreach (PathFeature feature in pathFeatureService.Features.Where(static feature => feature.Kind == PathFeatureKind.Road))
         {
             configs.Add(new TomlPathFeatureConfig
             {
@@ -738,10 +792,25 @@ public sealed class TerrainManager : IDisposable
         if (pathFeatureService == null)
             return;
 
+        var roadFeatureConfigs = new List<TomlPathFeatureConfig>();
+        HashSet<Guid> roadNodeIds = [];
+        foreach (TomlPathFeatureConfig featureConfig in config.PathFeatures)
+        {
+            if (!Enum.TryParse(featureConfig.Kind, ignoreCase: true, out PathFeatureKind kind) || kind != PathFeatureKind.Road)
+                continue;
+
+            roadFeatureConfigs.Add(featureConfig);
+            foreach (string nodeIdText in featureConfig.NodeIds)
+            {
+                if (Guid.TryParse(nodeIdText, out Guid nodeId))
+                    roadNodeIds.Add(nodeId);
+            }
+        }
+
         var snapshot = new PathNetworkSnapshot();
         foreach (TomlPathNodeConfig nodeConfig in config.PathNodes)
         {
-            if (!Guid.TryParse(nodeConfig.Id, out Guid nodeId))
+            if (!Guid.TryParse(nodeConfig.Id, out Guid nodeId) || !roadNodeIds.Contains(nodeId))
                 continue;
 
             snapshot.Nodes.Add(new PathNode
@@ -752,26 +821,20 @@ public sealed class TerrainManager : IDisposable
         }
 
         var validNodeIds = snapshot.Nodes.Select(static node => node.Id).ToHashSet();
-        foreach (TomlPathFeatureConfig featureConfig in config.PathFeatures)
+        foreach (TomlPathFeatureConfig featureConfig in roadFeatureConfigs)
         {
             if (!Guid.TryParse(featureConfig.Id, out Guid featureId))
                 continue;
 
-            if (!Enum.TryParse(featureConfig.Kind, ignoreCase: true, out PathFeatureKind kind))
-                kind = PathFeatureKind.Road;
-
             PathRoadStyle roadStyle = PathRoadStyle.Dirt;
-            if (kind == PathFeatureKind.Road
-                && !Enum.TryParse(featureConfig.RoadStyle, ignoreCase: true, out roadStyle))
-            {
+            if (!Enum.TryParse(featureConfig.RoadStyle, ignoreCase: true, out roadStyle))
                 roadStyle = PathRoadStyle.Dirt;
-            }
 
             var feature = new PathFeature
             {
                 Id = featureId,
-                Name = string.IsNullOrWhiteSpace(featureConfig.Name) ? kind.ToString() : featureConfig.Name,
-                Kind = kind,
+                Name = string.IsNullOrWhiteSpace(featureConfig.Name) ? PathFeatureKind.Road.ToString() : featureConfig.Name,
+                Kind = PathFeatureKind.Road,
                 Style = new PathFeatureStyle
                 {
                     Width = featureConfig.Width,
@@ -793,6 +856,129 @@ public sealed class TerrainManager : IDisposable
         }
 
         pathFeatureService.RestoreSnapshotFromProject(snapshot);
+    }
+
+    private PathNetworkSnapshot BuildLegacyRiverSnapshot(TomlProjectConfig config)
+    {
+        var snapshot = new PathNetworkSnapshot();
+        Dictionary<Guid, PathNode> snapshotNodes = [];
+        foreach (TomlPathFeatureConfig featureConfig in config.PathFeatures)
+        {
+            if (!Enum.TryParse(featureConfig.Kind, ignoreCase: true, out PathFeatureKind kind) || kind != PathFeatureKind.River)
+                continue;
+
+            if (!Guid.TryParse(featureConfig.Id, out Guid featureId))
+                continue;
+
+            var feature = new PathFeature
+            {
+                Id = featureId,
+                Name = string.IsNullOrWhiteSpace(featureConfig.Name) ? PathFeatureKind.River.ToString() : featureConfig.Name,
+                Kind = PathFeatureKind.River,
+                Style = new PathFeatureStyle
+                {
+                    Width = featureConfig.Width,
+                    Depth = featureConfig.Depth,
+                    SideSlope = featureConfig.SideSlope,
+                    CornerSpan = featureConfig.CornerSpan,
+                },
+            };
+
+            foreach (string nodeIdText in featureConfig.NodeIds)
+            {
+                if (!Guid.TryParse(nodeIdText, out Guid nodeId))
+                    continue;
+
+                TomlPathNodeConfig? nodeConfig = config.PathNodes.FirstOrDefault(node => string.Equals(node.Id, nodeIdText, StringComparison.OrdinalIgnoreCase));
+                if (nodeConfig == null)
+                    continue;
+
+                if (!snapshotNodes.ContainsKey(nodeId))
+                {
+                    snapshotNodes[nodeId] = new PathNode
+                    {
+                        Id = nodeId,
+                        Position = new Vector3(nodeConfig.X, nodeConfig.Y, nodeConfig.Z),
+                    };
+                }
+
+                feature.NodeIds.Add(nodeId);
+            }
+
+            if (feature.NodeIds.Count >= 2)
+                snapshot.Features.Add(feature);
+        }
+
+        snapshot.Nodes.AddRange(snapshotNodes.Values);
+        return snapshot;
+    }
+
+    private void PreserveLegacyRiverTerrain(TomlProjectConfig config)
+    {
+        if (pathFeatureService == null || heightDataCache == null)
+            return;
+
+        PathNetworkSnapshot legacyRiverSnapshot = BuildLegacyRiverSnapshot(config);
+        if (legacyRiverSnapshot.Features.Count == 0)
+            return;
+
+        PathNetworkSnapshot roadSnapshot = pathFeatureService.CaptureSnapshot();
+        pathFeatureService.RestoreSnapshotFromProject(legacyRiverSnapshot);
+        pathFeatureService.RestoreSnapshotFromProject(roadSnapshot);
+    }
+
+    private void MigrateLegacyRiverPathsToMask(TomlProjectConfig config)
+    {
+        if (RiverMask == null)
+            return;
+
+        if (!string.IsNullOrEmpty(currentRiverMaskPath))
+            return;
+
+        Dictionary<Guid, Vector3> nodePositions = [];
+        foreach (TomlPathNodeConfig nodeConfig in config.PathNodes)
+        {
+            if (!Guid.TryParse(nodeConfig.Id, out Guid nodeId))
+                continue;
+
+            nodePositions[nodeId] = new Vector3(nodeConfig.X, nodeConfig.Y, nodeConfig.Z);
+        }
+
+        bool migratedAny = false;
+        foreach (TomlPathFeatureConfig featureConfig in config.PathFeatures)
+        {
+            if (!Enum.TryParse(featureConfig.Kind, ignoreCase: true, out PathFeatureKind kind) || kind != PathFeatureKind.River)
+                continue;
+
+            List<Vector3> controlPoints = [];
+            foreach (string nodeIdText in featureConfig.NodeIds)
+            {
+                if (!Guid.TryParse(nodeIdText, out Guid nodeId))
+                    continue;
+
+                if (nodePositions.TryGetValue(nodeId, out Vector3 worldPosition))
+                    controlPoints.Add(worldPosition);
+            }
+
+            if (controlPoints.Count < 2)
+                continue;
+
+            IReadOnlyList<Vector3> sampledCurve = PathFeatureService.SampleLegacyCurve(controlPoints, featureConfig.Width, featureConfig.CornerSpan);
+            if (sampledCurve.Count < 2)
+                continue;
+
+            migratedAny |= RiverMaskWriter.Instance.ApplyStroke(sampledCurve, featureConfig.Width, RiverMask, this, riverValue: 255, markProjectDirty: false);
+        }
+
+        if (!migratedAny)
+            return;
+
+        PreserveLegacyRiverTerrain(config);
+        currentRiverMaskPath = null;
+        pendingProjectNotification = "检测到旧版 River Path，已按旧曲线迁移到 RiverMask，并保留原有河道地形塑形；请保存项目以写回转换后的数据。";
+        ProjectNotificationRaised?.Invoke(this, EventArgs.Empty);
+        ProjectManager.Instance.MarkDirty();
+        Log.Warning("Detected legacy river paths in project data and migrated them to RiverMask while preserving carved terrain. Save the project to persist the converted data.");
     }
 
     private static bool RepairDefaultBaseMaterialSlot(BiomeRuleService biomeState)
@@ -845,6 +1031,22 @@ public sealed class TerrainManager : IDisposable
         image.SaveAsPng(path);
     }
 
+    private static void SaveRiverMask(RiverMask map, string path)
+    {
+        EnsureParentDirectory(path);
+
+        using var image = new Image<L8>(map.Width, map.Height);
+        for (int y = 0; y < map.Height; y++)
+        {
+            for (int x = 0; x < map.Width; x++)
+            {
+                image[x, y] = new L8(map.GetValue(x, y));
+            }
+        }
+
+        image.SaveAsPng(path);
+    }
+
     private void SaveProject(string projectFilePath, string projectName, bool snapshotEditableAssetsIntoProject)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || heightDataCache == null)
@@ -868,12 +1070,21 @@ public sealed class TerrainManager : IDisposable
             currentBiomeMaskPath = biomeMaskPath;
         }
 
+        string? riverMaskPath = null;
+        if (RiverMask != null)
+        {
+            riverMaskPath = ResolveRiverMaskSavePath(fullProjectFilePath, snapshotEditableAssetsIntoProject);
+            SaveRiverMask(RiverMask, riverMaskPath);
+            currentRiverMaskPath = riverMaskPath;
+        }
+
         var config = new TomlProjectConfig
         {
             Version = version,
             Name = resolvedProjectName,
             HeightmapPath = currentTerrainPath,
             BiomeMaskPath = biomeMaskPath,
+            RiverMaskPath = riverMaskPath,
             HeightScale = HeightScale,
             MaterialSlots = SaveMaterialSlotConfigs(),
             Biomes = SaveBiomeConfigs(),
@@ -909,6 +1120,21 @@ public sealed class TerrainManager : IDisposable
         string fileName = !string.IsNullOrWhiteSpace(currentBiomeMaskPath)
             ? Path.GetFileName(currentBiomeMaskPath)
             : DefaultBiomeMaskFileName;
+
+        if (string.IsNullOrWhiteSpace(Path.GetExtension(fileName)))
+            fileName = $"{fileName}.png";
+
+        return Path.Combine(ProjectManager.GetSplatMapsPath(projectFilePath), fileName);
+    }
+
+    private string ResolveRiverMaskSavePath(string projectFilePath, bool snapshotEditableAssetsIntoProject)
+    {
+        if (!snapshotEditableAssetsIntoProject && !string.IsNullOrWhiteSpace(currentRiverMaskPath))
+            return currentRiverMaskPath;
+
+        string fileName = !string.IsNullOrWhiteSpace(currentRiverMaskPath)
+            ? Path.GetFileName(currentRiverMaskPath)
+            : DefaultRiverMaskFileName;
 
         if (string.IsNullOrWhiteSpace(Path.GetExtension(fileName)))
             fileName = $"{fileName}.png";
@@ -993,26 +1219,39 @@ public sealed class TerrainManager : IDisposable
         pendingBiomeMaskPath = !string.IsNullOrEmpty(config.BiomeMaskPath) && File.Exists(config.BiomeMaskPath)
             ? config.BiomeMaskPath
             : null;
+        pendingRiverMaskPath = !string.IsNullOrEmpty(config.RiverMaskPath) && File.Exists(config.RiverMaskPath)
+            ? config.RiverMaskPath
+            : null;
 
-        // 加载高度图。pendingBiomeMaskPath 必须先准备好，
-        // 因为当前 LoadTerrainAsync 会在 TerrainLoaded 事件中立刻尝试消费它。
+        // 加载高度图。pendingBiomeMaskPath / pendingRiverMaskPath 必须先准备好，
+        // 因为当前 LoadTerrainAsync 会在 TerrainLoaded 事件中立刻尝试消费它们。
         if (!string.IsNullOrEmpty(config.HeightmapPath) && File.Exists(config.HeightmapPath))
         {
             _ = LoadTerrainAsync(config.HeightmapPath, preservePendingBiomeMaskPath: true);
 
             // 兜底：如果当前调用路径下没有订阅 TerrainLoaded，仍然尝试消费暂存蒙版。
             if (HasTerrainLoaded)
+            {
                 TryLoadPendingBiomeMask();
+                TryLoadPendingRiverMask();
+            }
         }
 
         RestorePathData(config);
+        pendingLegacyRiverMigrationConfig = config;
+        if (HasTerrainLoaded)
+        {
+            MigrateLegacyRiverPathsToMask(config);
+            pendingLegacyRiverMigrationConfig = null;
+        }
 
         // 通知需要加载材质纹理（由外部调用 LoadMaterialTextures）
         MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
     }
 
-    // 生物群系蒙版加载路径暂存，等待高度图加载完成后使用
+    // 生物群系/河流蒙版加载路径暂存，等待高度图加载完成后使用
     private string? pendingBiomeMaskPath;
+    private string? pendingRiverMaskPath;
 
     /// <summary>
     /// 尝试加载暂存的生物群系蒙版。由 HeightmapLoaded 事件调用。
@@ -1025,6 +1264,25 @@ public sealed class TerrainManager : IDisposable
         string path = pendingBiomeMaskPath;
         pendingBiomeMaskPath = null;
         return LoadBiomeMask(path, markDirty: false);
+    }
+
+    public bool TryLoadPendingRiverMask()
+    {
+        bool loaded = false;
+        if (!string.IsNullOrEmpty(pendingRiverMaskPath))
+        {
+            string path = pendingRiverMaskPath;
+            pendingRiverMaskPath = null;
+            loaded = LoadRiverMask(path, markDirty: false);
+        }
+
+        if (pendingLegacyRiverMigrationConfig != null)
+        {
+            MigrateLegacyRiverPathsToMask(pendingLegacyRiverMigrationConfig);
+            pendingLegacyRiverMigrationConfig = null;
+        }
+
+        return loaded;
     }
 
     /// <summary>
@@ -1066,6 +1324,34 @@ public sealed class TerrainManager : IDisposable
         RegenerateMaterialIndices();
         if (markDirty)
             ProjectManager.Instance.MarkDirty();
+        return true;
+    }
+
+    public bool LoadRiverMask(string path, bool markDirty = true)
+    {
+        if (RiverMask == null || !File.Exists(path))
+            return false;
+
+        using var image = HeightmapImage.Load<L8>(path);
+
+        bool halfRes = image.Width == RiverMask.Width && image.Height == RiverMask.Height;
+        bool fullRes = image.Width == heightDataWidth && image.Height == heightDataHeight;
+        if (!halfRes && !fullRes)
+            return false;
+
+        for (int y = 0; y < RiverMask.Height; y++)
+        {
+            for (int x = 0; x < RiverMask.Width; x++)
+            {
+                int srcX = fullRes ? x * 2 : x;
+                int srcY = fullRes ? y * 2 : y;
+                byte riverValue = image[srcX, srcY].PackedValue;
+                RiverMask.SetValue(x, y, riverValue);
+            }
+        }
+
+        currentRiverMaskPath = path;
+        MarkRiverMaskDirty(markDirty);
         return true;
     }
 

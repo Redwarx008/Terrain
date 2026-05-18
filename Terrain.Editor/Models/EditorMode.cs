@@ -7,6 +7,7 @@ public enum EditorMode
     Sculpt,
     Paint,
     Path,
+    River,
     Foliage,
     Settings,
     Landscape,

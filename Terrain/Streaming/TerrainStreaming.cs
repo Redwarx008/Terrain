@@ -104,7 +104,8 @@ internal readonly struct TerrainPageKey : IEquatable<TerrainPageKey>
 internal struct TerrainFileHeader
 {
     public const int MagicValue = 0x52524554;
-    public const int SupportedVersion = 6;
+    public const int MinSupportedVersion = 6;
+    public const int MaxSupportedVersion = 7;
 
     public int Magic;
     public int Version;
@@ -117,9 +118,9 @@ internal struct TerrainFileHeader
     public int SplatMapFormat;
     public int SplatMapMipLevels;
     public int SplatMapResolutionRatio;
-    public int Reserved2;
-    public int Reserved3;
-    public int Reserved4;
+    public int RiverMapFormat;
+    public int RiverMapMipLevels;
+    public int RiverMapResolutionRatio;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -144,6 +145,9 @@ internal sealed class TerrainFileReader : IDisposable
     private readonly TerrainVirtualTextureHeader splatMapHeader;
     private readonly TerrainMipLayout[] splatMapMipLayouts;
     private readonly int splatMapTileByteSize;
+    private readonly TerrainVirtualTextureHeader? riverMapHeader;
+    private readonly TerrainMipLayout[] riverMapMipLayouts;
+    private readonly int riverMapTileByteSize;
 
     public TerrainFileReader(string path)
     {
@@ -198,6 +202,31 @@ internal sealed class TerrainFileReader : IDisposable
             splatMapMipLayouts[mip] = new TerrainMipLayout(layoutInfo.Width, layoutInfo.Height, layoutInfo.TilesX, layoutInfo.TilesY, currentOffset);
             currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * splatMapTileByteSize));
         }
+
+        if (Header.Version >= 7 && Header.RiverMapFormat != 0 && Header.RiverMapMipLevels > 0)
+        {
+            riverMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
+            int riverMapPaddedTileSize = checked(riverMapHeader.Value.TileSize + riverMapHeader.Value.Padding * 2);
+            riverMapTileByteSize = checked(riverMapPaddedTileSize * riverMapPaddedTileSize * riverMapHeader.Value.BytesPerPixel);
+
+            riverMapMipLayouts = new TerrainMipLayout[riverMapHeader.Value.Mipmaps];
+            for (int mip = 0; mip < riverMapHeader.Value.Mipmaps; mip++)
+            {
+                VirtualTextureMipLayoutInfo layoutInfo = VirtualTextureLayout.GetMipLayout(
+                    riverMapHeader.Value.Width,
+                    riverMapHeader.Value.Height,
+                    riverMapHeader.Value.TileSize,
+                    mip);
+                riverMapMipLayouts[mip] = new TerrainMipLayout(layoutInfo.Width, layoutInfo.Height, layoutInfo.TilesX, layoutInfo.TilesY, currentOffset);
+                currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * riverMapTileByteSize));
+            }
+        }
+        else
+        {
+            riverMapHeader = null;
+            riverMapMipLayouts = Array.Empty<TerrainMipLayout>();
+            riverMapTileByteSize = 0;
+        }
     }
 
     public TerrainFileHeader Header { get; }
@@ -208,6 +237,7 @@ internal sealed class TerrainFileReader : IDisposable
     /// v6 起这里持久化的是 BiomeMask，而不是预烘焙的 detail index map。
     /// </summary>
     public TerrainVirtualTextureHeader SplatMapHeader => splatMapHeader;
+    public TerrainVirtualTextureHeader? RiverMapHeader => riverMapHeader;
 
     /// <summary>
     /// Splatmap 与 heightmap 的分辨率比。1 = 同分辨率（legacy v2），2 = 半分辨率（v3）。
@@ -215,7 +245,11 @@ internal sealed class TerrainFileReader : IDisposable
     public int SplatMapResolutionRatio =>
         Header.Version >= 3 ? Header.SplatMapResolutionRatio : 1;
 
+    public int RiverMapResolutionRatio =>
+        Header.Version >= 7 ? Header.RiverMapResolutionRatio : 1;
+
     public int SplatMapMipCount => splatMapMipLayouts.Length;
+    public int RiverMapMipCount => riverMapMipLayouts.Length;
 
     public TerrainMinMaxErrorMap[] ReadAllMinMaxErrorMaps()
         => minMaxErrorMaps;
@@ -225,6 +259,14 @@ internal sealed class TerrainFileReader : IDisposable
 
     public byte[] ReadAllBiomeMaskData()
         => ReadAllVirtualTextureData<byte>(splatMapHeader, splatMapMipLayouts, splatMapTileByteSize);
+
+    public byte[] ReadAllRiverMaskData()
+    {
+        if (riverMapHeader == null || riverMapMipLayouts.Length == 0)
+            return Array.Empty<byte>();
+
+        return ReadAllVirtualTextureData<byte>(riverMapHeader.Value, riverMapMipLayouts, riverMapTileByteSize);
+    }
 
     public void ReadHeightPage(TerrainPageKey key, Span<byte> destination)
     {
@@ -379,9 +421,9 @@ internal sealed class TerrainFileReader : IDisposable
 
     private static void ValidateHeader(TerrainFileHeader header, int mapCount)
     {
-        if (header.Version != TerrainFileHeader.SupportedVersion)
+        if (header.Version < TerrainFileHeader.MinSupportedVersion || header.Version > TerrainFileHeader.MaxSupportedVersion)
         {
-            throw new InvalidDataException($"Unsupported terrain file version {header.Version}. Expected {TerrainFileHeader.SupportedVersion}.");
+            throw new InvalidDataException($"Unsupported terrain file version {header.Version}. Expected {TerrainFileHeader.MinSupportedVersion}-{TerrainFileHeader.MaxSupportedVersion}.");
         }
 
         if (header.Width <= 1 || header.Height <= 1 || header.Width > MaxTerrainDimension || header.Height > MaxTerrainDimension)
