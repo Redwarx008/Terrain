@@ -115,19 +115,33 @@ public sealed class RiverMaskMeshService : IDisposable
 
     private RiverMeshTopology? BuildTopology()
     {
-        RiverMap? riverMask = terrainManager.RiverMap;
-        if (riverMask == null || !terrainManager.HasHeightCache)
+        RiverCell[,]? riverMap = terrainManager.RiverMap;
+        if (riverMap == null || !terrainManager.HasHeightCache)
             return null;
 
-        byte[] rawData = riverMask.GetRawData();
-        int mapWidth = riverMask.Width;
-        int mapHeight = riverMask.Height;
+        int mapWidth = riverMap.GetLength(0);
+        int mapHeight = riverMap.GetLength(1);
 
-        // 优先：从 RiverMap 像素直接追踪蓝色路径生成段
-        List<RiverCenterSegment>? segments = TryBuildFromPixelTrace(riverMask, rawData);
+        // Build flat byte[] for skeleton code
+        byte[] rawData = new byte[mapWidth * mapHeight * 2];
+        for (int y = 0; y < mapHeight; y++)
+            for (int x = 0; x < mapWidth; x++)
+            {
+                var cell = riverMap[x, y];
+                rawData[(y * mapWidth + x) * 2] = (byte)cell.Type;
+                rawData[(y * mapWidth + x) * 2 + 1] = cell.Width;
+            }
 
-        // fallback: 旧格式/退化 → 骨架提取
-        segments ??= ExtractSegments(BuildSkeleton(rawData, mapWidth, mapHeight), mapWidth, mapHeight);
+        // Pixel-tracing: directly trace blue pixel paths
+        List<RiverCenterSegment>? segments = TryBuildFromPixelTrace(mapWidth, mapHeight, rawData);
+
+        // Fallback: skeleton extraction for legacy data
+        if (segments == null || segments.Count == 0)
+        {
+            bool[] skeleton = BuildSkeleton(rawData, mapWidth, mapHeight);
+            segments = ExtractSegments(skeleton, mapWidth, mapHeight);
+        }
+
         if (segments == null || segments.Count == 0)
             return null;
 
@@ -201,7 +215,7 @@ public sealed class RiverMaskMeshService : IDisposable
                 AddJunctionAttachment(attachmentsByJunction, segment.EndNodeKey, new RiverJunctionAttachment(i, false, segment.AverageHalfWidth, segment.WorldLength));
         }
 
-        int paddedWidth = (terrainManager.RiverMap?.Width ?? 0) + 2;
+        int paddedWidth = (terrainManager.RiverMap?.GetLength(0) ?? 0) + 2;
 
         foreach ((int junctionKey, List<RiverJunctionAttachment> attachments) in attachmentsByJunction)
         {
@@ -842,7 +856,8 @@ public sealed class RiverMaskMeshService : IDisposable
                 continue;
 
             byte blueValue = rawData[(my * width + mx) * 2 + 1];
-            float halfWidth = RiverColorConverter.BlueValueToHalfWidth(blueValue);
+            float t = Math.Min(blueValue, (byte)12) / 12.0f;
+            float halfWidth = Math.Max(1.0f, 1.0f + t * 3.0f) * 0.5f;
             total += halfWidth;
             sampleCount++;
         }
@@ -2315,10 +2330,10 @@ public sealed class RiverMaskMeshService : IDisposable
 
     private static readonly (int Dx, int Dy)[] OrthoNeighbors = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 
-    private static List<RiverCenterSegment>? TryBuildFromPixelTrace(RiverMap riverMap, byte[] rawData)
+    private static List<RiverCenterSegment>? TryBuildFromPixelTrace(int mapWidth, int mapHeight, byte[] rawData)
     {
-        int w = riverMap.Width;
-        int h = riverMap.Height;
+        int w = mapWidth;
+        int h = mapHeight;
 
         var specialPixels = new List<(int X, int Y, RiverPixelType Type)>();
         for (int y = 0; y < h; y++)

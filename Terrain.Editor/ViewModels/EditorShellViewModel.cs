@@ -1281,26 +1281,19 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         previousPreview?.Dispose();
     }
 
-    private static Bitmap? CreateRiverMaskPreview(RiverMap? riverMap)
+    private static Bitmap? CreateRiverMaskPreview(RiverCell[,]? riverMap)
     {
         if (riverMap == null)
             return null;
 
-        byte[] raw = riverMap.GetRawData();
-        int pixelCount = riverMap.Width * riverMap.Height;
-        if (raw.Length != pixelCount * 2)
-            return null;
+        int w = riverMap.GetLength(0);
+        int h = riverMap.GetLength(1);
+        var pixels = new Rgba32[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                pixels[y * w + x] = riverMap[x, y].ToRgba32();
 
-        Rgba32[] pixels = new Rgba32[pixelCount];
-        for (int i = 0; i < pixelCount; i++)
-        {
-            RiverPixelType type = (RiverPixelType)raw[i * 2];
-            byte width = raw[i * 2 + 1];
-            RiverColorConverter.Encode(type, width, out byte r, out byte g, out byte b);
-            pixels[i] = new Rgba32(r, g, b, 255);
-        }
-
-        using var image = ImageSharpImage.LoadPixelData<Rgba32>(pixels.AsSpan(), riverMap.Width, riverMap.Height);
+        using var image = ImageSharpImage.LoadPixelData<Rgba32>(pixels.AsSpan(), w, h);
         image.Mutate(static context => context.Resize(new ResizeOptions
         {
             Size = new SixLabors.ImageSharp.Size(512, 512),

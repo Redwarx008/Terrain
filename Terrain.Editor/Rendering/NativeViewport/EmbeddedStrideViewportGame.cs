@@ -555,21 +555,27 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
 
         // Source/Confluence/Bifurcation/Ocean: 单击即放置
-        RiverPixelType pixelType = tool switch
+        RiverCell cell = tool switch
         {
-            EditorToolKind.RiverSource => RiverPixelType.Source,
-            EditorToolKind.RiverConfluence => RiverPixelType.Confluence,
-            EditorToolKind.RiverBifurcation => RiverPixelType.Bifurcation,
-            EditorToolKind.RiverOcean => RiverPixelType.Ocean,
-            _ => RiverPixelType.Land,
+            EditorToolKind.RiverSource => new(RiverPixelType.Source),
+            EditorToolKind.RiverConfluence => new(RiverPixelType.Confluence),
+            EditorToolKind.RiverBifurcation => new(RiverPixelType.Bifurcation),
+            EditorToolKind.RiverOcean => new(RiverPixelType.Ocean),
+            _ => new(RiverPixelType.Land),
         };
 
         if (TerrainManager?.RiverMap != null)
         {
-            var command = new RiverMaskEditCommand(TerrainManager);
-            HistoryManager.Instance.BeginCommand(command);
-            RiverMapPainter.Instance.PlaceSpecialPixel(worldPosition, pixelType, TerrainManager.RiverMap, TerrainManager);
-            HistoryManager.Instance.CommitCommand();
+            int mx = (int)MathF.Round(worldPosition.X * 0.5f);
+            int my = (int)MathF.Round(worldPosition.Z * 0.5f);
+            if ((uint)mx < TerrainManager.RiverMap.GetLength(0) && (uint)my < TerrainManager.RiverMap.GetLength(1))
+            {
+                var command = new RiverMaskEditCommand(TerrainManager);
+                HistoryManager.Instance.BeginCommand(command);
+                TerrainManager.RiverMap[mx, my] = cell;
+                TerrainManager.MarkRiverMaskDirty();
+                HistoryManager.Instance.CommitCommand();
+            }
         }
 
         _isBrushStrokeActive = false;
@@ -588,27 +594,97 @@ public sealed class EmbeddedStrideViewportGame : Game
         HistoryManager.Instance.BeginCommand(command);
 
         bool changed = false;
+        var map = TerrainManager.RiverMap;
+        int mapW = map.GetLength(0);
+        int mapH = map.GetLength(1);
 
         if (tool == EditorToolKind.RiverChannel)
         {
-            // Channel: 1px Bresenham 线，宽度从 PathFeatureParameters 读取
             float worldWidth = PathFeatureParameters.Instance.Width;
-            changed = RiverMapPainter.Instance.ApplyStroke(
-                _riverStrokePoints, worldWidth, TerrainManager.RiverMap, TerrainManager,
-                riverValue: (byte)Math.Clamp((int)(worldWidth / 4.0f * 12.0f), 1, 12));
+            byte widthByte = (byte)Math.Clamp((int)(worldWidth / 4.0f * 12.0f), 1, 12);
+
+            for (int i = 0; i < _riverStrokePoints.Count; i++)
+            {
+                Vector3 start = _riverStrokePoints[i];
+                Vector3 end = i + 1 < _riverStrokePoints.Count ? _riverStrokePoints[i + 1] : _riverStrokePoints[i];
+
+                int x0 = (int)MathF.Round(start.X * 0.5f);
+                int y0 = (int)MathF.Round(start.Z * 0.5f);
+                int x1 = (int)MathF.Round(end.X * 0.5f);
+                int y1 = (int)MathF.Round(end.Z * 0.5f);
+
+                int dx = Math.Abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+                int dy = -Math.Abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+                int err = dx + dy;
+                while (true)
+                {
+                    if ((uint)x0 < mapW && (uint)y0 < mapH)
+                    {
+                        var cur = map[x0, y0];
+                        if (cur.Type is RiverPixelType.Source or RiverPixelType.Confluence
+                            or RiverPixelType.Bifurcation or RiverPixelType.Ocean)
+                        { }
+                        else if (cur.Type != RiverPixelType.River || cur.Width != widthByte)
+                        {
+                            map[x0, y0] = new RiverCell(RiverPixelType.River, widthByte);
+                            changed = true;
+                        }
+                    }
+                    if (x0 == x1 && y0 == y1) break;
+                    int e2 = err * 2;
+                    if (e2 >= dy) { err += dy; x0 += sx; }
+                    if (e2 <= dx) { err += dx; y0 += sy; }
+                }
+            }
         }
         else if (tool == EditorToolKind.RiverEraser)
         {
-            // Eraser: Disc 擦除
             float radius = BrushParameters.Instance.Size * 0.5f;
-            changed = RiverMapPainter.Instance.ApplyEraser(
-                _riverStrokePoints, radius, TerrainManager.RiverMap, TerrainManager);
+            float halfResRadius = radius * 0.25f;
+            int ceilR = (int)MathF.Ceiling(halfResRadius);
+
+            for (int i = 0; i < _riverStrokePoints.Count; i++)
+            {
+                Vector3 start = _riverStrokePoints[i];
+                Vector3 end = i + 1 < _riverStrokePoints.Count ? _riverStrokePoints[i + 1] : _riverStrokePoints[i];
+
+                int x0 = (int)MathF.Round(start.X * 0.5f);
+                int y0 = (int)MathF.Round(start.Z * 0.5f);
+                int x1 = (int)MathF.Round(end.X * 0.5f);
+                int y1 = (int)MathF.Round(end.Z * 0.5f);
+
+                float dx = x1 - x0, dy = y1 - y0;
+                int steps = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(dx * dx + dy * dy)));
+                for (int s = 0; s <= steps; s++)
+                {
+                    float t = steps == 0 ? 0 : s / (float)steps;
+                    int cx = (int)MathF.Round(x0 + dx * t);
+                    int cy = (int)MathF.Round(y0 + dy * t);
+                    for (int dz = -ceilR; dz <= ceilR; dz++)
+                    {
+                        for (int dx2 = -ceilR; dx2 <= ceilR; dx2++)
+                        {
+                            int px = cx + dx2, py = cy + dz;
+                            if ((uint)px >= mapW || (uint)py >= mapH) continue;
+                            if (MathF.Sqrt(dx2 * dx2 + dz * dz) > halfResRadius) continue;
+                            if (map[px, py].Type == RiverPixelType.Land) continue;
+                            map[px, py] = new RiverCell(RiverPixelType.Land);
+                            changed = true;
+                        }
+                    }
+                }
+            }
         }
 
         if (changed)
+        {
+            TerrainManager.MarkRiverMaskDirty();
             HistoryManager.Instance.CommitCommand();
+        }
         else
+        {
             HistoryManager.Instance.CancelCommand();
+        }
 
         _riverStrokePoints.Clear();
     }

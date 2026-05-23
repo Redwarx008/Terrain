@@ -37,21 +37,23 @@ public class TerrainExporter : IExporter
             ?? throw new InvalidOperationException("No height data loaded");
         var biomeMask = tm.BiomeMask
             ?? throw new InvalidOperationException("No biome mask loaded");
-        var riverMask = tm.RiverMap
+        var riverMap = tm.RiverMap
             ?? throw new InvalidOperationException("No river mask loaded");
         byte[] biomeMaskData = biomeMask.GetRawData();
-        byte[] riverMapRawData = riverMask.GetRawData();
-        // 解交织：导出 R8 VT 数据（仅 width 字节），跳过 type 字节
-        byte[] riverMaskData = new byte[riverMask.Width * riverMask.Height];
-        for (int i = 0; i < riverMaskData.Length; i++)
-            riverMaskData[i] = riverMapRawData[i * 2 + 1];
+        int rw = riverMap.GetLength(0);
+        int rh = riverMap.GetLength(1);
+        // 展平 Width 值导出 R8 VT 数据
+        byte[] riverMaskData = new byte[rw * rh];
+        for (int y = 0; y < rh; y++)
+            for (int x = 0; x < rw; x++)
+                riverMaskData[y * rw + x] = riverMap[x, y].Width;
         int width = tm.HeightCacheWidth;
         int height = tm.HeightCacheHeight;
         int leafNodeSize = tm.SplitConfig?.BaseChunkSize ?? SplitTerrainConfig.DefaultBaseChunkSize;
         int biomeMaskWidth = biomeMask.Width;
         int biomeMaskHeight = biomeMask.Height;
-        int riverMaskWidth = riverMask.Width;
-        int riverMaskHeight = riverMask.Height;
+        int riverMaskWidth = rw;
+        int riverMaskHeight = rh;
 
         await Task.Run(() =>
         {

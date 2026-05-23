@@ -53,7 +53,7 @@ public sealed class TerrainManager : IDisposable
     /// 每个像素存储一个气候 ID，驱动 GPU compute 重建材质控制图。
     /// </summary>
     public BiomeMask? BiomeMask { get; private set; }
-    public RiverMap? RiverMap { get; private set; }
+    public RiverCell[,]? RiverMap { get; private set; }
 
     private string? currentBiomeMaskPath;
     private string? currentRiverMaskPath;
@@ -209,7 +209,7 @@ public sealed class TerrainManager : IDisposable
             int biomeMaskWidth = (heightDataWidth + 1) / 2;
             int biomeMaskHeight = (heightDataHeight + 1) / 2;
             BiomeMask = new BiomeMask(biomeMaskWidth, biomeMaskHeight);
-            RiverMap = new RiverMap(biomeMaskWidth, biomeMaskHeight);
+            RiverMap = new RiverCell[biomeMaskWidth, biomeMaskHeight];
 
             terrainEntity.SetBiomeMask(graphicsDevice, BiomeMask);
 
@@ -969,7 +969,8 @@ public sealed class TerrainManager : IDisposable
             if (sampledCurve.Count < 2)
                 continue;
 
-            migratedAny |= RiverMapPainter.Instance.ApplyStroke(sampledCurve, featureConfig.Width, RiverMap, this, riverValue: 12, markProjectDirty: false);
+            byte widthByte = (byte)Math.Clamp((int)(featureConfig.Width / 4.0f * 12.0f), 1, 12);
+            migratedAny |= RasterizeLegacyCurve(RiverMap, sampledCurve, widthByte);
         }
 
         if (!migratedAny)
@@ -1033,21 +1034,59 @@ public sealed class TerrainManager : IDisposable
         image.SaveAsPng(path);
     }
 
-    private static void SaveRiverMap(RiverMap map, string path)
+    /// <summary>
+    /// 旧版 Path 曲线迁移辅助：Bresenham 直线写入 RiverMap
+    /// </summary>
+    private static bool RasterizeLegacyCurve(RiverCell[,] map, IReadOnlyList<Vector3> worldPoints, byte widthByte)
+    {
+        int w = map.GetLength(0);
+        int h = map.GetLength(1);
+        bool changed = false;
+        for (int i = 0; i < worldPoints.Count; i++)
+        {
+            Vector3 start = worldPoints[i];
+            Vector3 end = i + 1 < worldPoints.Count ? worldPoints[i + 1] : worldPoints[i];
+            int x0 = (int)MathF.Round(start.X * 0.5f);
+            int y0 = (int)MathF.Round(start.Z * 0.5f);
+            int x1 = (int)MathF.Round(end.X * 0.5f);
+            int y1 = (int)MathF.Round(end.Z * 0.5f);
+
+            int dx = Math.Abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+            int dy = -Math.Abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+            int err = dx + dy;
+            while (true)
+            {
+                if ((uint)x0 < w && (uint)y0 < h)
+                {
+                    var cur = map[x0, y0];
+                    if (cur.Type is RiverPixelType.Source or RiverPixelType.Confluence
+                        or RiverPixelType.Bifurcation or RiverPixelType.Ocean)
+                    { }
+                    else if (cur.Type != RiverPixelType.River || cur.Width != widthByte)
+                    {
+                        map[x0, y0] = new RiverCell(RiverPixelType.River, widthByte);
+                        changed = true;
+                    }
+                }
+                if (x0 == x1 && y0 == y1) break;
+                int e2 = err * 2;
+                if (e2 >= dy) { err += dy; x0 += sx; }
+                if (e2 <= dx) { err += dx; y0 += sy; }
+            }
+        }
+        return changed;
+    }
+
+    private static void SaveRiverMap(RiverCell[,] map, string path)
     {
         EnsureParentDirectory(path);
 
-        using var image = new Image<Rgba32>(map.Width, map.Height);
-        for (int y = 0; y < map.Height; y++)
-        {
-            for (int x = 0; x < map.Width; x++)
-            {
-                RiverPixelType type = map.GetType(x, y);
-                byte width = map.GetWidth(x, y);
-                RiverColorConverter.Encode(type, width, out byte r, out byte g, out byte b);
-                image[x, y] = new Rgba32(r, g, b, 255);
-            }
-        }
+        int w = map.GetLength(0);
+        int h = map.GetLength(1);
+        using var image = new Image<Rgba32>(w, h);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                image[x, y] = map[x, y].ToRgba32();
 
         image.SaveAsPng(path);
     }
@@ -1337,49 +1376,32 @@ public sealed class TerrainManager : IDisposable
         if (RiverMap == null || !File.Exists(path))
             return false;
 
-        // 先尝试作为 RGBA32 (CK3 格式) 加载
-        using var rgbaImage = HeightmapImage.Load<Rgba32>(path);
+        using var rgbaImage = SixLabors.ImageSharp.Image.Load<Rgba32>(path);
 
-        bool halfRes = rgbaImage.Width == RiverMap.Width && rgbaImage.Height == RiverMap.Height;
-        bool fullRes = rgbaImage.Width == heightDataWidth && rgbaImage.Height == heightDataHeight;
+        int w = RiverMap.GetLength(0);
+        int h = RiverMap.GetLength(1);
+        bool halfRes = rgbaImage.Width == w && rgbaImage.Height == h;
+        int terrainW = heightDataWidth;
+        int terrainH = heightDataHeight;
+        bool fullRes = rgbaImage.Width == terrainW && rgbaImage.Height == terrainH;
         if (!halfRes && !fullRes)
             return false;
 
-        // 检测是否为旧格式灰度图
-        Rgba32 firstPixel = rgbaImage[0, 0];
-        bool isGrayscale = RiverColorConverter.IsGrayscale(firstPixel.R, firstPixel.G, firstPixel.B);
+        Rgba32 first = rgbaImage[0, 0];
+        bool isGrayscale = RiverCell.IsGrayscale(first);
+        int srcW = rgbaImage.Width;
 
-        if (isGrayscale)
+        for (int y = 0; y < h; y++)
         {
-            // 旧格式 L8 灰度: 0→Land, 非0→River(宽度12)
-            for (int y = 0; y < RiverMap.Height; y++)
+            for (int x = 0; x < w; x++)
             {
-                for (int x = 0; x < RiverMap.Width; x++)
-                {
-                    int srcX = fullRes ? x * 2 : x;
-                    int srcY = fullRes ? y * 2 : y;
-                    Rgba32 pixel = rgbaImage[srcX, srcY];
-                    // 灰度值中位值作为判断: 0→Land, 否则 River(蓝通道12)
-                    if (pixel.R > 0)
-                        RiverMap.SetPixel(x, y, RiverPixelType.River, 12);
-                    else
-                        RiverMap.SetPixel(x, y, RiverPixelType.Land);
-                }
-            }
-        }
-        else
-        {
-            // CK3 格式 RGBA32 索引颜色
-            for (int y = 0; y < RiverMap.Height; y++)
-            {
-                for (int x = 0; x < RiverMap.Width; x++)
-                {
-                    int srcX = fullRes ? x * 2 : x;
-                    int srcY = fullRes ? y * 2 : y;
-                    Rgba32 pixel = rgbaImage[srcX, srcY];
-                    var (type, width) = RiverColorConverter.Decode(pixel.R, pixel.G, pixel.B);
-                    RiverMap.SetPixel(x, y, type, width);
-                }
+                int sx = fullRes ? x * 2 : x;
+                int sy = fullRes ? y * 2 : y;
+                Rgba32 pixel = rgbaImage[sx, sy];
+
+                RiverMap[x, y] = isGrayscale
+                    ? RiverCell.LegacyFromGrayscale(pixel.R)
+                    : RiverCell.FromRgba32(pixel);
             }
         }
 

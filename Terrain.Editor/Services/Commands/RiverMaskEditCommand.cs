@@ -3,13 +3,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
 
 namespace Terrain.Editor.Services.Commands;
 
 public sealed class RiverMaskEditCommand : TerrainEditCommand
 {
-    private readonly Dictionary<long, byte[]> beforeChunkData = new();
+    private readonly Dictionary<long, RiverCell[]> beforeChunkData = new();
     private readonly List<RiverMaskChunkDelta> changedChunks = new();
     private long estimatedSizeBytes;
 
@@ -22,22 +23,24 @@ public sealed class RiverMaskEditCommand : TerrainEditCommand
     {
     }
 
-    protected override int GetDataWidth() => TerrainManager.RiverMap?.Width ?? 0;
-    protected override int GetDataHeight() => TerrainManager.RiverMap?.Height ?? 0;
+    private RiverCell[,]? RiverMap => TerrainManager.RiverMap;
+
+    protected override int GetDataWidth() => RiverMap?.GetLength(0) ?? 0;
+    protected override int GetDataHeight() => RiverMap?.GetLength(1) ?? 0;
 
     protected override void CaptureBeforeChunk(TerrainChunkRegion chunk)
     {
-        byte[]? riverMaskData = TerrainManager.RiverMap?.GetRawData();
-        if (riverMaskData == null || chunk.Width <= 0 || chunk.Height <= 0)
+        RiverCell[,]? map = RiverMap;
+        if (map == null || chunk.Width <= 0 || chunk.Height <= 0)
             return;
 
-        beforeChunkData[chunk.Key] = CopyChunk(riverMaskData, chunk);
+        beforeChunkData[chunk.Key] = CopyChunk(map, chunk);
     }
 
     protected override bool CaptureAfterStateAndFilter(IReadOnlyList<TerrainChunkRegion> chunks)
     {
-        byte[]? riverMaskData = TerrainManager.RiverMap?.GetRawData();
-        if (riverMaskData == null)
+        RiverCell[,]? map = RiverMap;
+        if (map == null)
             return false;
 
         changedChunks.Clear();
@@ -45,67 +48,56 @@ public sealed class RiverMaskEditCommand : TerrainEditCommand
 
         foreach (TerrainChunkRegion chunk in chunks)
         {
-            if (!beforeChunkData.TryGetValue(chunk.Key, out byte[]? before))
+            if (!beforeChunkData.TryGetValue(chunk.Key, out RiverCell[]? before))
                 continue;
 
-            byte[] after = CopyChunk(riverMaskData, chunk);
+            RiverCell[] after = CopyChunk(map, chunk);
             if (before.AsSpan().SequenceEqual(after))
                 continue;
 
             changedChunks.Add(new RiverMaskChunkDelta(chunk, before, after));
-            estimatedSizeBytes += before.Length + after.Length;
+            estimatedSizeBytes += before.Length * 2 + after.Length * 2;
         }
 
         beforeChunkData.Clear();
         return changedChunks.Count > 0;
     }
 
-    public override void Execute()
-    {
-        ApplyState(afterState: true);
-    }
+    public override void Execute() => ApplyState(afterState: true);
 
-    public override void Undo()
-    {
-        ApplyState(afterState: false);
-    }
+    public override void Undo() => ApplyState(afterState: false);
 
     private void ApplyState(bool afterState)
     {
-        RiverMap? riverMask = TerrainManager.RiverMap;
-        byte[]? riverMaskData = riverMask?.GetRawData();
-        if (riverMask == null || riverMaskData == null || changedChunks.Count == 0)
+        RiverCell[,]? map = RiverMap;
+        if (map == null || changedChunks.Count == 0)
             return;
 
-        int dataWidth = GetDataWidth();
-        foreach (RiverMaskChunkDelta delta in changedChunks)
+        int w = GetDataWidth();
+        foreach (var delta in changedChunks)
         {
-            byte[] stateData = afterState ? delta.After : delta.Before;
-            for (int row = 0; row < delta.Region.Height; row++)
+            RiverCell[] stateData = afterState ? delta.After : delta.Before;
+            var chunk = delta.Region;
+            for (int row = 0; row < chunk.Height; row++)
             {
-                int srcOffset = row * delta.Region.Width;
-                int dstOffset = (delta.Region.Y + row) * dataWidth + delta.Region.X;
-                Array.Copy(stateData, srcOffset, riverMaskData, dstOffset, delta.Region.Width);
+                int srcOffset = row * chunk.Width;
+                for (int col = 0; col < chunk.Width; col++)
+                    map[chunk.X + col, chunk.Y + row] = stateData[srcOffset + col];
             }
         }
 
         TerrainManager.MarkRiverMaskDirty();
     }
 
-    private byte[] CopyChunk(byte[] source, TerrainChunkRegion chunk)
+    private static RiverCell[] CopyChunk(RiverCell[,] source, TerrainChunkRegion chunk)
     {
-        byte[] result = new byte[chunk.Width * chunk.Height];
-        int dataWidth = GetDataWidth();
-
+        var result = new RiverCell[chunk.Width * chunk.Height];
+        int w = source.GetLength(0);
         for (int row = 0; row < chunk.Height; row++)
-        {
-            int srcOffset = (chunk.Y + row) * dataWidth + chunk.X;
-            int dstOffset = row * chunk.Width;
-            Array.Copy(source, srcOffset, result, dstOffset, chunk.Width);
-        }
-
+            for (int col = 0; col < chunk.Width; col++)
+                result[row * chunk.Width + col] = source[chunk.X + col, chunk.Y + row];
         return result;
     }
 
-    private readonly record struct RiverMaskChunkDelta(TerrainChunkRegion Region, byte[] Before, byte[] After);
+    private readonly record struct RiverMaskChunkDelta(TerrainChunkRegion Region, RiverCell[] Before, RiverCell[] After);
 }
