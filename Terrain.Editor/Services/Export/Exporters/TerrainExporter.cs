@@ -37,10 +37,14 @@ public class TerrainExporter : IExporter
             ?? throw new InvalidOperationException("No height data loaded");
         var biomeMask = tm.BiomeMask
             ?? throw new InvalidOperationException("No biome mask loaded");
-        var riverMask = tm.RiverMask
+        var riverMask = tm.RiverMap
             ?? throw new InvalidOperationException("No river mask loaded");
         byte[] biomeMaskData = biomeMask.GetRawData();
-        byte[] riverMaskData = riverMask.GetRawData();
+        byte[] riverMapRawData = riverMask.GetRawData();
+        // 解交织：导出 R8 VT 数据（仅 width 字节），跳过 type 字节
+        byte[] riverMaskData = new byte[riverMask.Width * riverMask.Height];
+        for (int i = 0; i < riverMaskData.Length; i++)
+            riverMaskData[i] = riverMapRawData[i * 2 + 1];
         int width = tm.HeightCacheWidth;
         int height = tm.HeightCacheHeight;
         int leafNodeSize = tm.SplitConfig?.BaseChunkSize ?? SplitTerrainConfig.DefaultBaseChunkSize;

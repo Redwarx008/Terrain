@@ -945,6 +945,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             {
                 PathFeatureParameters.Instance.Kind = PathFeatureKind.Road;
             }
+
+            // 设置 CurrentToolKind（用于 River/Foliage 等工具派发）
+            if (value.ToolKind != EditorToolKind.None)
+            {
+                _editorState.CurrentToolKind = value.ToolKind;
+            }
         }
 
         AddConsole("Info", $"Selected {value.Label}.");
@@ -973,13 +979,13 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private void OnToolChanged(object? sender, EventArgs e)
     {
-        SelectedToolName = SelectedMode == EditorMode.Sculpt
-            ? _editorState.CurrentHeightTool.ToString()
-            : SelectedMode == EditorMode.Path
-                ? "Road"
-                : SelectedMode == EditorMode.River
-                    ? "River"
-                    : GetDefaultToolLabel(SelectedMode);
+        SelectedToolName = SelectedMode switch
+        {
+            EditorMode.Sculpt => _editorState.CurrentHeightTool.ToString(),
+            EditorMode.River => SelectedTool?.Label ?? "Channel",
+            EditorMode.Path => "Road",
+            _ => GetDefaultToolLabel(SelectedMode),
+        };
     }
 
     private void OnPathParametersPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1126,7 +1132,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             EditorMode.Sculpt => _editorState.CurrentHeightTool.ToString(),
             EditorMode.Path => "Road",
-            EditorMode.River => "River",
+            EditorMode.River => "Channel",
             _ => GetDefaultToolLabel(SelectedMode),
         };
 
@@ -1186,7 +1192,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             ],
             EditorMode.River =>
             [
-                new("River", "Paint river mask strokes", "\uE12B", mode, ToolKind: EditorToolKind.RiverBrush),
+                new("Channel", "\u7ED8\u5236\u6CB3\u9053 (1px \u7B14\u89E6)", "\uE12B", mode, ToolKind: EditorToolKind.RiverChannel),
+                new("Source", "\u8BBE\u7F6E\u6CB3\u6D41\u6E90\u5934", "\uE12B", mode, ToolKind: EditorToolKind.RiverSource),
+                new("Confluence", "\u8BBE\u7F6E\u652F\u6D41\u6C47\u5408", "\uE12B", mode, ToolKind: EditorToolKind.RiverConfluence),
+                new("Bifurcation", "\u8BBE\u7F6E\u6CB3\u6D41\u5206\u53C9", "\uE12B", mode, ToolKind: EditorToolKind.RiverBifurcation),
+                new("Ocean", "\u6807\u6CE8\u6D77\u6D0B/\u6E56\u6CCA", "\uE12B", mode, ToolKind: EditorToolKind.RiverOcean),
+                new("Eraser", "\u64E6\u9664\u6CB3\u6D41\u50CF\u7D20", "\uE74D", mode, ToolKind: EditorToolKind.RiverEraser),
             ],
             EditorMode.Foliage =>
             [
@@ -1251,7 +1262,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             EditorMode.Sculpt => "Sculpt",
             EditorMode.Paint => "Biome Brush",
             EditorMode.Path => "Road",
-            EditorMode.River => "River",
+            EditorMode.River => "Channel",
             EditorMode.Foliage => "Place",
             _ => "None",
         };
@@ -1264,31 +1275,32 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private void RefreshRiverMaskPreview()
     {
-        Bitmap? nextPreview = CreateRiverMaskPreview(_subscribedTerrainManager?.RiverMask);
+        Bitmap? nextPreview = CreateRiverMaskPreview(_subscribedTerrainManager?.RiverMap);
         Bitmap? previousPreview = RiverMaskPreviewImage;
         RiverMaskPreviewImage = nextPreview;
         previousPreview?.Dispose();
     }
 
-    private static Bitmap? CreateRiverMaskPreview(RiverMask? riverMask)
+    private static Bitmap? CreateRiverMaskPreview(RiverMap? riverMap)
     {
-        if (riverMask == null)
+        if (riverMap == null)
             return null;
 
-        byte[] raw = riverMask.GetRawData();
-        if (raw.Length != riverMask.Width * riverMask.Height)
+        byte[] raw = riverMap.GetRawData();
+        int pixelCount = riverMap.Width * riverMap.Height;
+        if (raw.Length != pixelCount * 2)
             return null;
 
-        Rgba32[] pixels = new Rgba32[raw.Length];
-        for (int i = 0; i < raw.Length; i++)
+        Rgba32[] pixels = new Rgba32[pixelCount];
+        for (int i = 0; i < pixelCount; i++)
         {
-            byte value = raw[i];
-            pixels[i] = value == 0
-                ? new Rgba32(18, 22, 30, 255)
-                : new Rgba32(50, 150, 255, value);
+            RiverPixelType type = (RiverPixelType)raw[i * 2];
+            byte width = raw[i * 2 + 1];
+            RiverColorConverter.Encode(type, width, out byte r, out byte g, out byte b);
+            pixels[i] = new Rgba32(r, g, b, 255);
         }
 
-        using var image = ImageSharpImage.LoadPixelData<Rgba32>(pixels.AsSpan(), riverMask.Width, riverMask.Height);
+        using var image = ImageSharpImage.LoadPixelData<Rgba32>(pixels.AsSpan(), riverMap.Width, riverMap.Height);
         image.Mutate(static context => context.Resize(new ResizeOptions
         {
             Size = new SixLabors.ImageSharp.Size(512, 512),

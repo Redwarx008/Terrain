@@ -3,6 +3,7 @@
 using System;
 using Stride.Core.Mathematics;
 using Terrain.Editor.Models;
+using Terrain.Editor.ViewModels;
 
 namespace Terrain.Editor.Services;
 
@@ -65,11 +66,33 @@ public sealed class EditorState
     private int _selectedModifierIndex = -1;
     private bool _heatmapEnabled;
     private bool _editLayerMode = true;
+    private EditorToolKind _currentToolKind = EditorToolKind.None;
 
     /// <summary>
     /// Gets the singleton instance of EditorState.
     /// </summary>
     public static EditorState Instance => _instance.Value;
+
+    /// <summary>
+    /// Gets or sets the currently active tool kind (for River, Foliage, etc.).
+    /// </summary>
+    public EditorToolKind CurrentToolKind
+    {
+        get => _currentToolKind;
+        set
+        {
+            if (_currentToolKind != value)
+            {
+                _currentToolKind = value;
+                ToolKindChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Raised when the current tool kind changes.
+    /// </summary>
+    public event EventHandler? ToolKindChanged;
 
     /// <summary>
     /// 获取或设置是否有工具被选中。

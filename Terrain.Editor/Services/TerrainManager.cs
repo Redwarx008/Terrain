@@ -12,7 +12,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Services.PathFeatures;
+using Terrain.Editor.Models;
 using StrideColor = Stride.Core.Mathematics.Color;
+using Rgba32 = SixLabors.ImageSharp.PixelFormats.Rgba32;
 using HeightmapImage = SixLabors.ImageSharp.Image;
 
 namespace Terrain.Editor.Services;
@@ -51,7 +53,7 @@ public sealed class TerrainManager : IDisposable
     /// 每个像素存储一个气候 ID，驱动 GPU compute 重建材质控制图。
     /// </summary>
     public BiomeMask? BiomeMask { get; private set; }
-    public RiverMask? RiverMask { get; private set; }
+    public RiverMap? RiverMap { get; private set; }
 
     private string? currentBiomeMaskPath;
     private string? currentRiverMaskPath;
@@ -207,7 +209,7 @@ public sealed class TerrainManager : IDisposable
             int biomeMaskWidth = (heightDataWidth + 1) / 2;
             int biomeMaskHeight = (heightDataHeight + 1) / 2;
             BiomeMask = new BiomeMask(biomeMaskWidth, biomeMaskHeight);
-            RiverMask = new RiverMask(biomeMaskWidth, biomeMaskHeight);
+            RiverMap = new RiverMap(biomeMaskWidth, biomeMaskHeight);
 
             terrainEntity.SetBiomeMask(graphicsDevice, BiomeMask);
 
@@ -268,7 +270,7 @@ public sealed class TerrainManager : IDisposable
         heightDataWidth = 0;
         heightDataHeight = 0;
         BiomeMask = null;
-        RiverMask = null;
+        RiverMap = null;
         currentBiomeMaskPath = null;
         currentRiverMaskPath = null;
         pendingProjectNotification = null;
@@ -929,7 +931,7 @@ public sealed class TerrainManager : IDisposable
 
     private void MigrateLegacyRiverPathsToMask(TomlProjectConfig config)
     {
-        if (RiverMask == null)
+        if (RiverMap == null)
             return;
 
         if (!string.IsNullOrEmpty(currentRiverMaskPath))
@@ -967,7 +969,7 @@ public sealed class TerrainManager : IDisposable
             if (sampledCurve.Count < 2)
                 continue;
 
-            migratedAny |= RiverMaskWriter.Instance.ApplyStroke(sampledCurve, featureConfig.Width, RiverMask, this, riverValue: 255, markProjectDirty: false);
+            migratedAny |= RiverMapPainter.Instance.ApplyStroke(sampledCurve, featureConfig.Width, RiverMap, this, riverValue: 12, markProjectDirty: false);
         }
 
         if (!migratedAny)
@@ -1031,16 +1033,19 @@ public sealed class TerrainManager : IDisposable
         image.SaveAsPng(path);
     }
 
-    private static void SaveRiverMask(RiverMask map, string path)
+    private static void SaveRiverMap(RiverMap map, string path)
     {
         EnsureParentDirectory(path);
 
-        using var image = new Image<L8>(map.Width, map.Height);
+        using var image = new Image<Rgba32>(map.Width, map.Height);
         for (int y = 0; y < map.Height; y++)
         {
             for (int x = 0; x < map.Width; x++)
             {
-                image[x, y] = new L8(map.GetValue(x, y));
+                RiverPixelType type = map.GetType(x, y);
+                byte width = map.GetWidth(x, y);
+                RiverColorConverter.Encode(type, width, out byte r, out byte g, out byte b);
+                image[x, y] = new Rgba32(r, g, b, 255);
             }
         }
 
@@ -1071,10 +1076,10 @@ public sealed class TerrainManager : IDisposable
         }
 
         string? riverMaskPath = null;
-        if (RiverMask != null)
+        if (RiverMap != null)
         {
             riverMaskPath = ResolveRiverMaskSavePath(fullProjectFilePath, snapshotEditableAssetsIntoProject);
-            SaveRiverMask(RiverMask, riverMaskPath);
+            SaveRiverMap(RiverMap, riverMaskPath);
             currentRiverMaskPath = riverMaskPath;
         }
 
@@ -1329,24 +1334,52 @@ public sealed class TerrainManager : IDisposable
 
     public bool LoadRiverMask(string path, bool markDirty = true)
     {
-        if (RiverMask == null || !File.Exists(path))
+        if (RiverMap == null || !File.Exists(path))
             return false;
 
-        using var image = HeightmapImage.Load<L8>(path);
+        // 先尝试作为 RGBA32 (CK3 格式) 加载
+        using var rgbaImage = HeightmapImage.Load<Rgba32>(path);
 
-        bool halfRes = image.Width == RiverMask.Width && image.Height == RiverMask.Height;
-        bool fullRes = image.Width == heightDataWidth && image.Height == heightDataHeight;
+        bool halfRes = rgbaImage.Width == RiverMap.Width && rgbaImage.Height == RiverMap.Height;
+        bool fullRes = rgbaImage.Width == heightDataWidth && rgbaImage.Height == heightDataHeight;
         if (!halfRes && !fullRes)
             return false;
 
-        for (int y = 0; y < RiverMask.Height; y++)
+        // 检测是否为旧格式灰度图
+        Rgba32 firstPixel = rgbaImage[0, 0];
+        bool isGrayscale = RiverColorConverter.IsGrayscale(firstPixel.R, firstPixel.G, firstPixel.B);
+
+        if (isGrayscale)
         {
-            for (int x = 0; x < RiverMask.Width; x++)
+            // 旧格式 L8 灰度: 0→Land, 非0→River(宽度12)
+            for (int y = 0; y < RiverMap.Height; y++)
             {
-                int srcX = fullRes ? x * 2 : x;
-                int srcY = fullRes ? y * 2 : y;
-                byte riverValue = image[srcX, srcY].PackedValue;
-                RiverMask.SetValue(x, y, riverValue);
+                for (int x = 0; x < RiverMap.Width; x++)
+                {
+                    int srcX = fullRes ? x * 2 : x;
+                    int srcY = fullRes ? y * 2 : y;
+                    Rgba32 pixel = rgbaImage[srcX, srcY];
+                    // 灰度值中位值作为判断: 0→Land, 否则 River(蓝通道12)
+                    if (pixel.R > 0)
+                        RiverMap.SetPixel(x, y, RiverPixelType.River, 12);
+                    else
+                        RiverMap.SetPixel(x, y, RiverPixelType.Land);
+                }
+            }
+        }
+        else
+        {
+            // CK3 格式 RGBA32 索引颜色
+            for (int y = 0; y < RiverMap.Height; y++)
+            {
+                for (int x = 0; x < RiverMap.Width; x++)
+                {
+                    int srcX = fullRes ? x * 2 : x;
+                    int srcY = fullRes ? y * 2 : y;
+                    Rgba32 pixel = rgbaImage[srcX, srcY];
+                    var (type, width) = RiverColorConverter.Decode(pixel.R, pixel.G, pixel.B);
+                    RiverMap.SetPixel(x, y, type, width);
+                }
             }
         }
 

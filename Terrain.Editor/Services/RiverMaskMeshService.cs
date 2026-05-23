@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Graphics;
@@ -9,6 +10,7 @@ using Stride.Rendering;
 using Stride.Rendering.Materials;
 using Stride.Rendering.Materials.ComputeColors;
 using Terrain.Editor;
+using Terrain.Editor.Models;
 using Terrain.Editor.Rendering.Materials;
 using Terrain.Editor.Services.PathFeatures;
 using Buffer = Stride.Graphics.Buffer;
@@ -113,22 +115,27 @@ public sealed class RiverMaskMeshService : IDisposable
 
     private RiverMeshTopology? BuildTopology()
     {
-        RiverMask? riverMask = terrainManager.RiverMask;
+        RiverMap? riverMask = terrainManager.RiverMap;
         if (riverMask == null || !terrainManager.HasHeightCache)
             return null;
 
         byte[] rawData = riverMask.GetRawData();
-        bool[] skeleton = BuildSkeleton(rawData, riverMask.Width, riverMask.Height);
-        List<RiverCenterSegment> segments = ExtractSegments(skeleton, riverMask.Width, riverMask.Height);
+        int mapWidth = riverMask.Width;
+        int mapHeight = riverMask.Height;
+
+        // 优先：从 RiverMap 像素直接追踪蓝色路径生成段
+        List<RiverCenterSegment>? segments = TryBuildFromPixelTrace(riverMask, rawData);
+
+        // fallback: 旧格式/退化 → 骨架提取
+        segments ??= ExtractSegments(BuildSkeleton(rawData, mapWidth, mapHeight), mapWidth, mapHeight);
+        if (segments == null || segments.Count == 0)
+            return null;
+
+        MeasureSegments(segments, rawData, mapWidth, mapHeight);
         if (segments.Count == 0)
             return null;
 
-        MeasureSegments(segments, rawData, riverMask.Width, riverMask.Height);
-        ClassifyJunctionConnections(segments);
-        if (segments.Count == 0)
-            return null;
-
-        return new RiverMeshTopology(riverMask.Width, riverMask.Height, rawData, segments);
+        return new RiverMeshTopology(mapWidth, mapHeight, rawData, segments);
     }
 
     private void RebuildSurfaceMeshFromTopology()
@@ -179,7 +186,7 @@ public sealed class RiverMaskMeshService : IDisposable
         segments.RemoveAll(static segment => segment.Centerline == null || segment.Centerline.Count < 2 || segment.WorldLength <= MaskCellSize * 0.5f);
     }
 
-    private void ClassifyJunctionConnections(List<RiverCenterSegment> segments)
+    private void ClassifyJunctionConnections(List<RiverCenterSegment> segments, Dictionary<int, RiverPixelType> junctionPixelTypes)
     {
         var attachmentsByJunction = new Dictionary<int, List<RiverJunctionAttachment>>();
         for (int i = 0; i < segments.Count; i++)
@@ -194,26 +201,81 @@ public sealed class RiverMaskMeshService : IDisposable
                 AddJunctionAttachment(attachmentsByJunction, segment.EndNodeKey, new RiverJunctionAttachment(i, false, segment.AverageHalfWidth, segment.WorldLength));
         }
 
-        foreach ((_, List<RiverJunctionAttachment> attachments) in attachmentsByJunction)
+        int paddedWidth = (terrainManager.RiverMap?.Width ?? 0) + 2;
+
+        foreach ((int junctionKey, List<RiverJunctionAttachment> attachments) in attachmentsByJunction)
         {
             if (attachments.Count <= 2)
                 continue;
 
-            attachments.Sort(static (a, b) =>
-            {
-                int widthCompare = b.AverageHalfWidth.CompareTo(a.AverageHalfWidth);
-                return widthCompare != 0 ? widthCompare : b.WorldLength.CompareTo(a.WorldLength);
-            });
+            // 读取骨架节点对应的 RiverMap 像素类型
+            RiverPixelType pixelType = RiverPixelType.Land;
+            if (junctionPixelTypes.TryGetValue(junctionKey, out RiverPixelType mappedType))
+                pixelType = mappedType;
 
-            for (int i = 2; i < attachments.Count; i++)
+            switch (pixelType)
             {
-                RiverJunctionAttachment attachment = attachments[i];
-                RiverCenterSegment segment = segments[attachment.SegmentIndex];
-                if (attachment.AtStart)
-                    segment.TaperStart = true;
-                else
-                    segment.TaperEnd = true;
+                case RiverPixelType.Confluence:
+                    // 红色 = 汇合点: 支流 taper
+                    // 按宽度排序，最窄的 taper（支流通常更窄）
+                    attachments.Sort(static (a, b) =>
+                    {
+                        int widthCompare = b.AverageHalfWidth.CompareTo(a.AverageHalfWidth);
+                        return widthCompare != 0 ? widthCompare : b.WorldLength.CompareTo(a.WorldLength);
+                    });
+                    // 最窄的一条 taper
+                    TaperAttachments(segments, attachments, keepCount: 2);
+                    break;
+
+                case RiverPixelType.Bifurcation:
+                    // 黄色 = 分叉点: 三条全保持（主河入+两侧分支出）
+                    // 不 taper 任何段
+                    break;
+
+                case RiverPixelType.Source:
+                    // 绿色 = 源头: 唯一连接的段 taperStart=false（从源渐宽）
+                    if (attachments.Count == 1)
+                    {
+                        RiverCenterSegment seg = segments[attachments[0].SegmentIndex];
+                        if (attachments[0].AtStart)
+                            seg.TaperStart = false;
+                        else
+                            seg.TaperEnd = false;
+                    }
+                    break;
+
+                default:
+                    // 蓝色 River 或骨架节点: 退回到宽度/长度排序启发式
+                    attachments.Sort(static (a, b) =>
+                    {
+                        int widthCompare = b.AverageHalfWidth.CompareTo(a.AverageHalfWidth);
+                        return widthCompare != 0 ? widthCompare : b.WorldLength.CompareTo(a.WorldLength);
+                    });
+
+                    for (int i = 2; i < attachments.Count; i++)
+                    {
+                        RiverJunctionAttachment attachment = attachments[i];
+                        RiverCenterSegment segment = segments[attachment.SegmentIndex];
+                        if (attachment.AtStart)
+                            segment.TaperStart = true;
+                        else
+                            segment.TaperEnd = true;
+                    }
+                    break;
             }
+        }
+    }
+
+    private static void TaperAttachments(List<RiverCenterSegment> segments, List<RiverJunctionAttachment> attachments, int keepCount)
+    {
+        for (int i = keepCount; i < attachments.Count; i++)
+        {
+            RiverJunctionAttachment attachment = attachments[i];
+            RiverCenterSegment segment = segments[attachment.SegmentIndex];
+            if (attachment.AtStart)
+                segment.TaperStart = true;
+            else
+                segment.TaperEnd = true;
         }
     }
 
@@ -772,11 +834,16 @@ public sealed class RiverMaskMeshService : IDisposable
     {
         float total = 0.0f;
         int sampleCount = 0;
-        for (int i = 0; i < centerline.Count; i++)
+        for (int i = 0; i < centerline.Count; i += 4) // 每 4 个采样一次
         {
-            Vector3 tangent = ComputePolylineTangent(centerline, i, isLoop);
-            Vector3 side = PerpendicularXZ(tangent);
-            total += EstimateHalfWidth(rawData, width, height, centerline[i], side);
+            int mx = (int)MathF.Round(centerline[i].X / MaskCellSize);
+            int my = (int)MathF.Round(centerline[i].Z / MaskCellSize);
+            if ((uint)mx >= (uint)width || (uint)my >= (uint)height)
+                continue;
+
+            byte blueValue = rawData[(my * width + mx) * 2 + 1];
+            float halfWidth = RiverColorConverter.BlueValueToHalfWidth(blueValue);
+            total += halfWidth;
             sampleCount++;
         }
 
@@ -818,7 +885,7 @@ public sealed class RiverMaskMeshService : IDisposable
             int sourceRow = y * width;
             int destinationRow = (y + 1) * paddedWidth + 1;
             for (int x = 0; x < width; x++)
-                paddedSkeleton[destinationRow + x] = rawData[sourceRow + x] != 0;
+                paddedSkeleton[destinationRow + x] = rawData[(sourceRow + x) * 2] != 0;
         }
 
         if (paddedWidth < 3 || paddedHeight < 3)
@@ -2117,7 +2184,7 @@ public sealed class RiverMaskMeshService : IDisposable
     {
         if ((uint)x >= (uint)width || (uint)y >= (uint)height)
             return false;
-        return rawData[y * width + x] != 0;
+        return rawData[(y * width + x) * 2] != 0;
     }
 
     private void ReplaceRiverMesh(VertexPositionNormalTexture[] vertices, int[] indices)
@@ -2242,5 +2309,233 @@ public sealed class RiverMaskMeshService : IDisposable
         public required List<int> Keys { get; init; }
         public required bool IsJunction { get; init; }
         public required bool IsTerminal { get; init; }
+    }
+
+    // ---- Pixel-tracing section extraction ---- //
+
+    private static readonly (int Dx, int Dy)[] OrthoNeighbors = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+
+    private static List<RiverCenterSegment>? TryBuildFromPixelTrace(RiverMap riverMap, byte[] rawData)
+    {
+        int w = riverMap.Width;
+        int h = riverMap.Height;
+
+        var specialPixels = new List<(int X, int Y, RiverPixelType Type)>();
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                var t = (RiverPixelType)rawData[(y * w + x) * 2];
+                if (t is RiverPixelType.Source or RiverPixelType.Confluence or RiverPixelType.Bifurcation)
+                    specialPixels.Add((x, y, t));
+            }
+
+        if (specialPixels.Count == 0)
+            return null;
+
+        var visitedBlue = new bool[w, h];
+        var blueComponents = new List<List<MaskCell>>();
+
+        foreach (var (sx, sy, _) in specialPixels)
+            visitedBlue[sx, sy] = true;
+
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                if (visitedBlue[x, y]) continue;
+                if (rawData[(y * w + x) * 2] != (byte)RiverPixelType.River) continue;
+
+                var component = new List<MaskCell>();
+                var queue = new Queue<(int X, int Y)>();
+                queue.Enqueue((x, y));
+                visitedBlue[x, y] = true;
+
+                while (queue.Count > 0)
+                {
+                    var (cx, cy) = queue.Dequeue();
+                    component.Add(new MaskCell(cx, cy));
+
+                    foreach (var (dx, dy) in OrthoNeighbors)
+                    {
+                        int nx = cx + dx, ny = cy + dy;
+                        if ((uint)nx >= w || (uint)ny >= h || visitedBlue[nx, ny]) continue;
+                        if (rawData[(ny * w + nx) * 2] != (byte)RiverPixelType.River) continue;
+                        visitedBlue[nx, ny] = true;
+                        queue.Enqueue((nx, ny));
+                    }
+                }
+
+                if (component.Count >= 2)
+                    blueComponents.Add(component);
+            }
+
+        var segments = new List<RiverCenterSegment>();
+
+        foreach (var component in blueComponents)
+        {
+            var coordSet = new HashSet<(int, int)>();
+            foreach (var cell in component)
+                coordSet.Add((cell.X, cell.Y));
+
+            var endpoints = new List<MaskCell>();
+            foreach (var cell in component)
+            {
+                int blueNeighborCount = 0;
+                foreach (var (dx, dy) in OrthoNeighbors)
+                    if (coordSet.Contains((cell.X + dx, cell.Y + dy)))
+                        blueNeighborCount++;
+                if (blueNeighborCount != 2)
+                    endpoints.Add(cell);
+            }
+
+            if (endpoints.Count < 2) continue;
+
+            var path = new List<MaskCell> { endpoints[0] };
+            var visitedPath = new HashSet<(int, int)> { (endpoints[0].X, endpoints[0].Y) };
+
+            while (path.Count > 0)
+            {
+                MaskCell current = path[^1];
+                bool found = false;
+                foreach (var (dx, dy) in OrthoNeighbors)
+                {
+                    int nx = current.X + dx, ny = current.Y + dy;
+                    if (!coordSet.Contains((nx, ny)) || visitedPath.Contains((nx, ny)))
+                        continue;
+                    visitedPath.Add((nx, ny));
+                    path.Add(new MaskCell(nx, ny));
+                    found = true;
+                    break;
+                }
+                if (!found) break;
+            }
+
+            if (path.Count < 2) continue;
+
+            MaskCell ps = path[0], pe = path[^1];
+            bool taperStart = true, taperEnd = true;
+
+            foreach (var (sx, sy, st) in specialPixels)
+            {
+                if (Math.Abs(sx - ps.X) + Math.Abs(sy - ps.Y) == 1)
+                    taperStart = st switch
+                    {
+                        RiverPixelType.Source => false,
+                        RiverPixelType.Bifurcation => false,
+                        _ => taperStart,
+                    };
+                if (Math.Abs(sx - pe.X) + Math.Abs(sy - pe.Y) == 1)
+                    taperEnd = st switch
+                    {
+                        RiverPixelType.Source => false,
+                        RiverPixelType.Bifurcation => false,
+                        _ => taperEnd,
+                    };
+            }
+
+            segments.Add(new RiverCenterSegment
+            {
+                Cells = path,
+                StartNodeKey = -1,
+                EndNodeKey = -1,
+                StartTerminal = taperStart,
+                EndTerminal = taperEnd,
+                IsLoop = false,
+                TaperStart = taperStart,
+                TaperEnd = taperEnd,
+            });
+        }
+
+        MergeThroughPairsAtConfluences(segments, specialPixels, rawData, w, h);
+
+        return segments.Count > 0 ? segments : null;
+    }
+
+    private static void MergeThroughPairsAtConfluences(
+        List<RiverCenterSegment> segments,
+        List<(int X, int Y, RiverPixelType Type)> specialPixels,
+        byte[] rawData, int w, int h)
+    {
+        foreach (var (sx, sy, type) in specialPixels)
+        {
+            if (type != RiverPixelType.Confluence) continue;
+
+            var blueNeighbors = new List<(int X, int Y)>();
+            foreach (var (dx, dy) in OrthoNeighbors)
+            {
+                int nx = sx + dx, ny = sy + dy;
+                if ((uint)nx < w && (uint)ny < h
+                    && rawData[(ny * w + nx) * 2] == (byte)RiverPixelType.River)
+                    blueNeighbors.Add((nx, ny));
+            }
+            if (blueNeighbors.Count < 3) continue;
+
+            var matchingSegs = new List<(int SegIdx, bool AtStart)>();
+            foreach (var (nx, ny) in blueNeighbors)
+            {
+                for (int i = 0; i < segments.Count; i++)
+                {
+                    var seg = segments[i];
+                    if (seg.Cells.Count == 0) continue;
+                    MaskCell first = seg.Cells[0];
+                    MaskCell last = seg.Cells[^1];
+                    if (first.X == nx && first.Y == ny) matchingSegs.Add((i, true));
+                    else if (last.X == nx && last.Y == ny) matchingSegs.Add((i, false));
+                }
+            }
+
+            if (matchingSegs.Count < 3) continue;
+
+            var starts = matchingSegs.Where(m => m.AtStart).ToList();
+            var ends = matchingSegs.Where(m => !m.AtStart).ToList();
+            if (starts.Count == 0 || ends.Count == 0) continue;
+
+            var throughPair = new[] { starts[0], ends[0] };
+            var tributary = matchingSegs.First(m => m != throughPair[0] && m != throughPair[1]);
+
+            var segA = segments[throughPair[0].SegIdx];
+            var segB = segments[throughPair[1].SegIdx];
+
+            var cellsA = new List<MaskCell>(segA.Cells);
+            var cellsB = new List<MaskCell>(segB.Cells);
+
+            if (throughPair[0].AtStart) cellsA.Reverse();
+            if (!throughPair[1].AtStart) cellsB.Reverse();
+
+            var merged = new List<MaskCell>(cellsA);
+            merged.AddRange(cellsB);
+
+            if (merged.Count >= 2)
+            {
+                var dedup = new List<MaskCell>(merged.Count) { merged[0] };
+                for (int i = 1; i < merged.Count; i++)
+                    if (merged[i].X != merged[i - 1].X || merged[i].Y != merged[i - 1].Y)
+                        dedup.Add(merged[i]);
+                merged = dedup;
+            }
+
+            segments[throughPair[0].SegIdx] = new RiverCenterSegment
+            {
+                Cells = merged,
+                StartNodeKey = -1,
+                EndNodeKey = -1,
+                StartTerminal = false,
+                EndTerminal = false,
+                IsLoop = false,
+                TaperStart = segA.TaperStart || segB.TaperStart,
+                TaperEnd = segA.TaperEnd || segB.TaperEnd,
+            };
+
+            int removeIdx = throughPair[1].SegIdx;
+            segments.RemoveAt(removeIdx);
+
+            int tribIdx = tributary.SegIdx;
+            if (tribIdx > removeIdx) tribIdx--;
+
+            var tribSeg = segments[tribIdx];
+            if (tributary.AtStart)
+                tribSeg.TaperStart = true;
+            else
+                tribSeg.TaperEnd = true;
+        }
     }
 }

@@ -22,12 +22,12 @@ public sealed class RiverMaskEditCommand : TerrainEditCommand
     {
     }
 
-    protected override int GetDataWidth() => TerrainManager.RiverMask?.Width ?? 0;
-    protected override int GetDataHeight() => TerrainManager.RiverMask?.Height ?? 0;
+    protected override int GetDataWidth() => TerrainManager.RiverMap?.Width ?? 0;
+    protected override int GetDataHeight() => TerrainManager.RiverMap?.Height ?? 0;
 
     protected override void CaptureBeforeChunk(TerrainChunkRegion chunk)
     {
-        byte[]? riverMaskData = TerrainManager.RiverMask?.GetRawData();
+        byte[]? riverMaskData = TerrainManager.RiverMap?.GetRawData();
         if (riverMaskData == null || chunk.Width <= 0 || chunk.Height <= 0)
             return;
 
@@ -36,7 +36,7 @@ public sealed class RiverMaskEditCommand : TerrainEditCommand
 
     protected override bool CaptureAfterStateAndFilter(IReadOnlyList<TerrainChunkRegion> chunks)
     {
-        byte[]? riverMaskData = TerrainManager.RiverMask?.GetRawData();
+        byte[]? riverMaskData = TerrainManager.RiverMap?.GetRawData();
         if (riverMaskData == null)
             return false;
 
@@ -72,7 +72,7 @@ public sealed class RiverMaskEditCommand : TerrainEditCommand
 
     private void ApplyState(bool afterState)
     {
-        RiverMask? riverMask = TerrainManager.RiverMask;
+        RiverMap? riverMask = TerrainManager.RiverMap;
         byte[]? riverMaskData = riverMask?.GetRawData();
         if (riverMask == null || riverMaskData == null || changedChunks.Count == 0)
             return;

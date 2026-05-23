@@ -18,6 +18,7 @@ using Terrain.Editor.Rendering.Decal;
 using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
 using Terrain.Editor.Services.PathFeatures;
+using Terrain.Editor.ViewModels;
 using NumericsVector2 = System.Numerics.Vector2;
 using System.Collections.Generic;
 
@@ -370,7 +371,7 @@ public sealed class EmbeddedStrideViewportGame : Game
 
         var brushParams = BrushParameters.Instance;
         float brushRadius = _editorState.CurrentEditorMode == EditorMode.River
-            ? RiverMaskWriter.GetQuantizedWorldPreviewRadius(PathFeatureParameters.Instance.Width)
+            ? BrushParameters.Instance.Size * 0.5f
             : brushParams.Size * 0.5f;
 
         // Position the decal cube at the brush world position.
@@ -451,8 +452,7 @@ public sealed class EmbeddedStrideViewportGame : Game
                 break;
 
             case EditorMode.River:
-                _riverStrokePoints.Clear();
-                _riverStrokePoints.Add(worldPosition);
+                BeginRiverStroke(worldPosition);
                 break;
         }
     }
@@ -513,7 +513,7 @@ public sealed class EmbeddedStrideViewportGame : Game
                 break;
 
             case EditorMode.River:
-                _riverStrokePoints.Clear();
+                CancelRiverStroke();
                 break;
         }
     }
@@ -542,33 +542,79 @@ public sealed class EmbeddedStrideViewportGame : Game
         _riverStrokePoints.Add(worldPosition);
     }
 
+    private void BeginRiverStroke(Vector3 worldPosition)
+    {
+        EditorToolKind tool = _editorState.CurrentToolKind;
+
+        // Channel 和 Eraser 需要累积点
+        if (tool is EditorToolKind.RiverChannel or EditorToolKind.RiverEraser or EditorToolKind.RiverOcean)
+        {
+            _riverStrokePoints.Clear();
+            _riverStrokePoints.Add(worldPosition);
+            return;
+        }
+
+        // Source/Confluence/Bifurcation/Ocean: 单击即放置
+        RiverPixelType pixelType = tool switch
+        {
+            EditorToolKind.RiverSource => RiverPixelType.Source,
+            EditorToolKind.RiverConfluence => RiverPixelType.Confluence,
+            EditorToolKind.RiverBifurcation => RiverPixelType.Bifurcation,
+            EditorToolKind.RiverOcean => RiverPixelType.Ocean,
+            _ => RiverPixelType.Land,
+        };
+
+        if (TerrainManager?.RiverMap != null)
+        {
+            var command = new RiverMaskEditCommand(TerrainManager);
+            HistoryManager.Instance.BeginCommand(command);
+            RiverMapPainter.Instance.PlaceSpecialPixel(worldPosition, pixelType, TerrainManager.RiverMap, TerrainManager);
+            HistoryManager.Instance.CommitCommand();
+        }
+
+        _isBrushStrokeActive = false;
+    }
+
     private void CommitRiverStroke()
     {
-        if (TerrainManager?.RiverMask == null || _riverStrokePoints.Count == 0)
+        if (TerrainManager?.RiverMap == null || _riverStrokePoints.Count == 0)
         {
             _riverStrokePoints.Clear();
             return;
         }
 
+        EditorToolKind tool = _editorState.CurrentToolKind;
         var command = new RiverMaskEditCommand(TerrainManager);
         HistoryManager.Instance.BeginCommand(command);
 
-        float maskRadius = RiverMaskWriter.GetMaskRadius(PathFeatureParameters.Instance.Width);
-        RiverMaskWriter.VisitStrokeMaskSamples(
-            _riverStrokePoints,
-            (maskX, maskY) => HistoryManager.Instance.MarkCommandChunks((int)MathF.Round(maskX), (int)MathF.Round(maskY), maskRadius));
+        bool changed = false;
 
-        bool changed = RiverMaskWriter.Instance.ApplyStroke(
-            _riverStrokePoints,
-            PathFeatureParameters.Instance.Width,
-            TerrainManager.RiverMask,
-            TerrainManager);
+        if (tool == EditorToolKind.RiverChannel)
+        {
+            // Channel: 1px Bresenham 线，宽度从 PathFeatureParameters 读取
+            float worldWidth = PathFeatureParameters.Instance.Width;
+            changed = RiverMapPainter.Instance.ApplyStroke(
+                _riverStrokePoints, worldWidth, TerrainManager.RiverMap, TerrainManager,
+                riverValue: (byte)Math.Clamp((int)(worldWidth / 4.0f * 12.0f), 1, 12));
+        }
+        else if (tool == EditorToolKind.RiverEraser)
+        {
+            // Eraser: Disc 擦除
+            float radius = BrushParameters.Instance.Size * 0.5f;
+            changed = RiverMapPainter.Instance.ApplyEraser(
+                _riverStrokePoints, radius, TerrainManager.RiverMap, TerrainManager);
+        }
 
         if (changed)
             HistoryManager.Instance.CommitCommand();
         else
             HistoryManager.Instance.CancelCommand();
 
+        _riverStrokePoints.Clear();
+    }
+
+    private void CancelRiverStroke()
+    {
         _riverStrokePoints.Clear();
     }
 
