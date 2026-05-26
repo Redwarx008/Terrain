@@ -47,7 +47,6 @@ public sealed class PathFeatureService : IDisposable
     private const int MaxMeshFollowTerrainSubdivisionDepth = 6;
     private const float MeshVerticalOffset = 0.02f;
     private const float NodeGizmoVerticalOffset = 1.35f;
-    private const float RiverTextureRepeatUScale = 1.0f / 35.0f;
     private const float DirtRoadTextureAspect = 4096.0f / 128.0f;
     private const float PavedRoadTextureAspect = 512.0f / 64.0f;
     private const string DirtRoadDiffuseFileName = "road_dirt_diffuse.dds";
@@ -59,10 +58,6 @@ public sealed class PathFeatureService : IDisposable
     private const float RoadEdgeFadeStart = 0.86f;
     private const float RoadEndFadeoutFactor = 4.0f;
     private const float RoadAlphaClipThreshold = 0.08f;
-    private const float RiverEdgeFadeStart = 0.68f;
-    private const float RiverFlowTiling = 0.22f;
-    private const float RiverFlowStrength = 0.18f;
-    private const float RiverHighlightStrength = 0.22f;
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly Scene scene;
@@ -84,7 +79,6 @@ public sealed class PathFeatureService : IDisposable
     private Texture? fallbackPathNormalTexture;
     private Material? dirtRoadMaterial;
     private Material? pavedRoadMaterial;
-    private Material? riverMaterial;
     private Material? normalNodeGizmoMaterial;
     private Material? connectedNodeGizmoMaterial;
     private Material? selectedNodeGizmoMaterial;
@@ -385,7 +379,6 @@ public sealed class PathFeatureService : IDisposable
         nodeGizmos.Clear();
         dirtRoadMaterial = null;
         pavedRoadMaterial = null;
-        riverMaterial = null;
         dirtRoadDiffuseTexture?.Dispose();
         dirtRoadDiffuseTexture = null;
         dirtRoadNormalTexture?.Dispose();
@@ -655,7 +648,6 @@ public sealed class PathFeatureService : IDisposable
             Name = $"{kind} {features.Count(item => item.Kind == kind) + 1}",
             Style = PathFeatureParameters.Instance.CreateStyle(),
         };
-        feature.Style.Depth = kind == PathFeatureKind.River && feature.Style.Depth <= 0.0f ? 2.0f : feature.Style.Depth;
         features.Add(feature);
         return feature;
     }
@@ -810,24 +802,6 @@ public sealed class PathFeatureService : IDisposable
             if (baseHeightData != null && baseHeightData.Length == heightData.Length)
             {
                 Array.Copy(baseHeightData, heightData, baseHeightData.Length);
-                bool heightChanged = false;
-                foreach (PathFeature feature in features)
-                {
-                    if (feature.Kind != PathFeatureKind.River)
-                        continue;
-
-                    ApplyFeatureTerrain(feature);
-                    heightChanged = true;
-                }
-
-                if (heightChanged)
-                {
-                    terrainManager.MarkDataDirty(
-                        TerrainDataChannel.Height,
-                        terrainManager.HeightCacheWidth / 2,
-                        terrainManager.HeightCacheHeight / 2,
-                        Math.Max(terrainManager.HeightCacheWidth, terrainManager.HeightCacheHeight) * 0.5f);
-                }
             }
         }
 
@@ -1021,10 +995,7 @@ public sealed class PathFeatureService : IDisposable
         int index = z * width + x;
         float current = heightData[index];
         float blended = current + (targetRaw - current) * influence;
-        float next = kind == PathFeatureKind.River
-            ? Math.Min(current, blended)
-            : blended;
-        heightData[index] = (ushort)Math.Clamp(next, 0.0f, ushort.MaxValue);
+        heightData[index] = (ushort)Math.Clamp(blended, 0.0f, ushort.MaxValue);
     }
 
     private static float ComputeTerrainInfluence(float distance, float halfWidth, float slopeWidth)
@@ -1130,9 +1101,7 @@ public sealed class PathFeatureService : IDisposable
             cumulativeDistances[i] = uvDistance;
         }
 
-        float roadRepeatScale = feature.Kind == PathFeatureKind.Road
-            ? GetRoadTextureRepeatScale(feature.Style)
-            : RiverTextureRepeatUScale;
+        float roadRepeatScale = GetRoadTextureRepeatScale(feature.Style);
         float maxDistance = cumulativeDistances[^1];
         for (int i = 0; i < meshRows.Count; i++)
         {
@@ -1317,9 +1286,6 @@ public sealed class PathFeatureService : IDisposable
     {
         ArgumentNullException.ThrowIfNull(feature);
 
-        if (feature.Kind == PathFeatureKind.River)
-            return riverMaterial ??= CreateFallbackRiverMaterial();
-
         return feature.Style.RoadStyle == PathRoadStyle.Paved
             ? pavedRoadMaterial ??= CreateRoadMaterial(PathRoadStyle.Paved)
             : dirtRoadMaterial ??= CreateRoadMaterial(PathRoadStyle.Dirt);
@@ -1368,27 +1334,6 @@ public sealed class PathFeatureService : IDisposable
     private Material CreateFallbackRoadMaterial(PathRoadStyle roadStyle)
     {
         return CreateRoadMaterial(roadStyle);
-    }
-
-    private Material CreateFallbackRiverMaterial()
-    {
-        var descriptor = new MaterialDescriptor();
-        descriptor.Attributes.Diffuse = new MaterialPathRiverFeature();
-        descriptor.Attributes.DiffuseModel = new MaterialDiffuseLambertModelFeature();
-        descriptor.Attributes.MicroSurface = new MaterialGlossinessMapFeature(new ComputeFloat(0.78f));
-        descriptor.Attributes.Specular = new MaterialMetalnessMapFeature(new ComputeFloat(0.0f));
-        descriptor.Attributes.SpecularModel = new MaterialSpecularMicrofacetModelFeature();
-        descriptor.Attributes.Transparency = new MaterialTransparencyBlendFeature();
-
-        Material material = Material.New(graphicsDevice, descriptor);
-        ParameterCollection parameters = material.Passes[0].Parameters;
-        parameters.Set(PathRiverSurfaceKeys.ShallowColor, new Color4(0.10f, 0.42f, 0.78f, 0.58f));
-        parameters.Set(PathRiverSurfaceKeys.DeepColor, new Color4(0.03f, 0.18f, 0.42f, 0.90f));
-        parameters.Set(PathRiverSurfaceKeys.EdgeFadeStart, RiverEdgeFadeStart);
-        parameters.Set(PathRiverSurfaceKeys.FlowTiling, RiverFlowTiling);
-        parameters.Set(PathRiverSurfaceKeys.FlowStrength, RiverFlowStrength);
-        parameters.Set(PathRiverSurfaceKeys.HighlightStrength, RiverHighlightStrength);
-        return material;
     }
 
     private (Texture? Diffuse, Texture? Normal, Texture? Properties) GetOrLoadRoadTextures(PathRoadStyle roadStyle)

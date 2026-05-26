@@ -74,7 +74,7 @@ public sealed class EditorState
     public static EditorState Instance => _instance.Value;
 
     /// <summary>
-    /// Gets or sets the currently active tool kind (for River, Foliage, etc.).
+    /// Gets or sets the currently active tool kind (for Foliage, etc.).
     /// </summary>
     public EditorToolKind CurrentToolKind
     {

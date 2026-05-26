@@ -542,30 +542,6 @@
                 </Border>
               </StackPanel>
 
-              <!-- ═══ River Mode Inspector ═══ -->
-              <StackPanel IsVisible="{Binding IsRiverMode}" Spacing="0">
-                <Border Classes="inspectorSection" Padding="10,10">
-                  <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="RIVER SETTINGS" />
-                    <CheckBox Content="Wireframe" IsChecked="{Binding IsPathWireframeEnabled}" />
-                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
-                      <StackPanel Spacing="2">
-                        <TextBlock Classes="fieldLabel" Text="Width" />
-                        <Slider Minimum="1" Maximum="128" Value="{Binding PathParams.Width}" />
-                      </StackPanel>
-                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True" Text="{Binding PathParams.Width, StringFormat='{}{0:F0}'}" VerticalAlignment="Bottom" />
-                    </Grid>
-                    <TextBlock Classes="panelHint" Text="River 现在直接写入 1/2 分辨率 R8 RiverMask；按住鼠标从起点刷到终点提交整笔。" />
-                    <TextBlock Classes="sectionLabel" Text="RIVERMASK PREVIEW" Margin="0,6,0,0" />
-                    <Border Background="{DynamicResource EditorPanelAltBackgroundBrush}" BorderBrush="{DynamicResource EditorPanelBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6">
-                      <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
-                        <Image Source="{Binding RiverMaskPreviewImage}" Stretch="Uniform" Height="256" HorizontalAlignment="Center" />
-                      </Grid>
-                    </Border>
-                  </StackPanel>
-                </Border>
-              </StackPanel>
-
               <!-- ═══ Foliage Mode Inspector ═══ -->
               <StackPanel IsVisible="{Binding IsFoliageMode}" Spacing="0">
                 <Border Classes="inspectorSection" Padding="10,10">

@@ -38,11 +38,9 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
     [ObservableProperty]
     private bool _isSketchModeEnabled;
 
-    public bool IsRoadStyleVisible => KindIndex == 0;
+    public bool IsRoadStyleVisible => true;
 
-    public bool IsRoadCornerSpanVisible => KindIndex == 0;
-
-    public bool IsRiverTerrainShapeVisible => KindIndex == 1;
+    public bool IsRoadCornerSpanVisible => true;
 
     public string RoadStyleDisplayName => RoadStyleIndex == (int)PathRoadStyle.Paved ? "Paved" : "Dirt";
 
@@ -50,9 +48,8 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
     {
         OnPropertyChanged(nameof(IsRoadStyleVisible));
         OnPropertyChanged(nameof(IsRoadCornerSpanVisible));
-        OnPropertyChanged(nameof(IsRiverTerrainShapeVisible));
         if (!syncing)
-            source.Kind = value == 1 ? PathFeatureKind.River : PathFeatureKind.Road;
+            source.Kind = value == 0 ? PathFeatureKind.Road : PathFeatureKind.Road;
     }
 
     partial void OnWidthChanged(float value)
@@ -105,7 +102,7 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
     private void SyncFromSource()
     {
         syncing = true;
-        KindIndex = source.Kind == PathFeatureKind.River ? 1 : 0;
+        KindIndex = 0;
         Width = source.Width;
         Depth = source.Depth;
         SideSlope = source.SideSlope;
@@ -115,7 +112,6 @@ public sealed partial class PathFeatureParametersViewModel : ObservableObject, I
         syncing = false;
         OnPropertyChanged(nameof(IsRoadStyleVisible));
         OnPropertyChanged(nameof(IsRoadCornerSpanVisible));
-        OnPropertyChanged(nameof(IsRiverTerrainShapeVisible));
         OnPropertyChanged(nameof(RoadStyleDisplayName));
     }
 }

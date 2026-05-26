@@ -14,20 +14,9 @@ using Buffer = Stride.Graphics.Buffer;
 
 namespace Terrain.Editor.Rendering;
 
-/// <summary>
-/// 地形数据通道类型。
-/// </summary>
 public enum TerrainDataChannel
 {
-    /// <summary>
-    /// 高度图。
-    /// </summary>
-    Height,
-
-    /// <summary>
-    /// 河流遮罩图。
-    /// </summary>
-    RiverMask
+    Height
 }
 
 /// <summary>

@@ -17,7 +17,6 @@ public class TomlProjectConfig
     public string Name { get; set; } = "Untitled";
     public string? HeightmapPath { get; set; }
     public string? BiomeMaskPath { get; set; }
-    public string? RiverMaskPath { get; set; }
     public float HeightScale { get; set; } = 100.0f;
     public List<TomlMaterialSlotConfig> MaterialSlots { get; set; } = new();
     public List<TomlBiomeDefinitionConfig> Biomes { get; set; } = new();
@@ -49,8 +48,6 @@ public class TomlProjectConfig
                 ? ResolvePath(terrain["heightmap"].AsString.Value, baseDir) : null;
             config.BiomeMaskPath = terrain.HasKey("biome_mask") && terrain["biome_mask"].IsString
                 ? ResolvePath(terrain["biome_mask"].AsString.Value, baseDir) : null;
-            config.RiverMaskPath = terrain.HasKey("river_mask") && terrain["river_mask"].IsString
-                ? ResolvePath(terrain["river_mask"].AsString.Value, baseDir) : null;
             if (terrain.HasKey("height_scale"))
             {
                 var hsNode = terrain["height_scale"];
@@ -274,8 +271,6 @@ public class TomlProjectConfig
             terrain["heightmap"] = MakeRelative(HeightmapPath, baseDir);
         if (!string.IsNullOrEmpty(BiomeMaskPath))
             terrain["biome_mask"] = MakeRelative(BiomeMaskPath, baseDir);
-        if (!string.IsNullOrEmpty(RiverMaskPath))
-            terrain["river_mask"] = MakeRelative(RiverMaskPath, baseDir);
         terrain["height_scale"] = HeightScale;
         root["terrain"] = terrain;
 

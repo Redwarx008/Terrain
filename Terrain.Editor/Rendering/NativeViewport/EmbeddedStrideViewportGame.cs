@@ -42,12 +42,9 @@ public sealed class EmbeddedStrideViewportGame : Game
     private bool _wasLeftMouseDown;
     private bool _pendingMaterialTexturesLoad;
     private bool _isPathPointerActive;
-    private readonly List<Vector3> _riverStrokePoints = new();
-
     // Brush decal overlay
     private Entity? _brushDecalEntity;
     private BrushDecalComponent? _brushDecalComponent;
-    private RiverMaskMeshService? _riverMaskMeshService;
 
     public EmbeddedStrideViewportGame()
     {
@@ -301,7 +298,7 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     private bool IsBrushDecalMode()
     {
-        return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint or EditorMode.River;
+        return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint;
     }
 
     private void UpdatePathEditing()
@@ -370,9 +367,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
 
         var brushParams = BrushParameters.Instance;
-        float brushRadius = _editorState.CurrentEditorMode == EditorMode.River
-            ? BrushParameters.Instance.Size * 0.5f
-            : brushParams.Size * 0.5f;
+        float brushRadius = brushParams.Size * 0.5f;
 
         // Position the decal cube at the brush world position.
         // The cube must be large enough to encompass the brush circle.
@@ -388,7 +383,6 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             EditorMode.Sculpt => _editorState.GetToolColor(),
             EditorMode.Paint => new Color4(0.2f, 0.7f, 0.4f, 0.5f),
-            EditorMode.River => new Color4(0.2f, 0.5f, 0.85f, 0.5f),
             _ => Color4.White,
         };
         _brushDecalComponent.Color = decalColor;
@@ -451,9 +445,6 @@ public sealed class EmbeddedStrideViewportGame : Game
                 // Biome brush - no separate BeginStroke; ApplyStroke is stateless.
                 break;
 
-            case EditorMode.River:
-                BeginRiverStroke(worldPosition);
-                break;
         }
     }
 
@@ -469,9 +460,6 @@ public sealed class EmbeddedStrideViewportGame : Game
                 ApplyBiomeStroke(worldPosition);
                 break;
 
-            case EditorMode.River:
-                ApplyRiverStroke(worldPosition);
-                break;
         }
     }
 
@@ -493,9 +481,6 @@ public sealed class EmbeddedStrideViewportGame : Game
             case EditorMode.Paint:
                 break;
 
-            case EditorMode.River:
-                CommitRiverStroke();
-                break;
         }
     }
 
@@ -512,9 +497,6 @@ public sealed class EmbeddedStrideViewportGame : Game
                 HeightEditor.Instance.EndStroke();
                 break;
 
-            case EditorMode.River:
-                CancelRiverStroke();
-                break;
         }
     }
 
@@ -525,173 +507,6 @@ public sealed class EmbeddedStrideViewportGame : Game
 
         byte biomeId = (byte)_editorState.CurrentBiomeId;
         BiomeEditor.Instance.ApplyStroke(worldPosition, TerrainManager.BiomeMask, TerrainManager, biomeId);
-    }
-
-    private void ApplyRiverStroke(Vector3 worldPosition)
-    {
-        if (_riverStrokePoints.Count == 0)
-        {
-            _riverStrokePoints.Add(worldPosition);
-            return;
-        }
-
-        Vector3 previous = _riverStrokePoints[^1];
-        if (Vector3.Distance(previous, worldPosition) < 0.5f)
-            return;
-
-        _riverStrokePoints.Add(worldPosition);
-    }
-
-    private void BeginRiverStroke(Vector3 worldPosition)
-    {
-        EditorToolKind tool = _editorState.CurrentToolKind;
-
-        // Channel 和 Eraser 需要累积点
-        if (tool is EditorToolKind.RiverChannel or EditorToolKind.RiverEraser or EditorToolKind.RiverOcean)
-        {
-            _riverStrokePoints.Clear();
-            _riverStrokePoints.Add(worldPosition);
-            return;
-        }
-
-        // Source/Confluence/Bifurcation/Ocean: 单击即放置
-        RiverCell cell = tool switch
-        {
-            EditorToolKind.RiverSource => new(RiverPixelType.Source),
-            EditorToolKind.RiverConfluence => new(RiverPixelType.Confluence),
-            EditorToolKind.RiverBifurcation => new(RiverPixelType.Bifurcation),
-            EditorToolKind.RiverOcean => new(RiverPixelType.Ocean),
-            _ => new(RiverPixelType.Land),
-        };
-
-        if (TerrainManager?.RiverMap != null)
-        {
-            int mx = (int)MathF.Round(worldPosition.X * 0.5f);
-            int my = (int)MathF.Round(worldPosition.Z * 0.5f);
-            if ((uint)mx < TerrainManager.RiverMap.GetLength(0) && (uint)my < TerrainManager.RiverMap.GetLength(1))
-            {
-                var command = new RiverMaskEditCommand(TerrainManager);
-                HistoryManager.Instance.BeginCommand(command);
-                TerrainManager.RiverMap[mx, my] = cell;
-                TerrainManager.MarkRiverMaskDirty();
-                HistoryManager.Instance.CommitCommand();
-            }
-        }
-
-        _isBrushStrokeActive = false;
-    }
-
-    private void CommitRiverStroke()
-    {
-        if (TerrainManager?.RiverMap == null || _riverStrokePoints.Count == 0)
-        {
-            _riverStrokePoints.Clear();
-            return;
-        }
-
-        EditorToolKind tool = _editorState.CurrentToolKind;
-        var command = new RiverMaskEditCommand(TerrainManager);
-        HistoryManager.Instance.BeginCommand(command);
-
-        bool changed = false;
-        var map = TerrainManager.RiverMap;
-        int mapW = map.GetLength(0);
-        int mapH = map.GetLength(1);
-
-        if (tool == EditorToolKind.RiverChannel)
-        {
-            float worldWidth = PathFeatureParameters.Instance.Width;
-            byte widthByte = (byte)Math.Clamp((int)(worldWidth / 4.0f * 12.0f), 1, 12);
-
-            for (int i = 0; i < _riverStrokePoints.Count; i++)
-            {
-                Vector3 start = _riverStrokePoints[i];
-                Vector3 end = i + 1 < _riverStrokePoints.Count ? _riverStrokePoints[i + 1] : _riverStrokePoints[i];
-
-                int x0 = (int)MathF.Round(start.X * 0.5f);
-                int y0 = (int)MathF.Round(start.Z * 0.5f);
-                int x1 = (int)MathF.Round(end.X * 0.5f);
-                int y1 = (int)MathF.Round(end.Z * 0.5f);
-
-                int dx = Math.Abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-                int dy = -Math.Abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-                int err = dx + dy;
-                while (true)
-                {
-                    if ((uint)x0 < mapW && (uint)y0 < mapH)
-                    {
-                        var cur = map[x0, y0];
-                        if (cur.Type is RiverPixelType.Source or RiverPixelType.Confluence
-                            or RiverPixelType.Bifurcation or RiverPixelType.Ocean)
-                        { }
-                        else if (cur.Type != RiverPixelType.River || cur.Width != widthByte)
-                        {
-                            map[x0, y0] = new RiverCell(RiverPixelType.River, widthByte);
-                            changed = true;
-                        }
-                    }
-                    if (x0 == x1 && y0 == y1) break;
-                    int e2 = err * 2;
-                    if (e2 >= dy) { err += dy; x0 += sx; }
-                    if (e2 <= dx) { err += dx; y0 += sy; }
-                }
-            }
-        }
-        else if (tool == EditorToolKind.RiverEraser)
-        {
-            float radius = BrushParameters.Instance.Size * 0.5f;
-            float halfResRadius = radius * 0.25f;
-            int ceilR = (int)MathF.Ceiling(halfResRadius);
-
-            for (int i = 0; i < _riverStrokePoints.Count; i++)
-            {
-                Vector3 start = _riverStrokePoints[i];
-                Vector3 end = i + 1 < _riverStrokePoints.Count ? _riverStrokePoints[i + 1] : _riverStrokePoints[i];
-
-                int x0 = (int)MathF.Round(start.X * 0.5f);
-                int y0 = (int)MathF.Round(start.Z * 0.5f);
-                int x1 = (int)MathF.Round(end.X * 0.5f);
-                int y1 = (int)MathF.Round(end.Z * 0.5f);
-
-                float dx = x1 - x0, dy = y1 - y0;
-                int steps = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(dx * dx + dy * dy)));
-                for (int s = 0; s <= steps; s++)
-                {
-                    float t = steps == 0 ? 0 : s / (float)steps;
-                    int cx = (int)MathF.Round(x0 + dx * t);
-                    int cy = (int)MathF.Round(y0 + dy * t);
-                    for (int dz = -ceilR; dz <= ceilR; dz++)
-                    {
-                        for (int dx2 = -ceilR; dx2 <= ceilR; dx2++)
-                        {
-                            int px = cx + dx2, py = cy + dz;
-                            if ((uint)px >= mapW || (uint)py >= mapH) continue;
-                            if (MathF.Sqrt(dx2 * dx2 + dz * dz) > halfResRadius) continue;
-                            if (map[px, py].Type == RiverPixelType.Land) continue;
-                            map[px, py] = new RiverCell(RiverPixelType.Land);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (changed)
-        {
-            TerrainManager.MarkRiverMaskDirty();
-            HistoryManager.Instance.CommitCommand();
-        }
-        else
-        {
-            HistoryManager.Instance.CancelCommand();
-        }
-
-        _riverStrokePoints.Clear();
-    }
-
-    private void CancelRiverStroke()
-    {
-        _riverStrokePoints.Clear();
     }
 
     private void InitializeScene()
@@ -818,7 +633,6 @@ public sealed class EmbeddedStrideViewportGame : Game
     {
         TerrainManager = new TerrainManager(GraphicsDevice, _scene!, defaultTerrainTexture);
         TerrainManager.SetPathFeatureService(new PathFeatureService(GraphicsDevice, _scene!, TerrainManager));
-        _riverMaskMeshService = new RiverMaskMeshService(GraphicsDevice, _scene!, TerrainManager);
         TerrainManager.MaterialTexturesLoadRequired += OnMaterialTexturesLoadRequired;
         TerrainManager.TerrainLoaded += OnTerrainLoaded;
     }
@@ -1025,9 +839,6 @@ public sealed class EmbeddedStrideViewportGame : Game
             _brushDecalComponent = null;
         }
 
-        _riverMaskMeshService?.Dispose();
-        _riverMaskMeshService = null;
-
         if (TerrainManager != null)
         {
             TerrainManager.MaterialTexturesLoadRequired -= OnMaterialTexturesLoadRequired;
@@ -1060,7 +871,6 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
 
         TerrainManager?.TryLoadPendingBiomeMask();
-        TerrainManager?.TryLoadPendingRiverMask();
     }
 
     private void TryProcessPendingMaterialTextureLoad()

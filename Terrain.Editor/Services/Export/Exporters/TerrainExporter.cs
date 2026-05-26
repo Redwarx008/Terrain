@@ -37,23 +37,12 @@ public class TerrainExporter : IExporter
             ?? throw new InvalidOperationException("No height data loaded");
         var biomeMask = tm.BiomeMask
             ?? throw new InvalidOperationException("No biome mask loaded");
-        var riverMap = tm.RiverMap
-            ?? throw new InvalidOperationException("No river mask loaded");
         byte[] biomeMaskData = biomeMask.GetRawData();
-        int rw = riverMap.GetLength(0);
-        int rh = riverMap.GetLength(1);
-        // 展平 Width 值导出 R8 VT 数据
-        byte[] riverMaskData = new byte[rw * rh];
-        for (int y = 0; y < rh; y++)
-            for (int x = 0; x < rw; x++)
-                riverMaskData[y * rw + x] = riverMap[x, y].Width;
         int width = tm.HeightCacheWidth;
         int height = tm.HeightCacheHeight;
         int leafNodeSize = tm.SplitConfig?.BaseChunkSize ?? SplitTerrainConfig.DefaultBaseChunkSize;
         int biomeMaskWidth = biomeMask.Width;
         int biomeMaskHeight = biomeMask.Height;
-        int riverMaskWidth = rw;
-        int riverMaskHeight = rh;
 
         await Task.Run(() =>
         {
@@ -68,17 +57,15 @@ public class TerrainExporter : IExporter
             // 2. Calculate mip levels
             int heightMapMipLevels = VirtualTextureLayout.GetMipCount(width, height, DefaultTileSize);
             int biomeMaskMipLevels = VirtualTextureLayout.GetMipCount(biomeMaskWidth, biomeMaskHeight, DefaultTileSize);
-            int riverMaskMipLevels = VirtualTextureLayout.GetMipCount(riverMaskWidth, riverMaskHeight, DefaultTileSize);
 
-            // 4. Write the .terrain file
-            progress.Report(ExportProgress.Running(1, 5, "Writing .terrain file..."));
+            // 3. Write the .terrain file
+            progress.Report(ExportProgress.Running(1, 3, "Writing .terrain file..."));
 
             WriteTerrainFile(
                 outputPath, width, height,
                 heightData, biomeMaskData, biomeMaskWidth, biomeMaskHeight,
-                riverMaskData, riverMaskWidth, riverMaskHeight,
                 minMaxErrorMaps, leafNodeSize,
-                heightMapMipLevels, biomeMaskMipLevels, riverMaskMipLevels,
+                heightMapMipLevels, biomeMaskMipLevels,
                 progress, ct);
 
             progress.Report(ExportProgress.Completed());
@@ -92,14 +79,10 @@ public class TerrainExporter : IExporter
         byte[] biomeMaskData,
         int biomeMaskWidth,
         int biomeMaskHeight,
-        byte[] riverMaskData,
-        int riverMaskWidth,
-        int riverMaskHeight,
         EditorMinMaxErrorMap[] minMaxErrorMaps,
         int leafNodeSize,
         int heightMapMipLevels,
         int biomeMaskMipLevels,
-        int riverMaskMipLevels,
         IProgress<ExportProgress> progress,
         CancellationToken ct)
     {
@@ -120,9 +103,6 @@ public class TerrainExporter : IExporter
             SplatMapFormat = (int)VTFormat.R8,
             SplatMapMipLevels = biomeMaskMipLevels,
             SplatMapResolutionRatio = 2,
-            RiverMapFormat = (int)VTFormat.R8,
-            RiverMapMipLevels = riverMaskMipLevels,
-            RiverMapResolutionRatio = 2,
         };
         WriteStruct(writer, ref header);
 
@@ -162,20 +142,6 @@ public class TerrainExporter : IExporter
         };
         WriteStruct(writer, ref biomeMaskHeader);
         StreamMipLevels<byte>(writer, biomeMaskData, biomeMaskWidth, biomeMaskHeight,
-            DefaultTileSize, SplatMapPadding, ct);
-
-        progress.Report(ExportProgress.Running(5, 5, "Writing RiverMask VT data..."));
-        var riverMaskHeader = new VTHeader
-        {
-            Width = riverMaskWidth,
-            Height = riverMaskHeight,
-            TileSize = DefaultTileSize,
-            Padding = SplatMapPadding,
-            BytesPerPixel = 1, // R8
-            Mipmaps = riverMaskMipLevels,
-        };
-        WriteStruct(writer, ref riverMaskHeader);
-        StreamMipLevels<byte>(writer, riverMaskData, riverMaskWidth, riverMaskHeight,
             DefaultTileSize, SplatMapPadding, ct);
     }
 

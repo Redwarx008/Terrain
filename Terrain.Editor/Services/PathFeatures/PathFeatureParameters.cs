@@ -27,8 +27,6 @@ public sealed class PathFeatureParameters
                 return;
 
             _kind = value;
-            if (_kind == PathFeatureKind.River && _depth <= 0.0f)
-                _depth = 2.0f;
             if (_kind == PathFeatureKind.Road && _depth < 0.0f)
                 _depth = 0.0f;
             ParametersChanged?.Invoke(this, EventArgs.Empty);
@@ -124,7 +122,7 @@ public sealed class PathFeatureParameters
         return new PathFeatureStyle
         {
             Width = Width,
-            Depth = _kind == PathFeatureKind.Road ? 0.0f : Depth,
+            Depth = _depth,
             SideSlope = SideSlope,
             CornerSpan = CornerSpan,
             RoadStyle = RoadStyle,

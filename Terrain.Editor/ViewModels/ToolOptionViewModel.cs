@@ -10,13 +10,6 @@ public enum EditorToolKind
     None,
     BiomeBrush,
     RoadPath,
-    RiverBrush,        // 保留旧值不删除，不注册使用
-    RiverChannel,
-    RiverSource,
-    RiverConfluence,
-    RiverBifurcation,
-    RiverOcean,
-    RiverEraser,
     FoliagePlace,
     FoliageRemove,
 }

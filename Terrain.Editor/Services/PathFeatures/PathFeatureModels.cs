@@ -9,14 +9,12 @@ namespace Terrain.Editor.Services.PathFeatures;
 
 public enum PathFeatureKind
 {
-    Road,
-    River
+    Road
 }
 
 public enum PathEditorTool
 {
-    Road,
-    River
+    Road
 }
 
 public enum PathRoadStyle
