@@ -2,6 +2,7 @@
 
 using System;
 using Stride.Core.Mathematics;
+using Terrain.Editor.Services.Commands;
 
 namespace Terrain.Editor.Services;
 
@@ -17,6 +18,12 @@ public sealed class BiomeEditor
 
     private BiomeEditor()
     {
+    }
+
+    public void BeginStroke(TerrainManager terrainManager, byte biomeId)
+    {
+        var command = new BiomeEditCommand(terrainManager, biomeId);
+        HistoryManager.Instance.BeginCommand(command);
     }
 
     public void ApplyStroke(Vector3 worldPosition, BiomeMask mask, TerrainManager terrainManager, byte biomeId)
@@ -35,6 +42,11 @@ public sealed class BiomeEditor
         float halfResRadius = heightmapRadius / 2.0f;
         float innerRadius = halfResRadius * brush.EffectiveFalloff;
         int ceilRadius = (int)MathF.Ceiling(halfResRadius);
+
+        // 先标记 chunk，再写入数据 — 确保捕获到真实的 before-state。
+        // 注意：BiomeMask 是 1/2 分辨率，必须用 mask 空间坐标匹配 GetDataWidth/Height。
+        HistoryManager.Instance.MarkCommandChunks(maskX, maskY, halfResRadius);
+
         bool changed = false;
 
         for (int dz = -ceilRadius; dz <= ceilRadius; dz++)
@@ -70,6 +82,16 @@ public sealed class BiomeEditor
 
         terrainManager.MarkBiomeMaskDirty();
         terrainManager.RegenerateMaterialIndices(heightmapX, heightmapY, heightmapRadius);
+    }
+
+    public void EndStroke()
+    {
+        HistoryManager.Instance.CommitCommand();
+    }
+
+    public void CancelStroke()
+    {
+        HistoryManager.Instance.CancelCommand();
     }
 
     private static float ComputeLinearFalloff(float distance, float outerRadius, float innerRadius)

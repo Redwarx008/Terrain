@@ -16,7 +16,8 @@ namespace Terrain.Editor.Rendering;
 
 public enum TerrainDataChannel
 {
-    Height
+    Height,
+    Biome
 }
 
 /// <summary>

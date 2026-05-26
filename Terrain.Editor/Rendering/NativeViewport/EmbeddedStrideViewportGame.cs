@@ -367,7 +367,8 @@ public sealed class EmbeddedStrideViewportGame : Game
                 break;
 
             case EditorMode.Paint:
-                // Biome brush - no separate BeginStroke; ApplyStroke is stateless.
+                byte biomeId = (byte)_editorState.CurrentBiomeId;
+                BiomeEditor.Instance.BeginStroke(TerrainManager!, biomeId);
                 break;
 
         }
@@ -404,6 +405,7 @@ public sealed class EmbeddedStrideViewportGame : Game
                 break;
 
             case EditorMode.Paint:
+                BiomeEditor.Instance.EndStroke();
                 break;
 
         }
@@ -420,6 +422,10 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             case EditorMode.Sculpt:
                 HeightEditor.Instance.EndStroke();
+                break;
+
+            case EditorMode.Paint:
+                BiomeEditor.Instance.CancelStroke();
                 break;
 
         }
