@@ -27,7 +27,6 @@ public sealed class NativeStrideViewportHost : IDisposable
     private IntPtr _originalShortcutWndProc;
     private string _status = "Viewport host not attached.";
     private SceneViewMode _sceneViewMode = SceneViewMode.Perspective;
-    private bool _isPathWireframeEnabled;
     private int _width;
     private int _height;
     private bool _isDisposed;
@@ -50,7 +49,6 @@ public sealed class NativeStrideViewportHost : IDisposable
 
     public SceneViewMode SceneViewMode => _sceneViewMode;
 
-    public bool IsPathWireframeEnabled => _isPathWireframeEnabled;
 
     public IntPtr ChildHwnd => _childHwnd;
 
@@ -177,27 +175,6 @@ public sealed class NativeStrideViewportHost : IDisposable
         RuntimeStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public void SetPathWireframeEnabled(bool enabled)
-    {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
-
-        if (_isPathWireframeEnabled == enabled)
-        {
-            return;
-        }
-
-        _isPathWireframeEnabled = enabled;
-        _game?.SetPathWireframeEnabled(enabled);
-
-        if (_childHwnd != IntPtr.Zero)
-        {
-            UpdateStatus(BuildAttachedStatus());
-            TraceDiagnostics("PathWireframeChanged");
-            return;
-        }
-
-        RuntimeStateChanged?.Invoke(this, EventArgs.Empty);
-    }
 
     public void Dispose()
     {
@@ -231,7 +208,6 @@ public sealed class NativeStrideViewportHost : IDisposable
             _game.RuntimeReady += OnGameRuntimeReady;
             _game.FirstFrameRendered += OnGameFirstFrameRendered;
             _game.SetSceneViewMode(_sceneViewMode);
-            _game.SetPathWireframeEnabled(_isPathWireframeEnabled);
             _game.SetViewportSize(_width, _height);
 
             _context = new GameContextSDL(_window, _width, _height, isUserManagingRun: true);

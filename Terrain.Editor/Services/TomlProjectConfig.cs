@@ -22,8 +22,6 @@ public class TomlProjectConfig
     public List<TomlBiomeDefinitionConfig> Biomes { get; set; } = new();
     public List<TomlBiomeLayerConfig> BiomeLayers { get; set; } = new();
     public List<TomlBiomeModifierConfig> BiomeModifiers { get; set; } = new();
-    public List<TomlPathNodeConfig> PathNodes { get; set; } = new();
-    public List<TomlPathFeatureConfig> PathFeatures { get; set; } = new();
 
     /// <summary>
     /// 从 .toml 文件读取配置。路径自动解析为绝对路径。
@@ -193,64 +191,6 @@ public class TomlProjectConfig
             }
         }
 
-        if (root.HasKey("path_nodes") && root["path_nodes"].IsArray)
-        {
-            foreach (TomlNode node in root["path_nodes"].AsArray)
-            {
-                if (!node.IsTable)
-                    continue;
-
-                string id = node.HasKey("id") && node["id"].IsString ? node["id"].AsString.Value : "";
-                if (string.IsNullOrWhiteSpace(id))
-                    continue;
-
-                config.PathNodes.Add(new TomlPathNodeConfig
-                {
-                    Id = id,
-                    X = ReadFloat(node, "x", 0.0f),
-                    Y = ReadFloat(node, "y", 0.0f),
-                    Z = ReadFloat(node, "z", 0.0f),
-                });
-            }
-        }
-
-        if (root.HasKey("path_features") && root["path_features"].IsArray)
-        {
-            foreach (TomlNode featureNode in root["path_features"].AsArray)
-            {
-                if (!featureNode.IsTable)
-                    continue;
-
-                string id = featureNode.HasKey("id") && featureNode["id"].IsString ? featureNode["id"].AsString.Value : "";
-                if (string.IsNullOrWhiteSpace(id))
-                    continue;
-
-                var feature = new TomlPathFeatureConfig
-                {
-                    Id = id,
-                    Name = featureNode.HasKey("name") && featureNode["name"].IsString ? featureNode["name"].AsString.Value : "Path",
-                    Kind = featureNode.HasKey("kind") && featureNode["kind"].IsString ? featureNode["kind"].AsString.Value : "Road",
-                    Width = ReadFloat(featureNode, "width", 8.0f),
-                    Depth = ReadFloat(featureNode, "depth", 0.0f),
-                    SideSlope = ReadFloat(featureNode, "side_slope", 4.0f),
-                    CornerSpan = ReadFloat(featureNode, "corner_span", 0.35f),
-                    RoadStyle = featureNode.HasKey("road_style") && featureNode["road_style"].IsString
-                        ? featureNode["road_style"].AsString.Value
-                        : "Dirt",
-                };
-
-                if (featureNode.HasKey("nodes") && featureNode["nodes"].IsArray)
-                {
-                    foreach (TomlNode nodeId in featureNode["nodes"].AsArray)
-                    {
-                        if (nodeId.IsString && !string.IsNullOrWhiteSpace(nodeId.AsString.Value))
-                            feature.NodeIds.Add(nodeId.AsString.Value);
-                    }
-                }
-
-                config.PathFeatures.Add(feature);
-            }
-        }
 
         return config;
     }
@@ -363,44 +303,6 @@ public class TomlProjectConfig
             root["biome_modifiers"] = modifiersArray;
         }
 
-        if (PathNodes.Count > 0)
-        {
-            var nodesArray = new TomlArray();
-            foreach (TomlPathNodeConfig node in PathNodes)
-            {
-                var nodeTable = new TomlTable();
-                nodeTable["id"] = node.Id;
-                nodeTable["x"] = node.X;
-                nodeTable["y"] = node.Y;
-                nodeTable["z"] = node.Z;
-                nodesArray.Add(nodeTable);
-            }
-            root["path_nodes"] = nodesArray;
-        }
-
-        if (PathFeatures.Count > 0)
-        {
-            var featuresArray = new TomlArray();
-            foreach (TomlPathFeatureConfig feature in PathFeatures)
-            {
-                var featureTable = new TomlTable();
-                featureTable["id"] = feature.Id;
-                featureTable["name"] = feature.Name;
-                featureTable["kind"] = feature.Kind;
-                featureTable["width"] = feature.Width;
-                featureTable["depth"] = feature.Depth;
-                featureTable["side_slope"] = feature.SideSlope;
-                featureTable["corner_span"] = feature.CornerSpan;
-                featureTable["road_style"] = feature.RoadStyle;
-
-                var nodesArray = new TomlArray();
-                foreach (string nodeId in feature.NodeIds)
-                    nodesArray.Add(nodeId);
-                featureTable["nodes"] = nodesArray;
-                featuresArray.Add(featureTable);
-            }
-            root["path_features"] = featuresArray;
-        }
 
         string? directory = Path.GetDirectoryName(Path.GetFullPath(tomlFilePath));
         if (!string.IsNullOrWhiteSpace(directory))
@@ -515,25 +417,4 @@ public class TomlBiomeModifierConfig
     public float Invert { get; set; }
     public string? TextureMaskPath { get; set; }
     public int TextureMaskChannel { get; set; }
-}
-
-public class TomlPathNodeConfig
-{
-    public string Id { get; set; } = "";
-    public float X { get; set; }
-    public float Y { get; set; }
-    public float Z { get; set; }
-}
-
-public class TomlPathFeatureConfig
-{
-    public string Id { get; set; } = "";
-    public string Name { get; set; } = "";
-    public string Kind { get; set; } = "Road";
-    public List<string> NodeIds { get; set; } = new();
-    public float Width { get; set; } = 8.0f;
-    public float Depth { get; set; }
-    public float SideSlope { get; set; } = 4.0f;
-    public float CornerSpan { get; set; } = 0.35f;
-    public string RoadStyle { get; set; } = "Dirt";
 }

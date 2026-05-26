@@ -9,7 +9,6 @@ public enum EditorToolKind
 {
     None,
     BiomeBrush,
-    RoadPath,
     FoliagePlace,
     FoliageRemove,
 }

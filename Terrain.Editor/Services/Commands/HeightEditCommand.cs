@@ -63,9 +63,7 @@ public sealed class HeightEditCommand : TerrainEditCommand
         }
 
         beforeChunkData.Clear();
-        TerrainManager.PathFeatureService?.ApplyExternalHeightEditDeltas(
-            changedChunks.Select(static chunk => (chunk.Region, chunk.Before, chunk.After)),
-            applyAfterState: true);
+        // Height edit command no longer updates path feature service after path system removal.
         return changedChunks.Count > 0;
     }
 
@@ -119,9 +117,7 @@ public sealed class HeightEditCommand : TerrainEditCommand
             TerrainManager.MarkDataDirty(TerrainDataChannel.Height, (int)centerX, (int)centerZ, radius);
         }
 
-        TerrainManager.PathFeatureService?.ApplyExternalHeightEditDeltas(
-            changedChunks.Select(static chunk => (chunk.Region, chunk.Before, chunk.After)),
-            afterState);
+        // Height edit command no longer updates path feature service after path system removal.
     }
 
     private readonly record struct HeightChunkDelta(TerrainChunkRegion Region, ushort[] Before, ushort[] After);

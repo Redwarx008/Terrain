@@ -17,11 +17,6 @@
     <AvaloniaResource Include="Styles\**\*.axaml" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Content Include="Resources\Vic3\Roads\*.dds">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" />
@@ -60,11 +55,6 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
-    <Compile Update="Effects\PathRoadSurface.sdsl.cs">
-      <DesignTime>True</DesignTime>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-      <AutoGen>True</AutoGen>
-    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -73,9 +63,6 @@
     </None>
     <None Update="Effects\BrushDecalShader.sdsl">
       <LastGenOutput>BrushDecalShader.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\PathRoadSurface.sdsl">
-      <LastGenOutput>PathRoadSurface.sdsl.cs</LastGenOutput>
     </None>
   </ItemGroup>
 
