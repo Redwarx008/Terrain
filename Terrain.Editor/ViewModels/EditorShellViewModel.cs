@@ -122,6 +122,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public BiomeViewModel Biome { get; }
 
+    public RiverViewModel? River { get; private set; }
+
     public SettingsViewModel Settings { get; }
 
     public ObservableCollection<ModeOptionViewModel> Modes { get; } = new();
@@ -167,6 +169,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public bool IsSettingsMode => SelectedMode == EditorMode.Settings;
 
+    public bool IsRiverMode => SelectedMode == EditorMode.River;
+
     public bool HasTools => SelectedMode != EditorMode.Settings;
 
     public bool IsBiomeVisible => IsPaintMode;
@@ -202,6 +206,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         HeatmapEnabled = _editorState.HeatmapEnabled;
         SelectedMaterialSlotIndex = _editorState.SelectedMaterialSlotIndex;
         RefreshTools();
+
+        if (_viewportHost.TerrainManager != null)
+        {
+            River = new RiverViewModel(_viewportHost.TerrainManager);
+        }
+
+        // Wire up river services when runtime becomes ready
+        TryWireRiverServices();
+        _viewportHost.RuntimeStateChanged += OnViewportRuntimeStateChanged;
+
         SyncSelectedModeOption();
         RefreshProjectState();
         RefreshHistoryState();
@@ -775,6 +789,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         BrushParams.Dispose();
         PathParams.Dispose();
         Biome.Dispose();
+        River?.Dispose();
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
         Viewport.Dispose();
         _viewportHost.Dispose();
@@ -800,6 +815,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsPathMode));
         OnPropertyChanged(nameof(IsFoliageMode));
         OnPropertyChanged(nameof(IsSettingsMode));
+        OnPropertyChanged(nameof(IsRiverMode));
         OnPropertyChanged(nameof(HasTools));
         OnPropertyChanged(nameof(IsBiomeVisible));
         OnPropertyChanged(nameof(SelectedModeDisplayName));
@@ -1142,6 +1158,10 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 new("Place", "Place foliage", "\uE8BE", mode),
                 new("Remove", "Remove foliage", "\uE74D", mode),
             ],
+            EditorMode.River =>
+            [
+                new("River Tool", "Import and generate rivers", "\uE8B7", mode),
+            ],
             _ => [],
         };
     }
@@ -1152,6 +1172,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         Modes.Add(new ModeOptionViewModel("Biome", "Biome mask painting", "\uE950", EditorMode.Paint));
         Modes.Add(new ModeOptionViewModel("Paths", "Road and river drawing", "\uE913", EditorMode.Path));
         Modes.Add(new ModeOptionViewModel("Foliage", "Vegetation placement", "\uE8BE", EditorMode.Foliage));
+        Modes.Add(new ModeOptionViewModel("River", "River system from color map", "", EditorMode.River));
         Modes.Add(new ModeOptionViewModel("Settings", "Project settings", "", EditorMode.Settings));
     }
 
@@ -1502,6 +1523,24 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         if (_viewportHost.TerrainManager is { } manager)
         {
             Settings.HeightScale = manager.HeightScale;
+        }
+    }
+
+    private void OnViewportRuntimeStateChanged(object? sender, EventArgs e)
+    {
+        TryWireRiverServices();
+    }
+
+    private void TryWireRiverServices()
+    {
+        if (River == null && _viewportHost.TerrainManager != null)
+        {
+            River = new RiverViewModel(_viewportHost.TerrainManager);
+        }
+
+        if (River != null && _viewportHost.RiverRenderingService != null && _viewportHost.RiverMeshService != null)
+        {
+            River.SetServices(_viewportHost.RiverRenderingService, _viewportHost.RiverMeshService);
         }
     }
 

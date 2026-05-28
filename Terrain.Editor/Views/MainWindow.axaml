@@ -639,6 +639,47 @@
                 </Border>
               </StackPanel>
 
+              <!-- ═══ River Mode Inspector ═══ -->
+              <StackPanel IsVisible="{Binding IsRiverMode}" Spacing="0">
+                <Border Classes="inspectorSection" Padding="10,10">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionLabel" Text="RIVER MAP" />
+
+                    <Button Classes="commandButton" Command="{Binding River.ImportPngCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                        <TextBlock Classes="toolbarIcon" Text="&#xE8B7;" />
+                        <TextBlock Text="Import PNG" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+
+                    <TextBlock Classes="panelHint" Text="{Binding River.RiverMapPath}" TextWrapping="Wrap" />
+
+                    <Border Classes="brushPreviewFrame" Height="120" IsVisible="{Binding River.HasRiverMap}">
+                      <Image Source="{Binding River.PreviewImage}" Stretch="Uniform" />
+                    </Border>
+
+                    <TextBlock Classes="panelHint" Text="{Binding River.StatusText}" TextWrapping="Wrap" />
+
+                    <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Width Scale" />
+                        <Slider Minimum="0.5" Maximum="3.0" Value="{Binding River.WidthScale}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True"
+                               Text="{Binding River.WidthScale, StringFormat='{}{0:F2}'}" VerticalAlignment="Bottom" />
+                    </Grid>
+
+                    <Button Classes="commandButton" Command="{Binding River.GenerateCommand}"
+                            IsVisible="{Binding River.HasRiverMap}"
+                            HorizontalAlignment="Stretch">
+                      <TextBlock Text="GENERATE" HorizontalAlignment="Center" FontWeight="Bold" />
+                    </Button>
+
+                    <CheckBox Content="Show Rivers" IsChecked="{Binding River.ShowRivers}" />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
               <!-- ═══ Biome Panels (Biome mode) ═══ -->
               <StackPanel IsVisible="{Binding IsBiomeVisible}" Spacing="0">
                 <Border Classes="inspectorSection" Padding="10,10">

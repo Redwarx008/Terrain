@@ -62,6 +62,10 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     public TerrainManager? TerrainManager { get; private set; }
 
+    public RiverRenderingService? RiverRenderingService { get; private set; }
+
+    public RiverMeshService? RiverMeshService { get; private set; }
+
     public SceneViewMode SceneViewMode => _sceneViewMode;
 
     public string Diagnostics
@@ -294,7 +298,7 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     private bool IsBrushDecalMode()
     {
-        return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint;
+        return _editorState.CurrentEditorMode is EditorMode.Sculpt or EditorMode.Paint or EditorMode.River;
     }
 
     private void UpdatePathEditing()
@@ -381,6 +385,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             EditorMode.Sculpt => _editorState.GetToolColor(),
             EditorMode.Paint => new Color4(0.2f, 0.7f, 0.4f, 0.5f),
+            EditorMode.River => new Color4(0.0f, 0.4f, 0.8f, 0.5f),
             _ => Color4.White,
         };
         _brushDecalComponent.Color = decalColor;
@@ -614,6 +619,9 @@ public sealed class EmbeddedStrideViewportGame : Game
         TerrainManager.SetPathFeatureService(new PathFeatureService(GraphicsDevice, _scene!, TerrainManager));
         TerrainManager.MaterialTexturesLoadRequired += OnMaterialTexturesLoadRequired;
         TerrainManager.TerrainLoaded += OnTerrainLoaded;
+
+        RiverRenderingService = new RiverRenderingService(GraphicsDevice, _scene!);
+        RiverMeshService = new RiverMeshService(TerrainManager);
     }
 
     private static Scene CreateEditorSceneFromAsset(Scene sourceScene)
@@ -825,6 +833,10 @@ public sealed class EmbeddedStrideViewportGame : Game
             TerrainManager.Dispose();
             TerrainManager = null;
         }
+
+        RiverRenderingService?.Dispose();
+        RiverRenderingService = null;
+        RiverMeshService = null;
 
         base.EndRun();
     }

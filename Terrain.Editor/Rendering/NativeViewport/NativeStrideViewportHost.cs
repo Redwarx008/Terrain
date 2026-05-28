@@ -48,6 +48,10 @@ public sealed class NativeStrideViewportHost : IDisposable
 
     public TerrainManager? TerrainManager => _game?.TerrainManager;
 
+    public RiverRenderingService? RiverRenderingService => _game?.RiverRenderingService;
+
+    public RiverMeshService? RiverMeshService => _game?.RiverMeshService;
+
     public SceneViewMode SceneViewMode => _sceneViewMode;
 
     public bool IsPathWireframeEnabled => _isPathWireframeEnabled;
