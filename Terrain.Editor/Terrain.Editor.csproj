@@ -70,6 +70,21 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
+    <Compile Update="Effects\RiverSurface.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\RiverBottom.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\RiverEffect.sdfx.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -84,6 +99,15 @@
     </None>
     <None Update="Effects\PathRiverSurface.sdsl">
       <LastGenOutput>PathRiverSurface.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\RiverSurface.sdsl">
+      <LastGenOutput>RiverSurface.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\RiverBottom.sdsl">
+      <LastGenOutput>RiverBottom.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\RiverEffect.sdfx">
+      <LastGenOutput>RiverEffect.sdfx.cs</LastGenOutput>
     </None>
   </ItemGroup>
 
