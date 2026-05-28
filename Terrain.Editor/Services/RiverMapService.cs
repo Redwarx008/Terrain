@@ -71,6 +71,23 @@ public sealed class RiverMapService
                 }
                 if (orthoCount > 2)
                     Errors.Add($"Pixel ({x},{y}): {orthoCount} orthogonal neighbors (max 2)");
+
+                // Validate Confluence/Bifurcation pixels have at least one River neighbor
+                if (Cells[x, y].Type is RiverPixelType.Confluence or RiverPixelType.Bifurcation)
+                {
+                    bool hasRiverNeighbor = false;
+                    for (int d = 0; d < 4; d++)
+                    {
+                        int nx = x + dx[d], ny = y + dy[d];
+                        if (nx >= 0 && nx < w && ny >= 0 && ny < h && Cells[nx, ny].Type == RiverPixelType.River)
+                        {
+                            hasRiverNeighbor = true;
+                            break;
+                        }
+                    }
+                    if (!hasRiverNeighbor)
+                        Errors.Add($"{(Cells[x, y].Type == RiverPixelType.Confluence ? "Confluence" : "Bifurcation")} at ({x},{y}) has no River neighbor");
+                }
             }
 
         // Check each river system has exactly 1 source

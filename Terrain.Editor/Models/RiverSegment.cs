@@ -25,5 +25,5 @@ public sealed class RiverSegment
 
 public readonly record struct RiverJunction(int X, int Y, RiverPixelType Kind)
 {
-    public int Key => Y * 65536 + X;
+    public int Key => (Y << 16) | X;
 }

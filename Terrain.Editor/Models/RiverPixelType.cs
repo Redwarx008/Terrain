@@ -45,8 +45,10 @@ public readonly record struct RiverCell(RiverPixelType Type, byte Width = 0)
         return -1;
     }
 
+    private const int ColorTolerance = 2;
+
     private static bool ColorMatch(Rgba32 a, Rgba32 b) =>
-        Math.Abs(a.R - b.R) <= 2 && Math.Abs(a.G - b.G) <= 2 && Math.Abs(a.B - b.B) <= 2;
+        Math.Abs(a.R - b.R) <= ColorTolerance && Math.Abs(a.G - b.G) <= ColorTolerance && Math.Abs(a.B - b.B) <= ColorTolerance;
 
     private static readonly Rgba32 SourceColor = new(0, 255, 0);
     private static readonly Rgba32 ConfluenceColor = new(255, 0, 0);
