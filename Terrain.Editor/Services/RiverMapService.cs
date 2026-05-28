@@ -117,4 +117,148 @@ public sealed class RiverMapService
             stack.Push((x, y - 1));
         }
     }
+
+    public List<RiverSegment> ExtractSegments()
+    {
+        var segments = new List<RiverSegment>();
+        if (Cells == null) return segments;
+
+        int w = Width, h = Height;
+        var visited = new bool[w, h];
+
+        // Collect all special pixels (Source, Confluence, Bifurcation)
+        var specialPixels = new Dictionary<int, (int X, int Y, RiverPixelType Kind)>();
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                var t = Cells[x, y].Type;
+                if (t is RiverPixelType.Source or RiverPixelType.Confluence or RiverPixelType.Bifurcation)
+                {
+                    int key = y * 65536 + x;
+                    specialPixels[key] = (x, y, t);
+                }
+            }
+
+        // Trace from each special pixel: walk along River cells
+        int[] dx = [0, 1, 0, -1];
+        int[] dy = [-1, 0, 1, 0];
+
+        foreach (var sp in specialPixels.Values)
+        {
+            for (int d = 0; d < 4; d++)
+            {
+                int nx = sp.X + dx[d], ny = sp.Y + dy[d];
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                if (Cells[nx, ny].Type != RiverPixelType.River) continue;
+                if (visited[nx, ny]) continue;
+
+                // Trace this path
+                var seg = TracePath(nx, ny, sp.X, sp.Y, Cells, w, h, visited, specialPixels, dx, dy);
+                if (seg != null && seg.Cells.Count > 0)
+                {
+                    seg.StartKind = KindFromPixel(Cells[sp.X, sp.Y].Type);
+                    seg.StartNodeKey = sp.Y * 65536 + sp.X;
+                    seg.AvgHalfWidth = ComputeAvgWidth(seg, Cells);
+                    segments.Add(seg);
+                }
+            }
+        }
+
+        // Assign system IDs
+        AssignSystemIds(segments);
+
+        return segments;
+    }
+
+    private static RiverSegment? TracePath(
+        int startX, int startY, int fromX, int fromY,
+        RiverCell[,] cells, int w, int h, bool[,] visited,
+        Dictionary<int, (int X, int Y, RiverPixelType Kind)> specialPixels,
+        int[] dx, int[] dy)
+    {
+        var seg = new RiverSegment();
+        int cx = startX, cy = startY, px = fromX, py = fromY;
+
+        while (cx >= 0 && cx < w && cy >= 0 && cy < h)
+        {
+            visited[cx, cy] = true;
+            seg.Cells.Add((cx, cy));
+
+            // Check if we hit a special pixel (end of segment)
+            int key = cy * 65536 + cx;
+            if (specialPixels.ContainsKey(key))
+            {
+                seg.EndKind = KindFromPixel(cells[cx, cy].Type);
+                seg.EndNodeKey = key;
+                break;
+            }
+
+            // Find next River pixel (excluding the one we came from)
+            int nextX = -1, nextY = -1;
+            int neighborCount = 0;
+            for (int d = 0; d < 4; d++)
+            {
+                int nx = cx + dx[d], ny = cy + dy[d];
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                if (nx == px && ny == py) continue;
+                if (cells[nx, ny].IsFilled)
+                {
+                    nextX = nx; nextY = ny;
+                    neighborCount++;
+                }
+            }
+
+            if (neighborCount != 1) break;
+
+            px = cx; py = cy;
+            cx = nextX; cy = nextY;
+        }
+
+        return seg;
+    }
+
+    private static float ComputeAvgWidth(RiverSegment seg, RiverCell[,] cells)
+    {
+        float total = 0;
+        foreach (var (x, y) in seg.Cells)
+            total += RiverCell.GetHalfWidth(cells[x, y].Width);
+        return seg.Cells.Count > 0 ? total / seg.Cells.Count : 0.625f;
+    }
+
+    private static SegmentEndKind KindFromPixel(RiverPixelType t) => t switch
+    {
+        RiverPixelType.Source => SegmentEndKind.Source,
+        RiverPixelType.Confluence => SegmentEndKind.Confluence,
+        RiverPixelType.Bifurcation => SegmentEndKind.Bifurcation,
+        _ => SegmentEndKind.None,
+    };
+
+    private void AssignSystemIds(List<RiverSegment> segments)
+    {
+        int nextId = 1;
+        var assigned = new HashSet<RiverSegment>();
+        foreach (var seg in segments)
+        {
+            if (assigned.Contains(seg)) continue;
+
+            var queue = new Queue<RiverSegment>();
+            queue.Enqueue(seg);
+            int sysId = nextId++;
+
+            while (queue.Count > 0)
+            {
+                var s = queue.Dequeue();
+                if (!assigned.Add(s)) continue;
+                s.SystemId = sysId;
+
+                foreach (var other in segments)
+                {
+                    if (assigned.Contains(other)) continue;
+                    if (other.StartNodeKey == s.StartNodeKey || other.StartNodeKey == s.EndNodeKey ||
+                        other.EndNodeKey == s.StartNodeKey || other.EndNodeKey == s.EndNodeKey)
+                        queue.Enqueue(other);
+                }
+            }
+        }
+    }
 }
