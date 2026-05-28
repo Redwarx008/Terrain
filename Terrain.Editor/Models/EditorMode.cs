@@ -10,6 +10,7 @@ public enum EditorMode
     Foliage,
     Settings,
     Landscape,
+    River,
 }
 
 public enum SceneViewMode

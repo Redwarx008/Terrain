@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Services.PathFeatures;
 using StrideColor = Stride.Core.Mathematics.Color;
@@ -53,6 +54,9 @@ public sealed class TerrainManager : IDisposable
 
     private string? currentBiomeMaskPath;
 
+    private RiverCell[,]? riverMap;
+    private string? currentRiverMapPath;
+
     private TerrainComponent? terrainComponent;
     private string? currentTerrainPath;
     private string? lastLoadError;
@@ -75,6 +79,9 @@ public sealed class TerrainManager : IDisposable
     public ushort[]? HeightDataCache => heightDataCache;
     public SplitTerrainConfig? SplitConfig => currentSplitConfig;
     public string? LastLoadError => lastLoadError;
+
+    public RiverCell[,]? RiverMap => riverMap;
+    public string? CurrentRiverMapPath => currentRiverMapPath;
 
     public PathFeatureService? PathFeatureService => pathFeatureService;
 
@@ -102,6 +109,8 @@ public sealed class TerrainManager : IDisposable
     /// 项目加载完成后触发，通知需要加载材质纹理。
     /// </summary>
     public event EventHandler? MaterialTexturesLoadRequired;
+
+    public event EventHandler? RiverMapChanged;
 
     public TerrainManager(GraphicsDevice graphicsDevice, Scene scene, Texture? defaultTerrainTexture = null)
     {
@@ -874,6 +883,7 @@ public sealed class TerrainManager : IDisposable
             Name = resolvedProjectName,
             HeightmapPath = currentTerrainPath,
             BiomeMaskPath = biomeMaskPath,
+            RiverMapImagePath = currentRiverMapPath,
             HeightScale = HeightScale,
             MaterialSlots = SaveMaterialSlotConfigs(),
             Biomes = SaveBiomeConfigs(),
@@ -994,6 +1004,12 @@ public sealed class TerrainManager : IDisposable
             ? config.BiomeMaskPath
             : null;
 
+        // Restore river map
+        if (!string.IsNullOrEmpty(config.RiverMapImagePath) && File.Exists(config.RiverMapImagePath))
+        {
+            LoadRiverMap(config.RiverMapImagePath);
+        }
+
         // 加载高度图。pendingBiomeMaskPath 必须先准备好，
         // 因为当前 LoadTerrainAsync 会在 TerrainLoaded 事件中立刻尝试消费它。
         if (!string.IsNullOrEmpty(config.HeightmapPath) && File.Exists(config.HeightmapPath))
@@ -1067,6 +1083,29 @@ public sealed class TerrainManager : IDisposable
         if (markDirty)
             ProjectManager.Instance.MarkDirty();
         return true;
+    }
+
+    public bool LoadRiverMap(string path)
+    {
+        var service = new RiverMapService();
+        if (!service.Load(path))
+        {
+            Log.Error($"River map load failed: {string.Join("; ", service.Errors)}");
+            return false;
+        }
+
+        riverMap = service.Cells;
+        currentRiverMapPath = path;
+        RiverMapChanged?.Invoke(this, EventArgs.Empty);
+        ProjectManager.Instance.MarkDirty();
+        return true;
+    }
+
+    public void ClearRiverMap()
+    {
+        riverMap = null;
+        currentRiverMapPath = null;
+        RiverMapChanged?.Invoke(this, EventArgs.Empty);
     }
 
     #endregion
