@@ -999,7 +999,9 @@ public sealed class TerrainManager : IDisposable
     public bool LoadRiverMap(string path)
     {
         var service = new RiverMapService();
-        if (!service.Load(path))
+        service.Load(path); // Always load data; errors are reported but don't block
+
+        if (service.Cells == null)
         {
             Log.Error($"River map load failed: {string.Join("; ", service.Errors)}");
             return false;
@@ -1009,6 +1011,10 @@ public sealed class TerrainManager : IDisposable
         currentRiverMapPath = path;
         RiverMapChanged?.Invoke(this, EventArgs.Empty);
         ProjectManager.Instance.MarkDirty();
+
+        if (service.Errors.Count > 0)
+            Log.Warning($"River map loaded with {service.Errors.Count} validation issue(s): {string.Join("; ", service.Errors)}");
+
         return true;
     }
 

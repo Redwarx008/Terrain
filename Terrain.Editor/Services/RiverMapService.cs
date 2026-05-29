@@ -40,7 +40,8 @@ public sealed class RiverMapService
                 for (int x = 0; x < Width; x++)
                     Cells[x, y] = RiverCell.FromRgba32(image[x, y]);
 
-            return Validate();
+            Validate(); // Validation errors collected but data is still available
+            return true;
         }
         catch (Exception ex)
         {

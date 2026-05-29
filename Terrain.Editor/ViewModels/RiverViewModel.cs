@@ -140,8 +140,7 @@ public sealed partial class RiverViewModel : ObservableObject, IDisposable
 
         // Build centerlines
         _meshService?.BuildCenterlines(segments,
-            cells.GetLength(0), cells.GetLength(1),
-            terrainManager.HeightCacheHeight);
+            cells.GetLength(0), cells.GetLength(1));
 
         // Generate meshes
         _renderingService?.UpdateMeshes(segments, _meshService!, (float)WidthScale);

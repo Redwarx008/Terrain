@@ -22,9 +22,11 @@ public sealed class RiverMeshService
         this.terrainManager = terrainManager ?? throw new ArgumentNullException(nameof(terrainManager));
     }
 
-    public void BuildCenterlines(List<RiverSegment> segments, int mapWidth, int mapHeight, float terrainWorldSize)
+    public void BuildCenterlines(List<RiverSegment> segments, int mapWidth, int mapHeight)
     {
-        float pixelToWorld = terrainWorldSize / Math.Max(mapWidth, mapHeight);
+        // river.png is 1/2 the resolution of the heightmap, and each heightmap pixel = 1 world unit.
+        // So 1 river pixel = 2 world units.
+        float pixelToWorld = 2.0f;
 
         foreach (var seg in segments)
         {
@@ -110,12 +112,9 @@ public sealed class RiverMeshService
         int w = terrainManager.HeightCacheWidth;
         int h = terrainManager.HeightCacheHeight;
 
-        float terrainWorldSize = h;
-        float u = (wx / terrainWorldSize + 0.5f) * w;
-        float v = (wz / terrainWorldSize + 0.5f) * h;
-
-        int ix = Math.Clamp((int)u, 0, w - 1);
-        int iy = Math.Clamp((int)v, 0, h - 1);
+        // World coordinates are 1:1 with heightmap pixels (0 ~ w-1)
+        int ix = Math.Clamp((int)Math.Round(wx), 0, w - 1);
+        int iy = Math.Clamp((int)Math.Round(wz), 0, h - 1);
         return data[iy * w + ix] * (1.0f / ushort.MaxValue) * scale;
     }
 
