@@ -2,8 +2,12 @@
 
 using System;
 using System.Linq;
+using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Terrain.Editor.Models;
@@ -62,21 +66,27 @@ public sealed partial class RiverViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    public void ImportPng(Window? parentWindow)
+    public async Task ImportPng()
     {
-        if (parentWindow == null) return;
+        IStorageProvider? storageProvider = GetStorageProvider();
+        if (storageProvider == null)
+        {
+            StatusText = "Error: File dialog unavailable";
+            return;
+        }
 
-        var dialog = new OpenFileDialog
+        var results = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "Import River Map",
             AllowMultiple = false,
-            Filters = { new FileDialogFilter { Name = "PNG Images", Extensions = { "png" } } },
-        };
+            FileTypeFilter = [new FilePickerFileType("PNG Images") { Patterns = ["*.png"] }],
+        });
 
-        var result = dialog.ShowAsync(parentWindow).GetAwaiter().GetResult();
-        if (result == null || result.Length == 0) return;
+        if (results.Count == 0) return;
 
-        string path = result[0];
+        string path = results[0].TryGetLocalPath() ?? results[0].Path.ToString();
+        if (string.IsNullOrEmpty(path)) return;
+
         terrainManager.LoadRiverMap(path);
 
         try
@@ -87,6 +97,17 @@ public sealed partial class RiverViewModel : ObservableObject, IDisposable
         {
             // Preview is non-critical
         }
+    }
+
+    private static IStorageProvider? GetStorageProvider()
+    {
+        if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            && desktop.MainWindow is { } window
+            && window.StorageProvider is { } provider)
+        {
+            return provider;
+        }
+        return null;
     }
 
     [RelayCommand]
