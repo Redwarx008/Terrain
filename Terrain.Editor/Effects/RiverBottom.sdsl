@@ -1,0 +1,32 @@
+namespace Terrain.Editor
+{
+    shader RiverBottom : ShaderBase, Transformation, PositionStream4
+    {
+        stage float _Depth = 0.15f;
+        stage float _DepthFakeFactor = 0.4f;
+        stage float _BankFade = 0.0f;
+        stage float4 BottomColor = float4(0.2f, 0.15f, 0.1f, 1.0f);
+
+        stage override void VSMain()
+        {
+            base.VSMain();
+        }
+
+        stage override void PSMain()
+        {
+            float2 uv = streams.TextureCoordinate;
+
+            float depth = _Depth * (1.0f - pow(cos(uv.y * 2.0f * 3.14159f) * 0.5f + 0.5f, 2.0f));
+
+            float edgeFade1 = smoothstep(0.0f, _BankFade, uv.y);
+            float edgeFade2 = smoothstep(0.0f, _BankFade, 1.0f - uv.y);
+            float alpha = edgeFade1 * edgeFade2;
+
+            float3 color = BottomColor.rgb;
+            float depthFactor = saturate(depth / max(_Depth, 0.001f));
+            color *= (1.0f - depthFactor * _DepthFakeFactor);
+
+            streams.ColorTarget = float4(color, alpha);
+        }
+    }
+}

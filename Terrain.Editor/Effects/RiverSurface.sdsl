@@ -1,0 +1,34 @@
+namespace Terrain.Editor
+{
+    shader RiverSurface : ShaderBase, Transformation, PositionStream4
+    {
+        stage float _FlowNormalSpeed = 0.185f;
+        stage float _FlowNormalUvScale = 1.2f;
+        stage float _BankFade = 0.0f;
+        stage float _Depth = 0.15f;
+        stage float4 WaterColorShallow = float4(0.0f, 0.3f, 0.5f, 0.7f);
+        stage float4 WaterColorDeep = float4(0.0f, 0.05f, 0.15f, 0.85f);
+        stage float _GlobalTime;
+
+        stage override void VSMain()
+        {
+            base.VSMain();
+        }
+
+        stage override void PSMain()
+        {
+            float2 uv = streams.TextureCoordinate;
+
+            float depth = _Depth * (1.0f - pow(cos(uv.y * 2.0f * 3.14159f) * 0.5f + 0.5f, 2.0f));
+
+            float depthFactor = saturate(depth / max(_Depth, 0.001f));
+            float4 waterColor = lerp(WaterColorShallow, WaterColorDeep, depthFactor);
+
+            float edgeFade1 = smoothstep(0.0f, _BankFade, uv.y);
+            float edgeFade2 = smoothstep(0.0f, _BankFade, 1.0f - uv.y);
+            float alpha = edgeFade1 * edgeFade2 * waterColor.a;
+
+            streams.ColorTarget = float4(waterColor.rgb, alpha);
+        }
+    }
+}

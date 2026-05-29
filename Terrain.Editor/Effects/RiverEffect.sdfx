@@ -1,0 +1,25 @@
+namespace Terrain.Editor
+{
+    effect RiverEffect
+    {
+        pass RiverBottomPass
+        {
+            VertexShader = ShaderBase.Streams.Transformation.TransformationAndWorldViewProjection;
+            PixelShader = RiverBottom;
+
+            BlendState = BlendStates.AlphaBlend;
+            DepthStencilState = DepthStencilStates.Default;
+            RasterizerState = RasterizerStates.CullNone;
+        }
+
+        pass RiverSurfacePass
+        {
+            VertexShader = ShaderBase.Streams.Transformation.TransformationAndWorldViewProjection;
+            PixelShader = RiverSurface;
+
+            BlendState = BlendStates.AlphaBlend;
+            DepthStencilState = DepthStencilStates.Default;
+            RasterizerState = RasterizerStates.CullNone;
+        }
+    }
+}

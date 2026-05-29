@@ -119,6 +119,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public BiomeViewModel Biome { get; }
 
+    public RiverViewModel? River { get; private set; }
+
     public SettingsViewModel Settings { get; }
 
     public ObservableCollection<ModeOptionViewModel> Modes { get; } = new();
@@ -163,6 +165,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public bool IsSettingsMode => SelectedMode == EditorMode.Settings;
 
+    public bool IsRiverMode => SelectedMode == EditorMode.River;
+
     public bool HasTools => SelectedMode != EditorMode.Settings;
 
     public bool IsBiomeVisible => IsPaintMode;
@@ -196,6 +200,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         HeatmapEnabled = _editorState.HeatmapEnabled;
         SelectedMaterialSlotIndex = _editorState.SelectedMaterialSlotIndex;
         RefreshTools();
+
+        if (_viewportHost.TerrainManager != null)
+        {
+            River = new RiverViewModel(_viewportHost.TerrainManager);
+        }
+
         SyncSelectedModeOption();
         RefreshProjectState();
         RefreshHistoryState();
@@ -225,6 +235,34 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         else
         {
             AddConsole("Warning", _viewportHost.Status);
+        }
+    }
+
+    private void OnTerrainManagerProjectNotificationRaised(object? sender, EventArgs e)
+    {
+        if (sender is TerrainManager terrainManager)
+        {
+            string? projectNotification = terrainManager.ConsumePendingProjectNotification();
+            if (!string.IsNullOrWhiteSpace(projectNotification))
+                AddConsole("Warning", projectNotification);
+        }
+    }
+
+    private void OnViewportRuntimeStateChanged(object? sender, EventArgs e)
+    {
+        EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
+        TryWireRiverServices();
+    }
+
+    private void TryWireRiverServices()
+    {
+        if (River == null && _viewportHost.TerrainManager != null)
+        {
+            River = new RiverViewModel(_viewportHost.TerrainManager);
+        }
+        if (River != null && _viewportHost.RiverRenderingService != null && _viewportHost.RiverMeshService != null)
+        {
+            River.SetServices(_viewportHost.RiverRenderingService, _viewportHost.RiverMeshService);
         }
     }
 
@@ -754,6 +792,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         EnsureTerrainManagerSubscriptions(null);
         BrushParams.Dispose();
         Biome.Dispose();
+        River?.Dispose();
         Settings.PropertyChanged -= OnSettingsPropertyChanged;
         Viewport.Dispose();
         _viewportHost.Dispose();
@@ -778,6 +817,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsPaintMode));
         OnPropertyChanged(nameof(IsFoliageMode));
         OnPropertyChanged(nameof(IsSettingsMode));
+        OnPropertyChanged(nameof(IsRiverMode));
         OnPropertyChanged(nameof(HasTools));
         OnPropertyChanged(nameof(IsBiomeVisible));
         OnPropertyChanged(nameof(SelectedModeDisplayName));
@@ -969,21 +1009,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         RefreshProjectState();
     }
 
-    private void OnViewportRuntimeStateChanged(object? sender, EventArgs e)
-    {
-        EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
-    }
-
-    private void OnTerrainManagerProjectNotificationRaised(object? sender, EventArgs e)
-    {
-        if (sender is TerrainManager terrainManager)
-        {
-            string? projectNotification = terrainManager.ConsumePendingProjectNotification();
-            if (!string.IsNullOrWhiteSpace(projectNotification))
-                AddConsole("Warning", projectNotification);
-        }
-    }
-
     private void OnHistoryChanged(object? sender, HistoryChangedEventArgs e)
     {
         RefreshHistoryState();
@@ -1097,6 +1122,10 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 new("Place", "Place foliage", "\uE8BE", mode, ToolKind: EditorToolKind.FoliagePlace),
                 new("Remove", "Remove foliage", "\uE74D", mode, ToolKind: EditorToolKind.FoliageRemove),
             ],
+            EditorMode.River =>
+            [
+                new("River Tool", "Import and generate rivers", "\uE8B7", mode),
+            ],
             _ => [],
         };
     }
@@ -1106,6 +1135,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         Modes.Add(new ModeOptionViewModel("Sculpt", "Terrain height editing", "", EditorMode.Sculpt));
         Modes.Add(new ModeOptionViewModel("Biome", "Biome mask painting", "\uE950", EditorMode.Paint));
         Modes.Add(new ModeOptionViewModel("Foliage", "Vegetation placement", "\uE8BE", EditorMode.Foliage));
+        Modes.Add(new ModeOptionViewModel("River", "River system from color map", "", EditorMode.River));
         Modes.Add(new ModeOptionViewModel("Settings", "Project settings", "", EditorMode.Settings));
     }
 
