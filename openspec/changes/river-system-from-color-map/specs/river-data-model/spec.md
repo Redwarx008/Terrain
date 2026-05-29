@@ -23,13 +23,29 @@ The system SHALL use `RiverCell(RiverPixelType Type, byte Width)` as the in-memo
 - **THEN** the system SHALL create a RiverSegment with one end at a special pixel (Source/Confluence/Bifurcation)
 - **AND** the other end SHALL have no special color
 
-### Requirement: Width palette SHALL map 13 colors to half-widths
-The system SHALL define a static palette mapping 13 colors to half-widths from 0.625 (narrowest, `#00e5ff`) to 1.375 (widest, `#00d400`) with step 0.0625.
+### Requirement: Width palette SHALL map 11 actual CK3 colors to half-widths
+The system SHALL define a static palette mapping 11 colors (as found in CK3 rivers.png) to half-widths from 0.625 (narrowest) to 1.375 (widest):
 
-#### Scenario: Width lookup from color
-- **WHEN** a River cell pixel color is `#00d400`
+| Index | Color | Hex | HalfWidth |
+|-------|-------|-----|-----------|
+| 0 | narrowest (cyan) | `#00e1ff` | 0.625 |
+| 1 | | `#00c8ff` | 0.700 |
+| 2 | | `#0096ff` | 0.775 |
+| 3 | | `#0064ff` | 0.850 |
+| 4 | | `#0000ff` | 0.925 |
+| 5 | | `#0000e1` | 1.000 |
+| 6 | | `#0000c8` | 1.075 |
+| 7 | | `#000096` | 1.150 |
+| 8 | | `#000064` | 1.225 |
+| 9 | | `#007d00` | 1.300 |
+| 10 | widest (green) | `#18ce00` | 1.375 |
+
+Special colors: Source=`#00ff00`, Confluence=`#ff0000`, Bifurcation=`#fffc00`, Ocean=`#ff0080`.
+
+#### Scenario: Width lookup from color—widest
+- **WHEN** a River cell pixel color is `#18ce00`
 - **THEN** the system SHALL return half-width 1.375 (total width 2.75)
 
 #### Scenario: Width lookup for narrowest river
-- **WHEN** a River cell pixel color is `#00e5ff`
+- **WHEN** a River cell pixel color is `#00e1ff`
 - **THEN** the system SHALL return half-width 0.625 (total width 1.25)
