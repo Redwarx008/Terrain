@@ -4,12 +4,14 @@ using System;
 using System.Collections.Generic;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using Stride.Core.Diagnostics;
 using Terrain.Editor.Models;
 
 namespace Terrain.Editor.Services;
 
 public sealed class RiverMapService
 {
+    private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
     public RiverCell[,]? Cells { get; private set; }
     public int Width { get; private set; }
     public int Height { get; private set; }
@@ -69,24 +71,31 @@ public sealed class RiverMapService
                     if (nx >= 0 && nx < w && ny >= 0 && ny < h && Cells[nx, ny].IsFilled)
                         orthoCount++;
                 }
-                if (orthoCount > 2)
-                    Errors.Add($"Pixel ({x},{y}): {orthoCount} orthogonal neighbors (max 2)");
+                if (orthoCount > 3)
+                    Errors.Add($"Pixel ({x},{y}): {orthoCount} orthogonal neighbors (max 3 for T-junctions at confluences)");
 
-                // Validate Confluence/Bifurcation pixels have at least one River neighbor
+                // Confluence/Bifurcation/Source must connect to at least 1 filled neighbor
+                if (Cells[x, y].Type is RiverPixelType.Confluence or RiverPixelType.Bifurcation or RiverPixelType.Source)
+                {
+                    if (orthoCount < 1)
+                        Errors.Add($"{(Cells[x, y].Type)} at ({x},{y}) has no filled neighbor");
+                }
+
+                // Validate Confluence/Bifurcation pixels have at least one river system neighbor
                 if (Cells[x, y].Type is RiverPixelType.Confluence or RiverPixelType.Bifurcation)
                 {
                     bool hasRiverNeighbor = false;
                     for (int d = 0; d < 4; d++)
                     {
                         int nx = x + dx[d], ny = y + dy[d];
-                        if (nx >= 0 && nx < w && ny >= 0 && ny < h && Cells[nx, ny].Type == RiverPixelType.River)
+                        if (nx >= 0 && nx < w && ny >= 0 && ny < h && Cells[nx, ny].IsFilled)
                         {
                             hasRiverNeighbor = true;
                             break;
                         }
                     }
                     if (!hasRiverNeighbor)
-                        Errors.Add($"{(Cells[x, y].Type == RiverPixelType.Confluence ? "Confluence" : "Bifurcation")} at ({x},{y}) has no River neighbor");
+                        Errors.Add($"{(Cells[x, y].Type == RiverPixelType.Confluence ? "Confluence" : "Bifurcation")} at ({x},{y}) has no river system neighbor");
                 }
             }
 
@@ -109,9 +118,9 @@ public sealed class RiverMapService
                         sourceCount++;
 
                 if (sourceCount == 0)
-                    Errors.Add($"River system at ({x},{y}): no source pixel");
+                    Log.Warning($"River system at ({x},{y}): no source pixel (isolated fragment or tributary without explicit source marker)");
                 else if (sourceCount > 1)
-                    Errors.Add($"River system at ({x},{y}): {sourceCount} source pixels (max 1)");
+                    Log.Warning($"River system at ({x},{y}): {sourceCount} source pixels (only first will be used as genuine source)");
             }
 
         return Errors.Count == 0;

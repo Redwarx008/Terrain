@@ -49,6 +49,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private bool _isDirty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSculptMode))]
+    [NotifyPropertyChangedFor(nameof(IsPaintMode))]
+    [NotifyPropertyChangedFor(nameof(IsFoliageMode))]
+    [NotifyPropertyChangedFor(nameof(IsSettingsMode))]
+    [NotifyPropertyChangedFor(nameof(IsRiverMode))]
     private EditorMode _selectedMode;
 
     [ObservableProperty]
@@ -119,7 +124,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public BiomeViewModel Biome { get; }
 
-    public RiverViewModel? River { get; private set; }
+    [ObservableProperty]
+    private RiverViewModel? _river;
 
     public SettingsViewModel Settings { get; }
 
