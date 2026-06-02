@@ -67,6 +67,7 @@ public sealed class TerrainManager : IDisposable
     /// 世界高度 = raw * (1/65535) * HeightScale。
     /// </summary>
     public float HeightScale { get; private set; } = 100.0f;
+    public bool TerrainVisible { get; private set; } = true;
 
     public string? CurrentTerrainPath => currentTerrainPath;
     public string? CurrentBiomeMaskPath => currentBiomeMaskPath;
@@ -122,6 +123,21 @@ public sealed class TerrainManager : IDisposable
     public event EventHandler? MaterialTexturesLoadRequired;
 
     public event EventHandler? RiverMapChanged;
+
+    public void SetTerrainVisible(bool visible)
+    {
+        if (TerrainVisible == visible)
+            return;
+
+        TerrainVisible = visible;
+        foreach (var sceneEntity in sceneEntities)
+        {
+            if (sceneEntity.Get<EditorTerrainComponent>() is { } component)
+            {
+                component.Enabled = visible;
+            }
+        }
+    }
 
     public TerrainManager(GraphicsDevice graphicsDevice, Scene scene, Texture? defaultTerrainTexture = null)
     {
@@ -210,6 +226,7 @@ public sealed class TerrainManager : IDisposable
                 {
                     TerrainEntity = terrainEntity,
                     DefaultDiffuseTexture = GetOrCreateDefaultDiffuseTexture(),
+                    Enabled = TerrainVisible,
                 }
             };
             scene.Entities.Add(sceneEntity);

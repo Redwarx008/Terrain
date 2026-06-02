@@ -28,6 +28,7 @@ public sealed class EmbeddedStrideViewportGame : Game
     private const bool PresenterOnlyDiagnostic = false;
 
     private readonly EditorTerrainModeController _modeController = new();
+    private readonly RiverWireframeModeController _riverWireframeModeController = new();
     private readonly CameraController _cameraController = new();
     private readonly EditorState _editorState = EditorState.Instance;
 
@@ -107,6 +108,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         if (_graphicsCompositor != null)
         {
             _modeController.Apply(_sceneViewMode, _graphicsCompositor);
+            _riverWireframeModeController.Apply(_sceneViewMode, _graphicsCompositor);
         }
 
         UpdateCamera((float)gameTime.Elapsed.TotalSeconds);
@@ -145,6 +147,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         if (_graphicsCompositor != null)
         {
             _modeController.Apply(sceneViewMode, _graphicsCompositor);
+            _riverWireframeModeController.Apply(sceneViewMode, _graphicsCompositor);
         }
     }
 
@@ -485,6 +488,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
         EnsureBrushDecalRenderFeature(_graphicsCompositor);
         _modeController.Apply(_sceneViewMode, _graphicsCompositor);
+        _riverWireframeModeController.Apply(_sceneViewMode, _graphicsCompositor);
 
         SceneSystem.GraphicsCompositor = _graphicsCompositor;
         SceneSystem.SceneInstance = new SceneInstance(Services, _scene);
@@ -556,6 +560,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
         EnsureBrushDecalRenderFeature(_graphicsCompositor);
         _modeController.Apply(_sceneViewMode, _graphicsCompositor);
+        _riverWireframeModeController.Apply(_sceneViewMode, _graphicsCompositor);
 
         SceneSystem.GraphicsCompositor = _graphicsCompositor;
         SceneSystem.SceneInstance = new SceneInstance(Services, _scene);

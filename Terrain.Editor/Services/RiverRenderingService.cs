@@ -15,10 +15,14 @@ namespace Terrain.Editor.Services;
 
 public sealed class RiverRenderingService : IDisposable
 {
+    public const RenderGroup RiverRenderGroup = RenderGroup.Group1;
+    public const RenderGroupMask RiverRenderGroupMask = RenderGroupMask.Group1;
+
     private readonly GraphicsDevice graphicsDevice;
     private readonly Scene scene;
     private readonly List<Entity> riverEntities = new();
     private Entity? riverContainer;
+    private bool isVisible = true;
 
     public RiverRenderingService(GraphicsDevice graphicsDevice, Scene scene)
     {
@@ -66,7 +70,11 @@ public sealed class RiverRenderingService : IDisposable
             var mat = Material.New(graphicsDevice, descriptor);
 
             model.Materials.Add(mat);
-            var modelComponent = new ModelComponent(model);
+            var modelComponent = new ModelComponent(model)
+            {
+                RenderGroup = RiverRenderGroup,
+                Enabled = isVisible,
+            };
 
             var entity = new Entity($"RiverSegment_{seg.SystemId}_{riverEntities.Count}")
             {
@@ -80,6 +88,7 @@ public sealed class RiverRenderingService : IDisposable
 
     public void SetVisible(bool visible)
     {
+        isVisible = visible;
         foreach (var entity in riverEntities)
         {
             foreach (var component in entity.Components)

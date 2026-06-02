@@ -31,9 +31,6 @@ public sealed partial class RiverViewModel : ObservableObject, IDisposable
     private bool _hasRiverMap;
 
     [ObservableProperty]
-    private bool _showRivers = true;
-
-    [ObservableProperty]
     private double _widthScale = 1.0;
 
     [ObservableProperty]
@@ -49,11 +46,6 @@ public sealed partial class RiverViewModel : ObservableObject, IDisposable
     {
         _renderingService = renderingService;
         _meshService = meshService;
-    }
-
-    partial void OnShowRiversChanged(bool value)
-    {
-        _renderingService?.SetVisible(value);
     }
 
     private void OnRiverMapChanged(object? sender, EventArgs e)
@@ -117,6 +109,12 @@ public sealed partial class RiverViewModel : ObservableObject, IDisposable
         if (cells == null)
         {
             StatusText = "Error: No river map loaded";
+            return;
+        }
+
+        if (_renderingService == null || _meshService == null)
+        {
+            StatusText = "Error: River services are not ready";
             return;
         }
 

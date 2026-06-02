@@ -257,6 +257,10 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void OnViewportRuntimeStateChanged(object? sender, EventArgs e)
     {
         EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
+        if (_viewportHost.TerrainManager != null)
+        {
+            _viewportHost.TerrainManager.SetTerrainVisible(Settings.ShowTerrain);
+        }
         TryWireRiverServices();
     }
 
@@ -269,6 +273,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         if (River != null && _viewportHost.RiverRenderingService != null && _viewportHost.RiverMeshService != null)
         {
             River.SetServices(_viewportHost.RiverRenderingService, _viewportHost.RiverMeshService);
+            _viewportHost.RiverRenderingService.SetVisible(Settings.ShowRivers);
         }
     }
 
@@ -1506,12 +1511,24 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 terrainManager.SetHeightScale(Settings.HeightScale);
             }
         }
+        else if (e.PropertyName == nameof(SettingsViewModel.ShowTerrain))
+        {
+            if (TryGetTerrainManager(out var terrainManager))
+            {
+                terrainManager.SetTerrainVisible(Settings.ShowTerrain);
+            }
+        }
+        else if (e.PropertyName == nameof(SettingsViewModel.ShowRivers))
+        {
+            _viewportHost.RiverRenderingService?.SetVisible(Settings.ShowRivers);
+        }
     }
 
     private void SyncSettingsFromTerrainManager()
     {
         if (_viewportHost.TerrainManager is { } manager)
         {
+            Settings.ShowTerrain = manager.TerrainVisible;
             Settings.HeightScale = manager.HeightScale;
         }
     }
