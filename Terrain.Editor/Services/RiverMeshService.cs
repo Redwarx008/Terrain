@@ -10,20 +10,25 @@ namespace Terrain.Editor.Services;
 
 public sealed class RiverMeshService
 {
-    private const float CurveSampleSpacing = 2.0f;
+    private const float CurveSampleSpacing = 1.0f;
+    private const float CenterlineSimplificationTolerance = 1.5f;
+    private const int CenterlineSmoothingIterations = 2;
     private const float ConnectionTaperDistance = 6.0f;
     private const float SurfaceOffset = 0.02f;
     private const float MinVisibleHalfWidth = 0.05f;
 
-    private readonly TerrainManager terrainManager;
+    private readonly TerrainManager? terrainManager;
 
-    public RiverMeshService(TerrainManager terrainManager)
+    public RiverMeshService(TerrainManager? terrainManager)
     {
-        this.terrainManager = terrainManager ?? throw new ArgumentNullException(nameof(terrainManager));
+        this.terrainManager = terrainManager;
     }
 
     public void BuildCenterlines(List<RiverSegment> segments, int mapWidth, int mapHeight)
     {
+        if (terrainManager == null)
+            throw new InvalidOperationException("River centerline generation requires a TerrainManager for height sampling.");
+
         // river.png is 1/2 the resolution of the heightmap, and each heightmap pixel = 1 world unit.
         // So 1 river pixel = 2 world units.
         float pixelToWorld = 2.0f;
@@ -42,10 +47,98 @@ public sealed class RiverMeshService
                 rawPoints.Add(new Vector3(wx, wy, wz));
             }
 
+            var simplifiedPoints = SimplifyCenterline(rawPoints, CenterlineSimplificationTolerance);
+            var smoothedPoints = SmoothCenterline(simplifiedPoints, CenterlineSmoothingIterations);
+
             // Catmull-Rom interpolation
-            seg.Centerline = CatmullRomInterpolate(rawPoints, CurveSampleSpacing);
+            seg.Centerline = CatmullRomInterpolate(smoothedPoints, CurveSampleSpacing);
             seg.WorldLength = ComputePolylineLength(seg.Centerline);
         }
+    }
+
+    internal static List<Vector3> SimplifyCenterline(List<Vector3> points, float tolerance)
+    {
+        if (points.Count <= 2 || tolerance <= 0)
+            return new List<Vector3>(points);
+
+        var keep = new bool[points.Count];
+        keep[0] = true;
+        keep[^1] = true;
+        SimplifyCenterline(points, 0, points.Count - 1, tolerance * tolerance, keep);
+
+        var result = new List<Vector3>();
+        for (int i = 0; i < points.Count; i++)
+        {
+            if (keep[i])
+                result.Add(points[i]);
+        }
+        return result;
+    }
+
+    internal static List<Vector3> SmoothCenterline(List<Vector3> points, int iterations)
+    {
+        if (points.Count <= 2 || iterations <= 0)
+            return new List<Vector3>(points);
+
+        var current = new List<Vector3>(points);
+        for (int iteration = 0; iteration < iterations; iteration++)
+        {
+            var next = new List<Vector3>(current.Count * 2);
+            next.Add(current[0]);
+            for (int i = 0; i < current.Count - 1; i++)
+            {
+                Vector3 a = current[i];
+                Vector3 b = current[i + 1];
+                next.Add(a * 0.75f + b * 0.25f);
+                next.Add(a * 0.25f + b * 0.75f);
+            }
+            next.Add(current[^1]);
+            current = next;
+        }
+        return current;
+    }
+
+    private static void SimplifyCenterline(List<Vector3> points, int start, int end, float toleranceSquared, bool[] keep)
+    {
+        if (end <= start + 1)
+            return;
+
+        float maxDistanceSquared = -1;
+        int maxIndex = -1;
+        for (int i = start + 1; i < end; i++)
+        {
+            float distanceSquared = DistanceToSegmentSquared(points[i], points[start], points[end]);
+            if (distanceSquared > maxDistanceSquared)
+            {
+                maxDistanceSquared = distanceSquared;
+                maxIndex = i;
+            }
+        }
+
+        if (maxDistanceSquared > toleranceSquared && maxIndex >= 0)
+        {
+            keep[maxIndex] = true;
+            SimplifyCenterline(points, start, maxIndex, toleranceSquared, keep);
+            SimplifyCenterline(points, maxIndex, end, toleranceSquared, keep);
+        }
+    }
+
+    private static float DistanceToSegmentSquared(Vector3 point, Vector3 start, Vector3 end)
+    {
+        Vector3 segment = end - start;
+        segment.Y = 0;
+        Vector3 delta = point - start;
+        delta.Y = 0;
+
+        float lengthSquared = segment.LengthSquared();
+        if (lengthSquared <= 0.000001f)
+            return delta.LengthSquared();
+
+        float t = Math.Clamp(Vector3.Dot(delta, segment) / lengthSquared, 0, 1);
+        Vector3 projected = start + segment * t;
+        Vector3 distance = point - projected;
+        distance.Y = 0;
+        return distance.LengthSquared();
     }
 
     private static List<Vector3> CatmullRomInterpolate(List<Vector3> controlPoints, float spacing)
@@ -105,7 +198,7 @@ public sealed class RiverMeshService
 
     private float SampleTerrainHeight(float wx, float wz)
     {
-        if (!terrainManager.HasHeightCache) return 0;
+        if (terrainManager == null || !terrainManager.HasHeightCache) return 0;
         float scale = terrainManager.HeightScale;
         var data = terrainManager.HeightDataCache;
         if (data == null) return 0;
@@ -130,54 +223,82 @@ public sealed class RiverMeshService
         float baseHalfWidth = Math.Max(MinVisibleHalfWidth, segment.AvgHalfWidth * widthScale);
 
         int n = centerline.Count;
-        var vertices = new List<VertexPositionNormalTexture>(n * 2);
-        var indices = new List<int>(n * 6);
+        var vertices = new List<VertexPositionNormalTexture>(n * 2 + 2);
+        var indices = new List<int>();
 
-        float accumulated = 0;
+        var distances = ComputeDistances(centerline);
         for (int i = 0; i < n; i++)
         {
-            Vector3 tangent;
-            if (i < n - 1)
-                tangent = Vector3.Normalize(new Vector3(
-                    centerline[i + 1].X - centerline[i].X, 0,
-                    centerline[i + 1].Z - centerline[i].Z));
-            else
-                tangent = Vector3.Normalize(new Vector3(
-                    centerline[i].X - centerline[i - 1].X, 0,
-                    centerline[i].Z - centerline[i - 1].Z));
-
-            if (tangent.Length() < 0.001f) tangent = new Vector3(1, 0, 0);
-
-            Vector3 side = Vector3.Normalize(new Vector3(-tangent.Z, 0, tangent.X));
-
-            float u = i > 0 ? accumulated / totalLength : 0;
+            Vector3 center = centerline[i];
+            float u = totalLength > 0.001f ? distances[i] / totalLength : 0;
             float taperScale = ComputeTaperScale(u, totalLength, segment.TaperStart, segment.TaperEnd);
             float halfWidth = baseHalfWidth * taperScale;
+            Vector3 offset = ComputeMiterOffset(centerline, i, halfWidth);
 
-            Vector3 center = centerline[i];
-            Vector3 leftPos = center - side * halfWidth;
-            Vector3 rightPos = center + side * halfWidth;
-
+            Vector3 leftPos = center - offset;
+            Vector3 rightPos = center + offset;
             Vector3 normal = SampleTerrainNormal(center.X, center.Z);
 
             vertices.Add(new VertexPositionNormalTexture(leftPos, normal, new Vector2(u, 0)));
             vertices.Add(new VertexPositionNormalTexture(rightPos, normal, new Vector2(u, 1)));
+        }
 
-            if (i > 0)
-            {
-                int a = (i - 1) * 2;
-                int b = a + 1;
-                int c = i * 2;
-                int d = c + 1;
-                indices.Add(a); indices.Add(c); indices.Add(b);
-                indices.Add(b); indices.Add(c); indices.Add(d);
-            }
-
-            if (i < n - 1)
-                accumulated += Vector3.Distance(centerline[i], centerline[i + 1]);
+        // CK3 Draw(580) uses a triangle-strip style organization: boundary vertices are
+        // interleaved left/right along the river, with degenerate vertices at strip boundaries.
+        // Stride's MeshDraw path here uses TriangleList, so emit the same interleaved strip
+        // topology with the winding expected by Stride's current culling state.
+        for (int i = 0; i < n - 1; i++)
+        {
+            int a = i * 2;
+            int b = a + 1;
+            int c = a + 2;
+            int d = a + 3;
+            indices.Add(a); indices.Add(c); indices.Add(b);
+            indices.Add(b); indices.Add(c); indices.Add(d);
         }
 
         return (vertices.ToArray(), indices.ToArray());
+    }
+
+    private static float[] ComputeDistances(List<Vector3> points)
+    {
+        var distances = new float[points.Count];
+        for (int i = 1; i < points.Count; i++)
+            distances[i] = distances[i - 1] + Vector3.Distance(points[i - 1], points[i]);
+        return distances;
+    }
+
+    private static Vector3 ComputeMiterOffset(List<Vector3> centerline, int index, float halfWidth)
+    {
+        Vector3 prev = index > 0 ? HorizontalDirection(centerline[index] - centerline[index - 1]) : Vector3.Zero;
+        Vector3 next = index < centerline.Count - 1 ? HorizontalDirection(centerline[index + 1] - centerline[index]) : Vector3.Zero;
+
+        if (prev.LengthSquared() <= 0.000001f && next.LengthSquared() <= 0.000001f)
+            return new Vector3(0, 0, halfWidth);
+
+        if (prev.LengthSquared() <= 0.000001f)
+            return Side(next) * halfWidth;
+
+        if (next.LengthSquared() <= 0.000001f)
+            return Side(prev) * halfWidth;
+
+        Vector3 miter = Side(prev) + Side(next);
+        if (miter.LengthSquared() <= 0.000001f)
+            return Side(next) * halfWidth;
+
+        miter = Vector3.Normalize(miter);
+        float denominator = MathF.Abs(Vector3.Dot(miter, Side(next)));
+        float scale = denominator > 0.001f ? halfWidth / denominator : halfWidth;
+        scale = MathF.Min(scale, halfWidth * 2.0f);
+        return miter * scale;
+    }
+
+    private static Vector3 Side(Vector3 tangent) => Vector3.Normalize(new Vector3(-tangent.Z, 0, tangent.X));
+
+    private static Vector3 HorizontalDirection(Vector3 value)
+    {
+        value.Y = 0;
+        return value.LengthSquared() > 0.000001f ? Vector3.Normalize(value) : Vector3.Zero;
     }
 
     private static float ComputeTaperScale(float u, float totalLength, bool taperStart, bool taperEnd)

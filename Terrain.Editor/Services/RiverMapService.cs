@@ -75,28 +75,21 @@ public sealed class RiverMapService
                 if (orthoCount > 3)
                     Errors.Add($"Pixel ({x},{y}): {orthoCount} orthogonal neighbors (max 3 for T-junctions at confluences)");
 
-                // Confluence/Bifurcation/Source must connect to at least 1 filled neighbor
+                // Special pixels are semantic endpoints; extraction starts from adjacent River pixels.
                 if (Cells[x, y].Type is RiverPixelType.Confluence or RiverPixelType.Bifurcation or RiverPixelType.Source)
-                {
-                    if (orthoCount < 1)
-                        Errors.Add($"{(Cells[x, y].Type)} at ({x},{y}) has no filled neighbor");
-                }
-
-                // Validate Confluence/Bifurcation pixels have at least one river system neighbor
-                if (Cells[x, y].Type is RiverPixelType.Confluence or RiverPixelType.Bifurcation)
                 {
                     bool hasRiverNeighbor = false;
                     for (int d = 0; d < 4; d++)
                     {
                         int nx = x + dx[d], ny = y + dy[d];
-                        if (nx >= 0 && nx < w && ny >= 0 && ny < h && Cells[nx, ny].IsFilled)
+                        if (nx >= 0 && nx < w && ny >= 0 && ny < h && Cells[nx, ny].Type == RiverPixelType.River)
                         {
                             hasRiverNeighbor = true;
                             break;
                         }
                     }
                     if (!hasRiverNeighbor)
-                        Errors.Add($"{(Cells[x, y].Type == RiverPixelType.Confluence ? "Confluence" : "Bifurcation")} at ({x},{y}) has no river system neighbor");
+                        Errors.Add($"{Cells[x, y].Type} at ({x},{y}) has no River neighbor");
                 }
             }
 
@@ -185,6 +178,7 @@ public sealed class RiverMapService
                 {
                     seg.StartKind = KindFromPixel(Cells[sp.X, sp.Y].Type);
                     seg.StartNodeKey = sp.Y * 65536 + sp.X;
+                    NormalizeDirection(seg);
                     seg.AvgHalfWidth = ComputeAvgWidth(seg, Cells);
                     segments.Add(seg);
                 }
@@ -204,6 +198,7 @@ public sealed class RiverMapService
         int[] dx, int[] dy)
     {
         var seg = new RiverSegment();
+        seg.Cells.Add((fromX, fromY));
         int cx = startX, cy = startY, px = fromX, py = fromY;
 
         while (cx >= 0 && cx < w && cy >= 0 && cy < h)
@@ -244,12 +239,27 @@ public sealed class RiverMapService
         return seg;
     }
 
+    private static void NormalizeDirection(RiverSegment seg)
+    {
+        if (seg.StartKind == SegmentEndKind.Confluence && seg.EndKind == SegmentEndKind.Source)
+        {
+            seg.Cells.Reverse();
+            (seg.StartKind, seg.EndKind) = (seg.EndKind, seg.StartKind);
+            (seg.StartNodeKey, seg.EndNodeKey) = (seg.EndNodeKey, seg.StartNodeKey);
+        }
+    }
+
     private static float ComputeAvgWidth(RiverSegment seg, RiverCell[,] cells)
     {
         float total = 0;
+        int count = 0;
         foreach (var (x, y) in seg.Cells)
+        {
+            if (cells[x, y].Type != RiverPixelType.River) continue;
             total += RiverCell.GetHalfWidth(cells[x, y].Width);
-        return seg.Cells.Count > 0 ? total / seg.Cells.Count : 0.625f;
+            count++;
+        }
+        return count > 0 ? total / count : 0.625f;
     }
 
     private static SegmentEndKind KindFromPixel(RiverPixelType t) => t switch
