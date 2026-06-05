@@ -2,6 +2,7 @@
 
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Games;
@@ -40,6 +41,7 @@ public sealed class EmbeddedStrideViewportGame : Game
     private bool _isBrushStrokeActive;
     private bool _wasLeftMouseDown;
     private bool _pendingMaterialTexturesLoad;
+    private bool _preferPhysicalKeyboardState;
     // Brush decal overlay
     private Entity? _brushDecalEntity;
     private BrushDecalComponent? _brushDecalComponent;
@@ -166,6 +168,11 @@ public sealed class EmbeddedStrideViewportGame : Game
     private bool _isControllingCamera;
 
     /// <summary>
+    /// Called by the host to restore keyboard focus to the SDL runtime window.
+    /// </summary>
+    public Action? FocusRuntimeWindow { get; set; }
+
+    /// <summary>
     /// Called by the host to toggle the SDL window's WS_CHILD style.
     /// Must be set before the game starts so UpdateCamera can call it.
     /// </summary>
@@ -185,6 +192,8 @@ public sealed class EmbeddedStrideViewportGame : Game
                 // LockMousePosition (SDL relative mode) and keyboard
                 // input work correctly in an embedded child window.
                 SetChildWindowStyle?.Invoke(false);
+                FocusRuntimeWindow?.Invoke();
+                _preferPhysicalKeyboardState = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
                 Input.LockMousePosition(forceCenter: true);
                 Window.IsMouseVisible = false;
             }
@@ -193,7 +202,31 @@ public sealed class EmbeddedStrideViewportGame : Game
                 Input.UnlockMousePosition();
                 Window.IsMouseVisible = true;
                 SetChildWindowStyle?.Invoke(true);
+                _preferPhysicalKeyboardState = false;
             }
+        }
+
+        bool moveForward = Input.IsKeyDown(Keys.W);
+        bool moveBackward = Input.IsKeyDown(Keys.S);
+        bool moveLeft = Input.IsKeyDown(Keys.A);
+        bool moveRight = Input.IsKeyDown(Keys.D);
+        bool moveDown = Input.IsKeyDown(Keys.Q);
+        bool moveUp = Input.IsKeyDown(Keys.E);
+        bool speedBoost = Input.IsKeyDown(Keys.LeftShift) || Input.IsKeyDown(Keys.RightShift);
+
+        // Embedded SDL can recover relative mouse input after Alt-Tab while Stride's
+        // keyboard state stays stale. During Windows right-drag navigation, use the
+        // physical key state as the source of truth so missed key-up events cannot
+        // leave camera movement stuck on.
+        if (rightMouseDown && _preferPhysicalKeyboardState)
+        {
+            moveForward = IsVirtualKeyDown(VkW);
+            moveBackward = IsVirtualKeyDown(VkS);
+            moveLeft = IsVirtualKeyDown(VkA);
+            moveRight = IsVirtualKeyDown(VkD);
+            moveDown = IsVirtualKeyDown(VkQ);
+            moveUp = IsVirtualKeyDown(VkE);
+            speedBoost = IsVirtualKeyDown(VkShift);
         }
 
         _cameraController.UpdateFromViewportInput(
@@ -201,13 +234,13 @@ public sealed class EmbeddedStrideViewportGame : Game
             new NumericsVector2(Input.AbsoluteMouseDelta.X, Input.AbsoluteMouseDelta.Y),
             Input.MouseWheelDelta,
             rightMouseDown,
-            Input.IsKeyDown(Keys.W),
-            Input.IsKeyDown(Keys.S),
-            Input.IsKeyDown(Keys.A),
-            Input.IsKeyDown(Keys.D),
-            Input.IsKeyDown(Keys.Q),
-            Input.IsKeyDown(Keys.E),
-            Input.IsKeyDown(Keys.LeftShift) || Input.IsKeyDown(Keys.RightShift));
+            moveForward,
+            moveBackward,
+            moveLeft,
+            moveRight,
+            moveDown,
+            moveUp,
+            speedBoost);
 
         if (_cameraController.HasPendingCameraRefresh && _camera != null)
         {
@@ -216,6 +249,27 @@ public sealed class EmbeddedStrideViewportGame : Game
             _cameraController.RefreshCameraMatrices(aspectRatio);
         }
     }
+
+    private static bool IsVirtualKeyDown(int virtualKey)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return false;
+        }
+
+        return (GetAsyncKeyState(virtualKey) & unchecked((short)0x8000)) != 0;
+    }
+
+    private const int VkShift = 0x10;
+    private const int VkA = 0x41;
+    private const int VkD = 0x44;
+    private const int VkE = 0x45;
+    private const int VkQ = 0x51;
+    private const int VkS = 0x53;
+    private const int VkW = 0x57;
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
 
     private void UpdateBrush(float deltaTime)
     {

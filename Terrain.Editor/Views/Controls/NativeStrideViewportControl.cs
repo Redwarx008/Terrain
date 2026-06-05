@@ -43,12 +43,6 @@ public sealed class NativeStrideViewportControl : NativeControlHost
         ViewportHost?.FocusRuntimeWindow();
     }
 
-    protected override void OnGotFocus(GotFocusEventArgs e)
-    {
-        base.OnGotFocus(e);
-        ViewportHost?.FocusRuntimeWindow();
-    }
-
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
