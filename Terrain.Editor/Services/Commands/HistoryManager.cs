@@ -24,13 +24,17 @@ public sealed class HistoryManager
     private long currentMemoryUsage;
     private ICommand? activeCommand;
 
-    public bool CanUndo => undoStack.Count > 0;
-    public bool CanRedo => redoStack.Count > 0;
+    // Undo/redo must be disabled while a stroke command is active. The active
+    // command has not captured its final after-state yet, so applying another
+    // history operation in the middle of the stroke would make the command's
+    // before/after snapshots span unrelated edits.
+    public bool CanUndo => activeCommand == null && undoStack.Count > 0;
+    public bool CanRedo => activeCommand == null && redoStack.Count > 0;
     public int UndoCount => undoStack.Count;
     public int RedoCount => redoStack.Count;
     public long MemoryUsageBytes => currentMemoryUsage;
-    public string? UndoDescription => CanUndo ? undoStack[^1].Description : null;
-    public string? RedoDescription => CanRedo ? redoStack[^1].Description : null;
+    public string? UndoDescription => undoStack.Count > 0 ? undoStack[^1].Description : null;
+    public string? RedoDescription => redoStack.Count > 0 ? redoStack[^1].Description : null;
 
     /// <summary>
     /// Raised when the history state changes (undo/redo/clear).
@@ -52,6 +56,11 @@ public sealed class HistoryManager
         }
 
         activeCommand = command;
+
+        // CanUndo/CanRedo now depend on activeCommand == null. Notify here so
+        // toolbar buttons and viewport Ctrl+Z/Y shortcuts stop being executable
+        // immediately when a stroke starts, not only after it commits.
+        OnHistoryChanged(HistoryChangeType.CommandStarted);
     }
 
     /// <summary>
@@ -80,6 +89,10 @@ public sealed class HistoryManager
             if (!terrainCommand.PrepareForCommit())
             {
                 activeCommand = null;
+
+                // No-op strokes still transition activeCommand from non-null to
+                // null, so undo/redo availability may need to be restored.
+                OnHistoryChanged(HistoryChangeType.CommandCanceled);
                 return;
             }
         }
@@ -104,7 +117,16 @@ public sealed class HistoryManager
     /// </summary>
     public void CancelCommand()
     {
+        if (activeCommand == null)
+        {
+            return;
+        }
+
         activeCommand = null;
+
+        // Restore command availability after a stroke is canceled without adding
+        // a history entry.
+        OnHistoryChanged(HistoryChangeType.CommandCanceled);
     }
 
     /// <summary>
@@ -204,7 +226,11 @@ public sealed class HistoryManager
 /// </summary>
 public enum HistoryChangeType
 {
+    // Active command state changed, but no entry was added to history. Consumers
+    // use these events to refresh CanUndo/CanRedo while a stroke is in progress.
+    CommandStarted,
     CommandAdded,
+    CommandCanceled,
     Undo,
     Redo,
     Cleared

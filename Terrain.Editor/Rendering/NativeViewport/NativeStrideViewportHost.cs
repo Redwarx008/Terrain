@@ -205,6 +205,7 @@ public sealed class NativeStrideViewportHost : IDisposable
             _window.ClientSize = new Size2(_width, _height);
 
             _game = new EmbeddedStrideViewportGame();
+            _game.FocusRuntimeWindow = FocusRuntimeWindow;
             _game.SetChildWindowStyle = isChild =>
             {
                 if (isChild) RestoreChildStyle(); else RemoveChildStyle();
