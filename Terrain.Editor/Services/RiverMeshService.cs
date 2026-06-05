@@ -16,6 +16,7 @@ public sealed class RiverMeshService
     private const float ConnectionTaperDistance = 6.0f;
     private const float SurfaceOffset = 0.02f;
     private const float MinVisibleHalfWidth = 0.05f;
+    private const float MinGeometricTaperScale = 0.75f;
 
     private readonly TerrainManager? terrainManager;
 
@@ -309,7 +310,7 @@ public sealed class RiverMeshService
             scale = Math.Min(scale, SmoothStep(u / taperU));
         if (taperEnd && u > 1.0f - taperU)
             scale = Math.Min(scale, SmoothStep((1.0f - u) / taperU));
-        return scale;
+        return Math.Max(MinGeometricTaperScale, scale);
     }
 
     private static float SmoothStep(float t) => t * t * (3.0f - 2.0f * t);

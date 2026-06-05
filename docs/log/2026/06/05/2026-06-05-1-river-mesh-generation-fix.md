@@ -120,6 +120,17 @@
 **Rationale:**
 - RDP 只能去掉低于容差的小锯齿，但会保留大于容差的角点；要接近 CK3 的平滑河道，需要在插值前对简化后的控制线做 corner cutting。
 
+### 8. 防止端口几何 taper 塌缩成尖点
+**Files Changed:** `Terrain.Editor/Services/RiverMeshService.cs`, `Terrain.Editor.Tests/Program.cs`
+
+**Implementation:**
+- 新增 `MinGeometricTaperScale = 0.75f`，`ComputeTaperScale` 不再返回 0。
+- `TaperStart/TaperEnd` 仍能让连接处略收窄，但端口截面不会 collapse 成单点。
+- 增加 `tapered river endpoints keep visible cap width` 回归测试，验证 source/end cap 左右顶点距离保持可见宽度。
+
+**Rationale:**
+- 用户截图显示端口形成尖点；根因是几何 taper 在 `u=0` / `u=1` 将 half-width 缩到 0。参考实现更像是保持几何宽度，并通过 shader alpha / DistanceToMain 做视觉淡出，而不是让 mesh 端口变尖。
+
 ---
 
 ## Decisions Made

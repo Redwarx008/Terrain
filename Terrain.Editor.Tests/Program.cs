@@ -14,6 +14,7 @@ Run("special endpoints require adjacent river pixels", SpecialEndpointsRequireAd
 Run("centerline simplification removes pixel stair steps", CenterlineSimplificationRemovesPixelStairSteps);
 Run("centerline smoothing cuts hard corners", CenterlineSmoothingCutsHardCorners);
 Run("ribbon indices preserve ck3 strip organization with stride-visible winding", RibbonIndicesPreserveCk3StripOrganizationWithStrideVisibleWinding);
+Run("tapered river endpoints keep visible cap width", TaperedRiverEndpointsKeepVisibleCapWidth);
 Run("mitered corner preserves river half width", MiteredCornerPreservesRiverHalfWidth);
 
 static void Run(string name, Action test)
@@ -173,6 +174,28 @@ void RibbonIndicesPreserveCk3StripOrganizationWithStrideVisibleWinding()
     AssertEqual(6, vertices.Length, "three centerline samples should produce interleaved left/right boundary vertices");
     AssertEqual(12, indices.Length, "three centerline samples should produce four triangle-list faces");
     AssertSequenceEqual([0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5], indices, "indices should preserve CK3 left/right strip organization with Stride-visible triangle winding");
+}
+
+void TaperedRiverEndpointsKeepVisibleCapWidth()
+{
+    var segment = new RiverSegment
+    {
+        Centerline =
+        [
+            new Vector3(0, 0, 0),
+            new Vector3(1, 0, 0),
+            new Vector3(2, 0, 0),
+        ],
+        WorldLength = 2,
+        AvgHalfWidth = 0.5f,
+        TaperStart = true,
+        TaperEnd = true,
+    };
+
+    var (vertices, _) = BuildRibbonMeshForTest(segment);
+
+    Assert(Vector3.Distance(vertices[0].Position, vertices[1].Position) > 0.5f, "start cap should not collapse to a sharp point");
+    Assert(Vector3.Distance(vertices[^2].Position, vertices[^1].Position) > 0.5f, "end cap should not collapse to a sharp point");
 }
 
 void MiteredCornerPreservesRiverHalfWidth()
