@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Stride.Core.Mathematics;
 using Stride.Graphics;
 using Terrain.Editor.Models;
+using Terrain.Editor.Rendering.River;
 
 namespace Terrain.Editor.Services;
 
@@ -216,38 +217,65 @@ public sealed class RiverMeshService
 
     public (VertexPositionNormalTexture[] Vertices, int[] Indices) BuildRibbonMesh(RiverSegment segment, float widthScale)
     {
-        var centerline = segment.Centerline;
-        if (centerline == null || centerline.Count < 2)
+        var mesh = BuildRiverMesh(segment, widthScale);
+        if (mesh.Vertices.Length == 0 || mesh.Indices.Length == 0)
             return (Array.Empty<VertexPositionNormalTexture>(), Array.Empty<int>());
 
-        float totalLength = segment.WorldLength;
+        var vertices = new VertexPositionNormalTexture[mesh.Vertices.Length];
+        for (int i = 0; i < mesh.Vertices.Length; i++)
+        {
+            var riverVertex = mesh.Vertices[i];
+            vertices[i] = new VertexPositionNormalTexture(riverVertex.Position.XYZ(), riverVertex.Normal, riverVertex.UV);
+        }
+
+        return (vertices, (int[])mesh.Indices.Clone());
+    }
+
+    public RiverMeshData BuildRiverMesh(RiverSegment segment, float widthScale)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+
+        var centerline = segment.Centerline;
+        if (centerline == null || centerline.Count < 2)
+            return new RiverMeshData { SegmentId = segment.SystemId };
+
+        float totalLength = segment.WorldLength > 0.001f ? segment.WorldLength : ComputePolylineLength(centerline);
         float baseHalfWidth = Math.Max(MinVisibleHalfWidth, segment.AvgHalfWidth * widthScale);
 
         int n = centerline.Count;
-        var vertices = new List<VertexPositionNormalTexture>(n * 2 + 2);
+        var vertices = new List<RiverVertex>(n * 2 + 2);
         var indices = new List<int>();
 
         var distances = ComputeDistances(centerline);
+        var boundsMin = new Vector3(float.MaxValue);
+        var boundsMax = new Vector3(float.MinValue);
+
         for (int i = 0; i < n; i++)
         {
             Vector3 center = centerline[i];
             float u = totalLength > 0.001f ? distances[i] / totalLength : 0;
             float taperScale = ComputeTaperScale(u, totalLength, segment.TaperStart, segment.TaperEnd);
             float halfWidth = baseHalfWidth * taperScale;
+            float normalizedWidth = NormalizeRiverWidth(halfWidth);
             Vector3 offset = ComputeMiterOffset(centerline, i, halfWidth);
+            Vector3 tangent = EstimateCenterlineTangent(centerline, i);
+            Vector3 normal = SampleTerrainNormal(center.X, center.Z);
+            float distanceToMain = ComputeDistanceToMain(u, segment.TaperStart, segment.TaperEnd);
 
             Vector3 leftPos = center - offset;
             Vector3 rightPos = center + offset;
-            Vector3 normal = SampleTerrainNormal(center.X, center.Z);
 
-            vertices.Add(new VertexPositionNormalTexture(leftPos, normal, new Vector2(u, 0)));
-            vertices.Add(new VertexPositionNormalTexture(rightPos, normal, new Vector2(u, 1)));
+            vertices.Add(new RiverVertex(leftPos, 1.0f, new Vector2(u, 0), tangent, normal, normalizedWidth, distanceToMain));
+            vertices.Add(new RiverVertex(rightPos, 1.0f, new Vector2(u, 1), tangent, normal, normalizedWidth, distanceToMain));
+
+            boundsMin = Vector3.Min(boundsMin, leftPos);
+            boundsMin = Vector3.Min(boundsMin, rightPos);
+            boundsMax = Vector3.Max(boundsMax, leftPos);
+            boundsMax = Vector3.Max(boundsMax, rightPos);
         }
 
-        // CK3 Draw(580) uses a triangle-strip style organization: boundary vertices are
-        // interleaved left/right along the river, with degenerate vertices at strip boundaries.
-        // Stride's MeshDraw path here uses TriangleList, so emit the same interleaved strip
-        // topology with the winding expected by Stride's current culling state.
+        // Reference draw data uses interleaved left/right boundary vertices along the river.
+        // Emit the same organization as a triangle list with Stride-visible winding.
         for (int i = 0; i < n - 1; i++)
         {
             int a = i * 2;
@@ -258,7 +286,17 @@ public sealed class RiverMeshService
             indices.Add(b); indices.Add(c); indices.Add(d);
         }
 
-        return (vertices.ToArray(), indices.ToArray());
+        var boundingBox = new BoundingBox(boundsMin, boundsMax);
+        return new RiverMeshData
+        {
+            SegmentId = segment.SystemId,
+            Vertices = vertices.ToArray(),
+            Indices = indices.ToArray(),
+            BoundingBox = boundingBox,
+            BoundingSphere = BoundingSphere.FromBox(boundingBox),
+            WorldLength = totalLength,
+            AvgHalfWidth = segment.AvgHalfWidth,
+        };
     }
 
     private static float[] ComputeDistances(List<Vector3> points)
@@ -267,6 +305,38 @@ public sealed class RiverMeshService
         for (int i = 1; i < points.Count; i++)
             distances[i] = distances[i - 1] + Vector3.Distance(points[i - 1], points[i]);
         return distances;
+    }
+
+    private float NormalizeRiverWidth(float halfWidth)
+    {
+        float mapExtent = 4096.0f;
+        if (terrainManager != null && terrainManager.HeightCacheWidth > 0 && terrainManager.HeightCacheHeight > 0)
+        {
+            mapExtent = MathF.Max(terrainManager.HeightCacheWidth, terrainManager.HeightCacheHeight);
+        }
+
+        return MathF.Max(halfWidth, 0.0f) / MathF.Max(mapExtent, 1.0f);
+    }
+
+    private static Vector3 EstimateCenterlineTangent(List<Vector3> centerline, int index)
+    {
+        if (centerline.Count < 2) return Vector3.UnitX;
+
+        int previous = Math.Max(0, index - 1);
+        int next = Math.Min(centerline.Count - 1, index + 1);
+        Vector3 tangent = centerline[next] - centerline[previous];
+        tangent.Y = 0;
+        return tangent.LengthSquared() > 0.000001f ? Vector3.Normalize(tangent) : Vector3.UnitX;
+    }
+
+    private static float ComputeDistanceToMain(float u, bool taperStart, bool taperEnd)
+    {
+        float value = 1.0f;
+        if (taperStart)
+            value = Math.Min(value, Math.Clamp(u * 10.0f, 0.0f, 1.0f));
+        if (taperEnd)
+            value = Math.Min(value, Math.Clamp((1.0f - u) * 10.0f, 0.0f, 1.0f));
+        return value;
     }
 
     private static Vector3 ComputeMiterOffset(List<Vector3> centerline, int index, float halfWidth)

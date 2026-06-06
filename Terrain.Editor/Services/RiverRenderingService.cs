@@ -2,14 +2,11 @@
 
 using System;
 using System.Collections.Generic;
-using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Graphics;
 using Stride.Rendering;
-using Stride.Rendering.Materials;
-using Stride.Rendering.Materials.ComputeColors;
 using Terrain.Editor.Models;
-using Buffer = Stride.Graphics.Buffer;
+using Terrain.Editor.Rendering.River;
 
 namespace Terrain.Editor.Services;
 
@@ -18,106 +15,77 @@ public sealed class RiverRenderingService : IDisposable
     public const RenderGroup RiverRenderGroup = RenderGroup.Group1;
     public const RenderGroupMask RiverRenderGroupMask = RenderGroupMask.Group1;
 
-    private readonly GraphicsDevice graphicsDevice;
-    private readonly Scene scene;
-    private readonly List<Entity> riverEntities = new();
-    private Entity? riverContainer;
+    private readonly RiverComponent riverComponent;
     private bool isVisible = true;
 
-    public RiverRenderingService(GraphicsDevice graphicsDevice, Scene scene)
+    public RiverRenderingService(GraphicsDevice graphicsDevice, Scene scene, RiverComponent riverComponent)
     {
-        this.graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
-        this.scene = scene ?? throw new ArgumentNullException(nameof(scene));
+        ArgumentNullException.ThrowIfNull(graphicsDevice);
+        ArgumentNullException.ThrowIfNull(scene);
+        this.riverComponent = riverComponent ?? throw new ArgumentNullException(nameof(riverComponent));
     }
+
+    public RiverRenderingService(GraphicsDevice graphicsDevice, Scene scene)
+        : this(graphicsDevice, scene, FindOrCreateRiverComponent(scene))
+    {
+    }
+
+    public RiverRenderingService(RiverComponent riverComponent)
+    {
+        this.riverComponent = riverComponent ?? throw new ArgumentNullException(nameof(riverComponent));
+    }
+
+    public RiverComponent RiverComponent => riverComponent;
 
     public void UpdateMeshes(List<RiverSegment> segments, RiverMeshService meshService, float widthScale)
     {
-        ClearMeshes();
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(meshService);
 
-        riverContainer = new Entity("RiverSystem");
-        scene.Entities.Add(riverContainer);
-
+        var meshes = new List<RiverMeshData>();
         foreach (var seg in segments)
         {
-            var (vertices, indices) = meshService.BuildRibbonMesh(seg, widthScale);
-            if (vertices.Length == 0) continue;
-
-            var vertexBuffer = Buffer.Vertex.New(graphicsDevice, vertices, GraphicsResourceUsage.Dynamic);
-            var indexBuffer = Buffer.Index.New(graphicsDevice, indices);
-
-            var meshDraw = new MeshDraw
-            {
-                DrawCount = indices.Length,
-                PrimitiveType = PrimitiveType.TriangleList,
-                VertexBuffers = new[] { new VertexBufferBinding(vertexBuffer, VertexPositionNormalTexture.Layout, vertexBuffer.ElementCount) },
-                IndexBuffer = new IndexBufferBinding(indexBuffer, true, indexBuffer.ElementCount),
-            };
-
-            var mesh = new Mesh(meshDraw, new ParameterCollection())
-            {
-                MaterialIndex = 0,
-                BoundingSphere = BoundingSphere.Empty,
-            };
-
-            var model = new Model();
-            model.Meshes.Add(mesh);
-
-            // Create simple material with transparency
-            var descriptor = new MaterialDescriptor();
-            descriptor.Attributes.Diffuse = new MaterialDiffuseMapFeature(new ComputeColor());
-            descriptor.Attributes.DiffuseModel = new MaterialDiffuseLambertModelFeature();
-            descriptor.Attributes.Transparency = new MaterialTransparencyBlendFeature();
-            var mat = Material.New(graphicsDevice, descriptor);
-
-            model.Materials.Add(mat);
-            var modelComponent = new ModelComponent(model)
-            {
-                RenderGroup = RiverRenderGroup,
-                Enabled = isVisible,
-            };
-
-            var entity = new Entity($"RiverSegment_{seg.SystemId}_{riverEntities.Count}")
-            {
-                modelComponent
-            };
-
-            riverEntities.Add(entity);
-            riverContainer.AddChild(entity);
+            var mesh = meshService.BuildRiverMesh(seg, widthScale);
+            if (mesh.Vertices.Length == 0 || mesh.Indices.Length == 0) continue;
+            meshes.Add(mesh);
         }
+
+        riverComponent.SetMeshes(meshes);
+        riverComponent.Enabled = isVisible;
+        riverComponent.Settings.Visible = isVisible;
     }
 
     public void SetVisible(bool visible)
     {
         isVisible = visible;
-        foreach (var entity in riverEntities)
-        {
-            foreach (var component in entity.Components)
-            {
-                if (component is ModelComponent mc)
-                    mc.Enabled = visible;
-            }
-        }
+        riverComponent.Enabled = visible;
+        riverComponent.Settings.Visible = visible;
     }
 
     public void ClearMeshes()
     {
-        foreach (var entity in riverEntities)
-        {
-            entity.Scene?.Entities.Remove(entity);
-            entity.Dispose();
-        }
-        riverEntities.Clear();
-
-        if (riverContainer != null)
-        {
-            scene.Entities.Remove(riverContainer);
-            riverContainer.Dispose();
-            riverContainer = null;
-        }
+        riverComponent.Clear();
     }
 
     public void Dispose()
     {
         ClearMeshes();
+    }
+
+    private static RiverComponent FindOrCreateRiverComponent(Scene scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+
+        foreach (var entity in scene.Entities)
+        {
+            var component = entity.Get<RiverComponent>();
+            if (component != null) return component;
+        }
+
+        var riverEntity = new Entity("RiverSystem");
+        var riverComponent = new RiverComponent();
+        riverEntity.Add(riverComponent);
+        scene.Entities.Add(riverEntity);
+        return riverComponent;
     }
 }

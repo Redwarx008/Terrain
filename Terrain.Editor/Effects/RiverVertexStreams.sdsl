@@ -1,0 +1,12 @@
+namespace Terrain.Editor
+{
+    shader RiverVertexStreams
+    {
+        stage stream float RiverTransparency : TEXCOORD0;
+        stage stream float2 RiverUV : TEXCOORD1;
+        stage stream float3 RiverTangent : TEXCOORD2;
+        stage stream float3 RiverNormal : TEXCOORD3;
+        stage stream float RiverWidth : TEXCOORD4;
+        stage stream float RiverDistanceToMain : TEXCOORD5;
+    };
+}

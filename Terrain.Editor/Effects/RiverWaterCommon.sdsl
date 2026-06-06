@@ -1,0 +1,35 @@
+namespace Terrain.Editor
+{
+    shader RiverWaterCommon : RiverCommon
+    {
+        float3 RiverBlendWaterColor(float depthFactor, float4 shallowColor, float4 deepColor)
+        {
+            return lerp(shallowColor.rgb, deepColor.rgb, saturate(depthFactor));
+        }
+
+        float RiverBlendWaterAlpha(float depthFactor, float4 shallowColor, float4 deepColor)
+        {
+            return lerp(shallowColor.a, deepColor.a, saturate(depthFactor));
+        }
+
+        float2 RiverFlowUv(float2 uv, float time, float speed, float scale)
+        {
+            float2 flowUv = uv * max(scale, 0.0001f);
+            flowUv.y += time * speed;
+            return flowUv;
+        }
+
+        float RiverFoamMask(float crossSection, float distanceToMain, float foamFactor)
+        {
+            float bank = 1.0f - RiverEdgeFade(crossSection, 0.15f);
+            float connection = 1.0f - saturate(distanceToMain);
+            return saturate((bank + connection) * foamFactor);
+        }
+
+        float3 RiverApplyNeutralLighting(float3 color, float shadowTerm, float cloudMask)
+        {
+            float lighting = saturate(shadowTerm) * (1.0f - saturate(cloudMask) * 0.25f);
+            return color * lighting;
+        }
+    };
+}

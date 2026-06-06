@@ -1,34 +1,56 @@
 namespace Terrain.Editor
 {
-    shader RiverSurface : ShaderBase, Transformation, PositionStream4
+    shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon
     {
-        stage float _FlowNormalSpeed = 0.185f;
-        stage float _FlowNormalUvScale = 1.2f;
-        stage float _BankFade = 0.0f;
+        stage float _FlowNormalSpeed = 0.075f;
+        stage float _FlowNormalUvScale = 0.4f;
+        stage float _RiverFoamFactor = 0.5f;
+        stage float _NoiseScale = 0.25f;
+        stage float _NoiseSpeed = 2.0f;
+        stage float _BankFade = 0.02f;
         stage float _Depth = 0.15f;
+        stage float _DepthWidthPower = 2.0f;
+        stage float _GlobalTime;
+        stage float _FlatMapLerp = 0.0f;
+        stage float _ZoomBlendOut = 1.0f;
+        stage float _ShadowTermFallback = 1.0f;
+        stage float _CloudMaskFallback = 0.0f;
         stage float4 WaterColorShallow = float4(0.0f, 0.3f, 0.5f, 0.7f);
         stage float4 WaterColorDeep = float4(0.0f, 0.05f, 0.15f, 0.85f);
-        stage float _GlobalTime;
+        stage Texture2D<float4> RefractionTexture;
+        stage SamplerState RefractionSampler;
 
-        stage override void VSMain()
+        float3 SampleRefractionColor(float2 screenUv, float3 fallbackColor)
         {
-            base.VSMain();
+            float4 refraction = RefractionTexture.Sample(RefractionSampler, saturate(screenUv));
+            return lerp(fallbackColor, refraction.rgb, saturate(refraction.a));
         }
 
         stage override void PSMain()
         {
-            float2 uv = streams.TextureCoordinate;
+            float2 riverUv = streams.RiverUV;
+            float depth = RiverDepthFromCrossSection(riverUv.y, _Depth, _DepthWidthPower);
+            float depthFactor = saturate(RiverSafeDivide(depth, max(_Depth, 0.0001f), 0.0f));
+            float edgeFade = RiverEdgeFade(riverUv.y, _BankFade);
+            float connectionFade = saturate(streams.RiverDistanceToMain);
+            float transparency = saturate(streams.RiverTransparency);
 
-            float depth = _Depth * (1.0f - pow(cos(uv.y * 2.0f * 3.14159f) * 0.5f + 0.5f, 2.0f));
+            float2 flowUv0 = RiverFlowUv(riverUv, _GlobalTime, _FlowNormalSpeed, _FlowNormalUvScale);
+            float2 flowUv1 = RiverFlowUv(riverUv.yx, _GlobalTime, _FlowNormalSpeed * 1.33f, _FlowNormalUvScale * 1.7f);
+            float flowWave = 0.5f + 0.5f * sin((flowUv0.y + flowUv1.x) * 24.0f);
+            float noise = 0.5f + 0.5f * sin((riverUv.x * 47.0f + riverUv.y * 19.0f + _GlobalTime * _NoiseSpeed) * max(_NoiseScale, 0.0001f));
+            float foam = RiverFoamMask(riverUv.y, streams.RiverDistanceToMain, _RiverFoamFactor) * noise;
 
-            float depthFactor = saturate(depth / max(_Depth, 0.001f));
-            float4 waterColor = lerp(WaterColorShallow, WaterColorDeep, depthFactor);
+            float3 waterColor = RiverBlendWaterColor(depthFactor, WaterColorShallow, WaterColorDeep);
+            float waterAlpha = RiverBlendWaterAlpha(depthFactor, WaterColorShallow, WaterColorDeep);
+            waterColor = lerp(waterColor, float3(0.85f, 0.95f, 1.0f), foam * 0.5f);
+            waterColor *= lerp(0.92f, 1.08f, flowWave);
+            waterColor = SampleRefractionColor(riverUv, waterColor);
+            waterColor = RiverApplyNeutralLighting(waterColor, _ShadowTermFallback, _CloudMaskFallback);
+            waterColor = lerp(waterColor, waterColor * 0.8f + 0.2f, saturate(_FlatMapLerp));
 
-            float edgeFade1 = smoothstep(0.0f, _BankFade, uv.y);
-            float edgeFade2 = smoothstep(0.0f, _BankFade, 1.0f - uv.y);
-            float alpha = edgeFade1 * edgeFade2 * waterColor.a;
-
-            streams.ColorTarget = float4(waterColor.rgb, alpha);
+            float alpha = edgeFade * connectionFade * transparency * waterAlpha * saturate(_ZoomBlendOut);
+            streams.ColorTarget = float4(waterColor, alpha);
         }
-    }
+    };
 }

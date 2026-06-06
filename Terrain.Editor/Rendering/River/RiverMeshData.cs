@@ -1,0 +1,31 @@
+#nullable enable
+
+using System;
+using Stride.Core.Mathematics;
+
+namespace Terrain.Editor.Rendering.River;
+
+public sealed class RiverMeshData
+{
+    public int SegmentId { get; init; }
+    public RiverVertex[] Vertices { get; init; } = Array.Empty<RiverVertex>();
+    public int[] Indices { get; init; } = Array.Empty<int>();
+    public BoundingBox BoundingBox { get; init; } = BoundingBox.Empty;
+    public BoundingSphere BoundingSphere { get; init; } = BoundingSphere.Empty;
+    public float WorldLength { get; init; }
+    public float AvgHalfWidth { get; init; }
+
+    public RiverMeshData CloneSnapshot()
+    {
+        return new RiverMeshData
+        {
+            SegmentId = SegmentId,
+            Vertices = (RiverVertex[])Vertices.Clone(),
+            Indices = (int[])Indices.Clone(),
+            BoundingBox = BoundingBox,
+            BoundingSphere = BoundingSphere,
+            WorldLength = WorldLength,
+            AvgHalfWidth = AvgHalfWidth,
+        };
+    }
+}

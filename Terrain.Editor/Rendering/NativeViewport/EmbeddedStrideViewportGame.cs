@@ -16,6 +16,7 @@ using Terrain.Editor.Input;
 using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Rendering.Decal;
+using Terrain.Editor.Rendering.River;
 using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
 using Terrain.Editor.ViewModels;
@@ -45,6 +46,8 @@ public sealed class EmbeddedStrideViewportGame : Game
     // Brush decal overlay
     private Entity? _brushDecalEntity;
     private BrushDecalComponent? _brushDecalComponent;
+    private Entity? _riverEntity;
+    private RiverComponent? _riverComponent;
 
     public EmbeddedStrideViewportGame()
     {
@@ -540,6 +543,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         };
         _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
+        EnsureRiverRenderFeature(_graphicsCompositor);
         EnsureBrushDecalRenderFeature(_graphicsCompositor);
         _modeController.Apply(_sceneViewMode, _graphicsCompositor);
         _riverWireframeModeController.Apply(_sceneViewMode, _graphicsCompositor);
@@ -612,6 +616,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         };
         _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
+        EnsureRiverRenderFeature(_graphicsCompositor);
         EnsureBrushDecalRenderFeature(_graphicsCompositor);
         _modeController.Apply(_sceneViewMode, _graphicsCompositor);
         _riverWireframeModeController.Apply(_sceneViewMode, _graphicsCompositor);
@@ -628,7 +633,12 @@ public sealed class EmbeddedStrideViewportGame : Game
         TerrainManager.MaterialTexturesLoadRequired += OnMaterialTexturesLoadRequired;
         TerrainManager.TerrainLoaded += OnTerrainLoaded;
 
-        RiverRenderingService = new RiverRenderingService(GraphicsDevice, _scene!);
+        _riverEntity = new Entity("RiverSystem");
+        _riverComponent = new RiverComponent();
+        _riverEntity.Add(_riverComponent);
+        _scene!.Entities.Add(_riverEntity);
+
+        RiverRenderingService = new RiverRenderingService(GraphicsDevice, _scene!, _riverComponent);
         RiverMeshService = new RiverMeshService(TerrainManager);
     }
 
@@ -654,6 +664,34 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             graphicsCompositor.RenderFeatures.Add(new EditorTerrainRenderFeature());
         }
+    }
+
+    private static void EnsureRiverRenderFeature(GraphicsCompositor graphicsCompositor)
+    {
+        if (graphicsCompositor.RenderFeatures.OfType<RiverRenderFeature>().Any())
+        {
+            return;
+        }
+
+        var riverRenderFeature = new RiverRenderFeature();
+        var transparentStage = graphicsCompositor.RenderStages.FirstOrDefault(stage =>
+            string.Equals(stage.Name, "Transparent", StringComparison.Ordinal));
+        if (transparentStage == null)
+        {
+            transparentStage = new RenderStage("RiverTransparent", "Main")
+            {
+                SortMode = new BackToFrontSortMode(),
+            };
+            graphicsCompositor.RenderStages.Add(transparentStage);
+        }
+
+        riverRenderFeature.RenderStageSelectors.Add(new SimpleGroupToRenderStageSelector
+        {
+            EffectName = "RiverSurface",
+            RenderGroup = RiverRenderingService.RiverRenderGroupMask,
+            RenderStage = transparentStage,
+        });
+        graphicsCompositor.RenderFeatures.Add(riverRenderFeature);
     }
 
     private static void EnsureBrushDecalRenderFeature(GraphicsCompositor graphicsCompositor)
@@ -826,6 +864,13 @@ public sealed class EmbeddedStrideViewportGame : Game
         RiverRenderingService?.Dispose();
         RiverRenderingService = null;
         RiverMeshService = null;
+        if (_riverEntity != null && _scene != null)
+        {
+            _scene.Entities.Remove(_riverEntity);
+            _riverEntity.Dispose();
+            _riverEntity = null;
+            _riverComponent = null;
+        }
 
         base.EndRun();
     }

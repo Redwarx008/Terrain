@@ -1,32 +1,48 @@
 namespace Terrain.Editor
 {
-    shader RiverBottom : ShaderBase, Transformation, PositionStream4
+    shader RiverBottom : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon
     {
+        stage float _BankFade = 0.02f;
         stage float _Depth = 0.15f;
-        stage float _DepthFakeFactor = 0.4f;
-        stage float _BankFade = 0.0f;
-        stage float4 BottomColor = float4(0.2f, 0.15f, 0.1f, 1.0f);
+        stage float _DepthWidthPower = 2.0f;
+        stage float _DepthFakeFactor = 2.0f;
+        stage float _BottomUvScale = 1.0f;
+        stage float _ParallaxStrength = 0.04f;
+        stage int _ParallaxIterations = 10;
+        stage float _BottomNormalStrength = 0.0f;
+        stage float4 BottomProperties = float4(0.0f, 0.35f, 0.0f, 1.0f);
+        stage float4 BottomColorShallow = float4(0.28f, 0.22f, 0.16f, 1.0f);
+        stage float4 BottomColorDeep = float4(0.10f, 0.075f, 0.05f, 1.0f);
 
-        stage override void VSMain()
+        float2 ComputeBottomUv(float2 riverUv, float3 worldPosition, float depth)
         {
-            base.VSMain();
+            float2 uv = riverUv * max(_BottomUvScale, 0.0001f);
+            float parallax = depth * _ParallaxStrength;
+            uv += worldPosition.xz * 0.001f * parallax;
+            return uv;
         }
 
         stage override void PSMain()
         {
-            float2 uv = streams.TextureCoordinate;
+            float2 riverUv = streams.RiverUV;
+            float depth = RiverDepthFromCrossSection(riverUv.y, _Depth, _DepthWidthPower);
+            float depthFactor = saturate(RiverSafeDivide(depth, max(_Depth, 0.0001f), 0.0f));
+            float edgeFade = RiverEdgeFade(riverUv.y, _BankFade);
+            float connectionFade = saturate(streams.RiverDistanceToMain);
+            float alpha = edgeFade * connectionFade * saturate(streams.RiverTransparency);
 
-            float depth = _Depth * (1.0f - pow(cos(uv.y * 2.0f * 3.14159f) * 0.5f + 0.5f, 2.0f));
+            float2 bottomUv = ComputeBottomUv(riverUv, streams.PositionWS.xyz, depth);
+            float bottomPattern = 0.5f + 0.5f * sin((bottomUv.x + bottomUv.y) * 32.0f);
+            float3 bottomNormal = normalize(lerp(float3(0.0f, 1.0f, 0.0f), streams.RiverNormal, saturate(_BottomNormalStrength)));
+            float propertyDarkening = saturate(BottomProperties.y);
+            float3 color = lerp(BottomColorShallow.rgb, BottomColorDeep.rgb, depthFactor);
+            color *= 1.0f - depthFactor * saturate(_DepthFakeFactor * 0.25f + propertyDarkening * 0.25f);
+            color *= lerp(0.85f, 1.05f, bottomPattern);
+            color *= lerp(1.0f, saturate(bottomNormal.y), saturate(_BottomNormalStrength));
 
-            float edgeFade1 = smoothstep(0.0f, _BankFade, uv.y);
-            float edgeFade2 = smoothstep(0.0f, _BankFade, 1.0f - uv.y);
-            float alpha = edgeFade1 * edgeFade2;
-
-            float3 color = BottomColor.rgb;
-            float depthFactor = saturate(depth / max(_Depth, 0.001f));
-            color *= (1.0f - depthFactor * _DepthFakeFactor);
-
+            float4 packedRefraction = RiverPackRefraction(streams.PositionWS.xyz, alpha);
             streams.ColorTarget = float4(color, alpha);
+            streams.ColorTarget1 = packedRefraction;
         }
-    }
+    };
 }

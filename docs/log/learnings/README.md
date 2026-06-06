@@ -33,6 +33,7 @@
 | [index-map-terrain](index-map-terrain.md) | Index Map 技术借鉴自 Unity IndexMapTerrain | 2026-04-07 |
 | [tommy-toml-library](tommy-toml-library.md) | Tommy 3.1.2 TOML 库 API 模式和陷阱 | 2026-04-08 |
 | [biome-rule-layer-review-findings](biome-rule-layer-review-findings.md) | Biome 规则系统代码审查发现的已知缺陷 | 2026-05-01 |
+| [stride-river-rendering-patterns](stride-river-rendering-patterns.md) | Stride 河流渲染分层、标准变换链与常见反模式 | 2026-06-06 |
 
 ### 引擎与框架调研
 
@@ -43,4 +44,4 @@
 
 ---
 
-*最后更新: 2026-05-14*
+*最后更新: 2026-06-06*

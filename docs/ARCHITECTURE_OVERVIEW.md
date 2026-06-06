@@ -8,11 +8,11 @@
 **三层系统：**
 - **Core（核心）**: 地形数据、高度图、流式加载
 - **Rendering（渲染）**: GPU 实例化、LOD、虚拟纹理
-- **Editor（编辑器）**: 笔刷系统、ImGui UI、编辑操作
+- **Editor（编辑器）**: 笔刷系统、Avalonia UI、编辑操作
 
 **关键原则：** 分离数据层、渲染层、编辑层
 
-**当前状态：** Core ✅ | Rendering ✅ | Editor ✅ | Vegetation 🚧 | Path ❌
+**当前状态：** Core ✅ | Rendering ✅ | Editor ✅ | Vegetation 🚧 | Path/River ✅
 
 ---
 
@@ -36,13 +36,22 @@
 | **材质系统** | ✅ 已实现 | - |
 | **虚拟纹理** | 🚧 进行中 | - |
 
+### 路径与河流层
+
+| 系统 | 状态 | 文档 |
+|------|------|------|
+| **路径编辑** | ✅ 已实现 | [Phase 6](design/terrain-editor-design-phase-6.md) |
+| **道路渲染** | ✅ 已实现 | [adr-013-vic3-path-rendering](log/decisions/adr-013-vic3-path-rendering.md) |
+| **河流网格生成** | ✅ 已实现 | [2026-06-05-1](log/2026/06/05/2026-06-05-1-river-mesh-generation-fix.md) |
+| **河流多 pass 渲染** | ✅ 已实现 | [adr-014-river-rendering-architecture](log/decisions/adr-014-river-rendering-architecture.md) |
+
 ### 编辑器层
 
 | 系统 | 状态 | 文档 |
 |------|------|------|
 | **高度编辑** | ✅ 已实现 | [terrain-editor-design-phase-2](design/terrain-editor-design-phase-2.md) |
 | **笔刷系统** | ✅ 已实现 | [terrain-editor-design-phase-2](design/terrain-editor-design-phase-2.md) |
-| **ImGui UI** | ✅ 已实现 | [terrain-editor-design-phase-2](design/terrain-editor-design-phase-2.md) |
+| **Avalonia UI** | ✅ 已实现 | 原 ImGui 编辑器已迁移 |
 | **气候蒙版（ClimateMask）** | ✅ 已实现 | R8 格式，1/4 高度图分辨率，规则驱动材质索引 |
 | **季节过滤（Season）** | ✅ 已实现 | EditorState.ActiveSeason 驱动规则求值 |
 | **纹理刷** | ✅ 已实现 | [2026-04-06-3](log/2026/04/06/2026-04-06-3-terrain-texture-brush-implementation.md) |
@@ -134,6 +143,17 @@
 **权衡：** 独立 TOML 文件 vs 嵌入 .terrain 文件；选择独立文件以保持关注点分离
 **关键：** 路径转换使用 TomlProjectConfig.MakeRelative（绝对→相对），Tommy TomlArray+TomlTable 自动生成 [[material_slots]] 格式
 
+### 9. 河流渲染采用 RiverComponent → RiverProcessor → RiverRenderObject → RiverRenderFeature
+**问题：** 仅靠 editor service 或临时 `ModelComponent` 预览无法承载河流的独立 mesh 生命周期、双 pass 渲染和视口调试模式。
+**方案：** 将河流作为独立渲染子系统接入 Stride 渲染管线：
+- `RiverRenderingService` 仅负责 editor façade（接收 `RiverSegment`、驱动 mesh 生成、同步可见性）
+- `RiverComponent` 持有快照化 `RiverMeshData`
+- `RiverProcessor` 负责版本同步与 `RiverRenderObject` 生命周期
+- `RiverRenderFeature` 负责河底/水面双 pass、底部折射缓冲与调试光栅状态
+- 河流 shader 统一使用 `TransformationWAndVP` 生成 `PositionWS / PositionH / DepthVS`
+**权衡：** 架构更复杂，但换来可维护的渲染生命周期、与 Stride render stage 的正确集成，以及后续扩展空间。
+**参考：** [adr-014-river-rendering-architecture](log/decisions/adr-014-river-rendering-architecture.md)
+
 ---
 
 ## 关键文件
@@ -158,8 +178,14 @@
 | `Terrain.Editor/Services/Commands/StrokeChunkTracker.cs` | 笔触 Chunk 跟踪与去重 |
 | `Terrain.Editor/Services/MaterialSlotManager.cs` | 材质槽位管理 |
 | `Terrain.Editor/Services/ProjectManager.cs` | 项目管理（TOML 配置、dirty tracking） |
+| `Terrain.Editor/Services/RiverRenderingService.cs` | 河流渲染 façade（mesh 同步、显隐控制、桥接编辑器与渲染组件） |
 | `Terrain.Editor/Services/TomlProjectConfig.cs` | TOML 配置数据模型和读写器 |
 | `Terrain.Editor/Rendering/EditorTerrainEntity.cs` | 地形实体（含统一数据同步接口） |
+| `Terrain.Editor/Rendering/River/RiverComponent.cs` | 河流 mesh 快照组件 |
+| `Terrain.Editor/Rendering/River/RiverProcessor.cs` | 河流组件到渲染对象的同步处理器 |
+| `Terrain.Editor/Rendering/River/RiverRenderObject.cs` | 河流 GPU 顶点/索引缓冲与 bounds |
+| `Terrain.Editor/Rendering/River/RiverRenderFeature.cs` | 河流河底/水面双 pass 渲染特性 |
+| `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
 | `Terrain.Editor/UI/Dialogs/NewProjectWizard.cs` | 新建项目模态弹窗 |
 | `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
@@ -173,6 +199,10 @@
 |------|------|
 | `Terrain/Effects/Build/` | LOD 构建 |
 | `Terrain/Effects/Material/` | 材质着色器 |
+| `Terrain.Editor/Effects/RiverBottom.sdsl` | 河底 pass（折射缓冲/底色） |
+| `Terrain.Editor/Effects/RiverSurface.sdsl` | 水面 pass（流动、泡沫、折射采样） |
+| `Terrain.Editor/Effects/RiverVertexStreams.sdsl` | 河流自定义顶点语义 |
+| `Terrain.Editor/Effects/RiverWaterCommon.sdsl` | 河流水体共用函数 |
 
 ---
 
@@ -218,5 +248,5 @@
 
 ---
 
-*最后更新: 2026-04-20*
+*最后更新: 2026-06-06*
 *状态: 反映当前实现状态*

@@ -1,0 +1,35 @@
+namespace Terrain.Editor
+{
+    shader RiverCommon
+    {
+        float RiverSaturate(float value)
+        {
+            return saturate(value);
+        }
+
+        float RiverSafeDivide(float numerator, float denominator, float fallback)
+        {
+            return abs(denominator) > 0.000001f ? numerator / denominator : fallback;
+        }
+
+        float RiverEdgeFade(float crossSection, float bankFade)
+        {
+            float fade = max(bankFade, 0.0001f);
+            float left = smoothstep(0.0f, fade, crossSection);
+            float right = smoothstep(0.0f, fade, 1.0f - crossSection);
+            return saturate(left * right);
+        }
+
+        float RiverDepthFromCrossSection(float crossSection, float depth, float depthWidthPower)
+        {
+            float centered = abs(crossSection * 2.0f - 1.0f);
+            float profile = 1.0f - pow(saturate(centered), max(depthWidthPower, 0.0001f));
+            return max(depth, 0.0f) * saturate(profile);
+        }
+
+        float4 RiverPackRefraction(float3 worldPosition, float alpha)
+        {
+            return float4(worldPosition.xy * 0.0001f, worldPosition.z * 0.0001f, saturate(alpha));
+        }
+    };
+}
