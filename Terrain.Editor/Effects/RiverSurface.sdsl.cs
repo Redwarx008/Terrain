@@ -26,6 +26,8 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<float> _BankFade = ParameterKeys.NewValue<float>(0.02f);
         public static readonly ValueParameterKey<float> _Depth = ParameterKeys.NewValue<float>(0.15f);
         public static readonly ValueParameterKey<float> _DepthWidthPower = ParameterKeys.NewValue<float>(2.0f);
+        public static readonly ValueParameterKey<float> _MapExtent = ParameterKeys.NewValue<float>(4096.0f);
+        public static readonly ValueParameterKey<Vector2> _ViewSize = ParameterKeys.NewValue<Vector2>(new Vector2(1.0f,1.0f));
         public static readonly ValueParameterKey<float> _GlobalTime = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<float> _FlatMapLerp = ParameterKeys.NewValue<float>(0.0f);
         public static readonly ValueParameterKey<float> _ZoomBlendOut = ParameterKeys.NewValue<float>(1.0f);

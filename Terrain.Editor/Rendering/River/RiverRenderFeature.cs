@@ -153,6 +153,15 @@ public sealed class RiverRenderFeature : RootRenderFeature
             effect.Parameters.Set(TransformationKeys.WorldViewProjection, riverObject.World * renderView.ViewProjection);
             effect.Parameters.Set(TransformationKeys.ViewProjection, renderView.ViewProjection);
             effect.Parameters.Set(CameraKeys.ViewSize, renderView.ViewSize);
+            if (ReferenceEquals(effect, surfaceEffect))
+            {
+                effect.Parameters.Set(RiverSurfaceKeys._ViewSize, renderView.ViewSize);
+                effect.Parameters.Set(RiverSurfaceKeys._MapExtent, riverObject.MapExtent);
+            }
+            else if (ReferenceEquals(effect, bottomEffect))
+            {
+                effect.Parameters.Set(RiverBottomKeys._MapExtent, riverObject.MapExtent);
+            }
             if (refractionTexture != null)
             {
                 effect.Parameters.Set(RiverSurfaceKeys.RefractionTexture, refractionTexture);

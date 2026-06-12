@@ -241,6 +241,7 @@ public sealed class RiverMeshService
 
         float totalLength = segment.WorldLength > 0.001f ? segment.WorldLength : ComputePolylineLength(centerline);
         float baseHalfWidth = Math.Max(MinVisibleHalfWidth, segment.AvgHalfWidth * widthScale);
+        float mapExtent = GetMapExtent();
 
         int n = centerline.Count;
         var vertices = new List<RiverVertex>(n * 2 + 2);
@@ -256,7 +257,7 @@ public sealed class RiverMeshService
             float u = totalLength > 0.001f ? distances[i] / totalLength : 0;
             float taperScale = ComputeTaperScale(u, totalLength, segment.TaperStart, segment.TaperEnd);
             float halfWidth = baseHalfWidth * taperScale;
-            float normalizedWidth = NormalizeRiverWidth(halfWidth);
+            float normalizedWidth = NormalizeRiverWidth(halfWidth, mapExtent);
             Vector3 offset = ComputeMiterOffset(centerline, i, halfWidth);
             Vector3 tangent = EstimateCenterlineTangent(centerline, i);
             Vector3 normal = SampleTerrainNormal(center.X, center.Z);
@@ -296,6 +297,7 @@ public sealed class RiverMeshService
             BoundingSphere = BoundingSphere.FromBox(boundingBox),
             WorldLength = totalLength,
             AvgHalfWidth = segment.AvgHalfWidth,
+            MapExtent = mapExtent,
         };
     }
 
@@ -307,14 +309,18 @@ public sealed class RiverMeshService
         return distances;
     }
 
-    private float NormalizeRiverWidth(float halfWidth)
+    private float GetMapExtent()
     {
-        float mapExtent = 4096.0f;
         if (terrainManager != null && terrainManager.HeightCacheWidth > 0 && terrainManager.HeightCacheHeight > 0)
         {
-            mapExtent = MathF.Max(terrainManager.HeightCacheWidth, terrainManager.HeightCacheHeight);
+            return MathF.Max(terrainManager.HeightCacheWidth, terrainManager.HeightCacheHeight);
         }
 
+        return 4096.0f;
+    }
+
+    private static float NormalizeRiverWidth(float halfWidth, float mapExtent)
+    {
         return MathF.Max(halfWidth, 0.0f) / MathF.Max(mapExtent, 1.0f);
     }
 

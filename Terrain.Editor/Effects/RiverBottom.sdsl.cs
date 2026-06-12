@@ -21,6 +21,7 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<float> _BankFade = ParameterKeys.NewValue<float>(0.02f);
         public static readonly ValueParameterKey<float> _Depth = ParameterKeys.NewValue<float>(0.15f);
         public static readonly ValueParameterKey<float> _DepthWidthPower = ParameterKeys.NewValue<float>(2.0f);
+        public static readonly ValueParameterKey<float> _MapExtent = ParameterKeys.NewValue<float>(4096.0f);
         public static readonly ValueParameterKey<float> _DepthFakeFactor = ParameterKeys.NewValue<float>(2.0f);
         public static readonly ValueParameterKey<float> _BottomUvScale = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _ParallaxStrength = ParameterKeys.NewValue<float>(0.04f);

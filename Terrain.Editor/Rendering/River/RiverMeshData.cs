@@ -14,6 +14,7 @@ public sealed class RiverMeshData
     public BoundingSphere BoundingSphere { get; init; } = BoundingSphere.Empty;
     public float WorldLength { get; init; }
     public float AvgHalfWidth { get; init; }
+    public float MapExtent { get; init; } = 4096.0f;
 
     public RiverMeshData CloneSnapshot()
     {
@@ -26,6 +27,7 @@ public sealed class RiverMeshData
             BoundingSphere = BoundingSphere,
             WorldLength = WorldLength,
             AvgHalfWidth = AvgHalfWidth,
+            MapExtent = MapExtent,
         };
     }
 }

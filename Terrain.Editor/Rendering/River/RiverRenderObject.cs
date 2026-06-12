@@ -17,6 +17,7 @@ public sealed class RiverRenderObject : RenderObject, IDisposable
     public MeshDraw? MeshDraw { get; private set; }
     public int IndexCount { get; private set; }
     public BoundingSphere BoundingSphere { get; private set; } = BoundingSphere.Empty;
+    public float MapExtent { get; private set; } = 4096.0f;
     public Matrix World { get; set; } = Matrix.Identity;
 
     public RiverRenderObject()
@@ -36,6 +37,7 @@ public sealed class RiverRenderObject : RenderObject, IDisposable
         IndexCount = mesh.Indices.Length;
         BoundingBox = (BoundingBoxExt)mesh.BoundingBox;
         BoundingSphere = mesh.BoundingSphere;
+        MapExtent = mesh.MapExtent;
 
         if (mesh.Vertices.Length == 0 || mesh.Indices.Length == 0)
         {

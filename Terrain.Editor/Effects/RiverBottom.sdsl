@@ -5,6 +5,7 @@ namespace Terrain.Editor
         stage float _BankFade = 0.02f;
         stage float _Depth = 0.15f;
         stage float _DepthWidthPower = 2.0f;
+        stage float _MapExtent = 4096.0f;
         stage float _DepthFakeFactor = 2.0f;
         stage float _BottomUvScale = 1.0f;
         stage float _ParallaxStrength = 0.04f;
@@ -14,10 +15,15 @@ namespace Terrain.Editor
         stage float4 BottomColorShallow = float4(0.28f, 0.22f, 0.16f, 1.0f);
         stage float4 BottomColorDeep = float4(0.10f, 0.075f, 0.05f, 1.0f);
 
-        float2 ComputeBottomUv(float2 riverUv, float3 worldPosition, float depth)
+        float ComputeWorldWidth()
+        {
+            return max(streams.RiverWidth * max(_MapExtent, 1.0f), 0.001f);
+        }
+
+        float2 ComputeBottomUv(float2 riverUv, float3 worldPosition, float worldDepth)
         {
             float2 uv = riverUv * max(_BottomUvScale, 0.0001f);
-            float parallax = depth * _ParallaxStrength;
+            float parallax = worldDepth * _ParallaxStrength;
             uv += worldPosition.xz * 0.001f * parallax;
             return uv;
         }
@@ -25,13 +31,15 @@ namespace Terrain.Editor
         stage override void PSMain()
         {
             float2 riverUv = streams.RiverUV;
+            float worldWidth = ComputeWorldWidth();
             float depth = RiverDepthFromCrossSection(riverUv.y, _Depth, _DepthWidthPower);
+            float worldDepth = depth * worldWidth;
             float depthFactor = saturate(RiverSafeDivide(depth, max(_Depth, 0.0001f), 0.0f));
             float edgeFade = RiverEdgeFade(riverUv.y, _BankFade);
             float connectionFade = saturate(streams.RiverDistanceToMain);
             float alpha = edgeFade * connectionFade * saturate(streams.RiverTransparency);
 
-            float2 bottomUv = ComputeBottomUv(riverUv, streams.PositionWS.xyz, depth);
+            float2 bottomUv = ComputeBottomUv(riverUv, streams.PositionWS.xyz, worldDepth);
             float bottomPattern = 0.5f + 0.5f * sin((bottomUv.x + bottomUv.y) * 32.0f);
             float3 bottomNormal = normalize(lerp(float3(0.0f, 1.0f, 0.0f), streams.RiverNormal, saturate(_BottomNormalStrength)));
             float propertyDarkening = saturate(BottomProperties.y);
