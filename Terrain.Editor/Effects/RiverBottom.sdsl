@@ -36,7 +36,7 @@ namespace Terrain.Editor
             float worldDepth = depth * worldWidth;
             float depthFactor = saturate(RiverSafeDivide(depth, max(_Depth, 0.0001f), 0.0f));
             float edgeFade = RiverEdgeFade(riverUv.y, _BankFade);
-            float connectionFade = saturate(streams.RiverDistanceToMain);
+            float connectionFade = saturate((streams.RiverDistanceToMain - 0.6f * abs(riverUv.y - 0.5f)) * 5.0f);
             float alpha = edgeFade * connectionFade * saturate(streams.RiverTransparency);
 
             float2 bottomUv = ComputeBottomUv(riverUv, streams.PositionWS.xyz, worldDepth);

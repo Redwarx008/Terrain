@@ -47,11 +47,15 @@ namespace Terrain.Editor
             float worldDepth = depth * worldWidth + 0.1f;
             float depthFactor = saturate(RiverSafeDivide(depth, max(_Depth, 0.0001f), 0.0f));
             float edgeFade = RiverEdgeFade(riverUv.y, _BankFade);
-            float connectionFade = saturate(streams.RiverDistanceToMain);
+            float connectionFade = saturate((streams.RiverDistanceToMain - 0.1f) * 5.0f);
             float transparency = saturate(streams.RiverTransparency);
 
-            float2 flowUv0 = RiverFlowUv(riverUv.yx * float2(worldWidth, 1.0f), _GlobalTime, _FlowNormalSpeed, _FlowNormalUvScale);
-            float2 flowUv1 = RiverFlowUv(riverUv.xy * float2(worldWidth, 1.0f), _GlobalTime, _FlowNormalSpeed * 1.33f, _FlowNormalUvScale * 1.7f);
+            float2 flowUv0 = riverUv.yx * float2(1.0f, -1.0f);
+            flowUv0.x -= 0.5f + sin(riverUv.x * 0.2f + _GlobalTime * 0.1f) * 0.5f;
+            flowUv0 *= float2(worldWidth, 1.0f) * _FlowNormalUvScale;
+            flowUv0.y += _GlobalTime * _FlowNormalSpeed;
+            float2 flowUv1 = flowUv0 * 0.713f;
+            flowUv1.y += _GlobalTime * _FlowNormalSpeed * 1.33f;
             float flowWave = 0.5f + 0.5f * sin((flowUv0.y + flowUv1.x) * 24.0f);
             float noise = 0.5f + 0.5f * sin((riverUv.x * 47.0f + riverUv.y * 19.0f + _GlobalTime * _NoiseSpeed) * max(_NoiseScale, 0.0001f));
             float foam = RiverFoamMask(riverUv.y, streams.RiverDistanceToMain, _RiverFoamFactor) * noise;
