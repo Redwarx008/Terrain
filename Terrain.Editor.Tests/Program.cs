@@ -44,6 +44,7 @@ EditorResourceSaveServiceTests.RunAll();
 EditorAuthoringResourceMapperTests.RunAll();
 GameResourceGitIgnoreTextTests.RunAll();
 LocalLaunchSettingsBootstrapTests.RunAll();
+EditorMapDataScaffoldTests.RunAll();
 
 static void Run(string name, Action test)
 {
