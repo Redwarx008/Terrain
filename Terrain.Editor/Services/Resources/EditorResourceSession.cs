@@ -14,6 +14,7 @@ public sealed class EditorResourceSession
         ResolvedGameResource biomeSettings,
         ResolvedGameResource materialDescriptor,
         RuntimeMapDefinition mapDefinitionModel,
+        bool hasPendingHeightmap = false,
         ResolvedGameResource? rivers = null,
         bool hasDeclaredProvinces = false)
     {
@@ -24,6 +25,7 @@ public sealed class EditorResourceSession
         BiomeSettings = biomeSettings;
         MaterialDescriptor = materialDescriptor;
         MapDefinitionModel = mapDefinitionModel;
+        HasPendingHeightmap = hasPendingHeightmap;
         Rivers = rivers;
         HasDeclaredProvinces = hasDeclaredProvinces;
     }
@@ -37,5 +39,10 @@ public sealed class EditorResourceSession
     public ResolvedGameResource? Rivers { get; }
     public RuntimeMapDefinition MapDefinitionModel { get; }
     public bool HasDeclaredProvinces { get; }
+    public bool HasPendingHeightmap { get; }
+    public bool HasPendingResources => HasPendingHeightmap;
+    public string? PendingHeightmapPath => HasPendingHeightmap ? Heightmap.ResolvedPath : null;
+    public bool CanSaveAuthoringResources => !HasPendingHeightmap;
+    public bool CanExportTerrainData => !HasPendingHeightmap;
     public float HeightScale => MapDefinitionModel.HeightScale;
 }

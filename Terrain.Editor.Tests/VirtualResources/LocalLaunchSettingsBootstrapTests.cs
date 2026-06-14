@@ -9,6 +9,8 @@ internal static class LocalLaunchSettingsBootstrapTests
     public static void RunAll()
     {
         TestHarness.Run("editor bootstrap auto-creates exe launch settings and keeps missing runtime targets writable", EditorBootstrapAutoCreatesExeLaunchSettingsAndKeepsMissingRuntimeTargetsWritable);
+        TestHarness.Run("editor bootstrap auto-creates missing authoring tomls", EditorBootstrapAutoCreatesMissingAuthoringTomls);
+        TestHarness.Run("editor bootstrap keeps missing heightmap as pending resource", EditorBootstrapKeepsMissingHeightmapAsPendingResource);
         TestHarness.Run("editor bootstrap resolves mod override from exe launch settings", EditorBootstrapResolvesModOverrideFromExeLaunchSettings);
         TestHarness.Run("runtime bootstrap resolves sibling game resources from exe launch settings", RuntimeBootstrapResolvesSiblingGameResourcesFromExeLaunchSettings);
         TestHarness.Run("runtime bootstrap resolves mod override from exe launch settings", RuntimeBootstrapResolvesModOverrideFromExeLaunchSettings);
@@ -29,6 +31,36 @@ internal static class LocalLaunchSettingsBootstrapTests
         TestHarness.AssertEqual(Path.GetFullPath(Path.Combine(gameRoot, "map_data", "biome_mask.png")), session.BiomeMask.ResolvedPath, "biome mask target should stay in base game");
         TestHarness.Assert(session.TerrainData.IsWritable, "missing terrain target should remain writable");
         TestHarness.Assert(session.BiomeMask.IsWritable, "missing biome mask target should remain writable");
+    }
+
+    private static void EditorBootstrapAutoCreatesMissingAuthoringTomls()
+    {
+        (string _, string appRoot, string gameRoot) = CreateWorkspaceWithBaseMap(includeAuthoringTomls: false);
+
+        EditorResourceSession session = new EditorBootstrapService().LoadCurrentSession(appRoot);
+
+        TestHarness.Assert(File.Exists(Path.Combine(gameRoot, "map_data", "default.toml")), "default.toml should be generated");
+        TestHarness.Assert(File.Exists(Path.Combine(gameRoot, "map_data", "biome_settings.toml")), "biome_settings.toml should be generated");
+        TestHarness.Assert(File.Exists(Path.Combine(gameRoot, "map_data", "materials", "descriptor.toml")), "descriptor.toml should be generated");
+        TestHarness.Assert(!session.HasPendingHeightmap, "existing base heightmap should not be pending");
+    }
+
+    private static void EditorBootstrapKeepsMissingHeightmapAsPendingResource()
+    {
+        (string _, string appRoot, string gameRoot) = CreateWorkspaceWithBaseMap(includeAuthoringTomls: true);
+        File.Delete(Path.Combine(gameRoot, "map_data", "heightmap.png"));
+
+        EditorResourceSession session = new EditorBootstrapService().LoadCurrentSession(appRoot);
+
+        TestHarness.Assert(session.HasPendingHeightmap, "missing heightmap should become a pending resource");
+        TestHarness.AssertEqual(
+            Path.GetFullPath(Path.Combine(gameRoot, "map_data", "heightmap.png")),
+            session.PendingHeightmapPath,
+            "pending heightmap path");
+        TestHarness.AssertEqual(
+            Path.GetFullPath(Path.Combine(gameRoot, "map_data", "heightmap.png")),
+            session.Heightmap.ResolvedPath,
+            "heightmap target should still resolve to the writable authoring path");
     }
 
     private static void EditorBootstrapResolvesModOverrideFromExeLaunchSettings()
@@ -142,7 +174,9 @@ height_scale = 100.0
             $"error message should mention game root. Actual: {ex.Message}");
     }
 
-    private static (string Root, string AppRoot, string GameRoot) CreateWorkspaceWithBaseMap(bool includeRuntimeResources = false)
+    private static (string Root, string AppRoot, string GameRoot) CreateWorkspaceWithBaseMap(
+        bool includeRuntimeResources = false,
+        bool includeAuthoringTomls = true)
     {
         string root = Path.Combine(Path.GetTempPath(), "terrain-local-launch-settings-tests", Guid.NewGuid().ToString("N"));
         string gameRoot = Path.Combine(root, "game");
@@ -150,7 +184,10 @@ height_scale = 100.0
         Directory.CreateDirectory(Path.Combine(gameRoot, "map_data", "materials"));
         Directory.CreateDirectory(appRoot);
         File.WriteAllText(Path.Combine(root, "Terrain.sln"), string.Empty);
-        File.WriteAllText(Path.Combine(gameRoot, "map_data", "default.toml"), """
+        File.WriteAllText(Path.Combine(gameRoot, "map_data", "heightmap.png"), "base height");
+        if (includeAuthoringTomls)
+        {
+            File.WriteAllText(Path.Combine(gameRoot, "map_data", "default.toml"), """
 version = 1
 
 [terrain]
@@ -160,34 +197,18 @@ terrain_data = "terrain.terrain"
 [settings]
 height_scale = 100.0
 """);
-        File.WriteAllText(Path.Combine(gameRoot, "map_data", "heightmap.png"), "base height");
-        File.WriteAllText(Path.Combine(gameRoot, "map_data", "biome_settings.toml"), """
+            File.WriteAllText(Path.Combine(gameRoot, "map_data", "biome_settings.toml"), """
 version = 1
 
-[[biomes]]
-id = 1
-name = "Default"
-
-[[layers]]
-id = 1
-biome_id = 1
-name = "Base"
-material_id = "plains"
-priority = 0
-enabled = true
-visible = true
+biomes = []
+layers = []
+modifiers = []
 """);
-        File.WriteAllText(Path.Combine(gameRoot, "map_data", "materials", "descriptor.toml"), """
+            File.WriteAllText(Path.Combine(gameRoot, "map_data", "materials", "descriptor.toml"), """
 version = 1
-
-[[materials]]
-id = "plains"
-index = 0
-name = "Plains"
-albedo = "plains_01_diffuse.dds"
-normal = "plains_01_normal.dds"
-properties = "plains_01_properties.dds"
+materials = []
 """);
+        }
         File.WriteAllText(Path.Combine(gameRoot, "map_data", "materials", "plains_01_diffuse.dds"), "base diffuse");
         File.WriteAllText(Path.Combine(gameRoot, "map_data", "materials", "plains_01_normal.dds"), "base normal");
         File.WriteAllText(Path.Combine(gameRoot, "map_data", "materials", "plains_01_properties.dds"), "base properties");
