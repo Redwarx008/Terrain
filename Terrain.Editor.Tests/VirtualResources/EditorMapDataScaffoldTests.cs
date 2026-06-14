@@ -14,15 +14,17 @@ internal static class EditorMapDataScaffoldTests
     private static void ScaffoldCreatesMissingAuthoringTomlsWithReaderCompatibleDefaults()
     {
         (string root, string appRoot, string gameRoot) = CreateWorkspace();
-        Directory.CreateDirectory(Path.Combine(gameRoot, "map_data", "materials"));
 
         GameResourceResolver resolver = GameResourceResolverBootstrap.CreateForAppDirectory(appRoot);
-
-        new EditorMapDataScaffoldService().EnsureScaffold(resolver);
 
         string defaultToml = Path.Combine(gameRoot, "map_data", "default.toml");
         string descriptorToml = Path.Combine(gameRoot, "map_data", "materials", "descriptor.toml");
         string biomeSettingsToml = Path.Combine(gameRoot, "map_data", "biome_settings.toml");
+        string materialsDirectory = Path.GetDirectoryName(descriptorToml)!;
+
+        TestHarness.Assert(!Directory.Exists(materialsDirectory), "materials directory should start missing for cold-start scaffold coverage");
+
+        new EditorMapDataScaffoldService().EnsureScaffold(resolver);
 
         TestHarness.Assert(File.Exists(defaultToml), "default.toml should be generated");
         TestHarness.Assert(File.Exists(descriptorToml), "descriptor.toml should be generated");
@@ -38,6 +40,7 @@ internal static class EditorMapDataScaffoldTests
         TestHarness.AssertEqual(0, descriptor.Materials.Count, "generated descriptor should start empty");
         TestHarness.AssertEqual(0, settings.Biomes.Count, "generated biome settings should start empty");
         TestHarness.AssertEqual(0, settings.Layers.Count, "generated biome layers should start empty");
+        TestHarness.AssertEqual(0, settings.Modifiers.Count, "generated biome modifiers should start empty");
     }
 
     private static void ScaffoldLeavesExistingInvalidMapDefinitionUntouched()
@@ -70,6 +73,7 @@ height_scale = 100.0
         string gameRoot = Path.Combine(root, "game");
         string appRoot = Path.Combine(root, "bin", "Debug", "net8.0");
         Directory.CreateDirectory(gameRoot);
+        Directory.CreateDirectory(Path.Combine(gameRoot, "map_data"));
         Directory.CreateDirectory(appRoot);
         File.WriteAllText(Path.Combine(root, "Terrain.sln"), string.Empty);
         return (root, appRoot, gameRoot);
