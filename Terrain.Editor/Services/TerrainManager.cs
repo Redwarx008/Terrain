@@ -295,6 +295,8 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
 
             if (session.Rivers is { } pendingRivers)
                 LoadRiverMap(pendingRivers.ResolvedPath, markDirty: false);
+            else
+                ClearRiverMap();
 
             MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
             return new List<EditorTerrainEntity>();
@@ -307,6 +309,8 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
         LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);
         if (session.Rivers is { } rivers)
             LoadRiverMap(rivers.ResolvedPath, markDirty: false);
+        else
+            ClearRiverMap();
 
         MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
         return entities;

@@ -28,6 +28,7 @@ internal static class EditorPendingResourceWorkflowTests
         int logError = pendingBranch.IndexOf("Log.Error(lastLoadError);", StringComparison.Ordinal);
         int pendingRiversBranch = pendingBranch.IndexOf("if (session.Rivers is { } pendingRivers)", StringComparison.Ordinal);
         int loadPendingRivers = pendingBranch.IndexOf("LoadRiverMap(pendingRivers.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
+        int clearPendingRivers = pendingBranch.IndexOf("ClearRiverMap();", StringComparison.Ordinal);
         int texturesEvent = pendingBranch.IndexOf("MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);", StringComparison.Ordinal);
         int returnEmpty = pendingBranch.IndexOf("return new List<EditorTerrainEntity>();", StringComparison.Ordinal);
 
@@ -36,29 +37,38 @@ internal static class EditorPendingResourceWorkflowTests
         TestHarness.Assert(logError >= 0, "pending branch should log the pending-heightmap error");
         TestHarness.Assert(pendingRiversBranch >= 0, "pending branch should keep optional rivers handling");
         TestHarness.Assert(loadPendingRivers >= 0, "pending branch should optionally load rivers");
+        TestHarness.Assert(clearPendingRivers >= 0, "pending branch should clear stale river state when no rivers resource exists");
         TestHarness.Assert(texturesEvent >= 0, "pending branch should still request material textures");
         TestHarness.Assert(returnEmpty >= 0, "pending branch should return an empty terrain list");
         TestHarness.Assert(removeTerrain < setError, "pending branch should clear terrain before reporting the missing heightmap");
         TestHarness.Assert(setError < logError, "pending branch should assign the missing-heightmap error before logging it");
         TestHarness.Assert(logError < pendingRiversBranch, "pending branch should log before optional rivers handling");
         TestHarness.Assert(pendingRiversBranch < loadPendingRivers, "pending branch should guard optional river loading");
+        TestHarness.Assert(pendingRiversBranch < clearPendingRivers, "pending branch should decide river handling before clearing stale river state");
         TestHarness.Assert(loadPendingRivers < texturesEvent, "pending branch should load rivers before requesting textures");
+        TestHarness.Assert(clearPendingRivers < texturesEvent, "pending branch should clear stale river state before requesting textures");
         TestHarness.Assert(texturesEvent < returnEmpty, "pending branch should request textures before returning an empty list");
     }
 
     private static void TerrainManagerKeepsConfigLoadingAheadOfPendingTerrainShortCircuit()
     {
-        string source = GetTerrainManagerSource();
+        string methodBody = GetLoadFromResourceSessionBody();
 
-        int descriptorRead = source.IndexOf("RuntimeMaterialDescriptorReader.ReadFrom", StringComparison.Ordinal);
-        int biomeRead = source.IndexOf("RuntimeBiomeSettingsReader.ReadFrom", StringComparison.Ordinal);
-        int pendingBranch = source.IndexOf("if (session.HasPendingHeightmap)", StringComparison.Ordinal);
+        int descriptorRead = methodBody.IndexOf("RuntimeMaterialDescriptorReader.ReadFrom", StringComparison.Ordinal);
+        int applyDescriptor = methodBody.IndexOf("MaterialSlotManager.Instance.ApplyDescriptor", StringComparison.Ordinal);
+        int biomeRead = methodBody.IndexOf("RuntimeBiomeSettingsReader.ReadFrom", StringComparison.Ordinal);
+        int applyBiomeSettings = methodBody.IndexOf("BiomeRuleService.Instance.ApplyRuntimeSettings", StringComparison.Ordinal);
+        int pendingBranch = methodBody.IndexOf("if (session.HasPendingHeightmap)", StringComparison.Ordinal);
 
         TestHarness.Assert(descriptorRead >= 0, "descriptor read should remain present");
+        TestHarness.Assert(applyDescriptor >= 0, "descriptor apply should remain present");
         TestHarness.Assert(biomeRead >= 0, "biome settings read should remain present");
+        TestHarness.Assert(applyBiomeSettings >= 0, "biome settings apply should remain present");
         TestHarness.Assert(pendingBranch >= 0, "pending branch should remain present");
         TestHarness.Assert(descriptorRead < pendingBranch, "descriptor should load before pending branch exits");
+        TestHarness.Assert(applyDescriptor < pendingBranch, "descriptor should apply before pending branch exits");
         TestHarness.Assert(biomeRead < pendingBranch, "biome settings should load before pending branch exits");
+        TestHarness.Assert(applyBiomeSettings < pendingBranch, "biome settings should apply before pending branch exits");
     }
 
     private static void TerrainManagerNormalPathLoadsTerrainBeforeBiomeMaskAndOptionalRivers()
@@ -67,19 +77,28 @@ internal static class EditorPendingResourceWorkflowTests
 
         int loadTerrain = methodBody.IndexOf("List<EditorTerrainEntity> entities = await LoadTerrainAsync(session.Heightmap.ResolvedPath);", StringComparison.Ordinal);
         int noTerrainReturn = methodBody.IndexOf("if (entities.Count == 0)", StringComparison.Ordinal);
-        int loadBiomeMask = methodBody.IndexOf("LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
-        int riversBranch = methodBody.IndexOf("if (session.Rivers is { } rivers)", StringComparison.Ordinal);
-        int loadRivers = methodBody.IndexOf("LoadRiverMap(rivers.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
+        int normalTailStart = noTerrainReturn;
+        string normalTail = methodBody.Substring(noTerrainReturn);
+        int loadBiomeMask = normalTail.IndexOf("LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
+        int riversBranch = normalTail.IndexOf("if (session.Rivers is { } rivers)", StringComparison.Ordinal);
+        int loadRivers = normalTail.IndexOf("LoadRiverMap(rivers.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
+        int clearRivers = normalTail.IndexOf("ClearRiverMap();", StringComparison.Ordinal);
+        int texturesEvent = normalTail.IndexOf("MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);", StringComparison.Ordinal);
 
         TestHarness.Assert(loadTerrain >= 0, "normal path should still load terrain");
         TestHarness.Assert(noTerrainReturn >= 0, "normal path should still bail out when terrain loading produces no entities");
         TestHarness.Assert(loadBiomeMask >= 0, "normal path should load biome mask");
         TestHarness.Assert(riversBranch >= 0, "normal path should keep optional rivers handling");
         TestHarness.Assert(loadRivers >= 0, "normal path should optionally load rivers");
+        TestHarness.Assert(clearRivers >= 0, "normal path should clear stale river state when no rivers resource exists");
+        TestHarness.Assert(texturesEvent >= 0, "normal path should still request material textures");
         TestHarness.Assert(loadTerrain < noTerrainReturn, "normal path should check terrain results after loading terrain");
-        TestHarness.Assert(noTerrainReturn < loadBiomeMask, "normal path should only load biome mask after terrain has loaded successfully");
+        TestHarness.Assert(normalTailStart + loadBiomeMask > noTerrainReturn, "normal path should only load biome mask after terrain has loaded successfully");
         TestHarness.Assert(loadBiomeMask < riversBranch, "normal path should load biome mask before optional rivers handling");
         TestHarness.Assert(riversBranch < loadRivers, "normal path river loading should remain guarded by the optional branch");
+        TestHarness.Assert(riversBranch < clearRivers, "normal path should decide river handling before clearing stale river state");
+        TestHarness.Assert(loadRivers < texturesEvent, "normal path should load rivers before requesting textures");
+        TestHarness.Assert(clearRivers < texturesEvent, "normal path should clear stale river state before requesting textures");
     }
 
     private static string GetTerrainManagerSource()
