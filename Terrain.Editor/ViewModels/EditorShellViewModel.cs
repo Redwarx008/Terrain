@@ -285,15 +285,15 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             EditorResourceSession session = _bootstrapService.LoadCurrentSession();
             var entities = await terrainManager.LoadFromResourceSession(session);
-            _resourceSession = session;
-            SyncSettingsFromTerrainManager();
-            EditorDirtyState.Instance.ClearDirty();
-            RefreshAssetItems();
-            Biome.NotifyMaterialPreviewsChanged();
-            RefreshProjectState();
 
             if (session.HasPendingHeightmap)
             {
+                _resourceSession = session;
+                SyncSettingsFromTerrainManager();
+                EditorDirtyState.Instance.ClearDirty();
+                RefreshAssetItems();
+                Biome.NotifyMaterialPreviewsChanged();
+                RefreshProjectState();
                 AddConsole("Error", $"Terrain workspace heightmap is missing: {session.PendingHeightmapPath}");
                 AddConsole("Warning", "Terrain workspace loaded with pending resources. Add the missing heightmap before save/export.");
                 return;
@@ -305,6 +305,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 return;
             }
 
+            _resourceSession = session;
+            SyncSettingsFromTerrainManager();
+            EditorDirtyState.Instance.ClearDirty();
+            RefreshAssetItems();
+            Biome.NotifyMaterialPreviewsChanged();
+            RefreshProjectState();
             AddConsole("Info", $"Loaded Terrain workspace from {_resourceSession.MapDefinition.ResolvedPath}.");
         }
         catch (Exception exception)

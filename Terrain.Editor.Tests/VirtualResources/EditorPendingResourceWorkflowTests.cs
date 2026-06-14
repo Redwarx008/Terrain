@@ -24,7 +24,7 @@ internal static class EditorPendingResourceWorkflowTests
 
     private static void TerrainManagerPendingHeightmapBranchKeepsRequiredSideEffectsInOrder()
     {
-        string pendingBranch = GetBlockAfter("if (session.HasPendingHeightmap)");
+        string pendingBranch = GetBlockAfter(GetTerrainManagerSource(), "if (session.HasPendingHeightmap)");
 
         int removeTerrain = pendingBranch.IndexOf("RemoveCurrentTerrain();", StringComparison.Ordinal);
         int setError = pendingBranch.IndexOf("lastLoadError = $\"Terrain workspace heightmap is missing: {session.Heightmap.ResolvedPath}\";", StringComparison.Ordinal);
@@ -127,19 +127,31 @@ internal static class EditorPendingResourceWorkflowTests
 
     private static void EditorShellKeepsPendingSessionsInsteadOfTreatingThemAsLoadFailure()
     {
-        string source = File.ReadAllText(GetEditorShellViewModelSourcePath());
+        string pendingBranch = GetBlockAfter(GetEditorShellViewModelSource(), "if (session.HasPendingHeightmap)");
+        string failedEntitiesBranch = GetBlockAfter(GetEditorShellViewModelSource(), "if (entities.Count == 0)");
 
-        TestHarness.Assert(source.Contains("_resourceSession = session;", StringComparison.Ordinal), "pending path should still keep the loaded session");
-        TestHarness.Assert(source.Contains("Terrain workspace heightmap is missing:", StringComparison.Ordinal), "pending path should log missing heightmap");
-        TestHarness.Assert(source.Contains("Terrain workspace loaded with pending resources.", StringComparison.Ordinal), "pending path should log limited mode warning");
+        TestHarness.Assert(pendingBranch.Contains("_resourceSession = session;", StringComparison.Ordinal), "pending branch should keep the loaded session");
+        TestHarness.Assert(pendingBranch.Contains("SyncSettingsFromTerrainManager();", StringComparison.Ordinal), "pending branch should sync settings");
+        TestHarness.Assert(pendingBranch.Contains("EditorDirtyState.Instance.ClearDirty();", StringComparison.Ordinal), "pending branch should clear dirty state");
+        TestHarness.Assert(pendingBranch.Contains("RefreshAssetItems();", StringComparison.Ordinal), "pending branch should refresh asset items");
+        TestHarness.Assert(pendingBranch.Contains("Biome.NotifyMaterialPreviewsChanged();", StringComparison.Ordinal), "pending branch should refresh biome previews");
+        TestHarness.Assert(pendingBranch.Contains("RefreshProjectState();", StringComparison.Ordinal), "pending branch should refresh project state");
+        TestHarness.Assert(pendingBranch.Contains("AddConsole(\"Error\", $\"Terrain workspace heightmap is missing: {session.PendingHeightmapPath}\");", StringComparison.Ordinal), "pending branch should log missing heightmap");
+        TestHarness.Assert(pendingBranch.Contains("AddConsole(\"Warning\", \"Terrain workspace loaded with pending resources. Add the missing heightmap before save/export.\");", StringComparison.Ordinal), "pending branch should log pending warning");
+
+        TestHarness.Assert(!failedEntitiesBranch.Contains("_resourceSession = session;", StringComparison.Ordinal), "failed-entities branch should not keep the session");
+        TestHarness.Assert(!failedEntitiesBranch.Contains("SyncSettingsFromTerrainManager();", StringComparison.Ordinal), "failed-entities branch should not sync settings");
+        TestHarness.Assert(!failedEntitiesBranch.Contains("RefreshAssetItems();", StringComparison.Ordinal), "failed-entities branch should not refresh asset items");
+        TestHarness.Assert(!failedEntitiesBranch.Contains("RefreshProjectState();", StringComparison.Ordinal), "failed-entities branch should not refresh project state");
     }
 
     private static void EditorShellBlocksSaveAndExportWhenHeightmapIsPending()
     {
-        string source = File.ReadAllText(GetEditorShellViewModelSourcePath());
+        string saveBody = GetEditorShellMethodBody("private void Save()");
+        string exportBody = GetEditorShellMethodBody("private async Task ExportTerrain()");
 
-        TestHarness.Assert(source.Contains("if (_resourceSession.HasPendingHeightmap)", StringComparison.Ordinal), "save/export should branch on pending heightmap");
-        TestHarness.Assert(source.Contains("AddConsole(\"Warning\", \"Terrain workspace is waiting for a heightmap before save/export.\")", StringComparison.Ordinal), "save/export warning should be explicit");
+        AssertSavePendingGate(saveBody);
+        AssertExportPendingGate(exportBody);
     }
 
     private static string GetTerrainManagerSource()
@@ -147,14 +159,23 @@ internal static class EditorPendingResourceWorkflowTests
         return File.ReadAllText(GetTerrainManagerSourcePath());
     }
 
-    private static string GetLoadFromResourceSessionBody()
+    private static string GetEditorShellViewModelSource()
     {
-        return GetBlockAfter("public async Task<List<EditorTerrainEntity>> LoadFromResourceSession(EditorResourceSession session)");
+        return File.ReadAllText(GetEditorShellViewModelSourcePath());
     }
 
-    private static string GetBlockAfter(string marker)
+    private static string GetLoadFromResourceSessionBody()
     {
-        string source = GetTerrainManagerSource();
+        return GetBlockAfter(GetTerrainManagerSource(), "public async Task<List<EditorTerrainEntity>> LoadFromResourceSession(EditorResourceSession session)");
+    }
+
+    private static string GetEditorShellMethodBody(string marker)
+    {
+        return GetBlockAfter(GetEditorShellViewModelSource(), marker);
+    }
+
+    private static string GetBlockAfter(string source, string marker)
+    {
         int markerIndex = source.IndexOf(marker, StringComparison.Ordinal);
         TestHarness.Assert(markerIndex >= 0, $"marker should exist: {marker}");
 
@@ -175,6 +196,41 @@ internal static class EditorPendingResourceWorkflowTests
         }
 
         throw new InvalidOperationException($"closing brace should exist after marker: {marker}");
+    }
+
+    private static void AssertSavePendingGate(string methodBody)
+    {
+        int pendingGate = methodBody.IndexOf("if (_resourceSession.HasPendingHeightmap)", StringComparison.Ordinal);
+        int warning = methodBody.IndexOf("AddConsole(\"Warning\", \"Terrain workspace is waiting for a heightmap before save/export.\");", StringComparison.Ordinal);
+        int returnAfterWarning = methodBody.IndexOf("return;", warning, StringComparison.Ordinal);
+        int saveCall = methodBody.IndexOf("terrainManager.SaveAuthoringResources(_resourceSession);", StringComparison.Ordinal);
+
+        TestHarness.Assert(pendingGate >= 0, "save should branch on pending heightmap");
+        TestHarness.Assert(warning >= 0, "save should log explicit pending warning");
+        TestHarness.Assert(returnAfterWarning >= 0, "save pending warning should return immediately");
+        TestHarness.Assert(saveCall >= 0, "save should still call SaveAuthoringResources on the non-pending path");
+        TestHarness.Assert(pendingGate < warning, "save should log warning inside the pending gate");
+        TestHarness.Assert(warning < returnAfterWarning, "save should return after pending warning");
+        TestHarness.Assert(pendingGate < saveCall, "save pending gate should happen before SaveAuthoringResources");
+    }
+
+    private static void AssertExportPendingGate(string methodBody)
+    {
+        int pendingGate = methodBody.IndexOf("if (_resourceSession.HasPendingHeightmap)", StringComparison.Ordinal);
+        int warning = methodBody.IndexOf("AddConsole(\"Warning\", \"Terrain workspace is waiting for a heightmap before save/export.\");", StringComparison.Ordinal);
+        int returnAfterWarning = methodBody.IndexOf("return;", warning, StringComparison.Ordinal);
+        int exporterAssign = methodBody.IndexOf("_terrainExporter.TerrainManager = terrainManager;", StringComparison.Ordinal);
+        int executeAsync = methodBody.IndexOf("ExecuteAsync(", StringComparison.Ordinal);
+
+        TestHarness.Assert(pendingGate >= 0, "export should branch on pending heightmap");
+        TestHarness.Assert(warning >= 0, "export should log explicit pending warning");
+        TestHarness.Assert(returnAfterWarning >= 0, "export pending warning should return immediately");
+        TestHarness.Assert(exporterAssign >= 0, "export should still assign terrain manager on the non-pending path");
+        TestHarness.Assert(executeAsync >= 0, "export should still execute the exporter on the non-pending path");
+        TestHarness.Assert(pendingGate < warning, "export should log warning inside the pending gate");
+        TestHarness.Assert(warning < returnAfterWarning, "export should return after pending warning");
+        TestHarness.Assert(pendingGate < exporterAssign, "export pending gate should happen before terrain exporter assignment");
+        TestHarness.Assert(pendingGate < executeAsync, "export pending gate should happen before ExecuteAsync");
     }
 
     private static string GetTerrainManagerSourcePath()
