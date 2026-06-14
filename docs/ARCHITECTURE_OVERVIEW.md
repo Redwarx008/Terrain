@@ -34,6 +34,7 @@
 | **地形渲染** | ✅ 已实现 | [terrain-editor-design-phase-1](design/terrain-editor-design-phase-1.md) |
 | **实例化渲染** | ✅ 已实现 | [instance-buffer-refactor](../plans/instance-buffer-refactor.md) |
 | **材质系统** | ✅ 已实现 | - |
+| **map_data TOML 规格** | ✅ 已记录 | [map-data-toml-formats](design/map-data-toml-formats.md) |
 | **虚拟纹理** | 🚧 进行中 | - |
 
 ### 路径与河流层
@@ -59,6 +60,7 @@
 | **数据同步机制** | ✅ 已实现 | [2026-04-07-1](log/2026/04/07/2026-04-07-1-unified-terrain-data-sync.md) |
 | **材质索引图增强** | ✅ 已实现 | [2026-04-07-2](log/2026/04/07/2026-04-07-2-index-map-enhancement.md) |
 | **Undo/Redo（Chunk事务）** | ✅ 已实现 | [2026-04-07-5](log/2026/04/07/2026-04-07-5-chunk-based-undo-redo-implementation.md) |
+| **Editor 作者态启动** | ✅ 已实现 | 自动补齐 `default.toml` / `descriptor.toml` / `biome_settings.toml`，缺失 `heightmap.png` 时以待补资源模式进入 |
 | **旧项目持久化（TOML）** | ❌ 已移除 | Editor 固定 Terrain 工作区；旧 ProjectManager/TomlProjectConfig 已删除 |
 | **植被编辑** | 🚧 进行中 | [terrain-editor-design-phase-3](design/terrain-editor-design-phase-3.md) |
 | **导出系统（IExporter）** | ✅ 已实现 | 当前保留 Terrain `.terrain` 导出；旧 Biome Config 导出已移除 |
@@ -248,5 +250,5 @@
 
 ---
 
-*最后更新: 2026-06-14*
+*最后更新: 2026-06-15*
 *状态: 反映当前实现状态*

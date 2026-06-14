@@ -1,6 +1,6 @@
 # 当前功能清单
 
-**最后更新：** 2026-06-14
+**最后更新：** 2026-06-15
 **状态图例：** ✅ 完成 | 🚧 进行中 | 📋 规划中 | ❌ 未开始
 
 > **注意：** 2026-04-15 至 2026-05-14 期间有大量开发但无会话日志记录。以下功能状态基于当前代码库实际验证。
@@ -48,6 +48,8 @@
 | 河流网格生成 | ✅ | `RiverMapService.cs`, `RiverMeshService.cs`, `RiverViewModel.cs` | 启动或运行期加载 `rivers.png` 后会自动生成 mesh；宽度缩放仍可触发重建；不再暴露手动 Import/Generate UI；River inspector 仅保留资源路径、生成状态与宽度缩放 |
 | 河流显隐/线框调试 | ✅ | `RiverRenderingService.cs`, `RiverWireframeModeController.cs` | - |
 | 虚拟资源会话 | ✅ | `Terrain.Editor/Services/Resources/`, `Terrain/Resources/` | Editor/Runtime 优先扫描工作区 `game/` 作为 base；若起点本身已位于目录名为 `game` 且包含 `map_data/` 的合法根，也会直接接受该根，并从 `exe/LaunchSetting.json` 读取或自动生成本地 mod 配置；`game/` 不再由 Git 跟踪 |
+| MapData 缺失骨架补齐 | ✅ | `Terrain.Editor/Services/Resources/EditorMapDataScaffoldService.cs` | 自动生成三个 TOML，`heightmap.png` 仍需人工补齐 |
+| `map_data` TOML 规格文档 | ✅ | `docs/design/map-data-toml-formats.md` | 记录 `default.toml`、`materials/descriptor.toml`、`biome_settings.toml` 的当前实现字段、约束、默认值与 Editor/Runtime 消费边界 |
 | Save 作者态资源 | ✅ | `Terrain.Editor/ViewModels/EditorShellViewModel.cs`, `Terrain.Editor/Services/TerrainManager.cs`, `Terrain.Editor/Services/Resources/EditorResourceSaveService.cs` | `Save` 写回 `default.toml` / heightmap / biome mask / biome settings / materials descriptor；缺失 `biome_mask.png` 时首次保存再生成；作者态保存使用事务化写回，后续 writer 失败时会回滚前面已 staged 的资源；当前不写回 `rivers.png` 与材质贴图文件 |
 | TOML 项目持久化 | ❌ 已移除 | 旧 `ProjectManager.cs` / `TomlProjectConfig.cs` 已删除 | Editor 固定 Terrain 工作区 |
 | 导出系统 (IExporter) | ✅ | `Terrain.Editor/Services/Export/` | - |

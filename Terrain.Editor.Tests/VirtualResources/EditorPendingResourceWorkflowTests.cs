@@ -9,6 +9,8 @@ internal static class EditorPendingResourceWorkflowTests
         TestHarness.Run("terrain manager keeps config loading ahead of pending terrain short-circuit", TerrainManagerKeepsConfigLoadingAheadOfPendingTerrainShortCircuit);
         TestHarness.Run("terrain manager failed terrain loads clear stale terrain and rivers before returning empty", TerrainManagerFailedTerrainLoadsClearStaleTerrainAndRiversBeforeReturningEmpty);
         TestHarness.Run("terrain manager normal path loads terrain before biome mask and optional rivers", TerrainManagerNormalPathLoadsTerrainBeforeBiomeMaskAndOptionalRivers);
+        TestHarness.Run("editor shell keeps pending sessions instead of treating them as load failure", EditorShellKeepsPendingSessionsInsteadOfTreatingThemAsLoadFailure);
+        TestHarness.Run("editor shell blocks save and export when heightmap is pending", EditorShellBlocksSaveAndExportWhenHeightmapIsPending);
     }
 
     private static void TerrainManagerHasDedicatedPendingHeightmapBranch()
@@ -123,6 +125,23 @@ internal static class EditorPendingResourceWorkflowTests
         TestHarness.Assert(clearRivers < returnEntities, "failed terrain-load guard should clear stale river state before returning");
     }
 
+    private static void EditorShellKeepsPendingSessionsInsteadOfTreatingThemAsLoadFailure()
+    {
+        string source = File.ReadAllText(GetEditorShellViewModelSourcePath());
+
+        TestHarness.Assert(source.Contains("_resourceSession = session;", StringComparison.Ordinal), "pending path should still keep the loaded session");
+        TestHarness.Assert(source.Contains("Terrain workspace heightmap is missing:", StringComparison.Ordinal), "pending path should log missing heightmap");
+        TestHarness.Assert(source.Contains("Terrain workspace loaded with pending resources.", StringComparison.Ordinal), "pending path should log limited mode warning");
+    }
+
+    private static void EditorShellBlocksSaveAndExportWhenHeightmapIsPending()
+    {
+        string source = File.ReadAllText(GetEditorShellViewModelSourcePath());
+
+        TestHarness.Assert(source.Contains("if (_resourceSession.HasPendingHeightmap)", StringComparison.Ordinal), "save/export should branch on pending heightmap");
+        TestHarness.Assert(source.Contains("AddConsole(\"Warning\", \"Terrain workspace is waiting for a heightmap before save/export.\")", StringComparison.Ordinal), "save/export warning should be explicit");
+    }
+
     private static string GetTerrainManagerSource()
     {
         return File.ReadAllText(GetTerrainManagerSourcePath());
@@ -170,5 +189,19 @@ internal static class EditorPendingResourceWorkflowTests
             "Terrain.Editor",
             "Services",
             "TerrainManager.cs"));
+    }
+
+    private static string GetEditorShellViewModelSourcePath()
+    {
+        return Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "Terrain.Editor",
+            "ViewModels",
+            "EditorShellViewModel.cs"));
     }
 }

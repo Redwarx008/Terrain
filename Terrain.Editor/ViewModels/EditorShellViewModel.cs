@@ -285,18 +285,26 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             EditorResourceSession session = _bootstrapService.LoadCurrentSession();
             var entities = await terrainManager.LoadFromResourceSession(session);
-            if (entities.Count == 0)
-            {
-                AddConsole("Error", $"Failed to load Terrain workspace heightmap: {session.Heightmap.ResolvedPath}");
-                return;
-            }
-
             _resourceSession = session;
             SyncSettingsFromTerrainManager();
             EditorDirtyState.Instance.ClearDirty();
             RefreshAssetItems();
             Biome.NotifyMaterialPreviewsChanged();
             RefreshProjectState();
+
+            if (session.HasPendingHeightmap)
+            {
+                AddConsole("Error", $"Terrain workspace heightmap is missing: {session.PendingHeightmapPath}");
+                AddConsole("Warning", "Terrain workspace loaded with pending resources. Add the missing heightmap before save/export.");
+                return;
+            }
+
+            if (entities.Count == 0)
+            {
+                AddConsole("Error", $"Failed to load Terrain workspace heightmap: {session.Heightmap.ResolvedPath}");
+                return;
+            }
+
             AddConsole("Info", $"Loaded Terrain workspace from {_resourceSession.MapDefinition.ResolvedPath}.");
         }
         catch (Exception exception)
@@ -322,13 +330,17 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void Save()
     {
         if (!TryGetTerrainManager(out var terrainManager))
-        {
             return;
-        }
 
         if (_resourceSession == null)
         {
             AddConsole("Warning", "Terrain workspace is not loaded.");
+            return;
+        }
+
+        if (_resourceSession.HasPendingHeightmap)
+        {
+            AddConsole("Warning", "Terrain workspace is waiting for a heightmap before save/export.");
             return;
         }
 
@@ -365,6 +377,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         if (_resourceSession == null)
         {
             AddConsole("Warning", "Terrain workspace is not loaded.");
+            return;
+        }
+
+        if (_resourceSession.HasPendingHeightmap)
+        {
+            AddConsole("Warning", "Terrain workspace is waiting for a heightmap before save/export.");
             return;
         }
 
