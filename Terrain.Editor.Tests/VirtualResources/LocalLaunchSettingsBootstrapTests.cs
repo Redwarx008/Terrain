@@ -11,6 +11,7 @@ internal static class LocalLaunchSettingsBootstrapTests
         TestHarness.Run("editor bootstrap auto-creates exe launch settings and keeps missing runtime targets writable", EditorBootstrapAutoCreatesExeLaunchSettingsAndKeepsMissingRuntimeTargetsWritable);
         TestHarness.Run("editor bootstrap auto-creates missing authoring tomls", EditorBootstrapAutoCreatesMissingAuthoringTomls);
         TestHarness.Run("editor bootstrap keeps missing heightmap as pending resource", EditorBootstrapKeepsMissingHeightmapAsPendingResource);
+        TestHarness.Run("editor bootstrap logs missing heightmap in pending branch", EditorBootstrapLogsMissingHeightmapInPendingBranch);
         TestHarness.Run("editor bootstrap resolves mod override from exe launch settings", EditorBootstrapResolvesModOverrideFromExeLaunchSettings);
         TestHarness.Run("runtime bootstrap resolves sibling game resources from exe launch settings", RuntimeBootstrapResolvesSiblingGameResourcesFromExeLaunchSettings);
         TestHarness.Run("runtime bootstrap resolves mod override from exe launch settings", RuntimeBootstrapResolvesModOverrideFromExeLaunchSettings);
@@ -53,6 +54,9 @@ internal static class LocalLaunchSettingsBootstrapTests
         EditorResourceSession session = new EditorBootstrapService().LoadCurrentSession(appRoot);
 
         TestHarness.Assert(session.HasPendingHeightmap, "missing heightmap should become a pending resource");
+        TestHarness.Assert(session.HasPendingResources, "missing heightmap should mark session as having pending resources");
+        TestHarness.Assert(!session.CanSaveAuthoringResources, "pending heightmap should block authoring saves");
+        TestHarness.Assert(!session.CanExportTerrainData, "pending heightmap should block terrain export");
         TestHarness.AssertEqual(
             Path.GetFullPath(Path.Combine(gameRoot, "map_data", "heightmap.png")),
             session.PendingHeightmapPath,
@@ -61,6 +65,19 @@ internal static class LocalLaunchSettingsBootstrapTests
             Path.GetFullPath(Path.Combine(gameRoot, "map_data", "heightmap.png")),
             session.Heightmap.ResolvedPath,
             "heightmap target should still resolve to the writable authoring path");
+        TestHarness.Assert(session.Heightmap.IsWritable, "missing heightmap should still resolve as a writable target");
+    }
+
+    private static void EditorBootstrapLogsMissingHeightmapInPendingBranch()
+    {
+        string source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Terrain.Editor", "Services", "Resources", "EditorBootstrapService.cs"));
+
+        TestHarness.Assert(
+            source.Contains("Log.Error(", StringComparison.Ordinal),
+            "pending heightmap branch should log an error");
+        TestHarness.Assert(
+            source.Contains("Terrain workspace heightmap is missing:", StringComparison.Ordinal),
+            "pending heightmap branch should keep the missing heightmap message template");
     }
 
     private static void EditorBootstrapResolvesModOverrideFromExeLaunchSettings()
@@ -220,5 +237,19 @@ materials = []
         }
 
         return (root, appRoot, gameRoot);
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        string? current = AppContext.BaseDirectory;
+        while (current != null)
+        {
+            if (File.Exists(Path.Combine(current, "Terrain.sln")))
+                return current;
+
+            current = Directory.GetParent(current)?.FullName;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate repository root from AppContext.BaseDirectory.");
     }
 }
