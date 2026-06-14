@@ -275,10 +275,6 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
         if (session.HeightScale > 0.0f)
             HeightScale = session.HeightScale;
 
-        List<EditorTerrainEntity> entities = await LoadTerrainAsync(session.Heightmap.ResolvedPath);
-        if (entities.Count == 0)
-            return entities;
-
         var materialDescriptor = RuntimeMaterialDescriptorReader.ReadFrom(session.MaterialDescriptor.ResolvedPath);
         MaterialSlotManager.Instance.ApplyDescriptor(materialDescriptor, session.MaterialDescriptor.ResolvedPath);
 
@@ -290,6 +286,23 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
             session.BiomeSettings.ResolvedPath,
             new HashSet<string>(materialIdsByIndex.Keys, StringComparer.Ordinal));
         BiomeRuleService.Instance.ApplyRuntimeSettings(biomeSettings, materialIdsByIndex);
+
+        if (session.HasPendingHeightmap)
+        {
+            RemoveCurrentTerrain();
+            lastLoadError = $"Terrain workspace heightmap is missing: {session.Heightmap.ResolvedPath}";
+            Log.Error(lastLoadError);
+
+            if (session.Rivers is { } pendingRivers)
+                LoadRiverMap(pendingRivers.ResolvedPath, markDirty: false);
+
+            MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
+            return new List<EditorTerrainEntity>();
+        }
+
+        List<EditorTerrainEntity> entities = await LoadTerrainAsync(session.Heightmap.ResolvedPath);
+        if (entities.Count == 0)
+            return entities;
 
         LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);
         if (session.Rivers is { } rivers)
