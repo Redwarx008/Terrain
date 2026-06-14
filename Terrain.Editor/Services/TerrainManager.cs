@@ -304,7 +304,11 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
 
         List<EditorTerrainEntity> entities = await LoadTerrainAsync(session.Heightmap.ResolvedPath);
         if (entities.Count == 0)
+        {
+            RemoveCurrentTerrain();
+            ClearRiverMap();
             return entities;
+        }
 
         LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);
         if (session.Rivers is { } rivers)

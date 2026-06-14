@@ -7,6 +7,7 @@ internal static class EditorPendingResourceWorkflowTests
         TestHarness.Run("terrain manager has a dedicated pending-heightmap branch", TerrainManagerHasDedicatedPendingHeightmapBranch);
         TestHarness.Run("terrain manager pending-heightmap branch keeps required side effects in order", TerrainManagerPendingHeightmapBranchKeepsRequiredSideEffectsInOrder);
         TestHarness.Run("terrain manager keeps config loading ahead of pending terrain short-circuit", TerrainManagerKeepsConfigLoadingAheadOfPendingTerrainShortCircuit);
+        TestHarness.Run("terrain manager failed terrain loads clear stale terrain and rivers before returning empty", TerrainManagerFailedTerrainLoadsClearStaleTerrainAndRiversBeforeReturningEmpty);
         TestHarness.Run("terrain manager normal path loads terrain before biome mask and optional rivers", TerrainManagerNormalPathLoadsTerrainBeforeBiomeMaskAndOptionalRivers);
     }
 
@@ -77,13 +78,11 @@ internal static class EditorPendingResourceWorkflowTests
 
         int loadTerrain = methodBody.IndexOf("List<EditorTerrainEntity> entities = await LoadTerrainAsync(session.Heightmap.ResolvedPath);", StringComparison.Ordinal);
         int noTerrainReturn = methodBody.IndexOf("if (entities.Count == 0)", StringComparison.Ordinal);
-        int normalTailStart = noTerrainReturn;
-        string normalTail = methodBody.Substring(noTerrainReturn);
-        int loadBiomeMask = normalTail.IndexOf("LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
-        int riversBranch = normalTail.IndexOf("if (session.Rivers is { } rivers)", StringComparison.Ordinal);
-        int loadRivers = normalTail.IndexOf("LoadRiverMap(rivers.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
-        int clearRivers = normalTail.IndexOf("ClearRiverMap();", StringComparison.Ordinal);
-        int texturesEvent = normalTail.IndexOf("MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);", StringComparison.Ordinal);
+        int loadBiomeMask = methodBody.IndexOf("LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
+        int riversBranch = methodBody.IndexOf("if (session.Rivers is { } rivers)", loadBiomeMask, StringComparison.Ordinal);
+        int loadRivers = methodBody.IndexOf("LoadRiverMap(rivers.ResolvedPath, markDirty: false);", loadBiomeMask, StringComparison.Ordinal);
+        int clearRivers = methodBody.IndexOf("ClearRiverMap();", loadBiomeMask, StringComparison.Ordinal);
+        int texturesEvent = methodBody.IndexOf("MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);", loadBiomeMask, StringComparison.Ordinal);
 
         TestHarness.Assert(loadTerrain >= 0, "normal path should still load terrain");
         TestHarness.Assert(noTerrainReturn >= 0, "normal path should still bail out when terrain loading produces no entities");
@@ -93,12 +92,35 @@ internal static class EditorPendingResourceWorkflowTests
         TestHarness.Assert(clearRivers >= 0, "normal path should clear stale river state when no rivers resource exists");
         TestHarness.Assert(texturesEvent >= 0, "normal path should still request material textures");
         TestHarness.Assert(loadTerrain < noTerrainReturn, "normal path should check terrain results after loading terrain");
-        TestHarness.Assert(normalTailStart + loadBiomeMask > noTerrainReturn, "normal path should only load biome mask after terrain has loaded successfully");
+        TestHarness.Assert(noTerrainReturn < loadBiomeMask, "normal path should only load biome mask after terrain has loaded successfully");
         TestHarness.Assert(loadBiomeMask < riversBranch, "normal path should load biome mask before optional rivers handling");
         TestHarness.Assert(riversBranch < loadRivers, "normal path river loading should remain guarded by the optional branch");
         TestHarness.Assert(riversBranch < clearRivers, "normal path should decide river handling before clearing stale river state");
         TestHarness.Assert(loadRivers < texturesEvent, "normal path should load rivers before requesting textures");
         TestHarness.Assert(clearRivers < texturesEvent, "normal path should clear stale river state before requesting textures");
+    }
+
+    private static void TerrainManagerFailedTerrainLoadsClearStaleTerrainAndRiversBeforeReturningEmpty()
+    {
+        string methodBody = GetLoadFromResourceSessionBody();
+
+        int noTerrainReturn = methodBody.IndexOf("if (entities.Count == 0)", StringComparison.Ordinal);
+        int loadBiomeMask = methodBody.IndexOf("LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
+
+        TestHarness.Assert(noTerrainReturn >= 0, "failed terrain-load guard should exist");
+        TestHarness.Assert(loadBiomeMask >= 0, "normal-path biome mask load should remain present");
+        TestHarness.Assert(noTerrainReturn < loadBiomeMask, "failed terrain-load guard should remain ahead of normal-path biome mask load");
+
+        string failureGuard = methodBody.Substring(noTerrainReturn, loadBiomeMask - noTerrainReturn);
+        int removeTerrain = failureGuard.IndexOf("RemoveCurrentTerrain();", StringComparison.Ordinal);
+        int clearRivers = failureGuard.IndexOf("ClearRiverMap();", StringComparison.Ordinal);
+        int returnEntities = failureGuard.IndexOf("return entities;", StringComparison.Ordinal);
+
+        TestHarness.Assert(removeTerrain >= 0, "failed terrain-load guard should clear stale terrain");
+        TestHarness.Assert(clearRivers >= 0, "failed terrain-load guard should clear stale river state");
+        TestHarness.Assert(returnEntities >= 0, "failed terrain-load guard should still return the empty entity list");
+        TestHarness.Assert(removeTerrain < clearRivers, "failed terrain-load guard should clear terrain before rivers");
+        TestHarness.Assert(clearRivers < returnEntities, "failed terrain-load guard should clear stale river state before returning");
     }
 
     private static string GetTerrainManagerSource()
