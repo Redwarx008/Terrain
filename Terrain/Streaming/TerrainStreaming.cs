@@ -10,7 +10,6 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Terrain.Shared;
 using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
 using Stride.Graphics;
@@ -134,7 +133,19 @@ internal struct TerrainVirtualTextureHeader
     public int Mipmaps;
 }
 
-internal sealed class TerrainFileReader : IDisposable
+internal interface ITerrainFileReader : IDisposable
+{
+    TerrainFileHeader Header { get; }
+    TerrainVirtualTextureHeader HeightmapHeader { get; }
+    TerrainVirtualTextureHeader SplatMapHeader { get; }
+    int SplatMapResolutionRatio { get; }
+    int SplatMapMipCount { get; }
+    TerrainMinMaxErrorMap[] ReadAllMinMaxErrorMaps();
+    ushort[] ReadAllHeightData();
+    void ReadHeightPage(TerrainPageKey key, Span<byte> destination);
+}
+
+internal sealed class TerrainFileReader : ITerrainFileReader
 {
     private const int MaxTerrainDimension = 1 << 16;
     private readonly SafeFileHandle fileHandle;
@@ -697,7 +708,7 @@ internal sealed class TerrainStreamingManager : IDisposable
 {
     private static readonly Logger Log = GlobalLogger.GetLogger("Quantum");
     private const int DetailControlBytesPerPixel = 4;
-    private readonly TerrainFileReader fileReader;
+    private readonly ITerrainFileReader fileReader;
     private readonly GpuVirtualTextureArray gpuHeightArray;
     private readonly GpuVirtualTextureArray? gpuDetailIndexArray;
     private readonly Texture? detailWeightArray;
@@ -716,7 +727,7 @@ internal sealed class TerrainStreamingManager : IDisposable
     private bool hasLoggedBufferPoolExhaustion;
 
     public TerrainStreamingManager(
-        TerrainFileReader fileReader,
+        ITerrainFileReader fileReader,
         GpuVirtualTextureArray gpuHeightArray,
         GpuVirtualTextureArray? gpuDetailIndexArray,
         Texture? detailWeightArray,

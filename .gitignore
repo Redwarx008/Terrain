@@ -8,9 +8,12 @@ _ReSharper*
 *.VC.db
 *.vshost.exe
 *.manifest
+!Terrain.Editor/app.manifest
 *.sdf
 [Bb]in/
 obj/
 Cache/
 .claude/settings.local.json
 .planning/config.json
+.worktrees/
+/game/

@@ -8,6 +8,7 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Terrain.Editor.Services;
+using Terrain.Editor.Services.Resources;
 
 namespace Terrain.Editor.ViewModels;
 
@@ -22,6 +23,7 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
     private readonly BiomeRuleService _service = BiomeRuleService.Instance;
     private readonly EditorState _editorState = EditorState.Instance;
     private readonly MaterialSlotManager _materialSlotManager = MaterialSlotManager.Instance;
+    private readonly Func<EditorResourceSession?> _resourceSessionProvider;
     private RuleViewModel? _observedLayer;
 
     public ObservableCollection<BiomeDefinitionViewModel> Biomes { get; } = new();
@@ -63,6 +65,8 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
 
     public bool CanAddLayer => SelectedBiome != null && VisibleLayers.Count < MaxLayersPerBiome;
 
+    public bool CanRemoveSelectedBiome => SelectedBiome != null && _service.CanRemoveBiome(SelectedBiome.Id);
+
     public bool CanRemoveSelectedLayer => SelectedLayer != null;
 
     public bool CanMoveSelectedLayerUp => SelectedLayer != null && GetSelectedLayerLocalIndex() > 0;
@@ -80,7 +84,14 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
         && SelectedLayer.SelectedModifierIndex < SelectedLayer.Modifiers.Count - 1;
 
     public BiomeViewModel()
+        : this(static () => null)
     {
+    }
+
+    public BiomeViewModel(Func<EditorResourceSession?> resourceSessionProvider)
+    {
+        _resourceSessionProvider = resourceSessionProvider ?? throw new ArgumentNullException(nameof(resourceSessionProvider));
+
         RefreshCollections();
         RefreshMaterialSlots();
 
@@ -108,10 +119,15 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
         _service.AddBiome();
     }
 
-    [RelayCommand]
-    private void RemoveBiome(int biomeId)
+    [RelayCommand(CanExecute = nameof(CanRemoveSelectedBiome))]
+    private void RemoveBiome(BiomeDefinitionViewModel? biome)
     {
-        _service.RemoveBiome(biomeId);
+        if (biome == null || !_service.CanRemoveBiome(biome.Id))
+        {
+            return;
+        }
+
+        _service.RemoveBiome(biome.Id);
     }
 
     // ── Layer CRUD ──
@@ -282,7 +298,7 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
             }
 
             SelectedLayer.NotifyMaterialPreviewChanged();
-            ProjectManager.Instance.MarkDirty();
+            EditorDirtyState.Instance.MarkDirty();
             OnPropertyChanged(nameof(SelectedLayerMaterialTitle));
             OnPropertyChanged(nameof(SelectedLayerMaterialDetail));
             _service.NotifyMutated();
@@ -398,11 +414,11 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
                 // Insert or replace
                 if (i < Layers.Count)
                 {
-                    Layers[i] = new RuleViewModel(sourceLayers[i], i);
+                    Layers[i] = new RuleViewModel(sourceLayers[i], i, _resourceSessionProvider);
                 }
                 else
                 {
-                    Layers.Add(new RuleViewModel(sourceLayers[i], i));
+                    Layers.Add(new RuleViewModel(sourceLayers[i], i, _resourceSessionProvider));
                 }
             }
         }
@@ -543,7 +559,7 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
 
         SelectedLayer.MaterialSlotIndex = firstActiveSlotIndex;
         SelectedLayer.NotifyMaterialPreviewChanged();
-        ProjectManager.Instance.MarkDirty();
+        EditorDirtyState.Instance.MarkDirty();
         _service.NotifyMutated();
     }
 
@@ -629,6 +645,7 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
 
     private void RefreshCommandStates()
     {
+        RemoveBiomeCommand.NotifyCanExecuteChanged();
         AddLayerCommand.NotifyCanExecuteChanged();
         RemoveSelectedLayerCommand.NotifyCanExecuteChanged();
         MoveSelectedLayerUpCommand.NotifyCanExecuteChanged();
@@ -662,5 +679,13 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
         }
 
         return "未分配材质";
+    }
+
+    public void NotifyMaterialPreviewsChanged()
+    {
+        foreach (RuleViewModel layer in Layers)
+        {
+            layer.NotifyMaterialPreviewChanged();
+        }
     }
 }

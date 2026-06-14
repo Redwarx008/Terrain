@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using Stride.Core.Diagnostics;
 using Stride.Graphics;
+using Terrain.Resources;
 using Terrain.Utilities;
 
 namespace Terrain.Editor.Services;
@@ -207,6 +208,41 @@ public sealed class MaterialSlotManager
         cachedDefaultNormalTexture = null;
         cachedDefaultNormalSignature = null;
         SelectedSlotIndex = 0;
+        NotifySlotsChanged();
+    }
+
+    public void ApplyDescriptor(RuntimeMaterialDescriptor descriptor, string descriptorPath)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        if (string.IsNullOrWhiteSpace(descriptorPath))
+            throw new ArgumentException("Descriptor path is required.", nameof(descriptorPath));
+
+        foreach (var slot in slots)
+        {
+            slot.Clear();
+        }
+
+        MarkMaterialArrayDirty();
+        cachedDefaultNormalTexture?.Dispose();
+        cachedDefaultNormalTexture = null;
+        cachedDefaultNormalSignature = null;
+
+        string descriptorDirectory = Path.GetDirectoryName(descriptorPath)
+            ?? throw new InvalidDataException($"Material descriptor path has no directory: {descriptorPath}");
+        int firstActiveIndex = -1;
+        foreach (RuntimeMaterialEntry material in descriptor.Materials)
+        {
+            MaterialSlot slot = slots[material.Index];
+            slot.MaterialId = material.Id;
+            slot.Name = material.Name;
+            slot.AlbedoTexturePath = ResolveDescriptorTexturePath(descriptorDirectory, material.AlbedoPath);
+            slot.NormalTexturePath = ResolveDescriptorTexturePath(descriptorDirectory, material.NormalPath);
+            slot.PropertiesTexturePath = ResolveDescriptorTexturePath(descriptorDirectory, material.PropertiesPath);
+            if (firstActiveIndex < 0 && !slot.IsEmpty)
+                firstActiveIndex = slot.Index;
+        }
+
+        SelectedSlotIndex = firstActiveIndex >= 0 ? firstActiveIndex : 0;
         NotifySlotsChanged();
     }
 
@@ -606,5 +642,13 @@ public sealed class MaterialSlotManager
         }
 
         return 256;
+    }
+
+    private static string? ResolveDescriptorTexturePath(string descriptorDirectory, string? texturePath)
+    {
+        if (string.IsNullOrWhiteSpace(texturePath))
+            return null;
+
+        return Path.Combine(descriptorDirectory, texturePath.Trim());
     }
 }

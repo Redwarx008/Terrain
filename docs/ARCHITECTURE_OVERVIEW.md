@@ -59,9 +59,9 @@
 | **数据同步机制** | ✅ 已实现 | [2026-04-07-1](log/2026/04/07/2026-04-07-1-unified-terrain-data-sync.md) |
 | **材质索引图增强** | ✅ 已实现 | [2026-04-07-2](log/2026/04/07/2026-04-07-2-index-map-enhancement.md) |
 | **Undo/Redo（Chunk事务）** | ✅ 已实现 | [2026-04-07-5](log/2026/04/07/2026-04-07-5-chunk-based-undo-redo-implementation.md) |
-| **项目持久化（TOML）** | ✅ 已实现 | [2026-04-08-2](log/2026/04/08/2026-04-08-2-toml-project-persistence.md) |
+| **旧项目持久化（TOML）** | ❌ 已移除 | Editor 固定 Terrain 工作区；旧 ProjectManager/TomlProjectConfig 已删除 |
 | **植被编辑** | 🚧 进行中 | [terrain-editor-design-phase-3](design/terrain-editor-design-phase-3.md) |
-| **导出系统（IExporter）** | ✅ 已实现 | 包含 Terrain 和 Biome Config 导出器 |
+| **导出系统（IExporter）** | ✅ 已实现 | 当前保留 Terrain `.terrain` 导出；旧 Biome Config 导出已移除 |
 
 ### 未来系统
 
@@ -125,11 +125,10 @@
 **权衡：** 命令结构更复杂 vs 明显更稳定的交互性能与更干净的历史栈
 **参考：** [2026-04-07-5](log/2026/04/07/2026-04-07-5-chunk-based-undo-redo-implementation.md)
 
-### 6. TOML 项目持久化
-**问题：** 编辑器没有真正的 Open/Save 流程，用户无法保存和恢复工作状态
-**方案：** 使用 .toml 文件作为项目配置（Tommy 库），存储 heightmap/climate_mask 路径和 material slot 纹理路径
-**权衡：** TOML 比 JSON 更易手写编辑，但需要额外 NuGet 依赖
-**关键：** 所有路径使用相对路径（相对于 .toml 所在目录），确保项目可移植
+### 6. Editor/Runtime 共用本地 LaunchSetting 与 SVN Game 入口
+**问题：** `game/` 将由 SVN 管理，`LaunchSetting.json` 不应继续作为 `game/` 根目录判定条件，也不应再由 Git 跟踪。
+**方案：** `GameResourceRootLocator` 继续从二进制位置向上扫描工作区同级 `game/`；如果起点本身已经位于目录名为 `game` 且包含 `map_data/` 的合法根，也会直接接受该根。`LaunchSetting.json` 固定放在 `AppContext.BaseDirectory`，缺失时自动生成默认文件。Editor 与 Runtime 都先通过共享的 `GameResourceResolverBootstrap` 构建 `base(gameRoot) + enabled absolute-path mods`，再进入各自 bootstrap。
+**关键：** `mods[*].Root` 保持绝对路径语义；Editor 仍允许缺失 `.terrain` / `biome_mask.png`，Runtime 仍严格要求它们。
 
 ### 7. 导出系统（IExporter 模式）
 **问题：** 编辑器中的修改无法直接导出为运行时 .terrain 文件，需依赖独立的 TerrainPreProcessor
@@ -137,11 +136,11 @@
 **权衡：** 在 Editor 内重写导出逻辑 vs 引用 TerrainPreProcessor 库；选择重写以避免跨项目依赖
 **关键：** 流式 + 分层并行（逐层 mipmap → 并行计算 tiles → 顺序写入），HeightMap padding=2, SplatMap padding=1
 
-### 8. Biome Config 导出
-**问题：** Runtime 依赖编辑器项目 TOML 文件加载材质，运行时不应依赖编辑器项目文件
-**方案：** BiomeConfigExporter 导出独立的 biome_config.toml，Runtime 的 BiomeConfigPath 指向该文件
-**权衡：** 独立 TOML 文件 vs 嵌入 .terrain 文件；选择独立文件以保持关注点分离
-**关键：** 路径转换使用 TomlProjectConfig.MakeRelative（绝对→相对），Tommy TomlArray+TomlTable 自动生成 [[material_slots]] 格式
+### 8. 虚拟资源系统驱动 Runtime 地形加载
+**问题：** Runtime 依赖组件上的显式文件路径和旧 BiomeConfig TOML，无法表达 base + mod 覆盖顺序
+**方案：** Runtime 固定从当前二进制位置向上定位工作区 `game/` 资源根；如果起点本身已在目录名为 `game` 且包含 `map_data/` 的合法根，也会直接接受该根。随后从 exe 目录旁的 `LaunchSetting.json` 读取或自动生成本地 mod 配置；base 作为隐式根，按启用 mod 顺序构建 `GameResourceResolver`，再通过 `GameRuntimeResourceBootstrap` 解析 `map_data/default.toml` 与固定 companion 资源
+**权衡：** 不保留旧路径兼容，迁移更直接但资源入口更统一
+**关键：** `TerrainComponent` 不再保存资源路径；`.terrain` 仍由 `bundle.TerrainDataPath` 直接读取；Runtime 会忽略 `default.toml` 中的 `heightmap` 声明，并使用 `.terrain` 内的高度数据配合 `biome_settings.toml` + `materials/descriptor.toml` / `biome_mask.png` 构建 detail map；若 `terrain.terrain` 或 `biome_mask.png` 缺失，`TerrainProcessor` 记录错误日志并保持 terrain 未初始化；同配置失败后不会逐帧重复重试
 
 ### 9. 河流渲染采用 RiverComponent → RiverProcessor → RiverRenderObject → RiverRenderFeature
 **问题：** 仅靠 editor service 或临时 `ModelComponent` 预览无法承载河流的独立 mesh 生命周期、双 pass 渲染和视口调试模式。
@@ -177,9 +176,12 @@
 | `Terrain.Editor/Services/Commands/HistoryManager.cs` | Undo/Redo 历史事务管理 |
 | `Terrain.Editor/Services/Commands/StrokeChunkTracker.cs` | 笔触 Chunk 跟踪与去重 |
 | `Terrain.Editor/Services/MaterialSlotManager.cs` | 材质槽位管理 |
-| `Terrain.Editor/Services/ProjectManager.cs` | 项目管理（TOML 配置、dirty tracking） |
 | `Terrain.Editor/Services/RiverRenderingService.cs` | 河流渲染 façade（mesh 同步、显隐控制、桥接编辑器与渲染组件） |
-| `Terrain.Editor/Services/TomlProjectConfig.cs` | TOML 配置数据模型和读写器 |
+| `Terrain.Editor/Services/EditorDirtyState.cs` | 编辑器 dirty 状态跟踪（不携带项目路径） |
+| `Terrain.Editor/Services/Resources/EditorBootstrapService.cs` | 启动时按 exe 目录旁 `LaunchSetting.json` 构建 Editor 资源会话 |
+| `Terrain.Editor/Services/Resources/EditorResourceSession.cs` | 当前命中的虚拟资源实体路径与写回目标 |
+| `Terrain.Editor/Services/Resources/*Writer.cs` | 作者态资源写回到当前命中的实体文件 |
+| `Terrain/Resources/GameResourceRootLocator.cs` | 从二进制位置向上定位工作区 `game/` 资源根 |
 | `Terrain.Editor/Rendering/EditorTerrainEntity.cs` | 地形实体（含统一数据同步接口） |
 | `Terrain.Editor/Rendering/River/RiverComponent.cs` | 河流 mesh 快照组件 |
 | `Terrain.Editor/Rendering/River/RiverProcessor.cs` | 河流组件到渲染对象的同步处理器 |
@@ -187,11 +189,9 @@
 | `Terrain.Editor/Rendering/River/RiverRenderFeature.cs` | 河流河底/水面双 pass 渲染特性 |
 | `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
-| `Terrain.Editor/UI/Dialogs/NewProjectWizard.cs` | 新建项目模态弹窗 |
 | `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
 | `Terrain.Editor/Services/Export/ExportManager.cs` | 导出管理器（注册、执行、错误回滚） |
 | `Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs` | .terrain 文件导出实现 |
-| `Terrain.Editor/Services/Export/Exporters/BiomeConfigExporter.cs` | Biome 配置 TOML 导出实现 |
 | `Terrain.Editor/UI/Dialogs/ExportProgressDialog.cs` | 导出进度模态弹窗 |
 
 ### 着色器
@@ -248,5 +248,5 @@
 
 ---
 
-*最后更新: 2026-06-06*
+*最后更新: 2026-06-14*
 *状态: 反映当前实现状态*

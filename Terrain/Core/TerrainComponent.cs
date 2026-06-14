@@ -21,12 +21,6 @@ public sealed class TerrainComponent : ActivableEntityComponent
 {
     internal const float HeightSampleNormalization = 1.0f / ushort.MaxValue;
 
-    [DataMember(10)]
-    public string? TerrainDataPath { get; set; }
-
-    [DataMember(15)]
-    public string? BiomeConfigPath { get; set; }
-
     [DataMember(20)]
     public float HeightScale { get; set; } = 24.0f;
 
@@ -109,6 +103,12 @@ public sealed class TerrainComponent : ActivableEntityComponent
 
     [DataMemberIgnore]
     internal RuntimeMaterialManager? MaterialManager;
+
+    [DataMemberIgnore]
+    internal bool HasRuntimeLoadFailure;
+
+    [DataMemberIgnore]
+    internal TerrainConfig FailedRuntimeLoadConfig;
 }
 
 /// <summary>
@@ -116,8 +116,6 @@ public sealed class TerrainComponent : ActivableEntityComponent
 /// </summary>
 internal struct TerrainConfig : IEquatable<TerrainConfig>
 {
-    public string? TerrainDataPath;
-    public string? BiomeConfigPath;
     public int MaxVisibleChunkInstances;
     public int MaxResidentChunks;
 
@@ -125,8 +123,6 @@ internal struct TerrainConfig : IEquatable<TerrainConfig>
     {
         return new TerrainConfig
         {
-            TerrainDataPath = component.TerrainDataPath,
-            BiomeConfigPath = component.BiomeConfigPath,
             MaxVisibleChunkInstances = component.MaxVisibleChunkInstances,
             MaxResidentChunks = component.MaxResidentChunks
         };
@@ -134,9 +130,7 @@ internal struct TerrainConfig : IEquatable<TerrainConfig>
 
     public bool Equals(TerrainConfig other)
     {
-        return string.Equals(TerrainDataPath, other.TerrainDataPath, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(BiomeConfigPath, other.BiomeConfigPath, StringComparison.OrdinalIgnoreCase)
-            && MaxVisibleChunkInstances == other.MaxVisibleChunkInstances
+        return MaxVisibleChunkInstances == other.MaxVisibleChunkInstances
             && MaxResidentChunks == other.MaxResidentChunks;
     }
 
@@ -145,8 +139,6 @@ internal struct TerrainConfig : IEquatable<TerrainConfig>
 
     public override int GetHashCode()
         => HashCode.Combine(
-            StringComparer.OrdinalIgnoreCase.GetHashCode(TerrainDataPath ?? string.Empty),
-            StringComparer.OrdinalIgnoreCase.GetHashCode(BiomeConfigPath ?? string.Empty),
             MaxVisibleChunkInstances,
             MaxResidentChunks);
 

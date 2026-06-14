@@ -5,15 +5,14 @@ using System.Collections.Generic;
 using System.IO;
 using Stride.Core.Diagnostics;
 using Stride.Graphics;
+using Terrain.Resources;
 using Terrain.Utilities;
-using Tommy;
 
 namespace Terrain;
 
 /// <summary>
 /// Manages material texture arrays for runtime terrain rendering.
 /// Loads albedo and normal textures from file paths and builds Texture2DArray resources.
-/// Can read material slot configuration from a TOML project file.
 /// </summary>
 public sealed class RuntimeMaterialManager : IDisposable
 {
@@ -31,23 +30,24 @@ public sealed class RuntimeMaterialManager : IDisposable
     public Texture? PropertiesArray => propertiesArray;
     public int MaterialCount => materialCount;
 
-    /// <summary>
-    /// Initializes material arrays by reading slot configuration from a TOML project file.
-    /// </summary>
-    public void InitializeFromToml(GraphicsDevice graphicsDevice, CommandList commandList, string tomlFilePath)
+    public void Initialize(
+        GraphicsDevice graphicsDevice,
+        CommandList commandList,
+        IReadOnlyList<RuntimeMaterialTextureSlot> slots)
     {
-        RuntimeBiomeConfig config = RuntimeBiomeConfig.ReadFromToml(tomlFilePath);
-        Initialize(graphicsDevice, commandList, config.MaterialSlots);
-    }
+        ArgumentNullException.ThrowIfNull(slots);
 
-    /// <summary>
-    /// Reads material slot paths from a TOML project file.
-    /// Paths in the TOML are resolved relative to the TOML file's directory.
-    /// Material height always comes from albedo alpha.
-    /// </summary>
-    public static List<(int index, string albedoPath, string? normalPath, string? propertiesPath)> ReadMaterialSlots(string tomlFilePath)
-    {
-        return RuntimeBiomeConfig.ReadFromToml(tomlFilePath).MaterialSlots;
+        var textureSlots = new List<(int index, string albedoPath, string? normalPath, string? propertiesPath)>(slots.Count);
+        foreach (RuntimeMaterialTextureSlot material in slots)
+        {
+            textureSlots.Add((
+                material.Index,
+                material.AlbedoPath ?? string.Empty,
+                material.NormalPath,
+                material.PropertiesPath));
+        }
+
+        Initialize(graphicsDevice, commandList, textureSlots);
     }
 
     /// <summary>
@@ -154,10 +154,11 @@ public sealed class RuntimeMaterialManager : IDisposable
 
             for (int i = 0; i < capacity; i++)
             {
-                if (albedoTextures[i] != null)
+                Texture? albedoTexture = albedoTextures[i];
+                if (albedoTexture != null)
                 {
-                    CopyTextureToArraySlice(albedoTextures[i], albedoArray, i, commandList);
-                    albedoTextures[i]?.Dispose();
+                    CopyTextureToArraySlice(albedoTexture, albedoArray, i, commandList);
+                    albedoTexture.Dispose();
                 }
             }
         }

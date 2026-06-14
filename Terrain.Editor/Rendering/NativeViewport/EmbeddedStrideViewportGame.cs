@@ -895,7 +895,6 @@ public sealed class EmbeddedStrideViewportGame : Game
             }
         }
 
-        TerrainManager?.TryLoadPendingBiomeMask();
     }
 
     private void TryProcessPendingMaterialTextureLoad()

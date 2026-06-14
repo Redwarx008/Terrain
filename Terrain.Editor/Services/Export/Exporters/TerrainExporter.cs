@@ -5,9 +5,9 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Terrain;
 using Terrain.Editor.Models;
 using Terrain.Editor.Services;
-using Terrain.Shared;
 
 namespace Terrain.Editor.Services.Export.Exporters;
 

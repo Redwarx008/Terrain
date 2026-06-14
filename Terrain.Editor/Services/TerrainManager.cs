@@ -12,7 +12,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
-using Terrain.Editor.Models;
+using Terrain.Editor.Services.Resources;
+using Terrain.Resources;
 using StrideColor = Stride.Core.Mathematics.Color;
 using Rgba32 = SixLabors.ImageSharp.PixelFormats.Rgba32;
 using HeightmapImage = SixLabors.ImageSharp.Image;
@@ -21,15 +22,13 @@ namespace Terrain.Editor.Services;
 
 /// <summary>
 /// Manages the editor terrain scene object and the shared CPU height cache.
-/// Large heightmaps use sliced height textures internally, but still appear as one logical terrain.
+/// Large height rasters use sliced height textures internally, but still appear as one logical terrain.
 /// </summary>
-public sealed class TerrainManager : IDisposable
+public sealed class TerrainManager : IDisposable, IRiverMapSource
 {
     private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
     private const int DefaultLeafNodeSize = 32;
     private const float HeightSampleNormalization = 1.0f / ushort.MaxValue;
-    private const string DefaultHeightmapFileName = "terrain_heightmap.png";
-    private const string DefaultBiomeMaskFileName = "terrain_biome_mask.png";
 
     private readonly GraphicsDevice graphicsDevice;
     private readonly Scene scene;
@@ -52,14 +51,12 @@ public sealed class TerrainManager : IDisposable
     /// 每个像素存储一个气候 ID，驱动 GPU compute 重建材质控制图。
     /// </summary>
     public BiomeMask? BiomeMask { get; private set; }
-    private string? currentBiomeMaskPath;
     private string? pendingProjectNotification;
 
     private RiverCell[,]? riverMap;
     private string? currentRiverMapPath;
 
     private TerrainComponent? terrainComponent;
-    private string? currentTerrainPath;
     private string? lastLoadError;
 
     /// <summary>
@@ -69,8 +66,6 @@ public sealed class TerrainManager : IDisposable
     public float HeightScale { get; private set; } = 100.0f;
     public bool TerrainVisible { get; private set; } = true;
 
-    public string? CurrentTerrainPath => currentTerrainPath;
-    public string? CurrentBiomeMaskPath => currentBiomeMaskPath;
     public string? PendingProjectNotification => pendingProjectNotification;
 
     public IReadOnlyList<EditorTerrainEntity> TerrainEntities => terrainEntities;
@@ -102,7 +97,7 @@ public sealed class TerrainManager : IDisposable
         }
 
         TerrainSurfaceChanged?.Invoke(this, EventArgs.Empty);
-        ProjectManager.Instance.MarkDirty();
+        EditorDirtyState.Instance.MarkDirty();
     }
 
     public event EventHandler<TerrainLoadedEventArgs>? TerrainLoaded;
@@ -173,14 +168,7 @@ public sealed class TerrainManager : IDisposable
             return new List<EditorTerrainEntity>();
         }
 
-        // Project reopen prepares pendingBiomeMaskPath before calling LoadTerrainAsync().
-        // Preserve it across RemoveCurrentTerrain() so the loaded terrain can still consume the saved mask.
-        string? preservedPendingBiomeMaskPath = preservePendingBiomeMaskPath ? pendingBiomeMaskPath : null;
         RemoveCurrentTerrain();
-        if (preservePendingBiomeMaskPath)
-        {
-            pendingBiomeMaskPath = preservedPendingBiomeMaskPath;
-        }
         LoadHeightDataCache(heightmapPath);
         if (heightDataCache == null)
         {
@@ -211,7 +199,6 @@ public sealed class TerrainManager : IDisposable
 
             terrainEntities.Add(terrainEntity);
             currentHeightmapInfo = info;
-            currentTerrainPath = heightmapPath;
 
             // BiomeMask 使用 heightmap 的 1/2 分辨率（对齐 SplatMap，避免大地形 GPU 纹理尺寸溢出）
             int biomeMaskWidth = (heightDataWidth + 1) / 2;
@@ -272,15 +259,71 @@ public sealed class TerrainManager : IDisposable
         currentHeightmapInfo = null;
         currentSplitConfig = null;
         terrainComponent = null;
-        currentTerrainPath = null;
         heightDataCache = null;
         heightDataWidth = 0;
         heightDataHeight = 0;
         BiomeMask = null;
-        currentBiomeMaskPath = null;
         pendingProjectNotification = null;
-        pendingBiomeMaskPath = null;
         TerrainSurfaceChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task<List<EditorTerrainEntity>> LoadFromResourceSession(EditorResourceSession session)
+    {
+        if (session == null)
+            throw new ArgumentNullException(nameof(session));
+
+        if (session.HeightScale > 0.0f)
+            HeightScale = session.HeightScale;
+
+        List<EditorTerrainEntity> entities = await LoadTerrainAsync(session.Heightmap.ResolvedPath);
+        if (entities.Count == 0)
+            return entities;
+
+        var materialDescriptor = RuntimeMaterialDescriptorReader.ReadFrom(session.MaterialDescriptor.ResolvedPath);
+        MaterialSlotManager.Instance.ApplyDescriptor(materialDescriptor, session.MaterialDescriptor.ResolvedPath);
+
+        var materialIdsByIndex = materialDescriptor.Materials.ToDictionary(
+            static material => material.Id,
+            static material => material.Index,
+            StringComparer.Ordinal);
+        RuntimeBiomeSettings biomeSettings = RuntimeBiomeSettingsReader.ReadFrom(
+            session.BiomeSettings.ResolvedPath,
+            new HashSet<string>(materialIdsByIndex.Keys, StringComparer.Ordinal));
+        BiomeRuleService.Instance.ApplyRuntimeSettings(biomeSettings, materialIdsByIndex);
+
+        LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);
+        if (session.Rivers is { } rivers)
+            LoadRiverMap(rivers.ResolvedPath, markDirty: false);
+
+        MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
+        return entities;
+    }
+
+    public void SaveAuthoringResources(EditorResourceSession session)
+    {
+        if (session == null)
+            throw new ArgumentNullException(nameof(session));
+        if (heightDataCache == null || heightDataWidth <= 0 || heightDataHeight <= 0)
+            throw new InvalidOperationException("Heightmap data is not loaded.");
+        if (BiomeMask == null)
+            throw new InvalidOperationException("Biome mask data is not loaded.");
+
+        IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots =
+            EditorAuthoringResourceMapper.CreateMaterialDescriptorSlots(MaterialSlotManager.Instance.GetActiveSlots().ToArray());
+        var materialIdsByIndex = descriptorSlots.ToDictionary(
+            static slot => slot.Index,
+            static slot => slot.Id);
+        EditorBiomeSettingsSnapshot biomeSnapshot =
+            EditorAuthoringResourceMapper.CreateBiomeSettingsSnapshot(BiomeRuleService.Instance, materialIdsByIndex);
+        EditorResourceSaveService.Save(
+            session,
+            heightDataCache,
+            heightDataWidth,
+            heightDataHeight,
+            BiomeMask,
+            HeightScale,
+            descriptorSlots,
+            biomeSnapshot);
     }
 
     public BoundingBox GetTerrainBounds()
@@ -520,460 +563,8 @@ public sealed class TerrainManager : IDisposable
 
     #endregion
 
-    #region 项目持久化
-
     /// <summary>
-    /// 保存项目到 TOML 文件。
-    /// </summary>
-    public void SaveProject()
-    {
-        var projectManager = ProjectManager.Instance;
-        if (!projectManager.IsProjectOpen)
-            return;
-
-        SaveProject(projectManager.ProjectFilePath, projectManager.ProjectName, snapshotEditableAssetsIntoProject: false);
-    }
-
-    /// <summary>
-    /// 另存为新项目，并将当前可编辑资源快照写入新项目目录。
-    /// </summary>
-    public void SaveProjectAs(string projectFilePath, string projectName)
-    {
-        SaveProject(projectFilePath, projectName, snapshotEditableAssetsIntoProject: true);
-    }
-
-    private List<TomlMaterialSlotConfig> SaveMaterialSlotConfigs()
-    {
-        var configs = new List<TomlMaterialSlotConfig>();
-        foreach (var slot in MaterialSlotManager.Instance.GetActiveSlots())
-        {
-            configs.Add(new TomlMaterialSlotConfig
-            {
-                Index = slot.Index,
-                Name = slot.Name,
-                AlbedoPath = slot.AlbedoTexturePath,
-                NormalPath = slot.NormalTexturePath,
-                PropertiesPath = slot.PropertiesTexturePath,
-            });
-        }
-        return configs;
-    }
-
-    private static List<TomlBiomeDefinitionConfig> SaveBiomeConfigs()
-    {
-        var configs = new List<TomlBiomeDefinitionConfig>();
-        foreach (var biome in BiomeRuleService.Instance.Biomes)
-        {
-            configs.Add(new TomlBiomeDefinitionConfig
-            {
-                Id = biome.Id,
-                Name = biome.Name,
-                DebugColorR = biome.DebugColor.X,
-                DebugColorG = biome.DebugColor.Y,
-                DebugColorB = biome.DebugColor.Z,
-                DebugColorA = biome.DebugColor.W,
-            });
-        }
-        return configs;
-    }
-
-    private static List<TomlBiomeLayerConfig> SaveBiomeLayerConfigs()
-    {
-        var configs = new List<TomlBiomeLayerConfig>();
-        foreach (BiomeRuleLayer layer in BiomeRuleService.Instance.Layers)
-        {
-            configs.Add(new TomlBiomeLayerConfig
-            {
-                Id = layer.Id,
-                BiomeId = layer.BiomeId,
-                Name = layer.Name,
-                Enabled = layer.Enabled,
-                Visible = layer.Visible,
-                MaterialSlotIndex = layer.MaterialSlotIndex,
-                PriorityOrder = layer.PriorityOrder,
-            });
-        }
-
-        return configs;
-    }
-
-    private static List<TomlBiomeModifierConfig> SaveBiomeModifierConfigs()
-    {
-        var configs = new List<TomlBiomeModifierConfig>();
-        foreach (BiomeRuleLayer layer in BiomeRuleService.Instance.Layers)
-        {
-            foreach (BiomeModifier modifier in layer.Modifiers)
-            {
-                configs.Add(new TomlBiomeModifierConfig
-                {
-                    Id = modifier.Id,
-                    LayerId = layer.Id,
-                    Name = modifier.Name,
-                    Type = modifier.Type.ToString(),
-                    BlendMode = modifier.BlendMode.ToString(),
-                    Enabled = modifier.Enabled,
-                    Visible = modifier.Visible,
-                    Opacity = modifier.Opacity,
-                    Min = modifier.Min,
-                    Max = modifier.Max,
-                    MinFalloff = modifier.MinFalloff,
-                    MaxFalloff = modifier.MaxFalloff,
-                    Radius = modifier.Radius,
-                    AngleDegrees = modifier.AngleDegrees,
-                    AngleRangeDegrees = modifier.AngleRangeDegrees,
-                    Scale = modifier.Scale,
-                    OffsetX = modifier.OffsetX,
-                    OffsetY = modifier.OffsetY,
-                    Seed = modifier.Seed,
-                    Octaves = modifier.Octaves,
-                    Invert = modifier.Invert,
-                    TextureMaskPath = modifier.TextureMaskPath,
-                    TextureMaskChannel = modifier.TextureMaskChannel,
-                });
-            }
-        }
-
-        return configs;
-    }
-
-
-    private static bool RestoreBiomeData(TomlProjectConfig config)
-    {
-        var biomeState = BiomeRuleService.Instance;
-        biomeState.ClearAll();
-
-        foreach (var biomeConfig in config.Biomes)
-        {
-            biomeState.AddBiomeFromConfig(
-                biomeConfig.Id,
-                biomeConfig.Name,
-                new System.Numerics.Vector4(
-                    biomeConfig.DebugColorR,
-                    biomeConfig.DebugColorG,
-                    biomeConfig.DebugColorB,
-                    biomeConfig.DebugColorA));
-        }
-
-        if (config.BiomeLayers.Count > 0)
-        {
-            var layerLookup = new Dictionary<int, BiomeRuleLayer>();
-            foreach (TomlBiomeLayerConfig layerConfig in config.BiomeLayers.OrderBy(static entry => entry.PriorityOrder))
-            {
-                BiomeRuleLayer layer = biomeState.AddLayer(layerConfig.BiomeId);
-                layer.Id = layerConfig.Id;
-                layer.Name = layerConfig.Name;
-                layer.Enabled = layerConfig.Enabled;
-                layer.Visible = layerConfig.Visible;
-                layer.MaterialSlotIndex = layerConfig.MaterialSlotIndex;
-                layer.PriorityOrder = layerConfig.PriorityOrder;
-                layer.Modifiers.Clear();
-                layerLookup[layer.Id] = layer;
-            }
-
-            foreach (TomlBiomeModifierConfig modifierConfig in config.BiomeModifiers)
-            {
-                if (!layerLookup.TryGetValue(modifierConfig.LayerId, out BiomeRuleLayer? layer))
-                    continue;
-
-                if (!Enum.TryParse(modifierConfig.Type, ignoreCase: true, out BiomeModifierType modifierType))
-                    modifierType = BiomeModifierType.HeightRange;
-
-                if (!Enum.TryParse(modifierConfig.BlendMode, ignoreCase: true, out BiomeModifierBlendMode blendMode))
-                    blendMode = BiomeModifierBlendMode.Multiply;
-
-                layer.Modifiers.Add(new BiomeModifier
-                {
-                    Id = modifierConfig.Id,
-                    Name = modifierConfig.Name,
-                    Type = modifierType,
-                    BlendMode = blendMode,
-                    Enabled = modifierConfig.Enabled,
-                    Visible = modifierConfig.Visible,
-                    Opacity = modifierConfig.Opacity,
-                    Min = modifierConfig.Min,
-                    Max = modifierConfig.Max,
-                    MinFalloff = modifierConfig.MinFalloff,
-                    MaxFalloff = modifierConfig.MaxFalloff,
-                    Radius = modifierConfig.Radius,
-                    AngleDegrees = modifierConfig.AngleDegrees,
-                    AngleRangeDegrees = modifierConfig.AngleRangeDegrees,
-                    Scale = modifierConfig.Scale,
-                    OffsetX = modifierConfig.OffsetX,
-                    OffsetY = modifierConfig.OffsetY,
-                    Seed = modifierConfig.Seed,
-                    Octaves = modifierConfig.Octaves,
-                    Invert = modifierConfig.Invert,
-                    TextureMaskPath = modifierConfig.TextureMaskPath,
-                    TextureMaskChannel = modifierConfig.TextureMaskChannel,
-                });
-            }
-
-            foreach (BiomeRuleLayer layer in layerLookup.Values)
-                layer.EnsureLegacyModifiers();
-        }
-
-        biomeState.NormalizeAllRanges();
-        bool repairedDefaultBaseMaterialSlot = RepairDefaultBaseMaterialSlot(biomeState);
-        biomeState.RebaseNextIds();
-
-        var editorState = EditorState.Instance;
-        int selectedLayerIndex = editorState.SelectedRuleIndex;
-        if ((uint)selectedLayerIndex >= (uint)biomeState.Layers.Count)
-            selectedLayerIndex = biomeState.Layers.Count > 0 ? 0 : -1;
-
-        if (selectedLayerIndex >= 0)
-        {
-            editorState.CurrentBiomeId = biomeState.Layers[selectedLayerIndex].BiomeId;
-        }
-
-        editorState.SelectedRuleIndex = selectedLayerIndex;
-        biomeState.NotifyMutated();
-        return repairedDefaultBaseMaterialSlot;
-    }
-
-
-    private static bool RepairDefaultBaseMaterialSlot(BiomeRuleService biomeState)
-    {
-        int firstActiveSlotIndex = MaterialSlotManager.Instance
-            .GetActiveSlots()
-            .Select(static slot => slot.Index)
-            .DefaultIfEmpty(-1)
-            .First();
-        if (firstActiveSlotIndex < 0)
-            return false;
-
-        bool repaired = false;
-        foreach (BiomeRuleLayer layer in biomeState.Layers)
-        {
-            BiomeDefinition? biome = biomeState.FindBiome(layer.BiomeId);
-            if (!string.Equals(biome?.Name, "Default Biome", StringComparison.Ordinal)
-                || !string.Equals(layer.Name, "Default Base", StringComparison.Ordinal))
-                continue;
-
-            if ((uint)layer.MaterialSlotIndex < 256
-                && !MaterialSlotManager.Instance[layer.MaterialSlotIndex].IsEmpty)
-            {
-                continue;
-            }
-
-            if (layer.MaterialSlotIndex == firstActiveSlotIndex)
-                continue;
-
-            layer.MaterialSlotIndex = firstActiveSlotIndex;
-            repaired = true;
-        }
-
-        return repaired;
-    }
-
-    private static void SaveBiomeMask(BiomeMask map, string path)
-    {
-        EnsureParentDirectory(path);
-
-        using var image = new Image<L8>(map.Width, map.Height);
-        for (int y = 0; y < map.Height; y++)
-        {
-            for (int x = 0; x < map.Width; x++)
-            {
-                image[x, y] = new L8(map.GetValue(x, y));
-            }
-        }
-
-        image.SaveAsPng(path);
-    }
-
-    private void SaveProject(string projectFilePath, string projectName, bool snapshotEditableAssetsIntoProject)
-    {
-        if (string.IsNullOrWhiteSpace(projectFilePath) || heightDataCache == null)
-            return;
-
-        string fullProjectFilePath = Path.GetFullPath(projectFilePath);
-        string resolvedProjectName = !string.IsNullOrWhiteSpace(projectName)
-            ? projectName
-            : Path.GetFileNameWithoutExtension(fullProjectFilePath);
-        int version = ProjectManager.Instance.LoadConfig()?.Version ?? 2;
-
-        string heightmapPath = ResolveHeightmapSavePath(fullProjectFilePath, snapshotEditableAssetsIntoProject);
-        SaveHeightmap(heightDataCache, heightDataWidth, heightDataHeight, heightmapPath);
-        currentTerrainPath = heightmapPath;
-
-        string? biomeMaskPath = null;
-        if (BiomeMask != null)
-        {
-            biomeMaskPath = ResolveBiomeMaskSavePath(fullProjectFilePath, snapshotEditableAssetsIntoProject);
-            SaveBiomeMask(BiomeMask, biomeMaskPath);
-            currentBiomeMaskPath = biomeMaskPath;
-        }
-
-        var config = new TomlProjectConfig
-        {
-            Version = version,
-            Name = resolvedProjectName,
-            HeightmapPath = currentTerrainPath,
-            BiomeMaskPath = biomeMaskPath,
-            RiverMapImagePath = currentRiverMapPath,
-            HeightScale = HeightScale,
-            MaterialSlots = SaveMaterialSlotConfigs(),
-            Biomes = SaveBiomeConfigs(),
-            BiomeLayers = SaveBiomeLayerConfigs(),
-            BiomeModifiers = SaveBiomeModifierConfigs(),
-        };
-
-        ProjectManager.Instance.SaveConfigAs(fullProjectFilePath, config);
-    }
-
-    private string ResolveHeightmapSavePath(string projectFilePath, bool snapshotEditableAssetsIntoProject)
-    {
-        if (!snapshotEditableAssetsIntoProject && !string.IsNullOrWhiteSpace(currentTerrainPath))
-            return currentTerrainPath;
-
-        string fileName = !string.IsNullOrWhiteSpace(currentTerrainPath)
-            ? Path.GetFileName(currentTerrainPath)
-            : DefaultHeightmapFileName;
-
-        if (string.IsNullOrWhiteSpace(Path.GetExtension(fileName)))
-            fileName = $"{fileName}.png";
-
-        return Path.Combine(ProjectManager.GetHeightmapsPath(projectFilePath), fileName);
-    }
-
-    private string ResolveBiomeMaskSavePath(string projectFilePath, bool snapshotEditableAssetsIntoProject)
-    {
-        if (!snapshotEditableAssetsIntoProject && !string.IsNullOrWhiteSpace(currentBiomeMaskPath))
-            return currentBiomeMaskPath;
-
-        string fileName = !string.IsNullOrWhiteSpace(currentBiomeMaskPath)
-            ? Path.GetFileName(currentBiomeMaskPath)
-            : DefaultBiomeMaskFileName;
-
-        if (string.IsNullOrWhiteSpace(Path.GetExtension(fileName)))
-            fileName = $"{fileName}.png";
-
-        return Path.Combine(ProjectManager.GetSplatMapsPath(projectFilePath), fileName);
-    }
-
-
-    private static void SaveHeightmap(ushort[] heightData, int width, int height, string path)
-    {
-        EnsureParentDirectory(path);
-
-        using var image = new Image<L16>(width, height);
-        image.ProcessPixelRows(accessor =>
-        {
-            for (int y = 0; y < accessor.Height; y++)
-            {
-                Span<L16> row = accessor.GetRowSpan(y);
-                int rowOffset = y * width;
-                for (int x = 0; x < row.Length; x++)
-                {
-                    row[x] = new L16(heightData[rowOffset + x]);
-                }
-            }
-        });
-
-        image.SaveAsPng(path);
-    }
-
-    private static void EnsureParentDirectory(string path)
-    {
-        string? directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(directory))
-            Directory.CreateDirectory(directory);
-    }
-
-    /// <summary>
-    /// 从 TOML 文件加载项目。
-    /// </summary>
-    public void LoadProject(string tomlFilePath)
-    {
-        // 清理旧项目状态
-        RemoveCurrentTerrain();
-        MaterialSlotManager.Instance.ClearAll();
-
-        var projectManager = ProjectManager.Instance;
-        if (!projectManager.OpenProject(tomlFilePath))
-            return;
-
-        var config = projectManager.LoadConfig();
-        if (config == null)
-            return;
-
-        // 恢复材质槽位（路径已由 TomlProjectConfig.ReadFrom 解析为绝对路径）
-        foreach (var slotConfig in config.MaterialSlots)
-        {
-            var slot = MaterialSlotManager.Instance[slotConfig.Index];
-            slot.Name = slotConfig.Name;
-
-            if (!string.IsNullOrEmpty(slotConfig.AlbedoPath))
-                slot.AlbedoTexturePath = slotConfig.AlbedoPath;
-            if (!string.IsNullOrEmpty(slotConfig.NormalPath))
-                slot.NormalTexturePath = slotConfig.NormalPath;
-            if (!string.IsNullOrEmpty(slotConfig.PropertiesPath))
-                slot.PropertiesTexturePath = slotConfig.PropertiesPath;
-        }
-
-        int firstActiveSlot = MaterialSlotManager.Instance.GetActiveSlots().Select(static slot => slot.Index).DefaultIfEmpty(0).First();
-        MaterialSlotManager.Instance.SelectedSlotIndex = firstActiveSlot;
-        MaterialSlotManager.Instance.NotifySlotsChanged();
-
-        // 恢复生物群系定义和层
-        if (RestoreBiomeData(config))
-        {
-            ProjectManager.Instance.MarkDirty();
-        }
-
-        // 设置 HeightScale（在加载高度图前，以便 LoadTerrainAsync 使用）
-        HeightScale = config.HeightScale;
-
-        // 加载生物群系蒙版（异步高度图加载完成后 BiomeMask 才存在，
-        // 此处记录路径，由 HeightmapLoaded 事件触发实际加载）
-        pendingBiomeMaskPath = !string.IsNullOrEmpty(config.BiomeMaskPath) && File.Exists(config.BiomeMaskPath)
-            ? config.BiomeMaskPath
-            : null;
-
-        // Restore river map
-        if (!string.IsNullOrEmpty(config.RiverMapImagePath) && File.Exists(config.RiverMapImagePath))
-        {
-            LoadRiverMap(config.RiverMapImagePath);
-        }
-
-        // 加载高度图。pendingBiomeMaskPath 必须先准备好，
-        // 因为当前 LoadTerrainAsync 会在 TerrainLoaded 事件中立刻尝试消费它们。
-        if (!string.IsNullOrEmpty(config.HeightmapPath) && File.Exists(config.HeightmapPath))
-        {
-            _ = LoadTerrainAsync(config.HeightmapPath, preservePendingBiomeMaskPath: true);
-
-            // 兜底：如果当前调用路径下没有订阅 TerrainLoaded，仍然尝试消费暂存蒙版。
-            if (HasTerrainLoaded)
-            {
-                TryLoadPendingBiomeMask();
-            }
-        }
-
-
-        // 通知需要加载材质纹理（由外部调用 LoadMaterialTextures）
-        MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
-    }
-
-    // 生物群系蒙版加载路径暂存，等待高度图加载完成后使用
-    private string? pendingBiomeMaskPath;
-
-    /// <summary>
-    /// 尝试加载暂存的生物群系蒙版。由 HeightmapLoaded 事件调用。
-    /// </summary>
-    public bool TryLoadPendingBiomeMask()
-    {
-        if (string.IsNullOrEmpty(pendingBiomeMaskPath))
-            return false;
-
-        string path = pendingBiomeMaskPath;
-        pendingBiomeMaskPath = null;
-        return LoadBiomeMask(path, markDirty: false);
-    }
-
-    /// <summary>
-    /// 加载项目后调用此方法来加载材质纹理到 GPU。
-    /// 需要在渲染线程中调用。
+    /// 加载材质纹理到 GPU。需要在渲染线程中调用。
     /// </summary>
     public void LoadMaterialTextures(CommandList commandList)
     {
@@ -1005,15 +596,14 @@ public sealed class TerrainManager : IDisposable
             }
         }
 
-        currentBiomeMaskPath = path;
         MarkBiomeMaskDirty();
         RegenerateMaterialIndices();
         if (markDirty)
-            ProjectManager.Instance.MarkDirty();
+            EditorDirtyState.Instance.MarkDirty();
         return true;
     }
 
-    public bool LoadRiverMap(string path)
+    public bool LoadRiverMap(string path, bool markDirty = true)
     {
         var service = new RiverMapService();
         service.Load(path); // Always load data; errors are reported but don't block
@@ -1027,7 +617,8 @@ public sealed class TerrainManager : IDisposable
         riverMap = service.Cells;
         currentRiverMapPath = path;
         RiverMapChanged?.Invoke(this, EventArgs.Empty);
-        ProjectManager.Instance.MarkDirty();
+        if (markDirty)
+            EditorDirtyState.Instance.MarkDirty();
 
         if (service.Errors.Count > 0)
             Log.Warning($"River map loaded with {service.Errors.Count} validation issue(s): {string.Join("; ", service.Errors)}");
@@ -1042,7 +633,6 @@ public sealed class TerrainManager : IDisposable
         RiverMapChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    #endregion
 }
 
 public sealed class TerrainLoadedEventArgs : EventArgs

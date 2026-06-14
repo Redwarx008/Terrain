@@ -3,6 +3,8 @@ using SixLabors.ImageSharp.PixelFormats;
 using Stride.Core.Mathematics;
 using Terrain.Editor.Models;
 using Terrain.Editor.Services;
+using Terrain.Editor.Tests;
+using Terrain.Editor.Tests.VirtualResources;
 
 var tempDir = Path.Combine(Path.GetTempPath(), "terrain-river-tests");
 Directory.CreateDirectory(tempDir);
@@ -25,6 +27,23 @@ Run("river component versioning", TestRiverComponentVersioning);
 Run("river component exposes mesh snapshots", RiverComponentExposesMeshSnapshots);
 Run("river rendering service updates component visibility", RiverRenderingServiceUpdatesComponentVisibility);
 Run("river rendering service updates and clears component meshes", RiverRenderingServiceUpdatesAndClearsComponentMeshes);
+RiverViewModelAutoGenerationTests.RunAll();
+RiverWorkspaceDiagnosticsTests.RunAll();
+LaunchSettingsResolverTests.RunAll();
+GameResourceRootLocatorTests.RunAll();
+DescriptorReaderTests.RunAll();
+GameRuntimeResourceBootstrapTests.RunAll();
+TerrainRuntimeLoadBehaviorTests.RunAll();
+RuntimeMigrationTextTests.RunAll();
+RuntimeBiomeMaskReaderTests.RunAll();
+EditorWorkflowTextTests.RunAll();
+ExportWorkflowTests.RunAll();
+EditorResourceWriterTests.RunAll();
+AtomicResourceWriteTransactionTests.RunAll();
+EditorResourceSaveServiceTests.RunAll();
+EditorAuthoringResourceMapperTests.RunAll();
+GameResourceGitIgnoreTextTests.RunAll();
+LocalLaunchSettingsBootstrapTests.RunAll();
 
 static void Run(string name, Action test)
 {

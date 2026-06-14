@@ -8,6 +8,7 @@ using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using Stride.TextureConverter;
+using Terrain.Editor.Services.Resources;
 using ImageSharpImage = SixLabors.ImageSharp.Image;
 
 namespace Terrain.Editor.Services;
@@ -24,6 +25,17 @@ internal static class TextureThumbnailProvider
     public static Bitmap? LoadFromPath(string? texturePath, out string? error)
     {
         string? resolvedPath = ResolveTextureThumbnailPath(texturePath);
+        return LoadResolvedPath(texturePath, resolvedPath, out error);
+    }
+
+    public static Bitmap? LoadFromPath(string? texturePath, EditorResourceSession? session, out string? error)
+    {
+        string? resolvedPath = ResolveTextureThumbnailPath(texturePath, session);
+        return LoadResolvedPath(texturePath, resolvedPath, out error);
+    }
+
+    private static Bitmap? LoadResolvedPath(string? texturePath, string? resolvedPath, out string? error)
+    {
         if (resolvedPath == null)
         {
             error = string.IsNullOrWhiteSpace(texturePath)
@@ -58,26 +70,39 @@ internal static class TextureThumbnailProvider
         if (File.Exists(texturePath))
             return texturePath;
 
-        if (Path.IsPathRooted(texturePath))
+        return null;
+    }
+
+    internal static string? ResolveTextureThumbnailPath(string? texturePath, EditorResourceSession? session)
+    {
+        string? directPath = ResolveTextureThumbnailPath(texturePath);
+        if (directPath != null)
+            return directPath;
+
+        if (session == null || !IsSafeDescriptorRelativeFileName(texturePath))
             return null;
 
-        var projectManager = ProjectManager.Instance;
-        if (projectManager.IsProjectOpen)
-        {
-            string projectRelative = Path.Combine(
-                projectManager.ProjectPath,
-                texturePath.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(projectRelative))
-                return projectRelative;
+        string? descriptorDirectory = Path.GetDirectoryName(session.MaterialDescriptor.ResolvedPath);
+        if (string.IsNullOrWhiteSpace(descriptorDirectory))
+            return null;
 
-            string materialsRelative = Path.Combine(
-                projectManager.MaterialsPath,
-                texturePath.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(materialsRelative))
-                return materialsRelative;
-        }
+        string candidate = Path.Combine(descriptorDirectory, texturePath!.Trim());
+        return File.Exists(candidate) ? candidate : null;
+    }
 
-        return null;
+    private static bool IsSafeDescriptorRelativeFileName(string? texturePath)
+    {
+        if (string.IsNullOrWhiteSpace(texturePath))
+            return false;
+
+        string trimmed = texturePath.Trim();
+        if (Path.IsPathRooted(trimmed))
+            return false;
+
+        if (trimmed.Contains('/') || trimmed.Contains('\\'))
+            return false;
+
+        return trimmed != "." && trimmed != ".." && Path.GetFileName(trimmed) == trimmed;
     }
 
     private static Bitmap? TryCreateTextureThumbnail(string texturePath, out string? error)

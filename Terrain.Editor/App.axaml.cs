@@ -3,6 +3,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Terrain.Editor.Services.Resources;
 using Terrain.Editor.ViewModels;
 using Terrain.Editor.Views;
 
@@ -21,7 +22,7 @@ public sealed partial class App : Application
         {
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new EditorShellViewModel(),
+                DataContext = new EditorShellViewModel(new EditorBootstrapService()),
             };
         }
 

@@ -3,9 +3,9 @@
 using System;
 using System.Collections.Generic;
 
-namespace Terrain.Shared;
+namespace Terrain;
 
-public enum BiomeModifierType
+internal enum BiomeModifierType
 {
     HeightRange = 0,
     SlopeRange = 1,
@@ -15,7 +15,7 @@ public enum BiomeModifierType
     TextureMask = 5,
 }
 
-public enum BiomeModifierBlendMode
+internal enum BiomeModifierBlendMode
 {
     Multiply = 0,
     Add = 1,
@@ -24,7 +24,7 @@ public enum BiomeModifierBlendMode
     Max = 4,
 }
 
-public struct TerrainDetailControlPixel
+internal struct TerrainDetailControlPixel
 {
     public byte Index0;
     public byte Index1;
@@ -46,7 +46,7 @@ public struct TerrainDetailControlPixel
 
 }
 
-public sealed class TerrainBiomeModifier
+internal sealed class TerrainBiomeModifier
 {
     public string Name { get; set; } = "";
     public BiomeModifierType Type { get; set; }
@@ -71,7 +71,7 @@ public sealed class TerrainBiomeModifier
     public int TextureMaskChannel { get; set; }
 }
 
-public sealed class TerrainBiomeRuleLayer
+internal sealed class TerrainBiomeRuleLayer
 {
     public string Name { get; set; } = "Layer";
     public bool Enabled { get; set; } = true;
@@ -82,7 +82,7 @@ public sealed class TerrainBiomeRuleLayer
     public List<TerrainBiomeModifier> Modifiers { get; } = new();
 }
 
-public sealed class TerrainDetailGenerationContext
+internal sealed class TerrainDetailGenerationContext
 {
     public TerrainDetailGenerationContext(
         ushort[] heightData,
@@ -147,7 +147,7 @@ public sealed class TerrainDetailGenerationContext
     }
 }
 
-public static class TerrainDetailMapGenerator
+internal static class TerrainDetailMapGenerator
 {
     private const float HeightSampleNormalization = 1.0f / ushort.MaxValue;
 

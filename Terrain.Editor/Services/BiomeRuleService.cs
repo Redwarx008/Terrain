@@ -2,8 +2,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
+using Terrain.Resources;
 
 namespace Terrain.Editor.Services;
 
@@ -247,6 +249,7 @@ public sealed class BiomeRuleService
     public BiomeDefinition AddBiome()
     {
         BiomeDefinition biome = AddBiomeCore();
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
         return biome;
     }
@@ -272,6 +275,7 @@ public sealed class BiomeRuleService
             return false;
 
         biomes.RemoveAt(index);
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
         return true;
     }
@@ -279,6 +283,7 @@ public sealed class BiomeRuleService
     public BiomeRuleLayer AddLayer(int biomeId)
     {
         BiomeRuleLayer layer = AddLayerCore(biomeId);
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
         return layer;
     }
@@ -290,6 +295,7 @@ public sealed class BiomeRuleService
 
         layers.RemoveAt(index);
         RecomputePriorities();
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
     }
 
@@ -306,6 +312,7 @@ public sealed class BiomeRuleService
         layers.RemoveAt(fromIndex);
         layers.Insert(toIndex, layer);
         RecomputePriorities();
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
     }
 
@@ -317,6 +324,7 @@ public sealed class BiomeRuleService
         modifier.Id = nextModifierId++;
         layer.Modifiers.Add(modifier);
         layer.EnsureLegacyModifiers();
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
         return modifier;
     }
@@ -330,6 +338,7 @@ public sealed class BiomeRuleService
 
         layer.Modifiers.RemoveAt(modifierIndex);
         layer.EnsureLegacyModifiers();
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
     }
 
@@ -343,6 +352,7 @@ public sealed class BiomeRuleService
         BiomeModifier modifier = layer.Modifiers[fromIndex];
         layer.Modifiers.RemoveAt(fromIndex);
         layer.Modifiers.Insert(toIndex, modifier);
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
     }
 
@@ -408,6 +418,7 @@ public sealed class BiomeRuleService
         float maxValue = newMax ?? modifier.Max;
         modifier.Min = Math.Clamp(MathF.Min(minValue, maxValue), MinHeight, DefaultMaxHeight);
         modifier.Max = Math.Clamp(MathF.Max(minValue, maxValue), modifier.Min, DefaultMaxHeight);
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
     }
 
@@ -423,6 +434,7 @@ public sealed class BiomeRuleService
         float maxValue = newMax ?? modifier.Max;
         modifier.Min = Math.Clamp(MathF.Min(minValue, maxValue), 0.0f, 90.0f);
         modifier.Max = Math.Clamp(MathF.Max(minValue, maxValue), modifier.Min, 90.0f);
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
     }
 
@@ -476,6 +488,52 @@ public sealed class BiomeRuleService
         layer.BlendRange = blendRange;
     }
 
+    public void ApplyRuntimeSettings(RuntimeBiomeSettings settings, IReadOnlyDictionary<string, int> materialIndicesById)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(materialIndicesById);
+
+        ClearAll();
+        foreach (RuntimeBiomeEntry biome in settings.Biomes)
+        {
+            biomes.Add(new BiomeDefinition
+            {
+                Id = biome.Id,
+                Name = biome.Name,
+                DebugColor = BuildDebugColor(biome.Id),
+            });
+        }
+
+        foreach (RuntimeBiomeLayerEntry sourceLayer in settings.Layers.OrderBy(static layer => layer.Priority))
+        {
+            if (!materialIndicesById.TryGetValue(sourceLayer.MaterialId, out int materialSlotIndex))
+                throw new InvalidDataException($"Unknown material_id '{sourceLayer.MaterialId}' in biome settings.");
+
+            var layer = new BiomeRuleLayer
+            {
+                Id = sourceLayer.Id,
+                BiomeId = sourceLayer.BiomeId,
+                Name = sourceLayer.Name,
+                MaterialSlotIndex = materialSlotIndex,
+                PriorityOrder = sourceLayer.Priority,
+                Enabled = sourceLayer.Enabled,
+                Visible = sourceLayer.Visible,
+            };
+
+            foreach (RuntimeBiomeModifierEntry sourceModifier in settings.Modifiers.Where(modifier => modifier.LayerId == sourceLayer.Id))
+            {
+                layer.Modifiers.Add(CreateModifier(sourceModifier));
+            }
+
+            layer.EnsureLegacyModifiers();
+            layers.Add(layer);
+        }
+
+        RecomputePriorities();
+        RebaseNextIds();
+        OnStateChanged();
+    }
+
     public void NormalizeAllRanges()
     {
         foreach (BiomeRuleLayer layer in layers)
@@ -488,6 +546,7 @@ public sealed class BiomeRuleService
         }
 
         RecomputePriorities();
+        EditorDirtyState.Instance.MarkDirty();
     }
 
     public void NormalizeBiomeRanges(int biomeId)
@@ -502,11 +561,14 @@ public sealed class BiomeRuleService
             layer.MinSlopeDegrees = Math.Clamp(layer.MinSlopeDegrees, 0.0f, 90.0f);
             layer.MaxSlopeDegrees = Math.Clamp(layer.MaxSlopeDegrees, layer.MinSlopeDegrees, 90.0f);
         }
+
+        EditorDirtyState.Instance.MarkDirty();
     }
 
     public void NotifyMutated()
     {
         RecomputePriorities();
+        EditorDirtyState.Instance.MarkDirty();
         OnStateChanged();
     }
 
@@ -572,5 +634,39 @@ public sealed class BiomeRuleService
         };
 
         return palette[index % palette.Length];
+    }
+
+    private static BiomeModifier CreateModifier(RuntimeBiomeModifierEntry source)
+    {
+        if (!Enum.TryParse(source.Type, ignoreCase: true, out BiomeModifierType type))
+            throw new InvalidDataException($"Unknown biome modifier type '{source.Type}'.");
+        if (!Enum.TryParse(source.BlendMode, ignoreCase: true, out BiomeModifierBlendMode blendMode))
+            throw new InvalidDataException($"Unknown biome modifier blend mode '{source.BlendMode}'.");
+
+        return new BiomeModifier
+        {
+            Id = source.Id,
+            Name = source.Name,
+            Type = type,
+            BlendMode = blendMode,
+            Min = source.Min,
+            Max = source.Max,
+            MinFalloff = source.MinFalloff,
+            MaxFalloff = source.MaxFalloff,
+            Radius = source.Radius,
+            AngleDegrees = source.AngleDegrees,
+            AngleRangeDegrees = source.AngleRangeDegrees,
+            Scale = source.Scale,
+            OffsetX = source.OffsetX,
+            OffsetY = source.OffsetY,
+            Seed = source.Seed,
+            Octaves = source.Octaves,
+            Invert = source.Invert,
+            TextureMaskPath = source.TextureMaskPath,
+            TextureMaskChannel = source.TextureMaskChannel,
+            Opacity = source.Opacity,
+            Enabled = source.Enabled,
+            Visible = source.Visible,
+        };
     }
 }

@@ -24,10 +24,7 @@
     </Style>
   </Window.Styles>
   <Window.KeyBindings>
-    <KeyBinding Gesture="Ctrl+N" Command="{Binding NewProjectCommand}" />
-    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenProjectCommand}" />
-    <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveProjectCommand}" />
-    <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveProjectAsCommand}" />
+    <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
     <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
     <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}" />
@@ -61,18 +58,7 @@
     <!-- ═══ Toolbar Row ═══ -->
     <Border DockPanel.Dock="Top" Classes="toolbarRow">
       <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" VerticalAlignment="Center">
-        <!-- Quick Actions (New/Open/Save) -->
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="1" Margin="4,0,2,0">
-          <Button Classes="commandButton" Command="{Binding NewProjectCommand}">
-            <TextBlock Classes="toolbarIcon" Text="&#xE710;" />
-          </Button>
-          <Button Classes="commandButton" Command="{Binding OpenProjectCommand}">
-            <TextBlock Classes="toolbarIcon" Text="&#xE8B7;" />
-          </Button>
-          <Button Classes="commandButton" Command="{Binding SaveProjectCommand}">
-            <TextBlock Classes="toolbarIcon" Text="&#xE74E;" />
-          </Button>
-        </StackPanel>
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="1" Margin="4,0,2,0" />
 
         <Border Grid.Column="1" Classes="commandDivider" Margin="2,0" />
 
@@ -93,43 +79,9 @@
           <Button Classes="commandButton" Content="File" FontSize="12">
             <Button.Flyout>
               <MenuFlyout>
-                <MenuItem Command="{Binding NewProjectCommand}">
-                  <MenuItem.Header>
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Text="New" />
-                      <TextBlock Grid.Column="1" Text="Ctrl+N" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
-                    </Grid>
-                  </MenuItem.Header>
-                </MenuItem>
-                <MenuItem Command="{Binding OpenProjectCommand}">
-                  <MenuItem.Header>
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Text="Open..." />
-                      <TextBlock Grid.Column="1" Text="Ctrl+O" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
-                    </Grid>
-                  </MenuItem.Header>
-                </MenuItem>
-                <Separator />
-                <MenuItem Command="{Binding SaveProjectCommand}">
-                  <MenuItem.Header>
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Text="Save" />
-                      <TextBlock Grid.Column="1" Text="Ctrl+S" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
-                    </Grid>
-                  </MenuItem.Header>
-                </MenuItem>
-                <MenuItem Command="{Binding SaveProjectAsCommand}">
-                  <MenuItem.Header>
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Text="Save As..." />
-                      <TextBlock Grid.Column="1" Text="Ctrl+Shift+S" Foreground="{DynamicResource EditorTextSecondaryBrush}" FontSize="11" />
-                    </Grid>
-                  </MenuItem.Header>
-                </MenuItem>
-                <Separator />
+                <MenuItem Header="Save" Command="{Binding SaveCommand}" />
                 <MenuItem Header="Export">
                   <MenuItem Header="Terrain..." Command="{Binding ExportTerrainCommand}" />
-                  <MenuItem Header="Biome Config..." Command="{Binding ExportBiomeConfigCommand}" />
                 </MenuItem>
                 <Separator />
                 <MenuItem Header="Exit" Command="{Binding ExitCommand}" />
@@ -582,20 +534,9 @@
               <StackPanel IsVisible="{Binding IsRiverMode}" Spacing="0">
                 <Border Classes="inspectorSection" Padding="10,10">
                   <StackPanel Spacing="8">
-                    <TextBlock Classes="sectionLabel" Text="RIVER MAP" />
-
-                    <Button Classes="commandButton" Command="{Binding River.ImportPngCommand}">
-                      <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
-                        <TextBlock Classes="toolbarIcon" Text="&#xE8B7;" />
-                        <TextBlock Text="Import PNG" VerticalAlignment="Center" />
-                      </StackPanel>
-                    </Button>
+                    <TextBlock Classes="sectionLabel" Text="RIVER" />
 
                     <TextBlock Classes="panelHint" Text="{Binding River.RiverMapPath}" TextWrapping="Wrap" />
-
-                    <Border Classes="brushPreviewFrame" Height="120" IsVisible="{Binding River.HasRiverMap}">
-                      <Image Source="{Binding River.PreviewImage}" Stretch="Uniform" />
-                    </Border>
 
                     <TextBlock Classes="panelHint" Text="{Binding River.StatusText}" TextWrapping="Wrap" />
 
@@ -607,12 +548,6 @@
                       <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True"
                                Text="{Binding River.WidthScale, StringFormat='{}{0:F2}'}" VerticalAlignment="Bottom" />
                     </Grid>
-
-                    <Button Classes="commandButton" Command="{Binding River.GenerateCommand}"
-                            IsVisible="{Binding River.HasRiverMap}"
-                            HorizontalAlignment="Stretch">
-                      <TextBlock Text="GENERATE" HorizontalAlignment="Center" FontWeight="Bold" />
-                    </Button>
                   </StackPanel>
                 </Border>
               </StackPanel>
@@ -649,7 +584,7 @@
                       <Button Grid.Column="2"
                               Classes="commandButton,biomeMiniButton"
                               Command="{Binding Biome.RemoveBiomeCommand}"
-                              CommandParameter="{Binding Biome.SelectedBiome.Id}">
+                              CommandParameter="{Binding Biome.SelectedBiome}">
                         <TextBlock Classes="toolbarIcon" Text="&#xE74D;" FontSize="12" />
                       </Button>
                     </Grid>

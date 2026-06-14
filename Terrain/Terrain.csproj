@@ -13,12 +13,11 @@
     <PackageReference Include="Stride.Particles" />
     <PackageReference Include="Stride.UI" />
     <PackageReference Include="Stride.Core.Assets.CompilerApp" IncludeAssets="build;buildTransitive" />
+    <PackageReference Include="SixLabors.ImageSharp" />
     <PackageReference Include="Tommy" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\Shared\VirtualTextureLayout.cs" Link="Shared\VirtualTextureLayout.cs" />
-    <Compile Include="..\Shared\TerrainDetailGeneration.cs" Link="Shared\TerrainDetailGeneration.cs" />
     <!--<Compile Update="Effects\Build\TerrainBuildLodLookup.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>

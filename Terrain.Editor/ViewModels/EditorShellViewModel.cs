@@ -23,6 +23,7 @@ using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
 using Terrain.Editor.Services.Export;
 using Terrain.Editor.Services.Export.Exporters;
+using Terrain.Editor.Services.Resources;
 using ImageSharpImage = SixLabors.ImageSharp.Image;
 
 namespace Terrain.Editor.ViewModels;
@@ -30,20 +31,21 @@ namespace Terrain.Editor.ViewModels;
 public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 {
     private readonly EditorState _editorState = EditorState.Instance;
-    private readonly ProjectManager _projectManager = ProjectManager.Instance;
+    private readonly EditorDirtyState _dirtyState = EditorDirtyState.Instance;
     private readonly HistoryManager _historyManager = HistoryManager.Instance;
     private readonly MaterialSlotManager _materialSlotManager = MaterialSlotManager.Instance;
+    private readonly EditorBootstrapService _bootstrapService;
     private readonly NativeStrideViewportHost _viewportHost;
     private readonly TerrainExporter _terrainExporter = new();
+    private EditorResourceSession? _resourceSession;
     private TerrainManager? _subscribedTerrainManager;
-    private readonly BiomeConfigExporter _biomeConfigExporter = new();
     private readonly HashSet<string> _thumbnailDiagnostics = new(StringComparer.Ordinal);
 
     [ObservableProperty]
     private string _title = "Terrain Editor";
 
     [ObservableProperty]
-    private string _projectName = "No project";
+    private string _projectName = "Terrain";
 
     [ObservableProperty]
     private bool _isDirty;
@@ -186,16 +188,21 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     public bool IsListView => !IsGridView;
 
     public EditorShellViewModel()
+        : this(new EditorBootstrapService())
     {
+    }
+
+    public EditorShellViewModel(EditorBootstrapService bootstrapService)
+    {
+        _bootstrapService = bootstrapService ?? throw new ArgumentNullException(nameof(bootstrapService));
         _viewportHost = new NativeStrideViewportHost();
         Viewport = new NativeStrideViewportViewModel(_viewportHost);
         BrushParams = new BrushParametersViewModel();
-        Biome = new BiomeViewModel();
+        Biome = new BiomeViewModel(() => _resourceSession);
         Settings = new SettingsViewModel();
         Settings.PropertyChanged += OnSettingsPropertyChanged;
         SelectedSceneViewMode = _viewportHost.SceneViewMode;
         ExportManager.Instance.Register(_terrainExporter);
-        ExportManager.Instance.Register(_biomeConfigExporter);
 
         InitializeModes();
         InitializeAssetBrowser();
@@ -224,7 +231,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.MaterialSlotSelectionChanged += OnMaterialSlotSelectionChanged;
         _materialSlotManager.SlotsChanged += OnMaterialSlotsChanged;
         _materialSlotManager.SelectedSlotChanged += OnMaterialSlotManagerSelectedSlotChanged;
-        _projectManager.DirtyChanged += OnProjectDirtyChanged;
+        _dirtyState.DirtyChanged += OnEditorDirtyChanged;
         _historyManager.HistoryChanged += OnHistoryChanged;
         _viewportHost.ShortcutRequested += OnViewportShortcutRequested;
         _viewportHost.RuntimeStateChanged += OnViewportRuntimeStateChanged;
@@ -237,6 +244,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             AddConsole("Info", "Stride SDL viewport host now owns a Scene and TerrainManager.");
             EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
+            TryWireRiverServices();
+            _ = LoadEditorResourceSessionAsync();
         }
         else
         {
@@ -257,11 +266,43 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private void OnViewportRuntimeStateChanged(object? sender, EventArgs e)
     {
         EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
+        TryWireRiverServices();
         if (_viewportHost.TerrainManager != null)
         {
             _viewportHost.TerrainManager.SetTerrainVisible(Settings.ShowTerrain);
+            _ = LoadEditorResourceSessionAsync();
         }
-        TryWireRiverServices();
+    }
+
+    private async Task LoadEditorResourceSessionAsync()
+    {
+        if (_resourceSession != null)
+            return;
+        if (!TryGetTerrainManager(out var terrainManager))
+            return;
+
+        try
+        {
+            EditorResourceSession session = _bootstrapService.LoadCurrentSession();
+            var entities = await terrainManager.LoadFromResourceSession(session);
+            if (entities.Count == 0)
+            {
+                AddConsole("Error", $"Failed to load Terrain workspace heightmap: {session.Heightmap.ResolvedPath}");
+                return;
+            }
+
+            _resourceSession = session;
+            SyncSettingsFromTerrainManager();
+            EditorDirtyState.Instance.ClearDirty();
+            RefreshAssetItems();
+            Biome.NotifyMaterialPreviewsChanged();
+            RefreshProjectState();
+            AddConsole("Info", $"Loaded Terrain workspace from {_resourceSession.MapDefinition.ResolvedPath}.");
+        }
+        catch (Exception exception)
+        {
+            AddConsole("Error", $"Failed to load Terrain workspace: {exception.Message}");
+        }
     }
 
     private void TryWireRiverServices()
@@ -278,178 +319,52 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task NewProject()
+    private void Save()
     {
-        var storageProvider = GetStorageProvider();
-        if (storageProvider == null)
-        {
-            AddConsole("Warning", "File dialog unavailable.");
-            return;
-        }
-
-        var results = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Select Heightmap",
-            AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType("Heightmap PNG") { Patterns = ["*.png"] }],
-        });
-
-        if (results.Count == 0)
-        {
-            return;
-        }
-
         if (!TryGetTerrainManager(out var terrainManager))
         {
             return;
         }
 
-        string path = results[0].TryGetLocalPath() ?? results[0].Path.ToString();
-        _projectManager.CloseProject();
-
-        var entities = await terrainManager.LoadTerrainAsync(path);
-        if (entities.Count == 0)
+        if (_resourceSession == null)
         {
-            AddConsole("Error", $"Failed to create project from heightmap: {path}");
+            AddConsole("Warning", "Terrain workspace is not loaded.");
+            return;
+        }
+
+        if (!terrainManager.HasTerrainLoaded)
+        {
+            AddConsole("Warning", "No terrain loaded to save.");
+            return;
+        }
+
+        try
+        {
+            terrainManager.SaveAuthoringResources(_resourceSession);
+            _resourceSession = _bootstrapService.LoadCurrentSession();
+            EditorDirtyState.Instance.ClearDirty();
+            RefreshAssetItems();
+            Biome.NotifyMaterialPreviewsChanged();
             RefreshProjectState();
-            return;
+            AddConsole("Info", "Saved authoring resources.");
         }
-
-        RefreshProjectState();
-        SyncSettingsFromTerrainManager();
-        AddConsole("Info", $"Created unsaved project from heightmap: {path}");
-    }
-
-    [RelayCommand]
-    private async Task OpenProject()
-    {
-        var storageProvider = GetStorageProvider();
-        if (storageProvider == null)
+        catch (Exception exception)
         {
-            AddConsole("Warning", "File dialog unavailable.");
-            return;
+            AddConsole("Error", $"Save failed: {exception.Message}");
         }
-
-        var results = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Open Terrain Project",
-            AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType("Terrain Project") { Patterns = ["*.toml"] }],
-        });
-
-        if (results.Count == 0)
-        {
-            return;
-        }
-
-        string path = results[0].TryGetLocalPath() ?? results[0].Path.ToString();
-        if (!TryGetTerrainManager(out var terrainManager))
-        {
-            return;
-        }
-
-        terrainManager.LoadProject(path);
-        RefreshProjectState();
-        SyncSettingsFromTerrainManager();
-        AddConsole("Info", $"Opened project: {_projectManager.ProjectName}.");
-        string? projectNotification = terrainManager.ConsumePendingProjectNotification();
-        if (!string.IsNullOrWhiteSpace(projectNotification))
-            AddConsole("Warning", projectNotification);
-    }
-
-    [RelayCommand]
-    private void SaveProject()
-    {
-        if (!_projectManager.IsProjectOpen)
-        {
-            SaveProjectAsCommand.Execute(null);
-            return;
-        }
-
-        if (!TryGetTerrainManager(out var terrainManager))
-        {
-            return;
-        }
-
-        if (terrainManager.HasTerrainLoaded)
-        {
-            terrainManager.SaveProject();
-            AddConsole("Info", $"Saved project '{_projectManager.ProjectName}'.");
-            RefreshProjectState();
-            return;
-        }
-
-        AddConsole("Warning", "Nothing to save.");
-    }
-
-    [RelayCommand]
-    private async Task SaveProjectAs()
-    {
-        var storageProvider = GetStorageProvider();
-        if (storageProvider == null)
-        {
-            AddConsole("Warning", "File dialog unavailable.");
-            return;
-        }
-
-        var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Save Project As",
-            SuggestedFileName = _projectManager.ProjectName,
-            FileTypeChoices = [new FilePickerFileType("Terrain Project") { Patterns = ["*.toml"] }],
-        });
-
-        if (result == null)
-        {
-            return;
-        }
-
-        string path = result.TryGetLocalPath() ?? result.Path.ToString();
-        if (TryGetTerrainManager(out var terrainManager) && terrainManager.HasTerrainLoaded)
-        {
-            string projectName = _projectManager.IsProjectOpen
-                ? _projectManager.ProjectName
-                : Path.GetFileNameWithoutExtension(path);
-            terrainManager.SaveProjectAs(path, projectName);
-        }
-        else if (_projectManager.IsProjectOpen)
-        {
-            _projectManager.SaveProjectAs(path);
-        }
-        else
-        {
-            AddConsole("Warning", "Nothing to save.");
-            return;
-        }
-
-        RefreshProjectState();
-        AddConsole("Info", $"Project saved to {path}.");
     }
 
     [RelayCommand]
     private async Task ExportTerrain()
     {
-        var storageProvider = GetStorageProvider();
-        if (storageProvider == null)
-        {
-            AddConsole("Warning", "File dialog unavailable.");
-            return;
-        }
-
-        var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Export Terrain",
-            SuggestedFileName = "terrain",
-            FileTypeChoices = [new FilePickerFileType("Terrain") { Patterns = ["*.terrain"] }],
-        });
-
-        if (result == null)
-        {
-            return;
-        }
-
         if (!TryGetTerrainManager(out var terrainManager))
         {
+            return;
+        }
+
+        if (_resourceSession == null)
+        {
+            AddConsole("Warning", "Terrain workspace is not loaded.");
             return;
         }
 
@@ -459,7 +374,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        string path = result.TryGetLocalPath() ?? result.Path.ToString();
+        string path = _resourceSession.TerrainData.ResolvedPath;
         _terrainExporter.TerrainManager = terrainManager;
 
         try
@@ -557,59 +472,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
-    private async Task ExportBiomeConfig()
-    {
-        var storageProvider = GetStorageProvider();
-        if (storageProvider == null)
-        {
-            AddConsole("Warning", "File dialog unavailable.");
-            return;
-        }
-
-        var result = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Export Biome Config",
-            SuggestedFileName = "biome_config",
-            FileTypeChoices = [new FilePickerFileType("Biome Config") { Patterns = ["*.toml"] }],
-        });
-
-        if (result == null)
-        {
-            return;
-        }
-
-        string path = result.TryGetLocalPath() ?? result.Path.ToString();
-        _biomeConfigExporter.TerrainManager = TryGetTerrainManager(out var terrainManagerForExport)
-            ? terrainManagerForExport
-            : null;
-
-        try
-        {
-            var progress = new Progress<ExportProgress>(report =>
-            {
-                if (report.IsCompleted)
-                {
-                    AddConsole(report.ErrorMessage == null ? "Info" : "Error",
-                        report.ErrorMessage ?? "Biome config export completed.");
-                    return;
-                }
-
-                if (!string.IsNullOrWhiteSpace(report.Message))
-                {
-                    AddConsole("Info", report.Message);
-                }
-            });
-
-            await ExportManager.Instance.ExecuteAsync("Biome Config", path, progress, CancellationToken.None);
-            AddConsole("Info", $"Biome config exported to {path}.");
-        }
-        catch (Exception exception)
-        {
-            AddConsole("Error", $"Biome config export failed: {exception.Message}");
-        }
-    }
-
     [RelayCommand(CanExecute = nameof(CanUndo))]
     private void Undo()
     {
@@ -693,7 +555,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             }
 
             _materialSlotManager.ClearSlot(item.MaterialSlotIndex, graphicsDevice, commandList);
-            ProjectManager.Instance.MarkDirty();
+            EditorDirtyState.Instance.MarkDirty();
             AddConsole("Info", $"Cleared slot {item.MaterialSlotIndex}.");
         }
     }
@@ -773,7 +635,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         _materialSlotManager.ClearSlot(SelectedMaterialSlot.Index, graphicsDevice, commandList);
-        ProjectManager.Instance.MarkDirty();
+        EditorDirtyState.Instance.MarkDirty();
         AddConsole("Info", $"Cleared slot {SelectedMaterialSlot.Index}.");
     }
 
@@ -796,7 +658,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _editorState.MaterialSlotSelectionChanged -= OnMaterialSlotSelectionChanged;
         _materialSlotManager.SlotsChanged -= OnMaterialSlotsChanged;
         _materialSlotManager.SelectedSlotChanged -= OnMaterialSlotManagerSelectedSlotChanged;
-        _projectManager.DirtyChanged -= OnProjectDirtyChanged;
+        _dirtyState.DirtyChanged -= OnEditorDirtyChanged;
         _historyManager.HistoryChanged -= OnHistoryChanged;
         _viewportHost.ShortcutRequested -= OnViewportShortcutRequested;
         _viewportHost.RuntimeStateChanged -= OnViewportRuntimeStateChanged;
@@ -1015,7 +877,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         SyncSelectedMaterialSlot();
     }
 
-    private void OnProjectDirtyChanged(object? sender, EventArgs e)
+    private void OnEditorDirtyChanged(object? sender, EventArgs e)
     {
         RefreshProjectState();
     }
@@ -1046,14 +908,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private void RefreshProjectState()
     {
-        IsDirty = _projectManager.IsDirty;
-        bool hasUnsavedTerrain = !_projectManager.IsProjectOpen && _viewportHost.TerrainManager?.HasTerrainLoaded == true;
-        ProjectName = _projectManager.IsProjectOpen ? _projectManager.ProjectName : hasUnsavedTerrain ? "Unsaved" : "No project";
-        Title = _projectManager.IsProjectOpen
-            ? $"Terrain Editor - {_projectManager.ProjectName}"
-            : hasUnsavedTerrain
-                ? "Terrain Editor - Unsaved *"
-                : "Terrain Editor";
+        IsDirty = _dirtyState.IsDirty;
+        ProjectName = "Terrain";
+        Title = IsDirty ? "Terrain Editor - Terrain *" : "Terrain Editor";
     }
 
     private void RefreshHistoryState()
@@ -1135,7 +992,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             ],
             EditorMode.River =>
             [
-                new("River Tool", "Import and generate rivers", "\uE8B7", mode),
+                new("River Tool", "Inspect loaded rivers", "\uE8B7", mode),
             ],
             _ => [],
         };
@@ -1274,6 +1131,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private bool ImportAlbedoTexture(int slotIndex, string path, Stride.Graphics.GraphicsDevice graphicsDevice, Stride.Graphics.CommandList commandList)
     {
+        string sourcePath = path;
+        string? sourceNormalPath = TextureImporter.FindMatchingNormalMap(sourcePath);
+        path = CopyTextureIntoMaterialDirectory(path);
         var texture = TextureImporter.ImportFromFile(path, graphicsDevice, commandList, TextureSize.Size512, isNormalMap: false);
         if (texture == null)
         {
@@ -1287,16 +1147,15 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        ProjectManager.Instance.MarkDirty();
+        EditorDirtyState.Instance.MarkDirty();
         _materialSlotManager.SelectedSlotIndex = slotIndex;
         SelectedMaterialSlotIndex = slotIndex;
         SelectedMode = EditorMode.Paint;
         AddConsole("Info", $"Imported albedo to slot {slotIndex}: {path}");
 
-        string? normalPath = TextureImporter.FindMatchingNormalMap(path);
-        if (!string.IsNullOrWhiteSpace(normalPath))
+        if (!string.IsNullOrWhiteSpace(sourceNormalPath))
         {
-            _ = ImportNormalTexture(slotIndex, normalPath, graphicsDevice, commandList, logSuccess: false);
+            _ = ImportNormalTexture(slotIndex, sourceNormalPath, graphicsDevice, commandList, logSuccess: false);
         }
 
         return true;
@@ -1304,6 +1163,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private bool ImportNormalTexture(int slotIndex, string path, Stride.Graphics.GraphicsDevice graphicsDevice, Stride.Graphics.CommandList commandList, bool logSuccess = true)
     {
+        path = CopyTextureIntoMaterialDirectory(path);
         var texture = TextureImporter.ImportFromFile(path, graphicsDevice, commandList, TextureSize.Size512, isNormalMap: true);
         if (texture == null)
         {
@@ -1317,7 +1177,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        ProjectManager.Instance.MarkDirty();
+        EditorDirtyState.Instance.MarkDirty();
         if (logSuccess)
         {
             AddConsole("Info", $"Imported normal map to slot {slotIndex}: {path}");
@@ -1328,6 +1188,46 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         return true;
+    }
+
+    private string CopyTextureIntoMaterialDirectory(string sourcePath)
+    {
+        if (_resourceSession == null || string.IsNullOrWhiteSpace(sourcePath))
+            return sourcePath;
+
+        string sourceFullPath = Path.GetFullPath(sourcePath);
+        string? materialsDirectory = Path.GetDirectoryName(_resourceSession.MaterialDescriptor.ResolvedPath);
+        if (string.IsNullOrWhiteSpace(materialsDirectory))
+            return sourcePath;
+
+        string targetDirectory = Path.GetFullPath(materialsDirectory);
+        Directory.CreateDirectory(targetDirectory);
+        string fileName = Path.GetFileName(sourceFullPath);
+        string targetPath = Path.Combine(targetDirectory, fileName);
+        if (string.Equals(sourceFullPath, Path.GetFullPath(targetPath), StringComparison.OrdinalIgnoreCase))
+            return targetPath;
+
+        targetPath = GetAvailableImportPath(targetDirectory, fileName);
+        File.Copy(sourceFullPath, targetPath);
+        return targetPath;
+    }
+
+    private static string GetAvailableImportPath(string targetDirectory, string fileName)
+    {
+        string candidate = Path.Combine(targetDirectory, fileName);
+        if (!File.Exists(candidate))
+            return candidate;
+
+        string stem = Path.GetFileNameWithoutExtension(fileName);
+        string extension = Path.GetExtension(fileName);
+        for (int suffix = 2; suffix < 10_000; suffix++)
+        {
+            candidate = Path.Combine(targetDirectory, $"{stem}_{suffix}{extension}");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
+
+        throw new IOException($"Could not find an available texture import path for {fileName}.");
     }
 
     private AssetBrowserItemViewModel[] CreateAssetItemsForCategory(string category)
@@ -1369,7 +1269,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private Bitmap? LoadTextureThumbnail(MaterialSlot slot)
     {
-        Bitmap? fileThumbnail = TextureThumbnailProvider.LoadFromPath(slot.AlbedoTexturePath, out string? fileError);
+        Bitmap? fileThumbnail = TextureThumbnailProvider.LoadFromPath(slot.AlbedoTexturePath, _resourceSession, out string? fileError);
         if (fileThumbnail != null)
             return fileThumbnail;
 

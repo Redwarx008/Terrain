@@ -1,8 +1,10 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using Terrain.Resources;
 using Stride.Core.Annotations;
 using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
@@ -76,22 +78,20 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
     private bool Initialize(GraphicsDevice graphicsDevice, CommandList commandList, TerrainComponent component, TerrainRenderObject renderObject)
     {
-        if (string.IsNullOrWhiteSpace(component.TerrainDataPath))
-        {
-            Log.Warning("Terrain component is missing TerrainDataPath.");
-            component.IsInitialized = false;
-            renderObject.Enabled = false;
-            return false;
-        }
-
         if (IsCurrentInitializationValid(component, renderObject))
         {
             return true;
         }
 
-        if (!TryLoadTerrainData(component, out var loadedData))
+        if (!ShouldAttemptRuntimeLoad(component))
         {
             component.IsInitialized = false;
+            renderObject.Enabled = false;
+            return false;
+        }
+
+        if (!TryLoadTerrainData(component, out var loadedData))
+        {
             renderObject.Enabled = false;
             return false;
         }
@@ -122,32 +122,108 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
     private bool TryLoadTerrainData(TerrainComponent component, out LoadedTerrainData loadedData)
     {
+        return TryLoadRuntimeData(
+            component,
+            () =>
+            {
+                TerrainRuntimeResourceBundle bundle = LoadRuntimeResourceBundle();
+                foreach (string diagnostic in bundle.Diagnostics)
+                {
+                    Log.Warning(diagnostic);
+                }
+
+                return bundle;
+            },
+            out loadedData,
+            logError: message => Log.Error($"Terrain runtime resources could not be read: {message}"));
+    }
+
+    internal static bool ShouldAttemptRuntimeLoad(TerrainComponent component)
+    {
+        if (!component.HasRuntimeLoadFailure)
+            return true;
+
+        return component.FailedRuntimeLoadConfig != TerrainConfig.Capture(component);
+    }
+
+    internal static void MarkRuntimeLoadFailure(TerrainComponent component)
+    {
+        component.HasRuntimeLoadFailure = true;
+        component.FailedRuntimeLoadConfig = TerrainConfig.Capture(component);
+    }
+
+    internal static void MarkRuntimeLoadSuccess(TerrainComponent component)
+    {
+        component.HasRuntimeLoadFailure = false;
+        component.FailedRuntimeLoadConfig = default;
+    }
+
+    internal static bool TryLoadRuntimeData(
+        TerrainComponent component,
+        Func<TerrainRuntimeResourceBundle> bundleLoader,
+        out LoadedTerrainData loadedData,
+        Func<string, ITerrainFileReader>? fileReaderFactory = null,
+        Func<ITerrainFileReader, TerrainRuntimeResourceBundle, RuntimeDetailMapData>? detailMapBuilder = null,
+        Action<string>? logError = null)
+    {
+        ArgumentNullException.ThrowIfNull(component);
+        ArgumentNullException.ThrowIfNull(bundleLoader);
+
         loadedData = default;
         try
         {
-            string terrainDataPath = ResolveTerrainDataPath(component.TerrainDataPath!);
-            ValidateTerrainDataPath(terrainDataPath);
-            var fileReader = new TerrainFileReader(terrainDataPath);
-            var minMaxErrorMaps = fileReader.ReadAllMinMaxErrorMaps();
+            TerrainRuntimeResourceBundle bundle = bundleLoader();
+            component.HeightScale = bundle.HeightScale;
+            loadedData = CreateLoadedTerrainData(component, bundle, fileReaderFactory, detailMapBuilder);
+            MarkRuntimeLoadSuccess(component);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            MarkRuntimeLoadFailure(component);
+            component.IsInitialized = false;
+            logError?.Invoke(FormatRuntimeLoadFailure(exception));
+            return false;
+        }
+    }
+
+    private static string FormatRuntimeLoadFailure(Exception exception)
+    {
+        if (exception is FileNotFoundException { FileName: { Length: > 0 } fileName })
+            return $"{exception.Message} ({fileName})";
+
+        return exception.Message;
+    }
+
+    internal static LoadedTerrainData CreateLoadedTerrainData(
+        TerrainComponent component,
+        TerrainRuntimeResourceBundle bundle,
+        Func<string, ITerrainFileReader>? fileReaderFactory = null,
+        Func<ITerrainFileReader, TerrainRuntimeResourceBundle, RuntimeDetailMapData>? detailMapBuilder = null)
+    {
+        fileReaderFactory ??= static path => new TerrainFileReader(path);
+        detailMapBuilder ??= BuildRuntimeDetailMaps;
+
+        ITerrainFileReader? fileReader = null;
+        bool ownsReader = false;
+        try
+        {
+            fileReader = fileReaderFactory(bundle.TerrainDataPath);
+            ownsReader = true;
+
+            TerrainMinMaxErrorMap[] minMaxErrorMaps = fileReader.ReadAllMinMaxErrorMaps();
             if (minMaxErrorMaps.Length == 0)
-            {
-                fileReader.Dispose();
-                Log.Warning($"Terrain data '{terrainDataPath}' does not contain any MinMaxErrorMaps.");
-                return false;
-            }
+                throw new InvalidDataException($"Terrain data '{bundle.TerrainDataPath}' does not contain any MinMaxErrorMaps.");
 
             minMaxErrorMaps[^1].GetGlobalMinMax(out var minHeight, out var maxHeight);
             int maxLod = minMaxErrorMaps.Length - 1;
             int baseChunkSize = fileReader.Header.LeafNodeSize;
             int maxResidentChunks = Math.Max(component.MaxResidentChunks, minMaxErrorMaps[maxLod].Width * minMaxErrorMaps[maxLod].Height);
-            string? resolvedBiomeConfigPath = ResolveOptionalTerrainDataPath(component.BiomeConfigPath);
-            RuntimeBiomeConfig? biomeConfig = TryLoadBiomeConfig(resolvedBiomeConfigPath);
-            RuntimeDetailMapData generatedDetailMaps = BuildRuntimeDetailMaps(component, fileReader, biomeConfig);
-            loadedData = new LoadedTerrainData(
-                terrainDataPath,
+            RuntimeDetailMapData generatedDetailMaps = detailMapBuilder(fileReader, bundle);
+
+            var loadedData = new LoadedTerrainData(
                 fileReader,
-                resolvedBiomeConfigPath,
-                biomeConfig,
+                bundle.MaterialTextureSlots,
                 generatedDetailMaps,
                 fileReader.Header.Width,
                 fileReader.Header.Height,
@@ -161,12 +237,14 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
                 fileReader.SplatMapHeader.Padding,
                 maxResidentChunks,
                 minMaxErrorMaps);
-            return true;
+
+            ownsReader = false;
+            return loadedData;
         }
-        catch (Exception exception)
+        finally
         {
-            Log.Warning($"Terrain data could not be read: {exception.Message}");
-            return false;
+            if (ownsReader)
+                fileReader?.Dispose();
         }
     }
 
@@ -233,25 +311,13 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             component,
             streamingManager);
 
-        // Initialize material textures from biome config TOML (required)
         component.MaterialManager?.Dispose();
         component.MaterialManager = null;
-        if (string.IsNullOrWhiteSpace(loadedData.BiomeConfigPath))
-        {
-            Log.Warning("Terrain component is missing BiomeConfigPath. Cannot load material textures.");
-        }
-        else if (!File.Exists(loadedData.BiomeConfigPath))
-        {
-            Log.Warning($"Biome config file not found: {loadedData.BiomeConfigPath}");
-        }
-        else
-        {
-            component.MaterialManager = new RuntimeMaterialManager();
-            component.MaterialManager.Initialize(
-                graphicsDevice,
-                commandList,
-                loadedData.BiomeConfig?.MaterialSlots ?? RuntimeMaterialManager.ReadMaterialSlots(loadedData.BiomeConfigPath));
-        }
+        component.MaterialManager = new RuntimeMaterialManager();
+        component.MaterialManager.Initialize(
+            graphicsDevice,
+            commandList,
+            loadedData.MaterialTextureSlots);
 
         // Reinitialization replaces the underlying GPU resources, so the old "material is ready" markers
         // must be cleared or EnsureMaterial() will incorrectly reuse a pass bound to stale buffers/textures.
@@ -432,69 +498,38 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         return Matrix.Translation(entityWorldMatrix.TranslationVector);
     }
 
-    private static string ResolveTerrainDataPath(string terrainDataPath)
+    private static TerrainRuntimeResourceBundle LoadRuntimeResourceBundle()
     {
-        terrainDataPath = terrainDataPath.Trim().Trim('"');
-        string fullPath = Path.IsPathRooted(terrainDataPath)
-            ? terrainDataPath
-            : Path.Combine(AppContext.BaseDirectory, terrainDataPath);
-        return Path.GetFullPath(fullPath);
+        var resolver = GameResourceResolverBootstrap.CreateForAppDirectory(AppContext.BaseDirectory);
+        return new GameRuntimeResourceBootstrap(resolver).Load();
     }
 
-    private static void ValidateTerrainDataPath(string terrainDataPath)
-    {
-        if (!string.Equals(Path.GetExtension(terrainDataPath), ".terrain", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException($"Terrain data path '{terrainDataPath}' must point to a .terrain file.");
-        }
-
-        if (!File.Exists(terrainDataPath))
-        {
-            throw new FileNotFoundException("Terrain data file was not found.", terrainDataPath);
-        }
-    }
-
-    private RuntimeDetailMapData BuildRuntimeDetailMaps(TerrainComponent component, TerrainFileReader fileReader, RuntimeBiomeConfig? biomeConfig)
+    private static RuntimeDetailMapData BuildRuntimeDetailMaps(ITerrainFileReader fileReader, TerrainRuntimeResourceBundle bundle)
     {
         ushort[] heightData = fileReader.ReadAllHeightData();
-        byte[] biomeMaskData = fileReader.ReadAllBiomeMaskData();
+        RuntimeBiomeMaskData biomeMask = RuntimeBiomeMaskReader.ReadFrom(bundle.BiomeMaskPath);
+        if (biomeMask.Width != fileReader.SplatMapHeader.Width || biomeMask.Height != fileReader.SplatMapHeader.Height)
+        {
+            throw new InvalidDataException(
+                $"Biome mask dimensions {biomeMask.Width}x{biomeMask.Height} do not match terrain splatmap dimensions {fileReader.SplatMapHeader.Width}x{fileReader.SplatMapHeader.Height}.");
+        }
+
         return RuntimeDetailMapBuilder.Generate(
             heightData,
             fileReader.Header.Width,
             fileReader.Header.Height,
-            biomeMaskData,
-            fileReader.SplatMapHeader.Width,
-            fileReader.SplatMapHeader.Height,
-            biomeConfig,
-            component.HeightScale,
+            biomeMask.Data,
+            biomeMask.Width,
+            biomeMask.Height,
+            bundle.BiomeSettings,
+            bundle.MaterialDescriptor,
+            bundle.HeightScale,
             fileReader.SplatMapResolutionRatio);
     }
 
-    private static RuntimeBiomeConfig? TryLoadBiomeConfig(string? biomeConfigPath)
-    {
-        if (string.IsNullOrWhiteSpace(biomeConfigPath) || !File.Exists(biomeConfigPath))
-        {
-            return null;
-        }
-
-        return RuntimeBiomeConfig.ReadFromToml(biomeConfigPath);
-    }
-
-    private static string? ResolveOptionalTerrainDataPath(string? terrainDataPath)
-    {
-        if (string.IsNullOrWhiteSpace(terrainDataPath))
-        {
-            return null;
-        }
-
-        return ResolveTerrainDataPath(terrainDataPath);
-    }
-
-    private readonly record struct LoadedTerrainData(
-        string TerrainDataPath,
-        TerrainFileReader FileReader,
-        string? BiomeConfigPath,
-        RuntimeBiomeConfig? BiomeConfig,
+    internal readonly record struct LoadedTerrainData(
+        ITerrainFileReader FileReader,
+        IReadOnlyList<RuntimeMaterialTextureSlot> MaterialTextureSlots,
         RuntimeDetailMapData GeneratedDetailMaps,
         int Width,
         int Height,

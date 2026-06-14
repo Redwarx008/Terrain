@@ -21,6 +21,11 @@ public sealed class MaterialSlot
     public string Name { get; set; } = "";
 
     /// <summary>
+    /// 稳定材质标识，用于 descriptor / biome settings 的跨次保存引用。
+    /// </summary>
+    public string? MaterialId { get; set; }
+
+    /// <summary>
     /// Albedo 纹理文件路径（相对或绝对）。
     /// </summary>
     public string? AlbedoTexturePath { get; set; }
@@ -70,6 +75,7 @@ public sealed class MaterialSlot
     /// </summary>
     public void Clear()
     {
+        MaterialId = null;
         AlbedoTexturePath = null;
         NormalTexturePath = null;
         PropertiesTexturePath = null;

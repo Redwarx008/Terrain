@@ -1,10 +1,12 @@
 #nullable enable
 
+using System;
 using System.Collections.ObjectModel;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Terrain.Editor.Services;
+using Terrain.Editor.Services.Resources;
 
 namespace Terrain.Editor.ViewModels;
 
@@ -15,14 +17,21 @@ namespace Terrain.Editor.ViewModels;
 public sealed partial class RuleViewModel : ObservableObject
 {
     private readonly BiomeRuleLayer _source;
+    private readonly Func<EditorResourceSession?> _resourceSessionProvider;
     private readonly MaterialSlotManager _materialSlotManager = MaterialSlotManager.Instance;
     private int _globalIndex;
     private bool _syncing;
 
     public RuleViewModel(BiomeRuleLayer source, int globalIndex)
+        : this(source, globalIndex, static () => null)
+    {
+    }
+
+    public RuleViewModel(BiomeRuleLayer source, int globalIndex, Func<EditorResourceSession?> resourceSessionProvider)
     {
         _source = source;
         _globalIndex = globalIndex;
+        _resourceSessionProvider = resourceSessionProvider ?? throw new ArgumentNullException(nameof(resourceSessionProvider));
         SyncFromSource(globalIndex);
     }
 
@@ -32,7 +41,10 @@ public sealed partial class RuleViewModel : ObservableObject
 
     public string ModifierCountLabel => Modifiers.Count == 1 ? "1 modifier" : $"{Modifiers.Count} modifiers";
 
-    public Bitmap? MaterialPreviewImage => TextureThumbnailProvider.LoadFromPath(_materialSlotManager[MaterialSlotIndex].AlbedoTexturePath);
+    public Bitmap? MaterialPreviewImage => TextureThumbnailProvider.LoadFromPath(
+        _materialSlotManager[MaterialSlotIndex].AlbedoTexturePath,
+        _resourceSessionProvider(),
+        out _);
 
     [ObservableProperty]
     private string _name = "";

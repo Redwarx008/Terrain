@@ -50,6 +50,18 @@ public sealed class RiverMapService
         }
     }
 
+    public bool Load(RiverCell[,] cells)
+    {
+        ArgumentNullException.ThrowIfNull(cells);
+
+        Errors.Clear();
+        Width = cells.GetLength(0);
+        Height = cells.GetLength(1);
+        Cells = (RiverCell[,])cells.Clone();
+        Validate();
+        return true;
+    }
+
     public bool Validate()
     {
         if (Cells == null) return false;

@@ -1,15 +1,7 @@
 #nullable enable
 
 using System;
-using System.Linq;
-using System.Threading.Tasks;
-using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using Terrain.Editor.Models;
 using Terrain.Editor.Services;
 
@@ -17,9 +9,8 @@ namespace Terrain.Editor.ViewModels;
 
 public sealed partial class RiverViewModel : ObservableObject, IDisposable
 {
-    private readonly TerrainManager terrainManager;
-    private RiverRenderingService? _renderingService;
-    private RiverMeshService? _meshService;
+    private readonly IRiverMapSource riverMapSource;
+    private IRiverMeshGenerator? generator;
 
     [ObservableProperty]
     private string? _riverMapPath;
@@ -33,128 +24,79 @@ public sealed partial class RiverViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private double _widthScale = 1.0;
 
-    [ObservableProperty]
-    private Bitmap? _previewImage;
-
     public RiverViewModel(TerrainManager terrainManager)
+        : this((IRiverMapSource)terrainManager)
     {
-        this.terrainManager = terrainManager;
-        terrainManager.RiverMapChanged += OnRiverMapChanged;
+    }
+
+    internal RiverViewModel(IRiverMapSource riverMapSource)
+    {
+        this.riverMapSource = riverMapSource ?? throw new ArgumentNullException(nameof(riverMapSource));
+        riverMapSource.RiverMapChanged += OnRiverMapChanged;
+        SyncStateFromRiverMapSource(autoGenerate: false);
     }
 
     public void SetServices(RiverRenderingService renderingService, RiverMeshService meshService)
     {
-        _renderingService = renderingService;
-        _meshService = meshService;
+        SetGenerator(new RiverMeshGenerator(renderingService, meshService));
+    }
+
+    internal void SetGenerator(IRiverMeshGenerator riverMeshGenerator)
+    {
+        generator = riverMeshGenerator ?? throw new ArgumentNullException(nameof(riverMeshGenerator));
+        SyncStateFromRiverMapSource(autoGenerate: true);
     }
 
     private void OnRiverMapChanged(object? sender, EventArgs e)
     {
-        HasRiverMap = terrainManager.RiverMap != null;
-        RiverMapPath = terrainManager.CurrentRiverMapPath;
-        StatusText = HasRiverMap
-            ? $"River map loaded: {terrainManager.RiverMap!.GetLength(0)}x{terrainManager.RiverMap!.GetLength(1)}"
-            : "No river map loaded";
+        SyncStateFromRiverMapSource(autoGenerate: true);
     }
 
-    [RelayCommand]
-    public async Task ImportPng()
+    private void SyncStateFromRiverMapSource(bool autoGenerate)
     {
-        IStorageProvider? storageProvider = GetStorageProvider();
-        if (storageProvider == null)
-        {
-            StatusText = "Error: File dialog unavailable";
-            return;
-        }
+        var cells = riverMapSource.RiverMap;
+        HasRiverMap = cells != null;
+        RiverMapPath = riverMapSource.CurrentRiverMapPath;
 
-        var results = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Import River Map",
-            AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType("PNG Images") { Patterns = ["*.png"] }],
-        });
-
-        if (results.Count == 0) return;
-
-        string path = results[0].TryGetLocalPath() ?? results[0].Path.ToString();
-        if (string.IsNullOrEmpty(path)) return;
-
-        terrainManager.LoadRiverMap(path);
-
-        try
-        {
-            PreviewImage = new Bitmap(path);
-        }
-        catch
-        {
-            // Preview is non-critical
-        }
-    }
-
-    private static IStorageProvider? GetStorageProvider()
-    {
-        if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
-            && desktop.MainWindow is { } window
-            && window.StorageProvider is { } provider)
-        {
-            return provider;
-        }
-        return null;
-    }
-
-    [RelayCommand]
-    public void Generate()
-    {
-        var cells = terrainManager.RiverMap;
         if (cells == null)
         {
-            StatusText = "Error: No river map loaded";
+            generator?.Clear();
+            StatusText = "No river map loaded";
             return;
         }
 
-        if (_renderingService == null || _meshService == null)
+        if (autoGenerate && TryGenerateLoadedRiverMesh(cells))
         {
-            StatusText = "Error: River services are not ready";
             return;
         }
 
-        var mapService = new RiverMapService();
-        mapService.Load(terrainManager.CurrentRiverMapPath ?? "");
+        StatusText = $"River map loaded: {cells.GetLength(0)}x{cells.GetLength(1)}";
+    }
 
-        var segments = mapService.ExtractSegments();
+    private bool TryGenerateLoadedRiverMesh(RiverCell[,] cells)
+    {
+        if (generator == null)
+            return false;
 
-        if (segments.Count == 0)
+        RiverGenerationResult? result = generator.Generate(cells, (float)WidthScale);
+        if (result == null)
         {
             StatusText = "Error: No river segments found";
-            return;
+            return true;
         }
 
-        // Set taper flags based on segment end kinds
-        foreach (var seg in segments)
-        {
-            seg.TaperStart = seg.StartKind == SegmentEndKind.Source || seg.StartKind == SegmentEndKind.None;
-            seg.TaperEnd = seg.EndKind == SegmentEndKind.Confluence || seg.EndKind == SegmentEndKind.Bifurcation;
-        }
-
-        // Build centerlines
-        _meshService?.BuildCenterlines(segments,
-            cells.GetLength(0), cells.GetLength(1));
-
-        // Generate meshes
-        _renderingService?.UpdateMeshes(segments, _meshService!, (float)WidthScale);
-
-        int vertexCount = segments.Sum(s => s.Centerline?.Count ?? 0) * 2;
-        int systemCount = segments.Select(s => s.SystemId).Distinct().Count();
-        StatusText = $"✓ {systemCount} systems, {segments.Count} segments, {vertexCount} vertices";
+        StatusText = $"✓ {result.Value.SystemCount} systems, {result.Value.SegmentCount} segments, {result.Value.VertexCount} vertices";
+        return true;
     }
 
     partial void OnWidthScaleChanged(double value)
     {
-        Generate();
+        if (riverMapSource.RiverMap is { } cells)
+            TryGenerateLoadedRiverMesh(cells);
     }
 
     public void Dispose()
     {
-        terrainManager.RiverMapChanged -= OnRiverMapChanged;
+        riverMapSource.RiverMapChanged -= OnRiverMapChanged;
     }
 }

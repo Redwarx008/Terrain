@@ -1,15 +1,15 @@
 using System;
 
-namespace Terrain.Shared;
+namespace Terrain;
 
-internal readonly record struct VirtualTextureMipLayoutInfo(
+public readonly record struct VirtualTextureMipLayoutInfo(
     int MipLevel,
     int Width,
     int Height,
     int TilesX,
     int TilesY);
 
-internal static class VirtualTextureLayout
+public static class VirtualTextureLayout
 {
     public static int GetMipCount(int width, int height, int tileSize)
     {
