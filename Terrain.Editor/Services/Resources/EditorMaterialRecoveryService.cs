@@ -31,10 +31,13 @@ public sealed class EditorMaterialRecoveryService
     public EditorMaterialRecoveryResult Recover(
         RuntimeMaterialDescriptor descriptor,
         string descriptorPath,
-        RuntimeBiomeSettings biomeSettings)
+        RuntimeBiomeSettings biomeSettings,
+        Func<string, string?> resolveVirtualPath)
     {
-        string descriptorDirectory = Path.GetDirectoryName(descriptorPath)
-            ?? throw new InvalidDataException($"Material descriptor path has no directory: {descriptorPath}");
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentNullException.ThrowIfNull(descriptorPath);
+        ArgumentNullException.ThrowIfNull(biomeSettings);
+        ArgumentNullException.ThrowIfNull(resolveVirtualPath);
 
         var slots = new List<EditorResolvedMaterialSlot>();
         var materialIndicesById = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -47,12 +50,15 @@ public sealed class EditorMaterialRecoveryService
         {
             usedIndices.Add(material.Index);
 
-            string? albedoPath = ResolveDescriptorTexturePath(descriptorDirectory, material.AlbedoPath);
-            string? normalPath = ResolveDescriptorTexturePath(descriptorDirectory, material.NormalPath);
-            string? propertiesPath = ResolveDescriptorTexturePath(descriptorDirectory, material.PropertiesPath);
+            string? albedoPath = ResolveMaterialTexturePath(material.AlbedoPath, resolveVirtualPath);
+            string? normalPath = ResolveMaterialTexturePath(material.NormalPath, resolveVirtualPath);
+            string? propertiesPath = ResolveMaterialTexturePath(material.PropertiesPath, resolveVirtualPath);
 
-            bool usesFallbackAlbedo = !string.IsNullOrWhiteSpace(albedoPath) && !File.Exists(albedoPath);
-            bool usesFallbackNormal = !string.IsNullOrWhiteSpace(normalPath) && !File.Exists(normalPath);
+            bool expectsAlbedo = !string.IsNullOrWhiteSpace(material.AlbedoPath);
+            bool expectsNormal = !string.IsNullOrWhiteSpace(material.NormalPath);
+            bool expectsProperties = !string.IsNullOrWhiteSpace(material.PropertiesPath);
+            bool usesFallbackAlbedo = expectsAlbedo && albedoPath == null;
+            bool usesFallbackNormal = expectsNormal && normalPath == null;
 
             if (usesFallbackAlbedo)
             {
@@ -60,8 +66,8 @@ public sealed class EditorMaterialRecoveryService
                 issues.Add(new EditorMaterialLoadIssue(
                     EditorMaterialLoadIssueKind.MissingAlbedoTexture,
                     material.Id,
-                    $"Terrain material '{material.Id}' is missing albedo texture. Falling back to magenta missing-material diffuse: {albedoPath}",
-                    albedoPath));
+                    $"Terrain material '{material.Id}' is missing albedo texture. Falling back to magenta missing-material diffuse: {ToMaterialTextureVirtualPath(material.AlbedoPath!)}",
+                    ToMaterialTextureVirtualPath(material.AlbedoPath!)));
             }
 
             if (usesFallbackNormal)
@@ -70,18 +76,18 @@ public sealed class EditorMaterialRecoveryService
                 issues.Add(new EditorMaterialLoadIssue(
                     EditorMaterialLoadIssueKind.MissingNormalTexture,
                     material.Id,
-                    $"Terrain material '{material.Id}' is missing normal texture. Falling back to flat normal: {normalPath}",
-                    normalPath));
+                    $"Terrain material '{material.Id}' is missing normal texture. Falling back to flat normal: {ToMaterialTextureVirtualPath(material.NormalPath!)}",
+                    ToMaterialTextureVirtualPath(material.NormalPath!)));
             }
 
-            if (!string.IsNullOrWhiteSpace(propertiesPath) && !File.Exists(propertiesPath))
+            if (expectsProperties && propertiesPath == null)
             {
                 hasTextureFallbacks = true;
                 issues.Add(new EditorMaterialLoadIssue(
                     EditorMaterialLoadIssueKind.MissingPropertiesTexture,
                     material.Id,
-                    $"Terrain material '{material.Id}' is missing properties texture: {propertiesPath}",
-                    propertiesPath));
+                    $"Terrain material '{material.Id}' is missing properties texture: {ToMaterialTextureVirtualPath(material.PropertiesPath!)}",
+                    ToMaterialTextureVirtualPath(material.PropertiesPath!)));
             }
 
             slots.Add(new EditorResolvedMaterialSlot(
@@ -136,20 +142,25 @@ public sealed class EditorMaterialRecoveryService
 
     private static int ReserveFallbackSlotIndex(HashSet<int> usedIndices)
     {
-        for (int index = 0; index < 256; index++)
+        for (int index = 0; index <= 254; index++)
         {
             if (usedIndices.Add(index))
                 return index;
         }
 
-        throw new InvalidDataException("No free material slot remains for runtime fallback.");
+        throw new InvalidDataException("No free material slot remains for runtime fallback in the valid range 0..254.");
     }
 
-    private static string? ResolveDescriptorTexturePath(string descriptorDirectory, string? texturePath)
+    private static string? ResolveMaterialTexturePath(string? texturePath, Func<string, string?> resolveVirtualPath)
     {
         if (string.IsNullOrWhiteSpace(texturePath))
             return null;
 
-        return Path.Combine(descriptorDirectory, texturePath.Trim());
+        return resolveVirtualPath(ToMaterialTextureVirtualPath(texturePath));
+    }
+
+    private static string ToMaterialTextureVirtualPath(string texturePath)
+    {
+        return $"map_data/materials/{texturePath.Trim()}";
     }
 }
