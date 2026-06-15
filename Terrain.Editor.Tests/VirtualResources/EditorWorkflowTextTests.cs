@@ -223,6 +223,10 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(mainWindowCodeBehind.Contains("ObserveViewModel(DataContext as EditorShellViewModel)", StringComparison.Ordinal), "MainWindow should observe the current DataContext as well as future DataContext changes");
 
         string progressWindow = File.ReadAllText(progressWindowPath);
+        TestHarness.Assert(!progressWindow.Contains("TransparencyLevelHint", StringComparison.Ordinal), "Save progress window should avoid top-level transparency because unsupported alpha can render black corners");
+        TestHarness.Assert(!progressWindow.Contains("CornerRadius", StringComparison.Ordinal), "Save progress window should not put a rounded card inside a rectangular top-level window");
+        TestHarness.Assert(!progressWindow.Contains("BoxShadow", StringComparison.Ordinal), "Save progress window should not draw clipped shadow into top-level window corners");
+        TestHarness.Assert(progressWindow.Contains("Background=\"{DynamicResource EditorSurfaceBrush}\"", StringComparison.Ordinal), "Save progress window should use an opaque surface background");
         TestHarness.Assert(progressWindow.Contains("Saving authoring resources", StringComparison.Ordinal), "Save progress window should show a title");
         TestHarness.Assert(progressWindow.Contains("SaveProgressMessage", StringComparison.Ordinal), "Save progress window should bind progress text");
         TestHarness.Assert(progressWindow.Contains("SaveProgressPercent", StringComparison.Ordinal), "Save progress window should bind progress percent");

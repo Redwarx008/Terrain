@@ -9,14 +9,12 @@
   SystemDecorations="None"
   WindowStartupLocation="CenterOwner"
   Topmost="True"
-  Background="Transparent">
+  Background="{DynamicResource EditorSurfaceBrush}">
   <Border
     Background="{DynamicResource EditorSurfaceBrush}"
     BorderBrush="{DynamicResource EditorPanelBorderBrush}"
     BorderThickness="1"
-    CornerRadius="6"
-    Padding="22"
-    BoxShadow="0 10 28 0 #66000000">
+    Padding="22">
     <StackPanel Spacing="12">
       <TextBlock
         Text="Saving authoring resources"
