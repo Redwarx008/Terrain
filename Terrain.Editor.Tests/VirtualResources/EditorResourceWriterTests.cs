@@ -85,6 +85,8 @@ internal static class EditorResourceWriterTests
         ]);
 
         string text = File.ReadAllText(output);
+        TestHarness.Assert(text.StartsWith("# Example material:", StringComparison.Ordinal), "writer should preserve the material comment template");
+        TestHarness.Assert(text.Contains("# [[materials]]", StringComparison.Ordinal), "writer should preserve the materials example comment");
         TestHarness.Assert(text.Contains("albedo = \"grass.png\"", StringComparison.Ordinal), "writer should keep short albedo path");
         TestHarness.Assert(!text.Contains(root, StringComparison.OrdinalIgnoreCase), "writer should not persist absolute workspace paths");
 
@@ -131,6 +133,12 @@ internal static class EditorResourceWriterTests
             HeightScale = 250.0f,
         });
 
+        string text = File.ReadAllText(output);
+        TestHarness.Assert(text.StartsWith("# Optional terrain companion resources:", StringComparison.Ordinal), "writer should preserve the terrain comment template");
+        TestHarness.Assert(text.Contains("# rivers = \"rivers.png\"", StringComparison.Ordinal), "writer should preserve rivers example comment");
+        TestHarness.Assert(text.Contains("# provinces = \"provinces.png\"", StringComparison.Ordinal), "writer should preserve provinces example comment");
+        TestHarness.Assert(text.Contains("[terrain]", StringComparison.Ordinal), "writer should still emit the terrain table");
+
         RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(output);
         TestHarness.AssertEqual("heightmap.png", map.HeightmapPath, "heightmap path");
         TestHarness.AssertEqual("terrain.terrain", map.TerrainDataPath, "terrain data path");
@@ -152,6 +160,10 @@ internal static class EditorResourceWriterTests
             [new EditorBiomeModifierDefinition(20, 10, "Height range", "HeightRange", "Multiply", 0.1f, 0.9f, 0.05f, 0.1f, 1.0f, 0.0f, 180.0f, 1.0f, 0.0f, 0.0f, 0.0f, 4.0f, 0.0f, null, 0, 0.75f, Enabled: true, Visible: true)]);
 
         string text = File.ReadAllText(output);
+        TestHarness.Assert(text.StartsWith("# Example biome:", StringComparison.Ordinal), "writer should preserve the biome comment template");
+        TestHarness.Assert(text.Contains("# [[biomes]]", StringComparison.Ordinal), "writer should preserve the biomes example comment");
+        TestHarness.Assert(text.Contains("# [[layers]]", StringComparison.Ordinal), "writer should preserve the layers example comment");
+        TestHarness.Assert(text.Contains("# [[modifiers]]", StringComparison.Ordinal), "writer should preserve the modifiers example comment");
         TestHarness.Assert(text.Contains("material_id = \"grass\"", StringComparison.Ordinal), "writer should persist material_id references");
         TestHarness.Assert(!text.Contains("material_slot", StringComparison.Ordinal), "writer should not persist old material_slot fields");
 

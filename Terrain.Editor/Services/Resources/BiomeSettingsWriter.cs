@@ -45,6 +45,38 @@ public readonly record struct EditorBiomeModifierDefinition(
 
 public sealed class BiomeSettingsWriter
 {
+    private const string TopCommentTemplate =
+        "# Example biome:\n" +
+        "# [[biomes]]\n" +
+        "# id = 1\n" +
+        "# name = \"Default\"\n" +
+        "#\n" +
+        "# Example layer:\n" +
+        "# [[layers]]\n" +
+        "# id = 1\n" +
+        "# biome_id = 1\n" +
+        "# name = \"Base\"\n" +
+        "# material_id = \"plains\"\n" +
+        "# priority = 0\n" +
+        "# enabled = true\n" +
+        "# visible = true\n" +
+        "#\n" +
+        "# Example modifier:\n" +
+        "# [[modifiers]]\n" +
+        "# id = 1\n" +
+        "# layer_id = 1\n" +
+        "# name = \"Slope\"\n" +
+        "# type = \"slope\"\n" +
+        "# blend_mode = \"add\"\n" +
+        "# min = 0.2\n" +
+        "# max = 0.8\n" +
+        "# min_falloff = 0.1\n" +
+        "# max_falloff = 0.1\n" +
+        "# opacity = 1.0\n" +
+        "# enabled = true\n" +
+        "# visible = true\n" +
+        "\n";
+
     public void Write(
         EditorResourceSession session,
         IReadOnlyList<EditorBiomeDefinition> biomes,
@@ -87,9 +119,7 @@ public sealed class BiomeSettingsWriter
             ["modifiers"] = CreateModifiersArray(modifiers),
         };
 
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-        using var writer = File.CreateText(outputPath);
-        root.WriteTo(writer);
+        WriteTomlWithTemplate(outputPath, root, TopCommentTemplate);
     }
 
     private static TomlArray CreateBiomesArray(IReadOnlyList<EditorBiomeDefinition> biomes)
@@ -183,5 +213,13 @@ public sealed class BiomeSettingsWriter
         }
 
         return normalized;
+    }
+
+    private static void WriteTomlWithTemplate(string outputPath, TomlTable root, string template)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        using var writer = File.CreateText(outputPath);
+        writer.Write(template);
+        root.WriteTo(writer);
     }
 }

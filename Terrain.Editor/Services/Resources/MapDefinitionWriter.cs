@@ -9,6 +9,12 @@ namespace Terrain.Editor.Services.Resources;
 
 public sealed class MapDefinitionWriter
 {
+    private const string TopCommentTemplate =
+        "# Optional terrain companion resources:\n" +
+        "# rivers = \"rivers.png\"\n" +
+        "# provinces = \"provinces.png\"\n" +
+        "\n";
+
     public void Write(EditorResourceSession session, RuntimeMapDefinition mapDefinition)
     {
         if (session == null)
@@ -48,9 +54,7 @@ public sealed class MapDefinitionWriter
             },
         };
 
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-        using var writer = File.CreateText(outputPath);
-        root.WriteTo(writer);
+        WriteTomlWithTemplate(outputPath, root, TopCommentTemplate);
     }
 
     private static void AddOptionalPath(TomlTable table, string key, string? path)
@@ -68,5 +72,13 @@ public sealed class MapDefinitionWriter
         }
 
         table[key] = normalized;
+    }
+
+    private static void WriteTomlWithTemplate(string outputPath, TomlTable root, string template)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        using var writer = File.CreateText(outputPath);
+        writer.Write(template);
+        root.WriteTo(writer);
     }
 }

@@ -17,6 +17,17 @@ public readonly record struct EditorMaterialDescriptorSlot(
 
 public sealed class MaterialDescriptorWriter
 {
+    private const string TopCommentTemplate =
+        "# Example material:\n" +
+        "# [[materials]]\n" +
+        "# id = \"plains\"\n" +
+        "# index = 0\n" +
+        "# name = \"Plains\"\n" +
+        "# albedo = \"plains_01_diffuse.dds\"\n" +
+        "# normal = \"plains_01_normal.dds\"\n" +
+        "# properties = \"plains_01_properties.dds\"\n" +
+        "\n";
+
     public void Write(EditorResourceSession session, IReadOnlyList<EditorMaterialDescriptorSlot> slots)
     {
         if (session == null)
@@ -57,9 +68,7 @@ public sealed class MaterialDescriptorWriter
 
         root["materials"] = materials;
 
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-        using var writer = File.CreateText(outputPath);
-        root.WriteTo(writer);
+        WriteTomlWithTemplate(outputPath, root, TopCommentTemplate);
     }
 
     private static void AddOptionalPath(TomlTable material, string key, string? value)
@@ -70,5 +79,13 @@ public sealed class MaterialDescriptorWriter
             throw new InvalidDataException($"Material texture path must be a file name relative to descriptor.toml: {value}");
 
         material[key] = value;
+    }
+
+    private static void WriteTomlWithTemplate(string outputPath, TomlTable root, string template)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        using var writer = File.CreateText(outputPath);
+        writer.Write(template);
+        root.WriteTo(writer);
     }
 }
