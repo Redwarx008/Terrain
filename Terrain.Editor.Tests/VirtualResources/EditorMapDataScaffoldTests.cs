@@ -5,6 +5,58 @@ namespace Terrain.Editor.Tests.VirtualResources;
 
 internal static class EditorMapDataScaffoldTests
 {
+    private static readonly string[] MapDefinitionTemplateLines =
+    [
+        "# Optional terrain companion resources:",
+        "# rivers = \"rivers.png\"",
+        "# provinces = \"provinces.png\"",
+    ];
+
+    private static readonly string[] MaterialDescriptorTemplateLines =
+    [
+        "# Example material:",
+        "# [[materials]]",
+        "# id = \"plains\"",
+        "# index = 0",
+        "# name = \"Plains\"",
+        "# albedo = \"plains_01_diffuse.dds\"",
+        "# normal = \"plains_01_normal.dds\"",
+        "# properties = \"plains_01_properties.dds\"",
+    ];
+
+    private static readonly string[] BiomeSettingsTemplateLines =
+    [
+        "# Example biome:",
+        "# [[biomes]]",
+        "# id = 1",
+        "# name = \"Default\"",
+        "#",
+        "# Example layer:",
+        "# [[layers]]",
+        "# id = 1",
+        "# biome_id = 1",
+        "# name = \"Base\"",
+        "# material_id = \"plains\"",
+        "# priority = 0",
+        "# enabled = true",
+        "# visible = true",
+        "#",
+        "# Example modifier:",
+        "# [[modifiers]]",
+        "# id = 1",
+        "# layer_id = 1",
+        "# name = \"Slope\"",
+        "# type = \"slope\"",
+        "# blend_mode = \"add\"",
+        "# min = 0.2",
+        "# max = 0.8",
+        "# min_falloff = 0.1",
+        "# max_falloff = 0.1",
+        "# opacity = 1.0",
+        "# enabled = true",
+        "# visible = true",
+    ];
+
     public static void RunAll()
     {
         TestHarness.Run("scaffold creates missing authoring tomls with reader-compatible defaults", ScaffoldCreatesMissingAuthoringTomlsWithReaderCompatibleDefaults);
@@ -60,29 +112,9 @@ internal static class EditorMapDataScaffoldTests
         string descriptorText = File.ReadAllText(descriptorToml);
         string biomeSettingsText = File.ReadAllText(biomeSettingsToml);
 
-        TestHarness.Assert(defaultText.StartsWith("# Optional terrain companion resources:", StringComparison.Ordinal), "default.toml should begin with the optional terrain comment template");
-        TestHarness.Assert(defaultText.Contains("# rivers = \"rivers.png\"", StringComparison.Ordinal), "default.toml should include rivers example comment");
-        TestHarness.Assert(defaultText.Contains("# provinces = \"provinces.png\"", StringComparison.Ordinal), "default.toml should include provinces example comment");
-
-        TestHarness.Assert(descriptorText.StartsWith("# Example material:", StringComparison.Ordinal), "descriptor.toml should begin with the example material template");
-        TestHarness.Assert(descriptorText.Contains("# [[materials]]", StringComparison.Ordinal), "descriptor.toml should include materials example comment");
-        TestHarness.Assert(descriptorText.Contains("# id = \"plains\"", StringComparison.Ordinal), "descriptor.toml should include material id example comment");
-        TestHarness.Assert(descriptorText.Contains("# index = 0", StringComparison.Ordinal), "descriptor.toml should include material index example comment");
-        TestHarness.Assert(descriptorText.Contains("# name = \"Plains\"", StringComparison.Ordinal), "descriptor.toml should include material name example comment");
-        TestHarness.Assert(descriptorText.Contains("# albedo = \"plains_01_diffuse.dds\"", StringComparison.Ordinal), "descriptor.toml should include material albedo example comment");
-
-        TestHarness.Assert(biomeSettingsText.StartsWith("# Example biome:", StringComparison.Ordinal), "biome_settings.toml should begin with the example biome template");
-        TestHarness.Assert(biomeSettingsText.Contains("# [[biomes]]", StringComparison.Ordinal), "biome_settings.toml should include biomes example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# [[layers]]", StringComparison.Ordinal), "biome_settings.toml should include layers example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# [[modifiers]]", StringComparison.Ordinal), "biome_settings.toml should include modifiers example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# id = 1", StringComparison.Ordinal), "biome_settings.toml should include biome id example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# name = \"Default\"", StringComparison.Ordinal), "biome_settings.toml should include biome name example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# biome_id = 1", StringComparison.Ordinal), "biome_settings.toml should include layer biome id example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# material_id = \"plains\"", StringComparison.Ordinal), "biome_settings.toml should include layer material id example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# enabled = true", StringComparison.Ordinal), "biome_settings.toml should include enabled example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# type = \"slope\"", StringComparison.Ordinal), "biome_settings.toml should include modifier type example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# blend_mode = \"add\"", StringComparison.Ordinal), "biome_settings.toml should include modifier blend mode example comment");
-        TestHarness.Assert(biomeSettingsText.Contains("# opacity = 1.0", StringComparison.Ordinal), "biome_settings.toml should include modifier opacity example comment");
+        AssertStartsWithTemplateBlock(defaultText, MapDefinitionTemplateLines, "default.toml");
+        AssertStartsWithTemplateBlock(descriptorText, MaterialDescriptorTemplateLines, "descriptor.toml");
+        AssertStartsWithTemplateBlock(biomeSettingsText, BiomeSettingsTemplateLines, "biome_settings.toml");
 
         RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(defaultToml);
         RuntimeMaterialDescriptor descriptor = RuntimeMaterialDescriptorReader.ReadFrom(descriptorToml);
@@ -131,5 +163,17 @@ height_scale = 100.0
         Directory.CreateDirectory(appRoot);
         File.WriteAllText(Path.Combine(root, "Terrain.sln"), string.Empty);
         return (root, appRoot, gameRoot);
+    }
+
+    private static void AssertStartsWithTemplateBlock(string text, IReadOnlyList<string> templateLines, string fileLabel)
+    {
+        string normalized = NormalizeLineEndings(text);
+        string expectedPrefix = string.Join('\n', templateLines) + "\n\n";
+        TestHarness.Assert(normalized.StartsWith(expectedPrefix, StringComparison.Ordinal), $"{fileLabel} should begin with the full template block followed by a blank line");
+    }
+
+    private static string NormalizeLineEndings(string text)
+    {
+        return text.Replace("\r\n", "\n", StringComparison.Ordinal);
     }
 }
