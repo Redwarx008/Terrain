@@ -48,7 +48,7 @@ public static class EditorResourceSaveService
         ArgumentNullException.ThrowIfNull(descriptorSlots);
         ArgumentNullException.ThrowIfNull(biomeSnapshot);
 
-        progress?.Report(AuthoringSaveProgress.Running(2, 9, "Validating save targets..."));
+        progress?.Report(AuthoringSaveProgress.Running(2, AuthoringSaveProgress.TotalSteps, "Validating save targets..."));
         EnsureWritable(session.MapDefinition, "Map definition");
         EnsureWritable(session.Heightmap, "Heightmap");
         EnsureWritable(session.BiomeMask, "Biome mask");
@@ -77,18 +77,18 @@ public static class EditorResourceSaveService
         string stagedMaterialDescriptor = transaction.CreateStagingPath(session.MaterialDescriptor.ResolvedPath);
         string stagedBiomeSettings = transaction.CreateStagingPath(session.BiomeSettings.ResolvedPath);
 
-        progress?.Report(AuthoringSaveProgress.Running(3, 9, "Writing map definition..."));
+        progress?.Report(AuthoringSaveProgress.Running(3, AuthoringSaveProgress.TotalSteps, "Writing map definition..."));
         mapDefinitionWriter.Write(stagedMapDefinition, mapDefinition);
-        progress?.Report(AuthoringSaveProgress.Running(4, 9, "Writing heightmap PNG..."));
+        progress?.Report(AuthoringSaveProgress.Running(4, AuthoringSaveProgress.TotalSteps, "Writing heightmap PNG..."));
         heightmapWriter.Write(stagedHeightmap, heightData, width, height);
-        progress?.Report(AuthoringSaveProgress.Running(5, 9, "Writing biome mask PNG..."));
+        progress?.Report(AuthoringSaveProgress.Running(5, AuthoringSaveProgress.TotalSteps, "Writing biome mask PNG..."));
         biomeMaskWriter.Write(stagedBiomeMask, biomeMask);
-        progress?.Report(AuthoringSaveProgress.Running(6, 9, "Writing material descriptor..."));
+        progress?.Report(AuthoringSaveProgress.Running(6, AuthoringSaveProgress.TotalSteps, "Writing material descriptor..."));
         materialDescriptorWriter.Write(stagedMaterialDescriptor, descriptorSlots);
-        progress?.Report(AuthoringSaveProgress.Running(7, 9, "Writing biome settings..."));
+        progress?.Report(AuthoringSaveProgress.Running(7, AuthoringSaveProgress.TotalSteps, "Writing biome settings..."));
         biomeSettingsWriter.Write(stagedBiomeSettings, biomeSnapshot.Biomes, biomeSnapshot.Layers, biomeSnapshot.Modifiers);
 
-        progress?.Report(AuthoringSaveProgress.Running(8, 9, "Committing staged resources..."));
+        progress?.Report(AuthoringSaveProgress.Running(8, AuthoringSaveProgress.TotalSteps, "Committing staged resources..."));
         transaction.Commit();
     }
 

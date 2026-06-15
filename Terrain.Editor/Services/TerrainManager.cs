@@ -354,7 +354,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
         if (BiomeMask == null)
             throw new InvalidOperationException("Biome mask data is not loaded.");
 
-        progress?.Report(AuthoringSaveProgress.Running(1, 9, "Preparing authoring data..."));
+        progress?.Report(AuthoringSaveProgress.Running(1, AuthoringSaveProgress.TotalSteps, "Preparing authoring data..."));
         IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots =
             EditorAuthoringResourceMapper.CreateMaterialDescriptorSlots(MaterialSlotManager.Instance.GetActiveSlots().ToArray());
         var materialIdsByIndex = descriptorSlots.ToDictionary(

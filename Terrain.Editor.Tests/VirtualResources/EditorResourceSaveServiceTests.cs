@@ -12,6 +12,18 @@ internal static class EditorResourceSaveServiceTests
         TestHarness.Run("authoring save reports progress in expected order", AuthoringSaveReportsProgressInExpectedOrder);
         TestHarness.Run("authoring save reports failing writer before rollback", AuthoringSaveReportsFailingWriterBeforeRollback);
         TestHarness.Run("authoring save rolls back earlier files when a later writer fails", AuthoringSaveRollsBackEarlierFilesWhenLaterWriterFails);
+        TestHarness.Run("authoring save progress failed factory reports completed error", AuthoringSaveProgressFailedFactoryReportsCompletedError);
+    }
+
+    private static void AuthoringSaveProgressFailedFactoryReportsCompletedError()
+    {
+        AuthoringSaveProgress progress = AuthoringSaveProgress.Failed(3, 9, "bad");
+
+        TestHarness.AssertEqual(3, progress.Current, "failed progress current");
+        TestHarness.AssertEqual(9, progress.Total, "failed progress total");
+        TestHarness.Assert(progress.IsCompleted, "failed progress should be terminal");
+        TestHarness.AssertEqual("bad", progress.ErrorMessage, "failed progress error message");
+        TestHarness.AssertEqual("bad", progress.Message, "failed progress message");
     }
 
     private static void AuthoringSaveReportsProgressInExpectedOrder()
@@ -39,7 +51,7 @@ internal static class EditorResourceSaveServiceTests
         AssertProgressSequence(
             progress.Reports,
             [2, 3, 4, 5, 6, 7, 8],
-            expectedTotal: 9);
+            expectedTotal: AuthoringSaveProgress.TotalSteps);
 
         string[] messages = progress.Messages;
         TestHarness.Assert(
@@ -75,7 +87,7 @@ internal static class EditorResourceSaveServiceTests
         AssertProgressSequence(
             progress.Reports,
             [2, 3, 4, 5, 6],
-            expectedTotal: 9);
+            expectedTotal: AuthoringSaveProgress.TotalSteps);
 
         string[] messages = progress.Messages;
         TestHarness.Assert(

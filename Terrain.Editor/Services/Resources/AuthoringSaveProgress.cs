@@ -4,6 +4,8 @@ namespace Terrain.Editor.Services.Resources;
 
 public readonly struct AuthoringSaveProgress
 {
+    public const int TotalSteps = 9;
+
     private readonly string? message;
 
     public int Current { get; }
@@ -38,6 +40,6 @@ public readonly struct AuthoringSaveProgress
 
     public static AuthoringSaveProgress Failed(int current, int total, string error)
     {
-        return new AuthoringSaveProgress(current, total, error, isCompleted: false, errorMessage: error);
+        return new AuthoringSaveProgress(current, total, error, isCompleted: true, errorMessage: error);
     }
 }
