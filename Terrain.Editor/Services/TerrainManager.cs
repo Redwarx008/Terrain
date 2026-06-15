@@ -338,7 +338,9 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
         }
     }
 
-    public void SaveAuthoringResources(EditorResourceSession session)
+    public void SaveAuthoringResources(
+        EditorResourceSession session,
+        IProgress<AuthoringSaveProgress>? progress = null)
     {
         if (session == null)
             throw new ArgumentNullException(nameof(session));
@@ -347,6 +349,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
         if (BiomeMask == null)
             throw new InvalidOperationException("Biome mask data is not loaded.");
 
+        progress?.Report(AuthoringSaveProgress.Running(1, 9, "Preparing authoring data..."));
         IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots =
             EditorAuthoringResourceMapper.CreateMaterialDescriptorSlots(MaterialSlotManager.Instance.GetActiveSlots().ToArray());
         var materialIdsByIndex = descriptorSlots.ToDictionary(
@@ -362,7 +365,8 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
             BiomeMask,
             HeightScale,
             descriptorSlots,
-            biomeSnapshot);
+            biomeSnapshot,
+            progress);
     }
 
     public BoundingBox GetTerrainBounds()
