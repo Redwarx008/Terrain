@@ -17,8 +17,30 @@ public static class EditorResourceSaveService
         BiomeMask biomeMask,
         float heightScale,
         IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots,
+        EditorBiomeSettingsSnapshot biomeSnapshot)
+    {
+        Save(
+            session,
+            heightData,
+            width,
+            height,
+            biomeMask,
+            heightScale,
+            descriptorSlots,
+            biomeSnapshot,
+            progress: null);
+    }
+
+    public static void Save(
+        EditorResourceSession session,
+        ushort[] heightData,
+        int width,
+        int height,
+        BiomeMask biomeMask,
+        float heightScale,
+        IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots,
         EditorBiomeSettingsSnapshot biomeSnapshot,
-        IProgress<AuthoringSaveProgress>? progress = null)
+        IProgress<AuthoringSaveProgress>? progress)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(heightData);

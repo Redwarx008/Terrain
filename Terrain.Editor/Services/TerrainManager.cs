@@ -338,9 +338,14 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
         }
     }
 
+    public void SaveAuthoringResources(EditorResourceSession session)
+    {
+        SaveAuthoringResources(session, progress: null);
+    }
+
     public void SaveAuthoringResources(
         EditorResourceSession session,
-        IProgress<AuthoringSaveProgress>? progress = null)
+        IProgress<AuthoringSaveProgress>? progress)
     {
         if (session == null)
             throw new ArgumentNullException(nameof(session));
