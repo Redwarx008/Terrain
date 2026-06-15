@@ -9,7 +9,114 @@ internal static class EditorResourceSaveServiceTests
 {
     public static void RunAll()
     {
+        TestHarness.Run("authoring save reports progress in expected order", AuthoringSaveReportsProgressInExpectedOrder);
+        TestHarness.Run("authoring save reports failing writer before rollback", AuthoringSaveReportsFailingWriterBeforeRollback);
         TestHarness.Run("authoring save rolls back earlier files when a later writer fails", AuthoringSaveRollsBackEarlierFilesWhenLaterWriterFails);
+    }
+
+    private static void AuthoringSaveReportsProgressInExpectedOrder()
+    {
+        string root = CreateWorkspace();
+        string mapDefinitionPath = Path.Combine(root, "mod", "map_data", "default.toml");
+        string heightmapPath = Path.Combine(root, "mod", "map_data", "heightmap.png");
+        string biomeMaskPath = Path.Combine(root, "mod", "map_data", "biome_mask.png");
+        string biomeSettingsPath = Path.Combine(root, "mod", "map_data", "biome_settings.toml");
+        string materialDescriptorPath = Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml");
+        Directory.CreateDirectory(Path.GetDirectoryName(materialDescriptorPath)!);
+
+        EditorResourceSession session = CreateSession(
+            root,
+            mapDefinitionPath,
+            heightmapPath,
+            biomeMaskPath,
+            biomeSettingsPath,
+            materialDescriptorPath);
+
+        var biomeMask = new BiomeMask(2, 2);
+        biomeMask.SetValue(0, 0, 1);
+        biomeMask.SetValue(1, 1, 2);
+        var progress = new CapturingSaveProgress();
+
+        EditorResourceSaveService.Save(
+            session,
+            [1, 2, 3, 4],
+            width: 2,
+            height: 2,
+            biomeMask,
+            heightScale: 222.0f,
+            descriptorSlots:
+            [
+                new EditorMaterialDescriptorSlot("grass", 0, "Grass", "grass.png", null, null),
+            ],
+            biomeSnapshot: new EditorBiomeSettingsSnapshot([], [], []),
+            progress: progress);
+
+        AssertProgressMessages(
+            progress.Messages,
+            [
+                "Validating save targets...",
+                "Writing map definition...",
+                "Writing heightmap PNG...",
+                "Writing biome mask PNG...",
+                "Writing material descriptor...",
+                "Writing biome settings...",
+                "Committing staged resources...",
+            ]);
+    }
+
+    private static void AuthoringSaveReportsFailingWriterBeforeRollback()
+    {
+        string root = CreateWorkspace();
+        string mapDefinitionPath = Path.Combine(root, "mod", "map_data", "default.toml");
+        string heightmapPath = Path.Combine(root, "mod", "map_data", "heightmap.png");
+        string biomeMaskPath = Path.Combine(root, "mod", "map_data", "biome_mask.png");
+        string biomeSettingsPath = Path.Combine(root, "mod", "map_data", "biome_settings.toml");
+        string materialDescriptorPath = Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml");
+        Directory.CreateDirectory(Path.GetDirectoryName(materialDescriptorPath)!);
+        File.WriteAllText(mapDefinitionPath, "original-default");
+        File.WriteAllText(heightmapPath, "original-heightmap");
+        File.WriteAllText(biomeMaskPath, "original-biome-mask");
+        File.WriteAllText(biomeSettingsPath, "original-biome-settings");
+        File.WriteAllText(materialDescriptorPath, "original-material-descriptor");
+
+        EditorResourceSession session = CreateSession(
+            root,
+            mapDefinitionPath,
+            heightmapPath,
+            biomeMaskPath,
+            biomeSettingsPath,
+            materialDescriptorPath);
+
+        var biomeMask = new BiomeMask(2, 2);
+        var progress = new CapturingSaveProgress();
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => EditorResourceSaveService.Save(
+                session,
+                [1, 2, 3, 4],
+                width: 2,
+                height: 2,
+                biomeMask,
+                heightScale: 222.0f,
+                descriptorSlots:
+                [
+                    new EditorMaterialDescriptorSlot("grass", 0, "Grass", "nested/grass.png", null, null),
+                ],
+                biomeSnapshot: new EditorBiomeSettingsSnapshot([], [], []),
+                progress: progress),
+            "invalid material descriptor path should fail the save");
+
+        TestHarness.Assert(
+            progress.Messages.Contains("Writing material descriptor..."),
+            "progress should report the failing material descriptor writer");
+        TestHarness.Assert(
+            !progress.Messages.Contains("Committing staged resources..."),
+            "progress should not report commit after a writer fails");
+        TestHarness.AssertEqual("original-default", File.ReadAllText(mapDefinitionPath), "map definition should roll back");
+        TestHarness.AssertEqual("original-heightmap", File.ReadAllText(heightmapPath), "heightmap should roll back");
+        TestHarness.AssertEqual("original-biome-mask", File.ReadAllText(biomeMaskPath), "biome mask should roll back");
+        TestHarness.AssertEqual("original-biome-settings", File.ReadAllText(biomeSettingsPath), "biome settings should roll back");
+        TestHarness.AssertEqual("original-material-descriptor", File.ReadAllText(materialDescriptorPath), "material descriptor should roll back");
     }
 
     private static void AuthoringSaveRollsBackEarlierFilesWhenLaterWriterFails()
@@ -95,5 +202,23 @@ internal static class EditorResourceSaveServiceTests
         string root = Path.Combine(Path.GetTempPath(), "terrain-editor-save-service-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private static void AssertProgressMessages(IReadOnlyList<string> actual, IReadOnlyList<string> expected)
+    {
+        TestHarness.AssertEqual(expected.Count, actual.Count, "progress message count");
+        for (int i = 0; i < expected.Count; i++)
+            TestHarness.AssertEqual(expected[i], actual[i], $"progress message {i}");
+    }
+
+    private sealed class CapturingSaveProgress : IProgress<AuthoringSaveProgress>
+    {
+        public List<string> Messages { get; } = [];
+
+        public void Report(AuthoringSaveProgress value)
+        {
+            if (!string.IsNullOrWhiteSpace(value.Message))
+                Messages.Add(value.Message);
+        }
     }
 }
