@@ -40,9 +40,17 @@ public sealed class EditorResourceSession
     public RuntimeMapDefinition MapDefinitionModel { get; }
     public bool HasDeclaredProvinces { get; }
     public bool HasPendingHeightmap { get; }
-    public bool HasPendingResources => HasPendingHeightmap;
+    public EditorMaterialLoadState MaterialLoadState { get; private set; } = EditorMaterialLoadState.Empty;
+    public bool HasMaterialLoadIssues => MaterialLoadState.HasIssues;
+    public bool HasBlockingMaterialIssues => MaterialLoadState.HasBlockingMissingMaterialIds;
+    public bool HasPendingResources => HasPendingHeightmap || HasBlockingMaterialIssues;
     public string? PendingHeightmapPath => HasPendingHeightmap ? Heightmap.ResolvedPath : null;
-    public bool CanSaveAuthoringResources => !HasPendingHeightmap;
-    public bool CanExportTerrainData => !HasPendingHeightmap;
+    public bool CanSaveAuthoringResources => !HasPendingHeightmap && !HasBlockingMaterialIssues;
+    public bool CanExportTerrainData => !HasPendingHeightmap && !HasBlockingMaterialIssues;
     public float HeightScale => MapDefinitionModel.HeightScale;
+
+    public void ApplyMaterialLoadState(EditorMaterialLoadState state)
+    {
+        MaterialLoadState = state ?? EditorMaterialLoadState.Empty;
+    }
 }

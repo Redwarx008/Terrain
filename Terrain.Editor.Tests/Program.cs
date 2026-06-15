@@ -42,6 +42,7 @@ EditorResourceWriterTests.RunAll();
 AtomicResourceWriteTransactionTests.RunAll();
 EditorResourceSaveServiceTests.RunAll();
 EditorAuthoringResourceMapperTests.RunAll();
+EditorMaterialLoadStateTests.RunAll();
 GameResourceGitIgnoreTextTests.RunAll();
 LocalLaunchSettingsBootstrapTests.RunAll();
 EditorMapDataScaffoldTests.RunAll();
