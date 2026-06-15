@@ -15,6 +15,9 @@ internal static class EditorWorkflowTextTests
         TestHarness.Run("editor river inspector does not expose manual import or generate actions", RiverInspectorDoesNotExposeManualImportOrGenerateActions);
         TestHarness.Run("editor river inspector does not expose preview bindings", RiverInspectorDoesNotExposePreviewBindings);
         TestHarness.Run("editor wires river services before loading workspace session", WiresRiverServicesBeforeLoadingWorkspaceSession);
+        TestHarness.Run("editor save exposes async modal progress state", SaveExposesAsyncModalProgressState);
+        TestHarness.Run("main window exposes save progress overlay", MainWindowExposesSaveProgressOverlay);
+        TestHarness.Run("viewport input can be blocked during modal save", ViewportInputCanBeBlockedDuringModalSave);
     }
 
     private static void HasAutomaticVirtualResourceBootstrap()
@@ -104,6 +107,36 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(handlerTryWire >= 0, "Runtime state change handler should wire river services");
         TestHarness.Assert(handlerLoad >= 0, "Runtime state change handler should load the workspace session");
         TestHarness.Assert(handlerTryWire < handlerLoad, "Runtime state change handler should wire river services before loading the workspace session");
+    }
+
+    private static void SaveExposesAsyncModalProgressState()
+    {
+        string viewModel = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs"));
+        TestHarness.Assert(viewModel.Contains("private async Task Save()", StringComparison.Ordinal), "Save command should use an async method");
+        TestHarness.Assert(viewModel.Contains("IsSaving", StringComparison.Ordinal), "EditorShellViewModel should expose IsSaving");
+        TestHarness.Assert(viewModel.Contains("SaveProgressMessage", StringComparison.Ordinal), "EditorShellViewModel should expose save progress text");
+        TestHarness.Assert(viewModel.Contains("SaveProgressPercent", StringComparison.Ordinal), "EditorShellViewModel should expose save progress percent");
+        TestHarness.Assert(viewModel.Contains("CanRunMutatingCommand", StringComparison.Ordinal), "mutating commands should share a save gate");
+        TestHarness.Assert(viewModel.Contains("Task.Run(() => terrainManager.SaveAuthoringResources(session, progress))", StringComparison.Ordinal), "Save should run authoring writes off the UI thread");
+        TestHarness.Assert(viewModel.Contains("_viewportHost.SetInputBlocked(value)", StringComparison.Ordinal), "Save state should block viewport input");
+    }
+
+    private static void MainWindowExposesSaveProgressOverlay()
+    {
+        string window = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml"));
+        TestHarness.Assert(window.Contains("IsEditorInteractionEnabled", StringComparison.Ordinal), "MainWindow should disable editor interaction while saving");
+        TestHarness.Assert(window.Contains("Saving authoring resources", StringComparison.Ordinal), "MainWindow should show a save progress title");
+        TestHarness.Assert(window.Contains("SaveProgressMessage", StringComparison.Ordinal), "MainWindow should bind save progress text");
+        TestHarness.Assert(window.Contains("SaveProgressPercent", StringComparison.Ordinal), "MainWindow should bind save progress percent");
+    }
+
+    private static void ViewportInputCanBeBlockedDuringModalSave()
+    {
+        string host = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "NativeStrideViewportHost.cs"));
+        string game = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "EmbeddedStrideViewportGame.cs"));
+        TestHarness.Assert(host.Contains("SetInputBlocked(bool blocked)", StringComparison.Ordinal), "NativeStrideViewportHost should expose input blocking");
+        TestHarness.Assert(game.Contains("public bool IsInputBlocked", StringComparison.Ordinal), "EmbeddedStrideViewportGame should expose input blocking");
+        TestHarness.Assert(game.Contains("if (IsInputBlocked)", StringComparison.Ordinal), "viewport update paths should check input blocking");
     }
 
     private static string FindRepositoryRoot()
