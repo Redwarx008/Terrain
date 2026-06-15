@@ -147,7 +147,7 @@ internal static class EditorPendingResourceWorkflowTests
 
     private static void EditorShellBlocksSaveAndExportWhenHeightmapIsPending()
     {
-        string saveBody = GetEditorShellMethodBody("private void Save()");
+        string saveBody = GetEditorShellMethodBody("private async Task Save()");
         string exportBody = GetEditorShellMethodBody("private async Task ExportTerrain()");
 
         AssertSavePendingGate(saveBody);
@@ -203,12 +203,12 @@ internal static class EditorPendingResourceWorkflowTests
         int pendingGate = methodBody.IndexOf("if (_resourceSession.HasPendingHeightmap)", StringComparison.Ordinal);
         int warning = methodBody.IndexOf("AddConsole(\"Warning\", \"Terrain workspace is waiting for a heightmap before save/export.\");", StringComparison.Ordinal);
         int returnAfterWarning = methodBody.IndexOf("return;", warning, StringComparison.Ordinal);
-        int saveCall = methodBody.IndexOf("terrainManager.SaveAuthoringResources(_resourceSession);", StringComparison.Ordinal);
+        int saveCall = methodBody.IndexOf("terrainManager.SaveAuthoringResources(session, snapshot, progress)", StringComparison.Ordinal);
 
         TestHarness.Assert(pendingGate >= 0, "save should branch on pending heightmap");
         TestHarness.Assert(warning >= 0, "save should log explicit pending warning");
         TestHarness.Assert(returnAfterWarning >= 0, "save pending warning should return immediately");
-        TestHarness.Assert(saveCall >= 0, "save should still call SaveAuthoringResources on the non-pending path");
+        TestHarness.Assert(saveCall >= 0, "save should still call SaveAuthoringResources with the captured snapshot on the non-pending path");
         TestHarness.Assert(pendingGate < warning, "save should log warning inside the pending gate");
         TestHarness.Assert(warning < returnAfterWarning, "save should return after pending warning");
         TestHarness.Assert(pendingGate < saveCall, "save pending gate should happen before SaveAuthoringResources");

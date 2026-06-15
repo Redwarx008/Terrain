@@ -15,6 +15,10 @@ internal static class EditorWorkflowTextTests
         TestHarness.Run("editor river inspector does not expose manual import or generate actions", RiverInspectorDoesNotExposeManualImportOrGenerateActions);
         TestHarness.Run("editor river inspector does not expose preview bindings", RiverInspectorDoesNotExposePreviewBindings);
         TestHarness.Run("editor wires river services before loading workspace session", WiresRiverServicesBeforeLoadingWorkspaceSession);
+        TestHarness.Run("editor save exposes async modal progress state", SaveExposesAsyncModalProgressState);
+        TestHarness.Run("editor save snapshots authoring state before background write", SaveSnapshotsAuthoringStateBeforeBackgroundWrite);
+        TestHarness.Run("main window exposes save progress overlay", MainWindowExposesSaveProgressOverlay);
+        TestHarness.Run("viewport input can be blocked during modal save", ViewportInputCanBeBlockedDuringModalSave);
     }
 
     private static void HasAutomaticVirtualResourceBootstrap()
@@ -104,6 +108,137 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(handlerTryWire >= 0, "Runtime state change handler should wire river services");
         TestHarness.Assert(handlerLoad >= 0, "Runtime state change handler should load the workspace session");
         TestHarness.Assert(handlerTryWire < handlerLoad, "Runtime state change handler should wire river services before loading the workspace session");
+    }
+
+    private static void SaveExposesAsyncModalProgressState()
+    {
+        string viewModel = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs"));
+        TestHarness.Assert(viewModel.Contains("SaveCommand", StringComparison.Ordinal), "EditorShellViewModel should expose the save command");
+        TestHarness.Assert(viewModel.Contains("IsSaving", StringComparison.Ordinal), "EditorShellViewModel should expose IsSaving");
+        TestHarness.Assert(viewModel.Contains("SaveProgressMessage", StringComparison.Ordinal), "EditorShellViewModel should expose save progress text");
+        TestHarness.Assert(viewModel.Contains("SaveProgressPercent", StringComparison.Ordinal), "EditorShellViewModel should expose save progress percent");
+        TestHarness.Assert(viewModel.Contains("CanRunMutatingCommand", StringComparison.Ordinal), "mutating commands should share a save gate");
+
+        string saveBody = ExtractMethodBody(viewModel, "private async Task Save");
+        TestHarness.Assert(saveBody.Contains("Progress<AuthoringSaveProgress>", StringComparison.Ordinal), "Save should report authoring save progress");
+        TestHarness.Assert(saveBody.Contains("Task.Run(", StringComparison.Ordinal), "Save should run authoring writes off the UI thread");
+        TestHarness.Assert(saveBody.Contains("SaveAuthoringResources", StringComparison.Ordinal), "Save should write authoring resources");
+        TestHarness.Assert(
+            saveBody.Contains("IsSaving = true", StringComparison.Ordinal) || saveBody.Contains("BeginSaveProgress()", StringComparison.Ordinal),
+            "Save should enter saving state before authoring writes");
+        TestHarness.Assert(
+            saveBody.Contains("IsSaving = false", StringComparison.Ordinal) || saveBody.Contains("EndSaveProgress()", StringComparison.Ordinal),
+            "Save should leave saving state after authoring writes");
+
+        string savingChangedBody = ExtractMethodBody(viewModel, "partial void OnIsSavingChanged(bool value)");
+        TestHarness.Assert(savingChangedBody.Contains("_viewportHost.SetInputBlocked(value)", StringComparison.Ordinal), "Save state changes should block viewport input");
+    }
+
+    private static void SaveSnapshotsAuthoringStateBeforeBackgroundWrite()
+    {
+        string viewModel = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs"));
+        string terrainManager = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Services", "TerrainManager.cs"));
+        string snapshotPath = Path.Combine(RepositoryRoot, "Terrain.Editor", "Services", "Resources", "EditorAuthoringSaveSnapshot.cs");
+
+        TestHarness.Assert(File.Exists(snapshotPath), "EditorAuthoringSaveSnapshot should exist");
+        TestHarness.Assert(!viewModel.Contains("Legacy workflow text-test marker", StringComparison.Ordinal), "EditorShellViewModel should not keep legacy text-test markers");
+
+        string saveBody = ExtractMethodBody(viewModel, "private async Task Save");
+        int beginProgress = saveBody.IndexOf("BeginSaveProgress();", StringComparison.Ordinal);
+        int createProgress = saveBody.IndexOf("new Progress<AuthoringSaveProgress>", StringComparison.Ordinal);
+        int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(progress)", StringComparison.Ordinal);
+        int taskRun = saveBody.IndexOf("Task.Run(", StringComparison.Ordinal);
+        int saveSnapshot = saveBody.IndexOf("terrainManager.SaveAuthoringResources(session, snapshot, progress)", StringComparison.Ordinal);
+        int refreshProgress = saveBody.IndexOf("AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, \"Refreshing editor state...\")", StringComparison.Ordinal);
+        int completedProgress = saveBody.IndexOf("AuthoringSaveProgress.Completed(AuthoringSaveProgress.TotalSteps, AuthoringSaveProgress.TotalSteps)", StringComparison.Ordinal);
+
+        TestHarness.Assert(beginProgress >= 0, "Save should begin modal progress before snapshot capture");
+        TestHarness.Assert(createProgress >= 0, "Save should create authoring progress before snapshot capture");
+        TestHarness.Assert(snapshot >= 0, "Save should capture an authoring snapshot on the UI thread");
+        TestHarness.Assert(taskRun >= 0, "Save should still run file writes in the background");
+        TestHarness.Assert(saveSnapshot >= 0, "Save should pass only the snapshot to background file writes");
+        TestHarness.Assert(refreshProgress >= 0, "Save should report step 9 while refreshing editor state");
+        TestHarness.Assert(completedProgress >= 0, "Save should report completed progress after refresh");
+        TestHarness.Assert(beginProgress < createProgress, "Save should enter saving state before creating progress");
+        TestHarness.Assert(createProgress < snapshot, "Save should have progress available for snapshot capture");
+        TestHarness.Assert(snapshot < taskRun, "Snapshot capture must happen before Task.Run");
+        TestHarness.Assert(taskRun < refreshProgress, "Refresh progress should be reported after background writes");
+        TestHarness.Assert(refreshProgress < completedProgress, "Completed progress should follow refresh");
+
+        string snapshotMethod = ExtractMethodBody(terrainManager, "public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot");
+        TestHarness.Assert(snapshotMethod.Contains("heightDataCache.ToArray()", StringComparison.Ordinal), "snapshot should clone height data");
+        TestHarness.Assert(snapshotMethod.Contains("Array.Copy(BiomeMask.GetRawData()", StringComparison.Ordinal), "snapshot should clone biome mask data");
+        string snapshotSaveBody = ExtractMethodBody(terrainManager, "EditorAuthoringSaveSnapshot snapshot,");
+        TestHarness.Assert(snapshotSaveBody.Contains("snapshot.HeightData", StringComparison.Ordinal), "snapshot save overload should write cloned height data");
+        TestHarness.Assert(snapshotSaveBody.Contains("snapshot.BiomeMask", StringComparison.Ordinal), "snapshot save overload should write cloned biome data");
+    }
+
+    private static void MainWindowExposesSaveProgressOverlay()
+    {
+        string window = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml"));
+        TestHarness.Assert(window.Contains("IsEditorInteractionEnabled", StringComparison.Ordinal), "MainWindow should disable editor interaction while saving");
+        TestHarness.Assert(window.Contains("Saving authoring resources", StringComparison.Ordinal), "MainWindow should show a save progress title");
+        TestHarness.Assert(window.Contains("SaveProgressMessage", StringComparison.Ordinal), "MainWindow should bind save progress text");
+        TestHarness.Assert(window.Contains("SaveProgressPercent", StringComparison.Ordinal), "MainWindow should bind save progress percent");
+    }
+
+    private static void ViewportInputCanBeBlockedDuringModalSave()
+    {
+        string host = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "NativeStrideViewportHost.cs"));
+        string game = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "EmbeddedStrideViewportGame.cs"));
+        TestHarness.Assert(host.Contains("SetInputBlocked(bool blocked)", StringComparison.Ordinal), "NativeStrideViewportHost should expose input blocking");
+        string hostBlockBody = ExtractMethodBody(host, "public void SetInputBlocked(bool blocked)");
+        TestHarness.Assert(hostBlockBody.Contains("_game.IsInputBlocked = blocked", StringComparison.Ordinal), "NativeStrideViewportHost should write the requested input blocking state to the game");
+        TestHarness.Assert(hostBlockBody.Contains("if (blocked)", StringComparison.Ordinal), "NativeStrideViewportHost should flush only when entering blocked input state");
+        TestHarness.Assert(hostBlockBody.Contains("_game.FlushBlockedInputState()", StringComparison.Ordinal), "NativeStrideViewportHost should synchronously flush active viewport input when blocking");
+        TestHarness.Assert(game.Contains("public bool IsInputBlocked", StringComparison.Ordinal), "EmbeddedStrideViewportGame should expose input blocking");
+        string flushBody = ExtractMethodBody(game, "public void FlushBlockedInputState");
+        TestHarness.Assert(flushBody.Contains("ReleaseCameraControl()", StringComparison.Ordinal), "FlushBlockedInputState should release camera control immediately");
+        TestHarness.Assert(flushBody.Contains("EndBrushStrokeIfNeeded()", StringComparison.Ordinal), "FlushBlockedInputState should end brush strokes immediately");
+        TestHarness.Assert(flushBody.Contains("_wasLeftMouseDown = false", StringComparison.Ordinal), "FlushBlockedInputState should reset left mouse tracking");
+        TestHarness.Assert(flushBody.Contains("UpdateBrushDecalVisibility(visible: false)", StringComparison.Ordinal), "FlushBlockedInputState should hide the brush decal immediately");
+        string cameraBody = ExtractMethodBody(game, "private void UpdateCamera");
+        TestHarness.Assert(cameraBody.Contains("if (IsInputBlocked)", StringComparison.Ordinal), "UpdateCamera should branch on blocked input");
+        TestHarness.Assert(cameraBody.Contains("ReleaseCameraControl()", StringComparison.Ordinal), "blocked viewport input should release camera control from UpdateCamera");
+        string brushBody = ExtractMethodBody(game, "private void UpdateBrush");
+        TestHarness.Assert(brushBody.Contains("if (IsInputBlocked)", StringComparison.Ordinal), "UpdateBrush should branch on blocked input");
+        TestHarness.Assert(brushBody.Contains("EndBrushStrokeIfNeeded()", StringComparison.Ordinal), "blocked viewport input should end active brush strokes from UpdateBrush");
+        TestHarness.Assert(brushBody.Contains("UpdateBrushDecalVisibility(visible: false)", StringComparison.Ordinal), "blocked viewport input should hide the brush decal from UpdateBrush");
+    }
+
+    private static string ExtractMethodBody(string source, string marker)
+    {
+        int searchIndex = 0;
+        while (true)
+        {
+            int markerIndex = source.IndexOf(marker, searchIndex, StringComparison.Ordinal);
+            TestHarness.Assert(markerIndex >= 0, $"marker should exist: {marker}");
+
+            int openBrace = source.IndexOf('{', markerIndex);
+            TestHarness.Assert(openBrace >= 0, $"opening brace should exist after marker: {marker}");
+
+            int semicolon = source.IndexOf(';', markerIndex);
+            if (semicolon >= 0 && semicolon < openBrace)
+            {
+                searchIndex = semicolon + 1;
+                continue;
+            }
+
+            int depth = 0;
+            for (int i = openBrace; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(openBrace + 1, i - openBrace - 1);
+                }
+            }
+
+            throw new InvalidOperationException($"closing brace should exist after marker: {marker}");
+        }
     }
 
     private static string FindRepositoryRoot()

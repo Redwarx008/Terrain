@@ -119,6 +119,22 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isInspectorVisible = true;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditorInteractionEnabled))]
+    private bool _isSaving;
+
+    [ObservableProperty]
+    private int _saveProgressCurrent;
+
+    [ObservableProperty]
+    private int _saveProgressTotal = AuthoringSaveProgress.TotalSteps;
+
+    [ObservableProperty]
+    private double _saveProgressPercent;
+
+    [ObservableProperty]
+    private string _saveProgressMessage = string.Empty;
+
     public NativeStrideViewportViewModel Viewport { get; }
 
     public BrushParametersViewModel BrushParams { get; }
@@ -176,6 +192,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     public bool IsRiverMode => SelectedMode == EditorMode.River;
 
     public bool HasTools => SelectedMode != EditorMode.Settings;
+
+    public bool IsEditorInteractionEnabled => !IsSaving;
 
     public bool IsBiomeVisible => IsPaintMode;
 
@@ -350,8 +368,59 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
-    private void Save()
+    private bool CanRunMutatingCommand()
+    {
+        return !IsSaving;
+    }
+
+    private void BeginSaveProgress()
+    {
+        SaveProgressCurrent = 0;
+        SaveProgressTotal = AuthoringSaveProgress.TotalSteps;
+        SaveProgressPercent = 0.0;
+        SaveProgressMessage = "Preparing authoring save...";
+        IsSaving = true;
+    }
+
+    private void EndSaveProgress()
+    {
+        IsSaving = false;
+    }
+
+    private void UpdateSaveProgress(AuthoringSaveProgress report)
+    {
+        SaveProgressCurrent = Math.Clamp(report.Current, 0, report.Total);
+        SaveProgressTotal = report.Total > 0 ? report.Total : AuthoringSaveProgress.TotalSteps;
+        SaveProgressPercent = SaveProgressTotal <= 0
+            ? 0.0
+            : Math.Clamp((double)SaveProgressCurrent / SaveProgressTotal * 100.0, 0.0, 100.0);
+
+        if (!string.IsNullOrWhiteSpace(report.Message))
+        {
+            SaveProgressMessage = report.Message;
+        }
+    }
+
+    private void NotifyMutatingCommandsCanExecuteChanged()
+    {
+        SaveCommand.NotifyCanExecuteChanged();
+        ExportTerrainCommand.NotifyCanExecuteChanged();
+        ImportAssetsCommand.NotifyCanExecuteChanged();
+        AddAssetForCategoryCommand.NotifyCanExecuteChanged();
+        ImportSelectedNormalCommand.NotifyCanExecuteChanged();
+        ClearSelectedMaterialSlotCommand.NotifyCanExecuteChanged();
+        DeleteAssetItemCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsSavingChanged(bool value)
+    {
+        _viewportHost.SetInputBlocked(value);
+        RefreshHistoryState();
+        NotifyMutatingCommandsCanExecuteChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRunMutatingCommand))]
+    private async Task Save()
     {
         if (!TryGetTerrainManager(out var terrainManager))
             return;
@@ -377,23 +446,35 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return;
         }
 
+        EditorResourceSession session = _resourceSession;
+        BeginSaveProgress();
+
         try
         {
-            terrainManager.SaveAuthoringResources(_resourceSession);
+            var progress = new Progress<AuthoringSaveProgress>(UpdateSaveProgress);
+            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(progress);
+            await Task.Run(() => terrainManager.SaveAuthoringResources(session, snapshot, progress));
+            UpdateSaveProgress(AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, "Refreshing editor state..."));
             _resourceSession = _bootstrapService.LoadCurrentSession();
             EditorDirtyState.Instance.ClearDirty();
             RefreshAssetItems();
+            RefreshMaterialSlots();
             Biome.NotifyMaterialPreviewsChanged();
             RefreshProjectState();
+            UpdateSaveProgress(AuthoringSaveProgress.Completed(AuthoringSaveProgress.TotalSteps, AuthoringSaveProgress.TotalSteps));
             AddConsole("Info", "Saved authoring resources.");
         }
         catch (Exception exception)
         {
             AddConsole("Error", $"Save failed: {exception.Message}");
         }
+        finally
+        {
+            EndSaveProgress();
+        }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRunMutatingCommand))]
     private async Task ExportTerrain()
     {
         if (!TryGetTerrainManager(out var terrainManager))
@@ -451,7 +532,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRunMutatingCommand))]
     private async Task ImportAssets()
     {
         var storageProvider = GetStorageProvider();
@@ -578,7 +659,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         SelectedAssetCategory = category;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRunMutatingCommand))]
     private async Task AddAssetForCategory(string category)
     {
         if (category == "Textures")
@@ -589,7 +670,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private bool CanDeleteAssetItem(AssetBrowserItemViewModel item)
     {
-        return item is not null && item.MaterialSlotIndex >= 0 && !item.IsCreateItem;
+        return !IsSaving && item is not null && item.MaterialSlotIndex >= 0 && !item.IsCreateItem;
     }
 
     [RelayCommand(CanExecute = nameof(CanDeleteAssetItem))]
@@ -620,7 +701,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         IsAssetBrowserVisible = !IsAssetBrowserVisible;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRunMutatingCommand))]
     private async Task ImportSelectedNormal()
     {
         if (SelectedMaterialSlot == null)
@@ -668,7 +749,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         _ = ImportNormalTexture(SelectedMaterialSlot.Index, path, graphicsDevice, commandList);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRunMutatingCommand))]
     private void ClearSelectedMaterialSlot()
     {
         if (SelectedMaterialSlot == null)
@@ -963,10 +1044,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private void RefreshHistoryState()
     {
-        CanUndo = _historyManager.CanUndo;
-        CanRedo = _historyManager.CanRedo;
+        CanUndo = !IsSaving && _historyManager.CanUndo;
+        CanRedo = !IsSaving && _historyManager.CanRedo;
         UndoLabel = _historyManager.UndoDescription is { Length: > 0 } undo ? $"Undo {undo}" : "Undo";
         RedoLabel = _historyManager.RedoDescription is { Length: > 0 } redo ? $"Redo {redo}" : "Redo";
+        UndoCommand.NotifyCanExecuteChanged();
+        RedoCommand.NotifyCanExecuteChanged();
     }
 
     private void RefreshTools()

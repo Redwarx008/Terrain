@@ -179,6 +179,18 @@ public sealed class NativeStrideViewportHost : IDisposable
         RuntimeStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    public void SetInputBlocked(bool blocked)
+    {
+        if (_game == null)
+            return;
+
+        _game.IsInputBlocked = blocked;
+        if (blocked)
+        {
+            _game.FlushBlockedInputState();
+        }
+    }
+
 
     public void Dispose()
     {

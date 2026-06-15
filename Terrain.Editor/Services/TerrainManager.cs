@@ -340,12 +340,31 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
 
     public void SaveAuthoringResources(EditorResourceSession session)
     {
+        SaveAuthoringResources(session, progress: null);
+    }
+
+    public void SaveAuthoringResources(
+        EditorResourceSession session,
+        IProgress<AuthoringSaveProgress>? progress)
+    {
         if (session == null)
             throw new ArgumentNullException(nameof(session));
+
+        EditorAuthoringSaveSnapshot snapshot = CreateAuthoringSaveSnapshot(progress);
+        SaveAuthoringResources(session, snapshot, progress);
+    }
+
+    public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(IProgress<AuthoringSaveProgress>? progress = null)
+    {
         if (heightDataCache == null || heightDataWidth <= 0 || heightDataHeight <= 0)
             throw new InvalidOperationException("Heightmap data is not loaded.");
         if (BiomeMask == null)
             throw new InvalidOperationException("Biome mask data is not loaded.");
+
+        progress?.Report(AuthoringSaveProgress.Running(1, AuthoringSaveProgress.TotalSteps, "Preparing authoring data..."));
+        ushort[] heightData = heightDataCache.ToArray();
+        var biomeMask = new BiomeMask(BiomeMask.Width, BiomeMask.Height);
+        Array.Copy(BiomeMask.GetRawData(), biomeMask.GetRawData(), biomeMask.GetRawData().Length);
 
         IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots =
             EditorAuthoringResourceMapper.CreateMaterialDescriptorSlots(MaterialSlotManager.Instance.GetActiveSlots().ToArray());
@@ -354,15 +373,37 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
             static slot => slot.Id);
         EditorBiomeSettingsSnapshot biomeSnapshot =
             EditorAuthoringResourceMapper.CreateBiomeSettingsSnapshot(BiomeRuleService.Instance, materialIdsByIndex);
-        EditorResourceSaveService.Save(
-            session,
-            heightDataCache,
+
+        return new EditorAuthoringSaveSnapshot(
+            heightData,
             heightDataWidth,
             heightDataHeight,
-            BiomeMask,
+            biomeMask,
             HeightScale,
             descriptorSlots,
             biomeSnapshot);
+    }
+
+    public void SaveAuthoringResources(
+        EditorResourceSession session,
+        EditorAuthoringSaveSnapshot snapshot,
+        IProgress<AuthoringSaveProgress>? progress = null)
+    {
+        if (session == null)
+            throw new ArgumentNullException(nameof(session));
+        if (snapshot == null)
+            throw new ArgumentNullException(nameof(snapshot));
+
+        EditorResourceSaveService.Save(
+            session,
+            snapshot.HeightData,
+            snapshot.Width,
+            snapshot.Height,
+            snapshot.BiomeMask,
+            snapshot.HeightScale,
+            snapshot.DescriptorSlots,
+            snapshot.BiomeSnapshot,
+            progress);
     }
 
     public BoundingBox GetTerrainBounds()

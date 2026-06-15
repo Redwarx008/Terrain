@@ -169,6 +169,7 @@
 ### 编辑器
 | 文件 | 职责 |
 |------|------|
+| `Terrain.Editor/ViewModels/EditorShellViewModel.cs` | 主窗口状态与命令；`Save` 使用 `AuthoringSaveProgress` 显示模态进度，UI 线程捕获保存快照后在后台执行作者态资源写回，并在保存期间禁用可变更命令 |
 | `Terrain.Editor/Services/TerrainManager.cs` | 地形管理服务 |
 | `Terrain.Editor/Services/HeightEditor.cs` | 高度编辑服务 |
 | `Terrain.Editor/Services/PaintEditor.cs` | 材质绘制服务 |
@@ -183,6 +184,8 @@
 | `Terrain.Editor/Services/Resources/EditorBootstrapService.cs` | 启动时按 exe 目录旁 `LaunchSetting.json` 构建 Editor 资源会话 |
 | `Terrain.Editor/Services/Resources/EditorMaterialRecoveryService.cs` | descriptor + biome settings 的作者态材质恢复、缺失 `material_id` 补位与诊断聚合 |
 | `Terrain.Editor/Services/Resources/EditorResourceSession.cs` | 当前命中的虚拟资源实体路径与写回目标 |
+| `Terrain.Editor/Services/Resources/EditorAuthoringSaveSnapshot.cs` | 作者态保存的不可变快照，由 `TerrainManager.CreateAuthoringSaveSnapshot` 在 UI 线程捕获，后台保存只消费快照并写文件 |
+| `Terrain.Editor/Services/Resources/AuthoringSaveProgress.cs` | 作者态保存进度报告，驱动 Save 模态进度覆盖层 |
 | `Terrain.Editor/Services/Resources/*Writer.cs` | 作者态资源写回到当前命中的实体文件 |
 | `Terrain/Resources/GameResourceRootLocator.cs` | 从二进制位置向上定位工作区 `game/` 资源根 |
 | `Terrain.Editor/Rendering/EditorTerrainEntity.cs` | 地形实体（含统一数据同步接口） |
@@ -190,7 +193,8 @@
 | `Terrain.Editor/Rendering/River/RiverProcessor.cs` | 河流组件到渲染对象的同步处理器 |
 | `Terrain.Editor/Rendering/River/RiverRenderObject.cs` | 河流 GPU 顶点/索引缓冲与 bounds |
 | `Terrain.Editor/Rendering/River/RiverRenderFeature.cs` | 河流河底/水面双 pass 渲染特性 |
-| `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem |
+| `Terrain.Editor/Rendering/NativeViewport/NativeStrideViewportHost.cs` | 原生 Stride 视口宿主；`SetInputBlocked` 在 Save 模态期间阻断视口输入并要求 Stride game flush 当前输入状态 |
+| `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem；Save 模态期间响应输入阻断，释放相机/笔刷状态并 flush 鼠标锁定与笔触输入 |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
 | `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
 | `Terrain.Editor/Services/Export/ExportManager.cs` | 导出管理器（注册、执行、错误回滚） |
