@@ -364,12 +364,16 @@ visible = true
   - 总是写 `[terrain].terrain_data`
   - `rivers` / `provinces` 仅在非空时写出
   - 总是写 `[settings].height_scale`
+  - 文件顶部会写入固定的注释模板示例；scaffold 自动生成和后续作者态写回都沿用同一组模板
+  - 这些顶部注释属于规范化输出，不保证保留用户自定义注释
 
 - `materials/descriptor.toml`
   - 总是写 `version = 1`
   - 总是写 `materials` 数组
   - 贴图字段只在非空时写出
   - 贴图路径只接受单个文件名
+  - 文件顶部会写入固定的注释模板示例；scaffold 自动生成和后续作者态写回都沿用同一组模板
+  - 这些顶部注释属于规范化输出，不保证保留用户自定义注释
 
 - `biome_settings.toml`
   - 总是写 `version = 1`
@@ -378,6 +382,8 @@ visible = true
   - 总是写 `modifiers` 数组
     - 即使为空，也会写出空数组
   - `texture_mask` 仅在非空时写出
+  - 文件顶部会写入固定的注释模板示例；scaffold 自动生成和后续作者态写回都沿用同一组模板
+  - 这些顶部注释属于规范化输出，不保证保留用户自定义注释
 
 ---
 
@@ -416,6 +422,7 @@ visible = true
 
 ## 作者态自动骨架
 
+- `map_data/default.toml`、`map_data/materials/descriptor.toml`、`map_data/biome_settings.toml` 缺失时自动生成作者态骨架，且骨架不只是最小合法 TOML，还会带顶部注释模板示例
 - `map_data/default.toml` 缺失时自动生成：
   - `heightmap = "heightmap.png"`
   - `terrain_data = "terrain.terrain"`
