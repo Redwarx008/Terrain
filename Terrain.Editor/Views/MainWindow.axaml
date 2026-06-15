@@ -29,7 +29,8 @@
     <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}" />
   </Window.KeyBindings>
-  <DockPanel LastChildFill="True">
+  <Panel>
+  <DockPanel LastChildFill="True" IsEnabled="{Binding IsEditorInteractionEnabled}">
 
     <!-- ═══ Title Bar ═══ -->
     <Border DockPanel.Dock="Top" Classes="titleBar" PointerPressed="TitleBar_OnPointerPressed">
@@ -902,4 +903,41 @@
 
     </Grid>
   </DockPanel>
+
+  <Border
+    Background="#80000000"
+    IsVisible="{Binding IsSaving}">
+    <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Width="360">
+      <Border
+        Background="{DynamicResource EditorSurfaceBrush}"
+        BorderBrush="{DynamicResource EditorPanelBorderBrush}"
+        BorderThickness="1"
+        CornerRadius="6"
+        Padding="22">
+        <StackPanel Spacing="12">
+          <TextBlock
+            Text="Saving authoring resources"
+            FontSize="18"
+            FontWeight="SemiBold"
+            Foreground="{DynamicResource EditorTextPrimaryBrush}" />
+          <TextBlock
+            Text="{Binding SaveProgressMessage}"
+            FontSize="12"
+            TextWrapping="Wrap"
+            Foreground="{DynamicResource EditorTextSecondaryBrush}" />
+          <ProgressBar
+            Minimum="0"
+            Maximum="100"
+            Height="8"
+            Value="{Binding SaveProgressPercent}" />
+          <TextBlock
+            Text="{Binding SaveProgressPercent, StringFormat='{}{0:F0}%'}"
+            HorizontalAlignment="Right"
+            FontSize="12"
+            Foreground="{DynamicResource EditorTextSecondaryBrush}" />
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+  </Panel>
 </Window>

@@ -71,6 +71,8 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     public RiverMeshService? RiverMeshService { get; private set; }
 
+    public bool IsInputBlocked { get; set; }
+
     public SceneViewMode SceneViewMode => _sceneViewMode;
 
     public string Diagnostics
@@ -181,8 +183,36 @@ public sealed class EmbeddedStrideViewportGame : Game
     /// </summary>
     public Action<bool>? SetChildWindowStyle { get; set; }
 
+    private void ReleaseCameraControl()
+    {
+        if (!_isControllingCamera)
+        {
+            return;
+        }
+
+        if (Input.HasMouse && Input.IsMousePositionLocked)
+        {
+            Input.UnlockMousePosition();
+        }
+
+        if (Window != null)
+        {
+            Window.IsMouseVisible = true;
+        }
+
+        SetChildWindowStyle?.Invoke(true);
+        _preferPhysicalKeyboardState = false;
+        _isControllingCamera = false;
+    }
+
     private void UpdateCamera(float deltaTime)
     {
+        if (IsInputBlocked)
+        {
+            ReleaseCameraControl();
+            return;
+        }
+
         bool rightMouseDown = Input.IsMouseButtonDown(MouseButton.Right);
 
         bool shouldControl = rightMouseDown;
@@ -276,6 +306,14 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     private void UpdateBrush(float deltaTime)
     {
+        if (IsInputBlocked)
+        {
+            EndBrushStrokeIfNeeded();
+            _wasLeftMouseDown = false;
+            UpdateBrushDecalVisibility(visible: false);
+            return;
+        }
+
         if (TerrainManager == null || _camera == null || !_editorState.HasSelectedTool)
         {
             EndBrushStrokeIfNeeded();
@@ -834,15 +872,7 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     protected override void EndRun()
     {
-        if (_isControllingCamera)
-        {
-            if (Input.HasMouse && Input.IsMousePositionLocked)
-                Input.UnlockMousePosition();
-            if (Window != null)
-                Window.IsMouseVisible = true;
-            SetChildWindowStyle?.Invoke(true);
-            _isControllingCamera = false;
-        }
+        ReleaseCameraControl();
 
 
         // Clean up brush decal entity
