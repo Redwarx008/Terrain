@@ -19,6 +19,7 @@ internal static class EditorWorkflowTextTests
         TestHarness.Run("editor save snapshots authoring state before background write", SaveSnapshotsAuthoringStateBeforeBackgroundWrite);
         TestHarness.Run("main window exposes save progress overlay", MainWindowExposesSaveProgressOverlay);
         TestHarness.Run("viewport input can be blocked during modal save", ViewportInputCanBeBlockedDuringModalSave);
+        TestHarness.Run("native viewport is hidden behind modal save overlay", NativeViewportIsHiddenBehindModalSaveOverlay);
     }
 
     private static void HasAutomaticVirtualResourceBootstrap()
@@ -204,6 +205,17 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(brushBody.Contains("if (IsInputBlocked)", StringComparison.Ordinal), "UpdateBrush should branch on blocked input");
         TestHarness.Assert(brushBody.Contains("EndBrushStrokeIfNeeded()", StringComparison.Ordinal), "blocked viewport input should end active brush strokes from UpdateBrush");
         TestHarness.Assert(brushBody.Contains("UpdateBrushDecalVisibility(visible: false)", StringComparison.Ordinal), "blocked viewport input should hide the brush decal from UpdateBrush");
+    }
+
+    private static void NativeViewportIsHiddenBehindModalSaveOverlay()
+    {
+        string host = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "NativeStrideViewportHost.cs"));
+        string hostBlockBody = ExtractMethodBody(host, "public void SetInputBlocked(bool blocked)");
+        TestHarness.Assert(hostBlockBody.Contains("SetNativeViewportVisible(!blocked)", StringComparison.Ordinal), "modal save should hide the native viewport HWND so the Avalonia progress overlay is not covered");
+
+        string visibilityBody = ExtractMethodBody(host, "private void SetNativeViewportVisible(bool visible)");
+        TestHarness.Assert(visibilityBody.Contains("ShowWindow(_childHwnd", StringComparison.Ordinal), "native viewport host HWND should be hidden during modal save");
+        TestHarness.Assert(visibilityBody.Contains("ShowWindow(_window.Handle", StringComparison.Ordinal), "hosted SDL viewport HWND should be hidden during modal save");
     }
 
     private static string ExtractMethodBody(string source, string marker)

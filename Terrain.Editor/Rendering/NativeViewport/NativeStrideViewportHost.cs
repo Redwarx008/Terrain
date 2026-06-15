@@ -181,14 +181,16 @@ public sealed class NativeStrideViewportHost : IDisposable
 
     public void SetInputBlocked(bool blocked)
     {
-        if (_game == null)
-            return;
-
-        _game.IsInputBlocked = blocked;
-        if (blocked)
+        if (_game != null)
         {
-            _game.FlushBlockedInputState();
+            _game.IsInputBlocked = blocked;
+            if (blocked)
+            {
+                _game.FlushBlockedInputState();
+            }
         }
+
+        SetNativeViewportVisible(!blocked);
     }
 
 
@@ -287,6 +289,25 @@ public sealed class NativeStrideViewportHost : IDisposable
         _window.ClientSize = new Size2(_width, _height);
         ApplyHostedWindowStyles();
         SetWindowPos(_window.Handle, IntPtr.Zero, 0, 0, _width, _height, SwpNoActivate | SwpNoZOrder | SwpShowWindow | SwpFrameChanged);
+    }
+
+    private void SetNativeViewportVisible(bool visible)
+    {
+        int showCommand = visible ? SwShow : SwHide;
+
+        if (_childHwnd != IntPtr.Zero)
+        {
+            ShowWindow(_childHwnd, showCommand);
+        }
+
+        if (_window is { IsDisposed: false })
+        {
+            ShowWindow(_window.Handle, showCommand);
+            if (visible)
+            {
+                ApplySize();
+            }
+        }
     }
 
     private void OnTick(object? sender, EventArgs e)
@@ -447,6 +468,8 @@ public sealed class NativeStrideViewportHost : IDisposable
     private const nint WsExStaticEdge = 0x00020000;
     private const nint WsExAppWindow = 0x00040000;
     private const nint WsExWindowEdge = 0x00000100;
+    private const int SwHide = 0;
+    private const int SwShow = 5;
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpShowWindow = 0x0040;
@@ -481,6 +504,10 @@ public sealed class NativeStrideViewportHost : IDisposable
         int width,
         int height,
         uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr hwnd, int command);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetFocus(IntPtr hwnd);
