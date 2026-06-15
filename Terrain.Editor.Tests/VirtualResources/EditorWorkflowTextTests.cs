@@ -148,36 +148,50 @@ internal static class EditorWorkflowTextTests
         string game = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "EmbeddedStrideViewportGame.cs"));
         TestHarness.Assert(host.Contains("SetInputBlocked(bool blocked)", StringComparison.Ordinal), "NativeStrideViewportHost should expose input blocking");
         string hostBlockBody = ExtractMethodBody(host, "SetInputBlocked(bool blocked)");
-        TestHarness.Assert(hostBlockBody.Contains("_game", StringComparison.Ordinal), "NativeStrideViewportHost should forward input blocking to the game");
-        TestHarness.Assert(hostBlockBody.Contains("blocked", StringComparison.Ordinal), "NativeStrideViewportHost should forward the requested input blocking state");
+        TestHarness.Assert(hostBlockBody.Contains("_game.IsInputBlocked = blocked", StringComparison.Ordinal), "NativeStrideViewportHost should write the requested input blocking state to the game");
         TestHarness.Assert(game.Contains("public bool IsInputBlocked", StringComparison.Ordinal), "EmbeddedStrideViewportGame should expose input blocking");
-        TestHarness.Assert(game.Contains("ReleaseCameraControl()", StringComparison.Ordinal), "blocked viewport input should release camera control");
-        TestHarness.Assert(game.Contains("EndBrushStrokeIfNeeded()", StringComparison.Ordinal), "blocked viewport input should end active brush strokes");
-        TestHarness.Assert(game.Contains("UpdateBrushDecalVisibility(visible: false)", StringComparison.Ordinal), "blocked viewport input should hide the brush decal");
+        string cameraBody = ExtractMethodBody(game, "UpdateCamera");
+        TestHarness.Assert(cameraBody.Contains("if (IsInputBlocked)", StringComparison.Ordinal), "UpdateCamera should branch on blocked input");
+        TestHarness.Assert(cameraBody.Contains("ReleaseCameraControl()", StringComparison.Ordinal), "blocked viewport input should release camera control from UpdateCamera");
+        string brushBody = ExtractMethodBody(game, "UpdateBrush");
+        TestHarness.Assert(brushBody.Contains("if (IsInputBlocked)", StringComparison.Ordinal), "UpdateBrush should branch on blocked input");
+        TestHarness.Assert(brushBody.Contains("EndBrushStrokeIfNeeded()", StringComparison.Ordinal), "blocked viewport input should end active brush strokes from UpdateBrush");
+        TestHarness.Assert(brushBody.Contains("UpdateBrushDecalVisibility(visible: false)", StringComparison.Ordinal), "blocked viewport input should hide the brush decal from UpdateBrush");
     }
 
     private static string ExtractMethodBody(string source, string marker)
     {
-        int markerIndex = source.IndexOf(marker, StringComparison.Ordinal);
-        TestHarness.Assert(markerIndex >= 0, $"marker should exist: {marker}");
-
-        int openBrace = source.IndexOf('{', markerIndex);
-        TestHarness.Assert(openBrace >= 0, $"opening brace should exist after marker: {marker}");
-
-        int depth = 0;
-        for (int i = openBrace; i < source.Length; i++)
+        int searchIndex = 0;
+        while (true)
         {
-            if (source[i] == '{')
-                depth++;
-            else if (source[i] == '}')
-            {
-                depth--;
-                if (depth == 0)
-                    return source.Substring(openBrace + 1, i - openBrace - 1);
-            }
-        }
+            int markerIndex = source.IndexOf(marker, searchIndex, StringComparison.Ordinal);
+            TestHarness.Assert(markerIndex >= 0, $"marker should exist: {marker}");
 
-        throw new InvalidOperationException($"closing brace should exist after marker: {marker}");
+            int openBrace = source.IndexOf('{', markerIndex);
+            TestHarness.Assert(openBrace >= 0, $"opening brace should exist after marker: {marker}");
+
+            int semicolon = source.IndexOf(';', markerIndex);
+            if (semicolon >= 0 && semicolon < openBrace)
+            {
+                searchIndex = semicolon + 1;
+                continue;
+            }
+
+            int depth = 0;
+            for (int i = openBrace; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(openBrace + 1, i - openBrace - 1);
+                }
+            }
+
+            throw new InvalidOperationException($"closing brace should exist after marker: {marker}");
+        }
     }
 
     private static string FindRepositoryRoot()
