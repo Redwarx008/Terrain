@@ -45,37 +45,38 @@ public readonly record struct EditorBiomeModifierDefinition(
 
 public sealed class BiomeSettingsWriter
 {
-    private const string TopCommentTemplate =
-        "# Example biome:\n" +
-        "# [[biomes]]\n" +
-        "# id = 1\n" +
-        "# name = \"Default\"\n" +
-        "#\n" +
-        "# Example layer:\n" +
-        "# [[layers]]\n" +
-        "# id = 1\n" +
-        "# biome_id = 1\n" +
-        "# name = \"Base\"\n" +
-        "# material_id = \"plains\"\n" +
-        "# priority = 0\n" +
-        "# enabled = true\n" +
-        "# visible = true\n" +
-        "#\n" +
-        "# Example modifier:\n" +
-        "# [[modifiers]]\n" +
-        "# id = 1\n" +
-        "# layer_id = 1\n" +
-        "# name = \"Slope\"\n" +
-        "# type = \"slope\"\n" +
-        "# blend_mode = \"add\"\n" +
-        "# min = 0.2\n" +
-        "# max = 0.8\n" +
-        "# min_falloff = 0.1\n" +
-        "# max_falloff = 0.1\n" +
-        "# opacity = 1.0\n" +
-        "# enabled = true\n" +
-        "# visible = true\n" +
-        "\n";
+    private static readonly string[] TopCommentTemplateLines =
+    [
+        "# Example biome:",
+        "# [[biomes]]",
+        "# id = 1",
+        "# name = \"Default\"",
+        "#",
+        "# Example layer:",
+        "# [[layers]]",
+        "# id = 1",
+        "# biome_id = 1",
+        "# name = \"Base\"",
+        "# material_id = \"plains\"",
+        "# priority = 0",
+        "# enabled = true",
+        "# visible = true",
+        "#",
+        "# Example modifier:",
+        "# [[modifiers]]",
+        "# id = 1",
+        "# layer_id = 1",
+        "# name = \"Slope\"",
+        "# type = \"slope\"",
+        "# blend_mode = \"add\"",
+        "# min = 0.2",
+        "# max = 0.8",
+        "# min_falloff = 0.1",
+        "# max_falloff = 0.1",
+        "# opacity = 1.0",
+        "# enabled = true",
+        "# visible = true",
+    ];
 
     public void Write(
         EditorResourceSession session,
@@ -119,7 +120,7 @@ public sealed class BiomeSettingsWriter
             ["modifiers"] = CreateModifiersArray(modifiers),
         };
 
-        WriteTomlWithTemplate(outputPath, root, TopCommentTemplate);
+        WriteTomlWithTemplate(outputPath, root, TopCommentTemplateLines);
     }
 
     private static TomlArray CreateBiomesArray(IReadOnlyList<EditorBiomeDefinition> biomes)
@@ -215,11 +216,16 @@ public sealed class BiomeSettingsWriter
         return normalized;
     }
 
-    private static void WriteTomlWithTemplate(string outputPath, TomlTable root, string template)
+    private static void WriteTomlWithTemplate(string outputPath, TomlTable root, IReadOnlyList<string> templateLines)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         using var writer = File.CreateText(outputPath);
-        writer.Write(template);
+        foreach (string line in templateLines)
+        {
+            writer.WriteLine(line);
+        }
+
+        writer.WriteLine();
         root.WriteTo(writer);
     }
 }

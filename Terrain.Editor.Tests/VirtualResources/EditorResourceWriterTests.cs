@@ -87,6 +87,10 @@ internal static class EditorResourceWriterTests
         string text = File.ReadAllText(output);
         TestHarness.Assert(text.StartsWith("# Example material:", StringComparison.Ordinal), "writer should preserve the material comment template");
         TestHarness.Assert(text.Contains("# [[materials]]", StringComparison.Ordinal), "writer should preserve the materials example comment");
+        TestHarness.Assert(text.Contains("# id = \"plains\"", StringComparison.Ordinal), "writer should preserve the material id example comment");
+        TestHarness.Assert(text.Contains("# index = 0", StringComparison.Ordinal), "writer should preserve the material index example comment");
+        TestHarness.Assert(text.Contains("# name = \"Plains\"", StringComparison.Ordinal), "writer should preserve the material name example comment");
+        TestHarness.Assert(text.Contains("# albedo = \"plains_01_diffuse.dds\"", StringComparison.Ordinal), "writer should preserve the material albedo example comment");
         TestHarness.Assert(text.Contains("albedo = \"grass.png\"", StringComparison.Ordinal), "writer should keep short albedo path");
         TestHarness.Assert(!text.Contains(root, StringComparison.OrdinalIgnoreCase), "writer should not persist absolute workspace paths");
 
@@ -164,6 +168,14 @@ internal static class EditorResourceWriterTests
         TestHarness.Assert(text.Contains("# [[biomes]]", StringComparison.Ordinal), "writer should preserve the biomes example comment");
         TestHarness.Assert(text.Contains("# [[layers]]", StringComparison.Ordinal), "writer should preserve the layers example comment");
         TestHarness.Assert(text.Contains("# [[modifiers]]", StringComparison.Ordinal), "writer should preserve the modifiers example comment");
+        TestHarness.Assert(text.Contains("# id = 1", StringComparison.Ordinal), "writer should preserve the biome id example comment");
+        TestHarness.Assert(text.Contains("# name = \"Default\"", StringComparison.Ordinal), "writer should preserve the biome name example comment");
+        TestHarness.Assert(text.Contains("# biome_id = 1", StringComparison.Ordinal), "writer should preserve the layer biome id example comment");
+        TestHarness.Assert(text.Contains("# material_id = \"plains\"", StringComparison.Ordinal), "writer should preserve the layer material id example comment");
+        TestHarness.Assert(text.Contains("# enabled = true", StringComparison.Ordinal), "writer should preserve the enabled example comment");
+        TestHarness.Assert(text.Contains("# type = \"slope\"", StringComparison.Ordinal), "writer should preserve the modifier type example comment");
+        TestHarness.Assert(text.Contains("# blend_mode = \"add\"", StringComparison.Ordinal), "writer should preserve the modifier blend mode example comment");
+        TestHarness.Assert(text.Contains("# opacity = 1.0", StringComparison.Ordinal), "writer should preserve the modifier opacity example comment");
         TestHarness.Assert(text.Contains("material_id = \"grass\"", StringComparison.Ordinal), "writer should persist material_id references");
         TestHarness.Assert(!text.Contains("material_slot", StringComparison.Ordinal), "writer should not persist old material_slot fields");
 

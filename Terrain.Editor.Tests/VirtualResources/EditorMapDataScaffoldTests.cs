@@ -66,11 +66,23 @@ internal static class EditorMapDataScaffoldTests
 
         TestHarness.Assert(descriptorText.StartsWith("# Example material:", StringComparison.Ordinal), "descriptor.toml should begin with the example material template");
         TestHarness.Assert(descriptorText.Contains("# [[materials]]", StringComparison.Ordinal), "descriptor.toml should include materials example comment");
+        TestHarness.Assert(descriptorText.Contains("# id = \"plains\"", StringComparison.Ordinal), "descriptor.toml should include material id example comment");
+        TestHarness.Assert(descriptorText.Contains("# index = 0", StringComparison.Ordinal), "descriptor.toml should include material index example comment");
+        TestHarness.Assert(descriptorText.Contains("# name = \"Plains\"", StringComparison.Ordinal), "descriptor.toml should include material name example comment");
+        TestHarness.Assert(descriptorText.Contains("# albedo = \"plains_01_diffuse.dds\"", StringComparison.Ordinal), "descriptor.toml should include material albedo example comment");
 
         TestHarness.Assert(biomeSettingsText.StartsWith("# Example biome:", StringComparison.Ordinal), "biome_settings.toml should begin with the example biome template");
         TestHarness.Assert(biomeSettingsText.Contains("# [[biomes]]", StringComparison.Ordinal), "biome_settings.toml should include biomes example comment");
         TestHarness.Assert(biomeSettingsText.Contains("# [[layers]]", StringComparison.Ordinal), "biome_settings.toml should include layers example comment");
         TestHarness.Assert(biomeSettingsText.Contains("# [[modifiers]]", StringComparison.Ordinal), "biome_settings.toml should include modifiers example comment");
+        TestHarness.Assert(biomeSettingsText.Contains("# id = 1", StringComparison.Ordinal), "biome_settings.toml should include biome id example comment");
+        TestHarness.Assert(biomeSettingsText.Contains("# name = \"Default\"", StringComparison.Ordinal), "biome_settings.toml should include biome name example comment");
+        TestHarness.Assert(biomeSettingsText.Contains("# biome_id = 1", StringComparison.Ordinal), "biome_settings.toml should include layer biome id example comment");
+        TestHarness.Assert(biomeSettingsText.Contains("# material_id = \"plains\"", StringComparison.Ordinal), "biome_settings.toml should include layer material id example comment");
+        TestHarness.Assert(biomeSettingsText.Contains("# enabled = true", StringComparison.Ordinal), "biome_settings.toml should include enabled example comment");
+        TestHarness.Assert(biomeSettingsText.Contains("# type = \"slope\"", StringComparison.Ordinal), "biome_settings.toml should include modifier type example comment");
+        TestHarness.Assert(biomeSettingsText.Contains("# blend_mode = \"add\"", StringComparison.Ordinal), "biome_settings.toml should include modifier blend mode example comment");
+        TestHarness.Assert(biomeSettingsText.Contains("# opacity = 1.0", StringComparison.Ordinal), "biome_settings.toml should include modifier opacity example comment");
 
         RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(defaultToml);
         RuntimeMaterialDescriptor descriptor = RuntimeMaterialDescriptorReader.ReadFrom(descriptorToml);

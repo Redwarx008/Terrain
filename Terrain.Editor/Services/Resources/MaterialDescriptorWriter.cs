@@ -17,16 +17,17 @@ public readonly record struct EditorMaterialDescriptorSlot(
 
 public sealed class MaterialDescriptorWriter
 {
-    private const string TopCommentTemplate =
-        "# Example material:\n" +
-        "# [[materials]]\n" +
-        "# id = \"plains\"\n" +
-        "# index = 0\n" +
-        "# name = \"Plains\"\n" +
-        "# albedo = \"plains_01_diffuse.dds\"\n" +
-        "# normal = \"plains_01_normal.dds\"\n" +
-        "# properties = \"plains_01_properties.dds\"\n" +
-        "\n";
+    private static readonly string[] TopCommentTemplateLines =
+    [
+        "# Example material:",
+        "# [[materials]]",
+        "# id = \"plains\"",
+        "# index = 0",
+        "# name = \"Plains\"",
+        "# albedo = \"plains_01_diffuse.dds\"",
+        "# normal = \"plains_01_normal.dds\"",
+        "# properties = \"plains_01_properties.dds\"",
+    ];
 
     public void Write(EditorResourceSession session, IReadOnlyList<EditorMaterialDescriptorSlot> slots)
     {
@@ -68,7 +69,7 @@ public sealed class MaterialDescriptorWriter
 
         root["materials"] = materials;
 
-        WriteTomlWithTemplate(outputPath, root, TopCommentTemplate);
+        WriteTomlWithTemplate(outputPath, root, TopCommentTemplateLines);
     }
 
     private static void AddOptionalPath(TomlTable material, string key, string? value)
@@ -81,11 +82,16 @@ public sealed class MaterialDescriptorWriter
         material[key] = value;
     }
 
-    private static void WriteTomlWithTemplate(string outputPath, TomlTable root, string template)
+    private static void WriteTomlWithTemplate(string outputPath, TomlTable root, IReadOnlyList<string> templateLines)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         using var writer = File.CreateText(outputPath);
-        writer.Write(template);
+        foreach (string line in templateLines)
+        {
+            writer.WriteLine(line);
+        }
+
+        writer.WriteLine();
         root.WriteTo(writer);
     }
 }

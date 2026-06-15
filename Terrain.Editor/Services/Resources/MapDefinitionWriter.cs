@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Terrain.Resources;
 using Tommy;
@@ -9,11 +10,12 @@ namespace Terrain.Editor.Services.Resources;
 
 public sealed class MapDefinitionWriter
 {
-    private const string TopCommentTemplate =
-        "# Optional terrain companion resources:\n" +
-        "# rivers = \"rivers.png\"\n" +
-        "# provinces = \"provinces.png\"\n" +
-        "\n";
+    private static readonly string[] TopCommentTemplateLines =
+    [
+        "# Optional terrain companion resources:",
+        "# rivers = \"rivers.png\"",
+        "# provinces = \"provinces.png\"",
+    ];
 
     public void Write(EditorResourceSession session, RuntimeMapDefinition mapDefinition)
     {
@@ -54,7 +56,7 @@ public sealed class MapDefinitionWriter
             },
         };
 
-        WriteTomlWithTemplate(outputPath, root, TopCommentTemplate);
+        WriteTomlWithTemplate(outputPath, root, TopCommentTemplateLines);
     }
 
     private static void AddOptionalPath(TomlTable table, string key, string? path)
@@ -74,11 +76,16 @@ public sealed class MapDefinitionWriter
         table[key] = normalized;
     }
 
-    private static void WriteTomlWithTemplate(string outputPath, TomlTable root, string template)
+    private static void WriteTomlWithTemplate(string outputPath, TomlTable root, IReadOnlyList<string> templateLines)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         using var writer = File.CreateText(outputPath);
-        writer.Write(template);
+        foreach (string line in templateLines)
+        {
+            writer.WriteLine(line);
+        }
+
+        writer.WriteLine();
         root.WriteTo(writer);
     }
 }
