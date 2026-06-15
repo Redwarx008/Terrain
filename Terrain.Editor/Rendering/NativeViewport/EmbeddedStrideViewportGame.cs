@@ -183,6 +183,14 @@ public sealed class EmbeddedStrideViewportGame : Game
     /// </summary>
     public Action<bool>? SetChildWindowStyle { get; set; }
 
+    public void FlushBlockedInputState()
+    {
+        ReleaseCameraControl();
+        EndBrushStrokeIfNeeded();
+        _wasLeftMouseDown = false;
+        UpdateBrushDecalVisibility(visible: false);
+    }
+
     private void ReleaseCameraControl()
     {
         if (!_isControllingCamera)

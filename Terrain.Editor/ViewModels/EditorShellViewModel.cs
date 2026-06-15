@@ -419,7 +419,6 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         NotifyMutatingCommandsCanExecuteChanged();
     }
 
-    // Legacy workflow text-test marker: private void Save()
     [RelayCommand(CanExecute = nameof(CanRunMutatingCommand))]
     private async Task Save()
     {
@@ -453,15 +452,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         try
         {
             var progress = new Progress<AuthoringSaveProgress>(UpdateSaveProgress);
-            // Legacy workflow text-test marker: terrainManager.SaveAuthoringResources(_resourceSession);
-            await Task.Run(() => terrainManager.SaveAuthoringResources(session, progress));
-            SaveProgressMessage = "Refreshing editor state...";
+            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(progress);
+            await Task.Run(() => terrainManager.SaveAuthoringResources(session, snapshot, progress));
+            UpdateSaveProgress(AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, "Refreshing editor state..."));
             _resourceSession = _bootstrapService.LoadCurrentSession();
             EditorDirtyState.Instance.ClearDirty();
             RefreshAssetItems();
             RefreshMaterialSlots();
             Biome.NotifyMaterialPreviewsChanged();
             RefreshProjectState();
+            UpdateSaveProgress(AuthoringSaveProgress.Completed(AuthoringSaveProgress.TotalSteps, AuthoringSaveProgress.TotalSteps));
             AddConsole("Info", "Saved authoring resources.");
         }
         catch (Exception exception)

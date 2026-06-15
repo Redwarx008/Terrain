@@ -185,6 +185,10 @@ public sealed class NativeStrideViewportHost : IDisposable
             return;
 
         _game.IsInputBlocked = blocked;
+        if (blocked)
+        {
+            _game.FlushBlockedInputState();
+        }
     }
 
 
