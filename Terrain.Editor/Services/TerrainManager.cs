@@ -277,15 +277,21 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
 
         var materialDescriptor = RuntimeMaterialDescriptorReader.ReadFrom(session.MaterialDescriptor.ResolvedPath);
         MaterialSlotManager.Instance.ApplyDescriptor(materialDescriptor, session.MaterialDescriptor.ResolvedPath);
+        RuntimeBiomeSettings biomeSettings = RuntimeBiomeSettingsReader.ReadFrom(session.BiomeSettings.ResolvedPath);
+        GameResourceResolver resourceResolver = GameResourceResolverBootstrap.CreateForAppDirectory(AppContext.BaseDirectory);
+        EditorMaterialRecoveryResult materialRecovery = new EditorMaterialRecoveryService().Recover(
+            materialDescriptor,
+            session.MaterialDescriptor.ResolvedPath,
+            biomeSettings,
+            virtualPath => ResolveOptionalVirtualPath(resourceResolver, virtualPath));
+        session.ApplyMaterialLoadState(materialRecovery.LoadState);
+        foreach (EditorMaterialLoadIssue issue in materialRecovery.LoadState.Issues)
+        {
+            Log.Error(issue.Message);
+        }
 
-        var materialIdsByIndex = materialDescriptor.Materials.ToDictionary(
-            static material => material.Id,
-            static material => material.Index,
-            StringComparer.Ordinal);
-        RuntimeBiomeSettings biomeSettings = RuntimeBiomeSettingsReader.ReadFrom(
-            session.BiomeSettings.ResolvedPath,
-            new HashSet<string>(materialIdsByIndex.Keys, StringComparer.Ordinal));
-        BiomeRuleService.Instance.ApplyRuntimeSettings(biomeSettings, materialIdsByIndex);
+        MaterialSlotManager.Instance.ApplyRecoveredMaterials(materialRecovery);
+        BiomeRuleService.Instance.ApplyRuntimeSettings(biomeSettings, materialRecovery.MaterialIndicesById);
 
         if (session.HasPendingHeightmap)
         {
@@ -318,6 +324,18 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
 
         MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);
         return entities;
+    }
+
+    private static string? ResolveOptionalVirtualPath(GameResourceResolver resolver, string virtualPath)
+    {
+        try
+        {
+            return resolver.ResolveRequiredFile(virtualPath).ResolvedPath;
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
     }
 
     public void SaveAuthoringResources(EditorResourceSession session)

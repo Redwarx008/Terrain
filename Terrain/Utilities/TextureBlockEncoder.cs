@@ -14,30 +14,39 @@ public static class TextureBlockEncoder
     /// </summary>
     public static byte[][] CreateFlatNormalMipData(PixelFormat format, int width, int height, int mipCount)
     {
+        return CreateSolidColorMipData(format, width, height, mipCount, 128, 128, 255, 255);
+    }
+
+    /// <summary>
+    /// 生成纯色纹理数据（含所有 mip 级别）。
+    /// 支持非压缩格式和 BC1/BC3 压缩格式。
+    /// </summary>
+    public static byte[][] CreateSolidColorMipData(PixelFormat format, int width, int height, int mipCount, byte r, byte g, byte b, byte a)
+    {
         var mipData = new byte[mipCount][];
         for (int mip = 0; mip < mipCount; mip++)
         {
             int mipW = Math.Max(1, width >> mip);
             int mipH = Math.Max(1, height >> mip);
             mipData[mip] = format.IsCompressed
-                ? CreateCompressedMipData(format, mipW, mipH)
-                : CreateUncompressedMipData(mipW, mipH);
+                ? CreateCompressedMipData(format, mipW, mipH, r, g, b, a)
+                : CreateUncompressedMipData(mipW, mipH, r, g, b, a);
         }
         return mipData;
     }
 
-    private static byte[] CreateUncompressedMipData(int mipW, int mipH)
+    private static byte[] CreateUncompressedMipData(int mipW, int mipH, byte r, byte g, byte b, byte a)
     {
         var data = new byte[mipW * mipH * 4];
         for (int i = 0; i < data.Length; i += 4)
         {
-            data[i] = 128; data[i + 1] = 128;
-            data[i + 2] = 255; data[i + 3] = 255;
+            data[i] = r; data[i + 1] = g;
+            data[i + 2] = b; data[i + 3] = a;
         }
         return data;
     }
 
-    private static byte[] CreateCompressedMipData(PixelFormat format, int mipW, int mipH)
+    private static byte[] CreateCompressedMipData(PixelFormat format, int mipW, int mipH, byte r, byte g, byte b, byte a)
     {
         int blockCountX = Math.Max(1, (mipW + 3) / 4);
         int blockCountY = Math.Max(1, (mipH + 3) / 4);
@@ -45,7 +54,8 @@ public static class TextureBlockEncoder
         int totalBlocks = blockCountX * blockCountY;
 
         Span<byte> template = stackalloc byte[bytesPerBlock];
-        EncodeFlatNormalBlock(format, template);
+        template.Clear();
+        EncodeSolidColorBlock(format, template, r, g, b, a);
 
         var data = new byte[totalBlocks * bytesPerBlock];
         var dataSpan = data.AsSpan();
@@ -58,22 +68,22 @@ public static class TextureBlockEncoder
     /// <summary>
     /// 编码单个 4x4 像素块，所有像素为平坦法线 (128,128,255,255)。
     /// </summary>
-    private static void EncodeFlatNormalBlock(PixelFormat format, Span<byte> block)
+    private static void EncodeSolidColorBlock(PixelFormat format, Span<byte> block, byte r, byte g, byte b, byte a)
     {
         if (format == PixelFormat.BC3_UNorm || format == PixelFormat.BC3_UNorm_SRgb)
         {
             var alphaPart = block.Slice(0, 8);
             var colorPart = block.Slice(8, 8);
 
-            // Alpha: ref0=255, ref1=255, indices=0 → 解码为 255
-            alphaPart[0] = 255;
-            alphaPart[1] = 255;
+            // Alpha: ref0=ref1=a, indices=0 → 解码为常量 alpha
+            alphaPart[0] = a;
+            alphaPart[1] = a;
 
-            EncodeBC1Color(128, 128, 255, colorPart);
+            EncodeBC1Color(r, g, b, colorPart);
         }
         else if (format == PixelFormat.BC1_UNorm || format == PixelFormat.BC1_UNorm_SRgb)
         {
-            EncodeBC1Color(128, 128, 255, block);
+            EncodeBC1Color(r, g, b, block);
         }
         else
         {
@@ -84,7 +94,7 @@ public static class TextureBlockEncoder
     /// <summary>
     /// BC1 颜色编码：RGB → RGB565，两个参考颜色相同 → 索引全零 → 单一颜色。
     /// </summary>
-    private static void EncodeBC1Color(int r, int g, int b, Span<byte> block)
+    private static void EncodeBC1Color(byte r, byte g, byte b, Span<byte> block)
     {
         ushort c565 = (ushort)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
         block[0] = (byte)(c565 & 0xFF);

@@ -35,7 +35,7 @@ public static class EditorAuthoringResourceMapper
         var usedIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (MaterialSlot slot in slots)
         {
-            if (slot.IsEmpty)
+            if (slot.IsEmpty || slot.IsRuntimeFallbackPlaceholder)
                 continue;
 
             string id = CreateUniqueMaterialId(slot, usedIds);

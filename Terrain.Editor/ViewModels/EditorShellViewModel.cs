@@ -294,6 +294,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 RefreshAssetItems();
                 Biome.NotifyMaterialPreviewsChanged();
                 RefreshProjectState();
+                ReportMaterialLoadIssues(session);
                 AddConsole("Error", $"Terrain workspace heightmap is missing: {session.PendingHeightmapPath}");
                 AddConsole("Warning", "Terrain workspace loaded with pending resources. Add the missing heightmap before save/export.");
                 return;
@@ -311,12 +312,29 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             RefreshAssetItems();
             Biome.NotifyMaterialPreviewsChanged();
             RefreshProjectState();
+            ReportMaterialLoadIssues(session);
             AddConsole("Info", $"Loaded Terrain workspace from {_resourceSession.MapDefinition.ResolvedPath}.");
         }
         catch (Exception exception)
         {
             AddConsole("Error", $"Failed to load Terrain workspace: {exception.Message}");
         }
+    }
+
+    private void ReportMaterialLoadIssues(EditorResourceSession session)
+    {
+        foreach (EditorMaterialLoadIssue issue in session.MaterialLoadState.Issues)
+        {
+            AddConsole("Error", issue.Message);
+        }
+
+        if (!session.MaterialLoadState.HasIssues)
+            return;
+
+        string summary = session.MaterialLoadState.HasBlockingMissingMaterialIds
+            ? "Terrain workspace loaded with degraded materials. Fix descriptor material ids before save/export."
+            : "Terrain workspace loaded with degraded materials. Missing texture files are using default fallback visuals.";
+        AddConsole("Warning", summary);
     }
 
     private void TryWireRiverServices()
@@ -344,9 +362,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (_resourceSession.HasPendingHeightmap)
+        if (!_resourceSession.CanSaveAuthoringResources)
         {
-            AddConsole("Warning", "Terrain workspace is waiting for a heightmap before save/export.");
+            if (_resourceSession.HasPendingHeightmap)
+                AddConsole("Warning", "Terrain workspace is waiting for a heightmap before save/export.");
+            else
+                AddConsole("Warning", "Terrain workspace has missing material declarations. Fix descriptor material ids before save/export.");
             return;
         }
 
@@ -386,9 +407,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (_resourceSession.HasPendingHeightmap)
+        if (!_resourceSession.CanExportTerrainData)
         {
-            AddConsole("Warning", "Terrain workspace is waiting for a heightmap before save/export.");
+            if (_resourceSession.HasPendingHeightmap)
+                AddConsole("Warning", "Terrain workspace is waiting for a heightmap before save/export.");
+            else
+                AddConsole("Warning", "Terrain workspace has missing material declarations. Fix descriptor material ids before save/export.");
             return;
         }
 

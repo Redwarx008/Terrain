@@ -60,7 +60,7 @@
 | **数据同步机制** | ✅ 已实现 | [2026-04-07-1](log/2026/04/07/2026-04-07-1-unified-terrain-data-sync.md) |
 | **材质索引图增强** | ✅ 已实现 | [2026-04-07-2](log/2026/04/07/2026-04-07-2-index-map-enhancement.md) |
 | **Undo/Redo（Chunk事务）** | ✅ 已实现 | [2026-04-07-5](log/2026/04/07/2026-04-07-5-chunk-based-undo-redo-implementation.md) |
-| **Editor 作者态启动** | ✅ 已实现 | 自动补齐 `default.toml` / `descriptor.toml` / `biome_settings.toml`，并在这些 TOML 顶部保留固定注释模板；缺失 `heightmap.png` 时以待补资源模式进入 |
+| **Editor 作者态启动** | ✅ 已实现 | 自动补齐 `default.toml` / `descriptor.toml` / `biome_settings.toml`，并在这些 TOML 顶部保留固定注释模板；缺失 `heightmap.png` 时以待补资源模式进入；缺失 `material_id` 时为每个缺失项创建运行时默认槽位并禁止 `Save` / `Export`；缺失贴图文件时仅该槽位逐通道降级：`albedo` 回退洋红缺失材质纹理、`normal` 回退 flat normal、`properties` 仅记录诊断 |
 | **旧项目持久化（TOML）** | ❌ 已移除 | Editor 固定 Terrain 工作区；旧 ProjectManager/TomlProjectConfig 已删除 |
 | **植被编辑** | 🚧 进行中 | [terrain-editor-design-phase-3](design/terrain-editor-design-phase-3.md) |
 | **导出系统（IExporter）** | ✅ 已实现 | 当前保留 Terrain `.terrain` 导出；旧 Biome Config 导出已移除 |
@@ -181,6 +181,7 @@
 | `Terrain.Editor/Services/RiverRenderingService.cs` | 河流渲染 façade（mesh 同步、显隐控制、桥接编辑器与渲染组件） |
 | `Terrain.Editor/Services/EditorDirtyState.cs` | 编辑器 dirty 状态跟踪（不携带项目路径） |
 | `Terrain.Editor/Services/Resources/EditorBootstrapService.cs` | 启动时按 exe 目录旁 `LaunchSetting.json` 构建 Editor 资源会话 |
+| `Terrain.Editor/Services/Resources/EditorMaterialRecoveryService.cs` | descriptor + biome settings 的作者态材质恢复、缺失 `material_id` 补位与诊断聚合 |
 | `Terrain.Editor/Services/Resources/EditorResourceSession.cs` | 当前命中的虚拟资源实体路径与写回目标 |
 | `Terrain.Editor/Services/Resources/*Writer.cs` | 作者态资源写回到当前命中的实体文件 |
 | `Terrain/Resources/GameResourceRootLocator.cs` | 从二进制位置向上定位工作区 `game/` 资源根 |

@@ -44,6 +44,8 @@ EditorResourceSaveServiceTests.RunAll();
 EditorAuthoringResourceMapperTests.RunAll();
 EditorMaterialLoadStateTests.RunAll();
 EditorMaterialRecoveryTests.RunAll();
+MaterialSlotManagerFallbackTextTests.RunAll();
+EditorMissingMaterialWorkflowTests.RunAll();
 GameResourceGitIgnoreTextTests.RunAll();
 LocalLaunchSettingsBootstrapTests.RunAll();
 EditorMapDataScaffoldTests.RunAll();

@@ -26,6 +26,21 @@ public sealed class MaterialSlot
     public string? MaterialId { get; set; }
 
     /// <summary>
+    /// 该槽位是否为仅运行时存在的缺失材质占位。
+    /// </summary>
+    public bool IsRuntimeFallbackPlaceholder { get; set; }
+
+    /// <summary>
+    /// 该槽位当前是否使用默认 diffuse/albedo 表现。
+    /// </summary>
+    public bool UsesFallbackAlbedo { get; set; }
+
+    /// <summary>
+    /// 该槽位当前是否使用默认法线表现。
+    /// </summary>
+    public bool UsesFallbackNormal { get; set; }
+
+    /// <summary>
     /// Albedo 纹理文件路径（相对或绝对）。
     /// </summary>
     public string? AlbedoTexturePath { get; set; }
@@ -68,7 +83,12 @@ public sealed class MaterialSlot
     /// <summary>
     /// 槽位是否为空（未配置纹理）。
     /// </summary>
-    public bool IsEmpty => string.IsNullOrEmpty(AlbedoTexturePath);
+    public bool IsEmpty =>
+        string.IsNullOrEmpty(MaterialId)
+        && string.IsNullOrEmpty(AlbedoTexturePath)
+        && string.IsNullOrEmpty(NormalTexturePath)
+        && string.IsNullOrEmpty(PropertiesTexturePath)
+        && !IsRuntimeFallbackPlaceholder;
 
     /// <summary>
     /// 清除槽位配置并释放 GPU 资源。
@@ -76,6 +96,9 @@ public sealed class MaterialSlot
     public void Clear()
     {
         MaterialId = null;
+        IsRuntimeFallbackPlaceholder = false;
+        UsesFallbackAlbedo = false;
+        UsesFallbackNormal = false;
         AlbedoTexturePath = null;
         NormalTexturePath = null;
         PropertiesTexturePath = null;

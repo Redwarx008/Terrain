@@ -39,6 +39,8 @@ public sealed class EditorMaterialRecoveryService
         ArgumentNullException.ThrowIfNull(biomeSettings);
         ArgumentNullException.ThrowIfNull(resolveVirtualPath);
 
+        string descriptorDirectory = Path.GetDirectoryName(descriptorPath)
+            ?? throw new InvalidDataException($"Material descriptor path has no directory: {descriptorPath}");
         var slots = new List<EditorResolvedMaterialSlot>();
         var materialIndicesById = new Dictionary<string, int>(StringComparer.Ordinal);
         var usedIndices = new HashSet<int>();
@@ -50,15 +52,19 @@ public sealed class EditorMaterialRecoveryService
         {
             usedIndices.Add(material.Index);
 
-            string? albedoPath = ResolveMaterialTexturePath(material.AlbedoPath, resolveVirtualPath);
-            string? normalPath = ResolveMaterialTexturePath(material.NormalPath, resolveVirtualPath);
-            string? propertiesPath = ResolveMaterialTexturePath(material.PropertiesPath, resolveVirtualPath);
+            string? resolvedAlbedoPath = ResolveMaterialTexturePath(material.AlbedoPath, resolveVirtualPath);
+            string? resolvedNormalPath = ResolveMaterialTexturePath(material.NormalPath, resolveVirtualPath);
+            string? resolvedPropertiesPath = ResolveMaterialTexturePath(material.PropertiesPath, resolveVirtualPath);
 
             bool expectsAlbedo = !string.IsNullOrWhiteSpace(material.AlbedoPath);
             bool expectsNormal = !string.IsNullOrWhiteSpace(material.NormalPath);
             bool expectsProperties = !string.IsNullOrWhiteSpace(material.PropertiesPath);
-            bool usesFallbackAlbedo = expectsAlbedo && albedoPath == null;
-            bool usesFallbackNormal = expectsNormal && normalPath == null;
+            bool usesFallbackAlbedo = expectsAlbedo && resolvedAlbedoPath == null;
+            bool usesFallbackNormal = expectsNormal && resolvedNormalPath == null;
+            bool usesFallbackProperties = expectsProperties && resolvedPropertiesPath == null;
+            string? albedoPath = resolvedAlbedoPath ?? ResolveDescriptorTexturePath(descriptorDirectory, material.AlbedoPath);
+            string? normalPath = resolvedNormalPath ?? ResolveDescriptorTexturePath(descriptorDirectory, material.NormalPath);
+            string? propertiesPath = resolvedPropertiesPath ?? ResolveDescriptorTexturePath(descriptorDirectory, material.PropertiesPath);
 
             if (usesFallbackAlbedo)
             {
@@ -66,8 +72,8 @@ public sealed class EditorMaterialRecoveryService
                 issues.Add(new EditorMaterialLoadIssue(
                     EditorMaterialLoadIssueKind.MissingAlbedoTexture,
                     material.Id,
-                    $"Terrain material '{material.Id}' is missing albedo texture. Falling back to magenta missing-material diffuse: {ToMaterialTextureVirtualPath(material.AlbedoPath!)}",
-                    ToMaterialTextureVirtualPath(material.AlbedoPath!)));
+                    $"Terrain material '{material.Id}' is missing albedo texture. Falling back to magenta missing-material diffuse: {albedoPath}",
+                    albedoPath));
             }
 
             if (usesFallbackNormal)
@@ -76,18 +82,18 @@ public sealed class EditorMaterialRecoveryService
                 issues.Add(new EditorMaterialLoadIssue(
                     EditorMaterialLoadIssueKind.MissingNormalTexture,
                     material.Id,
-                    $"Terrain material '{material.Id}' is missing normal texture. Falling back to flat normal: {ToMaterialTextureVirtualPath(material.NormalPath!)}",
-                    ToMaterialTextureVirtualPath(material.NormalPath!)));
+                    $"Terrain material '{material.Id}' is missing normal texture. Falling back to flat normal: {normalPath}",
+                    normalPath));
             }
 
-            if (expectsProperties && propertiesPath == null)
+            if (usesFallbackProperties)
             {
                 hasTextureFallbacks = true;
                 issues.Add(new EditorMaterialLoadIssue(
                     EditorMaterialLoadIssueKind.MissingPropertiesTexture,
                     material.Id,
-                    $"Terrain material '{material.Id}' is missing properties texture: {ToMaterialTextureVirtualPath(material.PropertiesPath!)}",
-                    ToMaterialTextureVirtualPath(material.PropertiesPath!)));
+                    $"Terrain material '{material.Id}' is missing properties texture: {propertiesPath}",
+                    propertiesPath));
             }
 
             slots.Add(new EditorResolvedMaterialSlot(
@@ -159,8 +165,13 @@ public sealed class EditorMaterialRecoveryService
         return resolveVirtualPath(ToMaterialTextureVirtualPath(texturePath));
     }
 
-    private static string ToMaterialTextureVirtualPath(string texturePath)
+    private static string? ResolveDescriptorTexturePath(string descriptorDirectory, string? texturePath)
     {
-        return $"map_data/materials/{texturePath.Trim()}";
+        if (string.IsNullOrWhiteSpace(texturePath))
+            return null;
+
+        return Path.Combine(descriptorDirectory, texturePath.Trim());
     }
+
+    private static string ToMaterialTextureVirtualPath(string texturePath) => $"map_data/materials/{texturePath.Trim()}";
 }

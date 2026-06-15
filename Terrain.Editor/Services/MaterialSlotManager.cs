@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using Stride.Core.Diagnostics;
 using Stride.Graphics;
+using Terrain.Editor.Services.Resources;
 using Terrain.Resources;
 using Terrain.Utilities;
 
@@ -17,7 +18,7 @@ namespace Terrain.Editor.Services;
 /// </summary>
 public sealed class MaterialSlotManager
 {
-    private readonly record struct TextureSignature(int Width, int Height, PixelFormat Format, int MipLevelCount)
+    internal readonly record struct TextureSignature(int Width, int Height, PixelFormat Format, int MipLevelCount)
     {
         public static TextureSignature FromTexture(Texture texture)
             => new(texture.Width, texture.Height, texture.Format, texture.MipLevelCount);
@@ -34,6 +35,8 @@ public sealed class MaterialSlotManager
     private Texture? cachedMaterialPropertiesArray;
     private Texture? cachedDefaultNormalTexture;
     private TextureSignature? cachedDefaultNormalSignature;
+    private Texture? cachedMissingAlbedoTexture;
+    private TextureSignature? cachedMissingAlbedoSignature;
 
     public static MaterialSlotManager Instance => InstanceFactory.Value;
 
@@ -207,6 +210,9 @@ public sealed class MaterialSlotManager
         cachedDefaultNormalTexture?.Dispose();
         cachedDefaultNormalTexture = null;
         cachedDefaultNormalSignature = null;
+        cachedMissingAlbedoTexture?.Dispose();
+        cachedMissingAlbedoTexture = null;
+        cachedMissingAlbedoSignature = null;
         SelectedSlotIndex = 0;
         NotifySlotsChanged();
     }
@@ -238,6 +244,43 @@ public sealed class MaterialSlotManager
             slot.AlbedoTexturePath = ResolveDescriptorTexturePath(descriptorDirectory, material.AlbedoPath);
             slot.NormalTexturePath = ResolveDescriptorTexturePath(descriptorDirectory, material.NormalPath);
             slot.PropertiesTexturePath = ResolveDescriptorTexturePath(descriptorDirectory, material.PropertiesPath);
+            if (firstActiveIndex < 0 && !slot.IsEmpty)
+                firstActiveIndex = slot.Index;
+        }
+
+        SelectedSlotIndex = firstActiveIndex >= 0 ? firstActiveIndex : 0;
+        NotifySlotsChanged();
+    }
+
+    public void ApplyRecoveredMaterials(EditorMaterialRecoveryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        foreach (var slot in slots)
+        {
+            slot.Clear();
+        }
+
+        MarkMaterialArrayDirty();
+        cachedDefaultNormalTexture?.Dispose();
+        cachedDefaultNormalTexture = null;
+        cachedDefaultNormalSignature = null;
+        cachedMissingAlbedoTexture?.Dispose();
+        cachedMissingAlbedoTexture = null;
+        cachedMissingAlbedoSignature = null;
+
+        int firstActiveIndex = -1;
+        foreach (EditorResolvedMaterialSlot resolvedSlot in result.Slots)
+        {
+            MaterialSlot slot = slots[resolvedSlot.SlotIndex];
+            slot.MaterialId = resolvedSlot.MaterialId;
+            slot.Name = resolvedSlot.Name;
+            slot.AlbedoTexturePath = resolvedSlot.AlbedoTexturePath;
+            slot.NormalTexturePath = resolvedSlot.NormalTexturePath;
+            slot.PropertiesTexturePath = resolvedSlot.PropertiesTexturePath;
+            slot.IsRuntimeFallbackPlaceholder = resolvedSlot.IsRuntimeFallbackPlaceholder;
+            slot.UsesFallbackAlbedo = resolvedSlot.UsesFallbackAlbedo;
+            slot.UsesFallbackNormal = resolvedSlot.UsesFallbackNormal;
             if (firstActiveIndex < 0 && !slot.IsEmpty)
                 firstActiveIndex = slot.Index;
         }
@@ -338,10 +381,9 @@ public sealed class MaterialSlotManager
         int maxSlotIndex = -1;
         foreach (var slot in slots)
         {
-            if (!EnsureTextureLoaded(slot, isNormalMap: false, graphicsDevice, commandList))
-                continue;
-
-            maxSlotIndex = Math.Max(maxSlotIndex, slot.Index);
+            EnsureTextureLoaded(slot, isNormalMap: false, graphicsDevice, commandList);
+            if (!slot.IsEmpty)
+                maxSlotIndex = Math.Max(maxSlotIndex, slot.Index);
         }
 
         foreach (var slot in slots)
@@ -361,36 +403,38 @@ public sealed class MaterialSlotManager
 
     private Texture? BuildAlbedoArrayTexture(int requiredCapacity, GraphicsDevice graphicsDevice, CommandList commandList)
     {
-        Texture? arrayTexture = null;
-        Texture? templateTexture = null;
+        TextureSignature signature = GetOrCreateAlbedoArraySignature();
+        var arrayTexture = Texture.New2D(
+            graphicsDevice,
+            signature.Width,
+            signature.Height,
+            signature.MipLevelCount,
+            signature.Format,
+            TextureFlags.ShaderResource,
+            arraySize: requiredCapacity);
+        var missingAlbedoTexture = GetOrCreateMissingAlbedoTexture(signature, graphicsDevice, commandList);
 
         foreach (var slot in slots)
         {
-            var texture = slot.AlbedoTexture;
+            if (slot.IsEmpty)
+                continue;
+
+            Texture? texture = slot.AlbedoTexture;
+            if (texture == null && slot.UsesFallbackAlbedo)
+                texture = missingAlbedoTexture;
+
             if (texture == null)
                 continue;
 
-            if (templateTexture == null)
-            {
-                templateTexture = texture;
-                arrayTexture = Texture.New2D(
-                    graphicsDevice,
-                    templateTexture.Width,
-                    templateTexture.Height,
-                    templateTexture.MipLevelCount,
-                    templateTexture.Format,
-                    TextureFlags.ShaderResource,
-                    arraySize: requiredCapacity);
-            }
-
-            if (!IsCompatible(texture, templateTexture))
+            if (!IsCompatible(texture, missingAlbedoTexture))
             {
                 Log.Warning($"Encountered incompatible albedo texture in slot {slot.Index} during array rebuild.");
                 Debug.Assert(false, "Albedo texture compatibility should have been validated before rebuild.");
+                CopyTextureToArraySlice(missingAlbedoTexture, arrayTexture, slot.Index, commandList);
                 continue;
             }
 
-            CopyTextureToArraySlice(texture, arrayTexture!, slot.Index, commandList);
+            CopyTextureToArraySlice(texture, arrayTexture, slot.Index, commandList);
         }
 
         return arrayTexture;
@@ -398,35 +442,21 @@ public sealed class MaterialSlotManager
 
     private Texture? BuildNormalArrayTexture(int requiredCapacity, GraphicsDevice graphicsDevice, CommandList commandList)
     {
-        Texture? normalFormatSource = slots
-            .Select(static slot => slot.NormalTexture)
-            .FirstOrDefault(static texture => texture != null);
-
-        Texture? arrayLayoutSource = normalFormatSource ?? slots
-            .Select(static slot => slot.AlbedoTexture)
-            .FirstOrDefault(static texture => texture != null);
-
-        if (arrayLayoutSource == null)
+        TextureSignature? arraySignature = ResolveNormalArraySignature(slots);
+        if (!arraySignature.HasValue)
             return null;
-
-        PixelFormat arrayFormat = normalFormatSource?.Format ?? PixelFormat.R8G8B8A8_UNorm;
-        var arraySignature = new TextureSignature(
-            arrayLayoutSource.Width,
-            arrayLayoutSource.Height,
-            arrayFormat,
-            arrayLayoutSource.MipLevelCount);
 
         var arrayTexture = Texture.New2D(
             graphicsDevice,
-            arraySignature.Width,
-            arraySignature.Height,
-            arraySignature.MipLevelCount,
-            arraySignature.Format,
+            arraySignature.Value.Width,
+            arraySignature.Value.Height,
+            arraySignature.Value.MipLevelCount,
+            arraySignature.Value.Format,
             TextureFlags.ShaderResource,
             arraySize: requiredCapacity);
 
         var defaultNormalTexture = GetOrCreateDefaultNormalTexture(
-            arraySignature,
+            arraySignature.Value,
             graphicsDevice,
             commandList);
 
@@ -524,6 +554,35 @@ public sealed class MaterialSlotManager
 
         cachedDefaultNormalSignature = signature;
         return cachedDefaultNormalTexture;
+    }
+
+    private Texture GetOrCreateMissingAlbedoTexture(TextureSignature signature, GraphicsDevice graphicsDevice, CommandList commandList)
+    {
+        if (cachedMissingAlbedoTexture != null && cachedMissingAlbedoSignature == signature)
+            return cachedMissingAlbedoTexture;
+
+        cachedMissingAlbedoTexture?.Dispose();
+        cachedMissingAlbedoTexture = Texture.New2D(
+            graphicsDevice,
+            signature.Width,
+            signature.Height,
+            signature.MipLevelCount,
+            signature.Format,
+            TextureFlags.ShaderResource);
+
+        var mipData = TextureBlockEncoder.CreateSolidColorMipData(
+            signature.Format,
+            signature.Width,
+            signature.Height,
+            signature.MipLevelCount,
+            255, 0, 255, 255);
+        for (int mipLevel = 0; mipLevel < signature.MipLevelCount; mipLevel++)
+        {
+            cachedMissingAlbedoTexture.SetData(commandList, mipData[mipLevel], 0, mipLevel);
+        }
+
+        cachedMissingAlbedoSignature = signature;
+        return cachedMissingAlbedoTexture;
     }
 
     private bool TryValidateTextureCompatibility(int slotIndex, Texture texture, bool isNormalMap, out string? error)
@@ -642,6 +701,46 @@ public sealed class MaterialSlotManager
         }
 
         return 256;
+    }
+
+    internal static TextureSignature? ResolveNormalArraySignature(IEnumerable<MaterialSlot> slots)
+    {
+        ArgumentNullException.ThrowIfNull(slots);
+
+        MaterialSlot[] activeSlots = slots.Where(static slot => !slot.IsEmpty).ToArray();
+        if (activeSlots.Length == 0)
+            return null;
+
+        Texture? normalFormatSource = activeSlots
+            .Select(static slot => slot.NormalTexture)
+            .FirstOrDefault(static texture => texture != null);
+        if (normalFormatSource != null)
+            return TextureSignature.FromTexture(normalFormatSource);
+
+        Texture? albedoLayoutSource = activeSlots
+            .Select(static slot => slot.AlbedoTexture)
+            .FirstOrDefault(static texture => texture != null);
+        if (albedoLayoutSource != null)
+        {
+            return new TextureSignature(
+                albedoLayoutSource.Width,
+                albedoLayoutSource.Height,
+                PixelFormat.R8G8B8A8_UNorm,
+                albedoLayoutSource.MipLevelCount);
+        }
+
+        return new TextureSignature(64, 64, PixelFormat.R8G8B8A8_UNorm, 1);
+    }
+
+    private TextureSignature GetOrCreateAlbedoArraySignature()
+    {
+        Texture? templateTexture = slots
+            .Select(static slot => slot.AlbedoTexture)
+            .FirstOrDefault(static texture => texture != null);
+        if (templateTexture != null)
+            return TextureSignature.FromTexture(templateTexture);
+
+        return new TextureSignature(64, 64, PixelFormat.R8G8B8A8_UNorm_SRgb, 1);
     }
 
     private static string? ResolveDescriptorTexturePath(string descriptorDirectory, string? texturePath)
