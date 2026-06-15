@@ -17,9 +17,9 @@ internal static class EditorWorkflowTextTests
         TestHarness.Run("editor wires river services before loading workspace session", WiresRiverServicesBeforeLoadingWorkspaceSession);
         TestHarness.Run("editor save exposes async modal progress state", SaveExposesAsyncModalProgressState);
         TestHarness.Run("editor save snapshots authoring state before background write", SaveSnapshotsAuthoringStateBeforeBackgroundWrite);
-        TestHarness.Run("main window exposes save progress overlay", MainWindowExposesSaveProgressOverlay);
+        TestHarness.Run("main window dims and disables during save", MainWindowDimsAndDisablesDuringSave);
         TestHarness.Run("viewport input can be blocked during modal save", ViewportInputCanBeBlockedDuringModalSave);
-        TestHarness.Run("native viewport is hidden behind modal save overlay", NativeViewportIsHiddenBehindModalSaveOverlay);
+        TestHarness.Run("save progress uses owned top-level window", SaveProgressUsesOwnedTopLevelWindow);
     }
 
     private static void HasAutomaticVirtualResourceBootstrap()
@@ -146,6 +146,7 @@ internal static class EditorWorkflowTextTests
 
         string saveBody = ExtractMethodBody(viewModel, "private async Task Save");
         int beginProgress = saveBody.IndexOf("BeginSaveProgress();", StringComparison.Ordinal);
+        int yieldToUi = saveBody.IndexOf("await Task.Yield()", StringComparison.Ordinal);
         int createProgress = saveBody.IndexOf("new Progress<AuthoringSaveProgress>", StringComparison.Ordinal);
         int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(progress)", StringComparison.Ordinal);
         int taskRun = saveBody.IndexOf("Task.Run(", StringComparison.Ordinal);
@@ -161,6 +162,8 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(refreshProgress >= 0, "Save should report step 9 while refreshing editor state");
         TestHarness.Assert(completedProgress >= 0, "Save should report completed progress after refresh");
         TestHarness.Assert(beginProgress < createProgress, "Save should enter saving state before creating progress");
+        TestHarness.Assert(yieldToUi > beginProgress, "Save should yield to the UI loop after opening progress before snapshot capture");
+        TestHarness.Assert(yieldToUi < snapshot, "Save should let the progress window render before synchronous snapshot capture");
         TestHarness.Assert(createProgress < snapshot, "Save should have progress available for snapshot capture");
         TestHarness.Assert(snapshot < taskRun, "Snapshot capture must happen before Task.Run");
         TestHarness.Assert(taskRun < refreshProgress, "Refresh progress should be reported after background writes");
@@ -174,13 +177,15 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(snapshotSaveBody.Contains("snapshot.BiomeMask", StringComparison.Ordinal), "snapshot save overload should write cloned biome data");
     }
 
-    private static void MainWindowExposesSaveProgressOverlay()
+    private static void MainWindowDimsAndDisablesDuringSave()
     {
         string window = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml"));
         TestHarness.Assert(window.Contains("IsEditorInteractionEnabled", StringComparison.Ordinal), "MainWindow should disable editor interaction while saving");
-        TestHarness.Assert(window.Contains("Saving authoring resources", StringComparison.Ordinal), "MainWindow should show a save progress title");
-        TestHarness.Assert(window.Contains("SaveProgressMessage", StringComparison.Ordinal), "MainWindow should bind save progress text");
-        TestHarness.Assert(window.Contains("SaveProgressPercent", StringComparison.Ordinal), "MainWindow should bind save progress percent");
+        TestHarness.Assert(window.Contains("Background=\"#80000000\"", StringComparison.Ordinal), "MainWindow should keep a dimmer while saving");
+        TestHarness.Assert(window.Contains("IsVisible=\"{Binding IsSaving}\"", StringComparison.Ordinal), "MainWindow dimmer should track save state");
+        TestHarness.Assert(!window.Contains("Saving authoring resources", StringComparison.Ordinal), "MainWindow should not host the progress card inline where native child HWNDs can cover it");
+        TestHarness.Assert(!window.Contains("SaveProgressMessage", StringComparison.Ordinal), "Save progress text should live in the owned top-level window");
+        TestHarness.Assert(!window.Contains("SaveProgressPercent", StringComparison.Ordinal), "Save progress percent should live in the owned top-level window");
     }
 
     private static void ViewportInputCanBeBlockedDuringModalSave()
@@ -207,15 +212,20 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(brushBody.Contains("UpdateBrushDecalVisibility(visible: false)", StringComparison.Ordinal), "blocked viewport input should hide the brush decal from UpdateBrush");
     }
 
-    private static void NativeViewportIsHiddenBehindModalSaveOverlay()
+    private static void SaveProgressUsesOwnedTopLevelWindow()
     {
-        string host = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "NativeStrideViewportHost.cs"));
-        string hostBlockBody = ExtractMethodBody(host, "public void SetInputBlocked(bool blocked)");
-        TestHarness.Assert(hostBlockBody.Contains("SetNativeViewportVisible(!blocked)", StringComparison.Ordinal), "modal save should hide the native viewport HWND so the Avalonia progress overlay is not covered");
+        string progressWindowPath = Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "SaveProgressWindow.axaml");
+        string mainWindowCodeBehind = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml.cs"));
+        TestHarness.Assert(File.Exists(progressWindowPath), "Save progress should use an owned top-level window so native viewport HWND airspace cannot cover it");
+        TestHarness.Assert(mainWindowCodeBehind.Contains("SaveProgressWindow", StringComparison.Ordinal), "MainWindow should own the save progress window lifecycle");
+        TestHarness.Assert(mainWindowCodeBehind.Contains(".Show(this)", StringComparison.Ordinal), "Save progress window should be shown as an owned window above native child HWNDs");
+        TestHarness.Assert(mainWindowCodeBehind.Contains("nameof(EditorShellViewModel.IsSaving)", StringComparison.Ordinal), "MainWindow should open and close the progress window when IsSaving changes");
+        TestHarness.Assert(mainWindowCodeBehind.Contains("ObserveViewModel(DataContext as EditorShellViewModel)", StringComparison.Ordinal), "MainWindow should observe the current DataContext as well as future DataContext changes");
 
-        string visibilityBody = ExtractMethodBody(host, "private void SetNativeViewportVisible(bool visible)");
-        TestHarness.Assert(visibilityBody.Contains("ShowWindow(_childHwnd", StringComparison.Ordinal), "native viewport host HWND should be hidden during modal save");
-        TestHarness.Assert(visibilityBody.Contains("ShowWindow(_window.Handle", StringComparison.Ordinal), "hosted SDL viewport HWND should be hidden during modal save");
+        string progressWindow = File.ReadAllText(progressWindowPath);
+        TestHarness.Assert(progressWindow.Contains("Saving authoring resources", StringComparison.Ordinal), "Save progress window should show a title");
+        TestHarness.Assert(progressWindow.Contains("SaveProgressMessage", StringComparison.Ordinal), "Save progress window should bind progress text");
+        TestHarness.Assert(progressWindow.Contains("SaveProgressPercent", StringComparison.Ordinal), "Save progress window should bind progress percent");
     }
 
     private static string ExtractMethodBody(string source, string marker)

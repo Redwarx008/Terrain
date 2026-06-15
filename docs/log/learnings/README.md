@@ -34,6 +34,7 @@
 | [tommy-toml-library](tommy-toml-library.md) | Tommy 3.1.2 TOML 库 API 模式和陷阱 | 2026-04-08 |
 | [biome-rule-layer-review-findings](biome-rule-layer-review-findings.md) | Biome 规则系统代码审查发现的已知缺陷 | 2026-05-01 |
 | [stride-river-rendering-patterns](stride-river-rendering-patterns.md) | Stride 河流渲染分层、标准变换链与常见反模式 | 2026-06-06 |
+| [native-viewport-airspace-overlays](native-viewport-airspace-overlays.md) | Avalonia 覆盖层与 NativeControlHost/SDL child HWND 的 airspace 限制 | 2026-06-15 |
 
 ### 引擎与框架调研
 
@@ -44,4 +45,4 @@
 
 ---
 
-*最后更新: 2026-06-06*
+*最后更新: 2026-06-15*

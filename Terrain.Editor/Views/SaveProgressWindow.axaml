@@ -1,0 +1,43 @@
+<Window
+  x:Class="Terrain.Editor.Views.SaveProgressWindow"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  Width="390"
+  SizeToContent="Height"
+  CanResize="False"
+  ShowInTaskbar="False"
+  SystemDecorations="None"
+  WindowStartupLocation="CenterOwner"
+  Topmost="True"
+  Background="Transparent">
+  <Border
+    Background="{DynamicResource EditorSurfaceBrush}"
+    BorderBrush="{DynamicResource EditorPanelBorderBrush}"
+    BorderThickness="1"
+    CornerRadius="6"
+    Padding="22"
+    BoxShadow="0 10 28 0 #66000000">
+    <StackPanel Spacing="12">
+      <TextBlock
+        Text="Saving authoring resources"
+        FontSize="18"
+        FontWeight="SemiBold"
+        Foreground="{DynamicResource EditorTextPrimaryBrush}" />
+      <TextBlock
+        Text="{Binding SaveProgressMessage}"
+        FontSize="12"
+        TextWrapping="Wrap"
+        Foreground="{DynamicResource EditorTextSecondaryBrush}" />
+      <ProgressBar
+        Minimum="0"
+        Maximum="100"
+        Height="8"
+        Value="{Binding SaveProgressPercent}" />
+      <TextBlock
+        Text="{Binding SaveProgressPercent, StringFormat='{}{0:F0}%'}"
+        HorizontalAlignment="Right"
+        FontSize="12"
+        Foreground="{DynamicResource EditorTextSecondaryBrush}" />
+    </StackPanel>
+  </Border>
+</Window>

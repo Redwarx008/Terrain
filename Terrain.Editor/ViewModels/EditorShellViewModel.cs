@@ -451,6 +451,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
         try
         {
+            await Task.Yield();
             var progress = new Progress<AuthoringSaveProgress>(UpdateSaveProgress);
             var snapshot = terrainManager.CreateAuthoringSaveSnapshot(progress);
             await Task.Run(() => terrainManager.SaveAuthoringResources(session, snapshot, progress));

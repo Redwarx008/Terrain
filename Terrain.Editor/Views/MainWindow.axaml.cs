@@ -1,6 +1,8 @@
 #nullable enable
 
+using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -13,11 +15,15 @@ public sealed partial class MainWindow : Window
 {
     private readonly Dictionary<string, Button> _assetTabs = new();
     private ListBox? _assetListBox;
+    private EditorShellViewModel? _observedViewModel;
+    private SaveProgressWindow? _saveProgressWindow;
 
     public MainWindow()
     {
         InitializeComponent();
         ApplyStartupSizeForPhysicalPixels();
+        DataContextChanged += OnDataContextChanged;
+        ObserveViewModel(DataContext as EditorShellViewModel);
 
         _assetTabs["Textures"] = this.FindControl<Button>("AssetTabTextures")!;
         _assetTabs["Meshes"] = this.FindControl<Button>("AssetTabMeshes")!;
@@ -33,6 +39,85 @@ public sealed partial class MainWindow : Window
         if (_assetListBox != null)
         {
             _assetListBox.SelectionChanged += OnAssetSelectionChanged;
+        }
+    }
+
+    private void OnDataContextChanged(object? sender, EventArgs e)
+    {
+        ObserveViewModel(DataContext as EditorShellViewModel);
+    }
+
+    private void ObserveViewModel(EditorShellViewModel? viewModel)
+    {
+        if (ReferenceEquals(_observedViewModel, viewModel))
+            return;
+
+        if (_observedViewModel != null)
+        {
+            _observedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        }
+
+        _observedViewModel = viewModel;
+
+        if (_observedViewModel != null)
+        {
+            _observedViewModel.PropertyChanged += OnViewModelPropertyChanged;
+            SyncSaveProgressWindow(_observedViewModel.IsSaving);
+            return;
+        }
+
+        CloseSaveProgressWindow();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(EditorShellViewModel.IsSaving))
+        {
+            SyncSaveProgressWindow(_observedViewModel?.IsSaving == true);
+        }
+    }
+
+    private void SyncSaveProgressWindow(bool isSaving)
+    {
+        if (isSaving)
+        {
+            ShowSaveProgressWindow();
+            return;
+        }
+
+        CloseSaveProgressWindow();
+    }
+
+    private void ShowSaveProgressWindow()
+    {
+        if (_saveProgressWindow != null)
+            return;
+
+        _saveProgressWindow = new SaveProgressWindow
+        {
+            DataContext = _observedViewModel,
+        };
+        _saveProgressWindow.Closed += OnSaveProgressWindowClosed;
+        _saveProgressWindow.Show(this);
+        _saveProgressWindow.Activate();
+    }
+
+    private void CloseSaveProgressWindow()
+    {
+        if (_saveProgressWindow == null)
+            return;
+
+        SaveProgressWindow window = _saveProgressWindow;
+        _saveProgressWindow = null;
+        window.Closed -= OnSaveProgressWindowClosed;
+        window.Close();
+    }
+
+    private void OnSaveProgressWindowClosed(object? sender, EventArgs e)
+    {
+        if (ReferenceEquals(sender, _saveProgressWindow))
+        {
+            _saveProgressWindow = null;
         }
     }
 
@@ -126,10 +211,20 @@ public sealed partial class MainWindow : Window
 
     protected override void OnClosed(System.EventArgs e)
     {
+        CloseSaveProgressWindow();
+
         if (DataContext is EditorShellViewModel viewModel)
         {
             viewModel.Dispose();
         }
+
+        if (_observedViewModel != null)
+        {
+            _observedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _observedViewModel = null;
+        }
+
+        DataContextChanged -= OnDataContextChanged;
 
         foreach (var tab in _assetTabs.Values)
         {

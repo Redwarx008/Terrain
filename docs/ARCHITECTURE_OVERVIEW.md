@@ -169,7 +169,8 @@
 ### 编辑器
 | 文件 | 职责 |
 |------|------|
-| `Terrain.Editor/ViewModels/EditorShellViewModel.cs` | 主窗口状态与命令；`Save` 使用 `AuthoringSaveProgress` 显示模态进度，UI 线程捕获保存快照后在后台执行作者态资源写回，并在保存期间禁用可变更命令 |
+| `Terrain.Editor/ViewModels/EditorShellViewModel.cs` | 主窗口状态与命令；`Save` 使用 `AuthoringSaveProgress` 驱动模态进度，打开进度窗口后先让 UI 调度一次，再由 UI 线程捕获保存快照并在后台执行作者态资源写回；保存期间禁用可变更命令 |
+| `Terrain.Editor/Views/SaveProgressWindow.axaml` | Save 进度 owned top-level window；避免 Avalonia inline overlay 被嵌入式 Stride native child HWND 遮盖 |
 | `Terrain.Editor/Services/TerrainManager.cs` | 地形管理服务 |
 | `Terrain.Editor/Services/HeightEditor.cs` | 高度编辑服务 |
 | `Terrain.Editor/Services/PaintEditor.cs` | 材质绘制服务 |
@@ -193,7 +194,7 @@
 | `Terrain.Editor/Rendering/River/RiverProcessor.cs` | 河流组件到渲染对象的同步处理器 |
 | `Terrain.Editor/Rendering/River/RiverRenderObject.cs` | 河流 GPU 顶点/索引缓冲与 bounds |
 | `Terrain.Editor/Rendering/River/RiverRenderFeature.cs` | 河流河底/水面双 pass 渲染特性 |
-| `Terrain.Editor/Rendering/NativeViewport/NativeStrideViewportHost.cs` | 原生 Stride 视口宿主；`SetInputBlocked` 在 Save 模态期间阻断视口输入、要求 Stride game flush 当前输入状态，并临时隐藏 native viewport HWND，避免 Avalonia save overlay 被子窗口遮盖 |
+| `Terrain.Editor/Rendering/NativeViewport/NativeStrideViewportHost.cs` | 原生 Stride 视口宿主；`SetInputBlocked` 在 Save 模态期间阻断视口输入并要求 Stride game flush 当前输入状态 |
 | `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem；Save 模态期间响应输入阻断，释放相机/笔刷状态并 flush 鼠标锁定与笔触输入 |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
 | `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
