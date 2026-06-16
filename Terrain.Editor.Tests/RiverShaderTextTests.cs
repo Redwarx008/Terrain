@@ -128,10 +128,11 @@ internal static class RiverShaderTextTests
     {
         string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverBottom.sdsl");
 
-        AssertContains(shader, "underOceanFade", "RiverBottom should compute CK3-style underwater fade before bottom alpha");
-        AssertContains(shader, "fadeOut", "RiverBottom should use a dedicated fadeOut term for bottom blending");
-        AssertContains(shader, "edgeFade1", "RiverBottom should expose the first explicit bank fade term");
-        AssertContains(shader, "edgeFade2", "RiverBottom should expose the second explicit bank fade term");
+        AssertContains(shader, "float underOceanFade = 1.0f - saturate(max(0.0f, -streams.PositionWS.y) * _OceanFadeRate);", "RiverBottom should compute CK3-style underwater fade before bottom alpha");
+        AssertContains(shader, "float fadeOut = min(underOceanFade, saturate(streams.RiverTransparency));", "RiverBottom should use a dedicated fadeOut term for bottom blending");
+        AssertContains(shader, "float edgeFade = max(_BankFade, 0.0001f);", "RiverBottom should clamp bank fade before smoothstep");
+        AssertContains(shader, "float edgeFade1 = smoothstep(0.0f, edgeFade, riverUv.y);", "RiverBottom should expose the first explicit bank fade term");
+        AssertContains(shader, "float edgeFade2 = smoothstep(0.0f, edgeFade, 1.0f - riverUv.y);", "RiverBottom should expose the second explicit bank fade term");
         AssertContains(shader, "float alpha = bottomDiffuse.a * fadeOut * connectionFade * edgeFade1 * edgeFade2;", "RiverBottom alpha should be driven by diffuse alpha and explicit CK3 bank fades");
         AssertNotContains(shader, "float bottomEdgeFade = saturate(depth * 13.0f);", "RiverBottom should not keep the previous depth*13 edge fade shortcut");
     }
@@ -159,18 +160,22 @@ internal static class RiverShaderTextTests
         string processor = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverProcessor.cs");
         string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
 
-        AssertContains(renderObject, "public float TextureUvScale", "RiverRenderObject should cache texture UV scale for shader binding");
-        AssertContains(renderObject, "public float OceanFadeRate", "RiverRenderObject should cache ocean fade rate for shader binding");
-        AssertContains(renderObject, "public float BankAmount", "RiverRenderObject should cache bank amount for shader binding");
-        AssertContains(renderObject, "public int ParallaxIterations", "RiverRenderObject should cache parallax iteration count for shader binding");
-        AssertContains(renderObject, "ApplySettings(RiverRenderSettings settings)", "RiverRenderObject should snapshot river settings from the component");
+        AssertContains(renderObject, "public float TextureUvScale { get; private set; } = 1.0f;", "RiverRenderObject should cache texture UV scale for shader binding");
+        AssertContains(renderObject, "public float OceanFadeRate { get; private set; } = 0.8f;", "RiverRenderObject should cache ocean fade rate for shader binding");
+        AssertContains(renderObject, "public float BankAmount { get; private set; } = 0.0f;", "RiverRenderObject should cache bank amount for shader binding");
+        AssertContains(renderObject, "public int ParallaxIterations { get; private set; } = 10;", "RiverRenderObject should cache parallax iteration count for shader binding");
+        AssertContains(renderObject, "public void ApplySettings(RiverRenderSettings settings)", "RiverRenderObject should snapshot river settings from the component");
+        AssertContains(renderObject, "TextureUvScale = settings.TextureUvScale;", "RiverRenderObject should copy texture UV scale from RiverRenderSettings");
+        AssertContains(renderObject, "OceanFadeRate = settings.OceanFadeRate;", "RiverRenderObject should copy ocean fade rate from RiverRenderSettings");
+        AssertContains(renderObject, "BankAmount = settings.BankAmount;", "RiverRenderObject should copy bank amount from RiverRenderSettings");
+        AssertContains(renderObject, "ParallaxIterations = settings.ParallaxIterations;", "RiverRenderObject should copy parallax iteration count from RiverRenderSettings");
         AssertContains(processor, "renderObject.ApplySettings(component.Settings);", "RiverProcessor should push component settings into each render object");
-        AssertContains(feature, "RiverBottomKeys._TextureUvScale", "RiverRenderFeature should bind bottom texture UV scale");
-        AssertContains(feature, "RiverBottomKeys._BankAmount", "RiverRenderFeature should bind bottom bank amount");
-        AssertContains(feature, "RiverBottomKeys._OceanFadeRate", "RiverRenderFeature should bind bottom ocean fade rate");
-        AssertContains(feature, "RiverBottomKeys._ParallaxIterations", "RiverRenderFeature should bind bottom parallax iteration count");
-        AssertContains(feature, "RiverSurfaceKeys._FlowNormalUvScale", "RiverRenderFeature should bind surface flow-normal UV scale from settings");
-        AssertContains(feature, "RiverSurfaceKeys.WaterColorShallow", "RiverRenderFeature should bind shallow water color from settings");
+        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._TextureUvScale, riverObject.TextureUvScale);", "RiverRenderFeature should bind bottom texture UV scale from the render object");
+        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BankAmount, riverObject.BankAmount);", "RiverRenderFeature should bind bottom bank amount from the render object");
+        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, riverObject.OceanFadeRate);", "RiverRenderFeature should bind bottom ocean fade rate from the render object");
+        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._ParallaxIterations, riverObject.ParallaxIterations);", "RiverRenderFeature should bind bottom parallax iteration count from the render object");
+        AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, riverObject.FlowNormalUvScale);", "RiverRenderFeature should bind surface flow-normal UV scale from the render object");
+        AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys.WaterColorShallow, riverObject.WaterColorShallow);", "RiverRenderFeature should bind shallow water color from the render object");
     }
 
     private static void SurfaceShaderSamplesWaterTextureAssets()
@@ -217,6 +222,8 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "float waterDistance = refractionDepth / max(toCameraDir.y, 0.0001f);", "RiverSurface should use CK3's camera-ray water distance for underwater see-through attenuation");
         AssertContains(shader, "ApplyTerrainUnderwaterSeeThrough(refractionDepth, refractionWorldPosition, refractionWaterColorMap, refraction.rgb)", "RiverSurface should use true refraction depth for see-through color, not the shore-fade-clamped depth");
         AssertContains(shader, "float3 waterDiffuse = lerp(WaterColorDeep.rgb, WaterColorShallow.rgb, facing) * _WaterDiffuseMultiplier;", "RiverSurface should derive primary water diffuse from angle-facing shallow/deep colors");
+        AssertContains(shader, "float edgeFade1 = smoothstep(0.0f, max(_BankFade, 0.0001f), riverUv.y);", "RiverSurface should make the first bank fade explicit");
+        AssertContains(shader, "float edgeFade2 = smoothstep(0.0f, max(_BankFade, 0.0001f), 1.0f - riverUv.y);", "RiverSurface should make the second bank fade explicit");
         AssertNotContains(shader, "WaterColorTexture.Sample(WaterTextureSampler, float2(depthFactor, 0.5f))", "RiverSurface should not sample CK3 water-color as a depth ramp");
         AssertNotContains(shader, "waterColor = lerp(waterColor, waterColorSample.rgb, 0.65f);", "RiverSurface should not strongly blend toward the dark CK3 water color texture");
         AssertNotContains(shader, "waterColor = lerp(waterColor, refractedColor, 0.72f);", "RiverSurface should not strongly blend toward the dark bottom/refraction buffer");
@@ -226,15 +233,12 @@ internal static class RiverShaderTextTests
     {
         string resources = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderResources.cs");
         string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
-        string surface = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
 
         AssertContains(resources, "public Texture? SceneSeedColor { get; private set; }", "RiverRenderResources should allocate a dedicated scene seed buffer");
         AssertContains(feature, "renderResources.SceneSeedColor", "RiverRenderFeature should use the dedicated scene seed texture");
         AssertContains(feature, "refractionSeedScaler.SetOutput(renderResources.SceneSeedColor);", "RiverRenderFeature should seed scene color into SceneSeedColor first");
         AssertContains(feature, "commandList.CopyRegion(renderResources.SceneSeedColor, 0, null, renderResources.BottomColor, 0);", "RiverRenderFeature should copy the scene seed into the working bottom/refraction buffer before the bottom pass");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.PointClamp);", "RiverRenderFeature should sample refraction with PointClamp to match CK3 bank behavior");
-        AssertContains(surface, "edgeFade1", "RiverSurface should expose the first explicit bank fade term");
-        AssertContains(surface, "edgeFade2", "RiverSurface should expose the second explicit bank fade term");
         AssertNotContains(feature, "RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp", "RiverRenderFeature should not keep the previous LinearClamp refraction sampler binding");
     }
 
@@ -261,8 +265,8 @@ internal static class RiverShaderTextTests
     {
         string loader = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverResourceLoader.cs");
 
-        AssertNotContains(loader, "catch\r\n        {\r\n            return null;\r\n        }", "RiverResourceLoader should not silently return null when texture assets fail to load");
-        AssertNotContains(loader, "catch\n        {\n            return null;\n        }", "RiverResourceLoader should not silently return null when texture assets fail to load");
+        AssertContains(loader, "catch (Exception exception)", "RiverResourceLoader should explicitly handle load failures instead of silently returning null");
+        AssertContains(loader, "throw new InvalidOperationException($\"River texture asset '{url}' could not be loaded. Ensure the .sdtex is included as a RootAsset in Terrain.Editor.sdpkg.\", exception);", "RiverResourceLoader should rethrow load failures with actionable context");
     }
 
     private static string ReadRepositoryText(string relativePath)
