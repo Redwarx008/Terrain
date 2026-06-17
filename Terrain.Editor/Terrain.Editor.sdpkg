@@ -15,4 +15,16 @@ OutputGroupDirectories: {}
 ExplicitFolders: []
 Bundles: []
 TemplateFolders: []
-RootAssets: []
+RootAssets:
+    - 5b2594a0-c91f-4538-b571-edadbf35b53a:River/Bottom/bottom-depth
+    - a734d0f8-42ac-44f7-a2e6-de5ebfd17f93:River/Bottom/bottom-diffuse
+    - 3fabb930-58ad-480d-9f2d-2e5f29d1f163:River/Bottom/bottom-normal
+    - 73e4886a-251d-46a8-8edd-64d4dc9b38fd:River/Bottom/bottom-properties
+    - 2b74f12e-decc-423c-a6fe-90b68f91ee16:River/Environment/reflection-specular
+    - ee6be492-c410-468e-9cb4-e171aa233664:River/Water/ambient-normal
+    - 2b422889-3914-4ea2-86ee-668f809ca907:River/Water/flow-normal
+    - fda200cf-a11d-48cf-9e83-6cad2401afbf:River/Water/foam-map
+    - bdee9afb-8a7d-4828-b97e-964471588f93:River/Water/foam-noise
+    - 819998d2-13aa-44e1-95a1-3d815decc639:River/Water/foam-ramp
+    - bc203c25-afb8-43f3-8bd9-239a58f80a76:River/Water/foam
+    - 55163118-1126-4be4-8fc1-ced8dcbd678a:River/Water/water-color

@@ -8,6 +8,9 @@ namespace Terrain.Editor.Rendering.River;
 
 public sealed class RiverResourceLoader : IDisposable
 {
+    private bool bottomEnvironmentLoadAttempted;
+
+    public const string BottomEnvironmentUrl = "Skybox texture";
     public const string BottomDiffuseUrl = "River/Bottom/bottom-diffuse";
     public const string BottomNormalUrl = "River/Bottom/bottom-normal";
     public const string BottomPropertiesUrl = "River/Bottom/bottom-properties";
@@ -18,8 +21,10 @@ public sealed class RiverResourceLoader : IDisposable
     public const string FoamRampUrl = "River/Water/foam-ramp";
     public const string FoamMapUrl = "River/Water/foam-map";
     public const string FoamNoiseUrl = "River/Water/foam-noise";
+    public const string WaterColorUrl = "River/Water/water-color";
     public const string ReflectionSpecularUrl = "River/Environment/reflection-specular";
 
+    public Texture? BottomEnvironment { get; private set; }
     public Texture? BottomDiffuse { get; private set; }
     public Texture? BottomNormal { get; private set; }
     public Texture? BottomProperties { get; private set; }
@@ -30,29 +35,46 @@ public sealed class RiverResourceLoader : IDisposable
     public Texture? FoamRamp { get; private set; }
     public Texture? FoamMap { get; private set; }
     public Texture? FoamNoise { get; private set; }
+    public Texture? WaterColor { get; private set; }
     public Texture? ReflectionSpecular { get; private set; }
 
     public void Load(ContentManager content)
     {
         ArgumentNullException.ThrowIfNull(content);
 
-        BottomDiffuse = LoadOptionalTexture(content, BottomDiffuseUrl);
-        BottomNormal = LoadOptionalTexture(content, BottomNormalUrl);
-        BottomProperties = LoadOptionalTexture(content, BottomPropertiesUrl);
-        BottomDepth = LoadOptionalTexture(content, BottomDepthUrl);
-        AmbientNormal = LoadOptionalTexture(content, AmbientNormalUrl);
-        FlowNormal = LoadOptionalTexture(content, FlowNormalUrl);
-        Foam = LoadOptionalTexture(content, FoamUrl);
-        FoamRamp = LoadOptionalTexture(content, FoamRampUrl);
-        FoamMap = LoadOptionalTexture(content, FoamMapUrl);
-        FoamNoise = LoadOptionalTexture(content, FoamNoiseUrl);
-        ReflectionSpecular = LoadOptionalTexture(content, ReflectionSpecularUrl);
+        BottomDiffuse = LoadRequiredTexture(content, BottomDiffuseUrl);
+        BottomNormal = LoadRequiredTexture(content, BottomNormalUrl);
+        BottomProperties = LoadRequiredTexture(content, BottomPropertiesUrl);
+        BottomDepth = LoadRequiredTexture(content, BottomDepthUrl);
+        AmbientNormal = LoadRequiredTexture(content, AmbientNormalUrl);
+        FlowNormal = LoadRequiredTexture(content, FlowNormalUrl);
+        Foam = LoadRequiredTexture(content, FoamUrl);
+        FoamRamp = LoadRequiredTexture(content, FoamRampUrl);
+        FoamMap = LoadRequiredTexture(content, FoamMapUrl);
+        FoamNoise = LoadRequiredTexture(content, FoamNoiseUrl);
+        WaterColor = LoadRequiredTexture(content, WaterColorUrl);
+        ReflectionSpecular = LoadRequiredTexture(content, ReflectionSpecularUrl);
+    }
+
+    public Texture? EnsureBottomEnvironment(ContentManager content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        if (bottomEnvironmentLoadAttempted)
+        {
+            return BottomEnvironment;
+        }
+
+        bottomEnvironmentLoadAttempted = true;
+        BottomEnvironment = LoadOptionalTexture(content, BottomEnvironmentUrl);
+        return BottomEnvironment;
     }
 
     public void Unload(ContentManager content)
     {
         ArgumentNullException.ThrowIfNull(content);
 
+        UnloadTexture(content, BottomEnvironment);
         UnloadTexture(content, BottomDiffuse);
         UnloadTexture(content, BottomNormal);
         UnloadTexture(content, BottomProperties);
@@ -63,12 +85,15 @@ public sealed class RiverResourceLoader : IDisposable
         UnloadTexture(content, FoamRamp);
         UnloadTexture(content, FoamMap);
         UnloadTexture(content, FoamNoise);
+        UnloadTexture(content, WaterColor);
         UnloadTexture(content, ReflectionSpecular);
         Dispose();
     }
 
     public void Dispose()
     {
+        bottomEnvironmentLoadAttempted = false;
+        BottomEnvironment = null;
         BottomDiffuse = null;
         BottomNormal = null;
         BottomProperties = null;
@@ -79,7 +104,20 @@ public sealed class RiverResourceLoader : IDisposable
         FoamRamp = null;
         FoamMap = null;
         FoamNoise = null;
+        WaterColor = null;
         ReflectionSpecular = null;
+    }
+
+    private static Texture LoadRequiredTexture(ContentManager content, string url)
+    {
+        try
+        {
+            return content.Load<Texture>(url);
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException($"River texture asset '{url}' could not be loaded. Ensure the .sdtex is included as a RootAsset in Terrain.Editor.sdpkg.", exception);
+        }
     }
 
     private static Texture? LoadOptionalTexture(ContentManager content, string url)

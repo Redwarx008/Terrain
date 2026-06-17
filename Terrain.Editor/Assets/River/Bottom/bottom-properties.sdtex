@@ -1,0 +1,9 @@
+!Texture
+Id: 73e4886a-251d-46a8-8edd-64d4dc9b38fd
+SerializedVersion: {Stride: 2.0.0.0}
+Tags: []
+Source: !file bottom-properties.dds
+Type: !ColorTextureType
+    UseSRgbSampling: false
+    ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
+IsStreamable: false

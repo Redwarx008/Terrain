@@ -22,9 +22,25 @@ namespace Terrain.Editor
 
         float RiverDepthFromCrossSection(float crossSection, float depth, float depthWidthPower)
         {
-            float centered = abs(crossSection * 2.0f - 1.0f);
-            float profile = 1.0f - pow(saturate(centered), max(depthWidthPower, 0.0001f));
+            float cosine = cos(crossSection * 2.0f * 3.14159265f) * 0.5f + 0.5f;
+            float profile = 1.0f - pow(saturate(cosine), max(depthWidthPower, 0.0001f));
             return max(depth, 0.0f) * saturate(profile);
+        }
+
+        float3 RiverUnpackNormal(float4 packedNormal)
+        {
+            return normalize(packedNormal.xyz * 2.0f - 1.0f);
+        }
+
+        float RiverCompressWorldSpace(float3 worldPosition, float3 cameraPosition)
+        {
+            return length(cameraPosition - worldPosition);
+        }
+
+        float3 RiverDecompressWorldSpace(float3 surfaceWorldPosition, float compressedDistance, float3 cameraPosition)
+        {
+            float3 toCameraDir = normalize(cameraPosition - surfaceWorldPosition);
+            return cameraPosition - toCameraDir * max(compressedDistance, 0.0f);
         }
 
         float4 RiverPackRefraction(float3 worldPosition, float alpha)

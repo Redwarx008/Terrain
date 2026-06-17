@@ -18,11 +18,63 @@ public sealed class RiverRenderObject : RenderObject, IDisposable
     public int IndexCount { get; private set; }
     public BoundingSphere BoundingSphere { get; private set; } = BoundingSphere.Empty;
     public float MapExtent { get; private set; } = 4096.0f;
+    public float TextureUvScale { get; private set; } = 1.0f;
+    public float FlowNormalUvScale { get; private set; } = 0.4f;
+    public float FlowNormalSpeed { get; private set; } = 0.075f;
+    public float RiverFoamFactor { get; private set; } = 0.5f;
+    public float NoiseScale { get; private set; } = 0.25f;
+    public float NoiseSpeed { get; private set; } = 2.0f;
+    public float FlattenMultiplier { get; private set; } = 1.0f;
+    public float OceanFadeRate { get; private set; } = 0.8f;
+    public float BankAmount { get; private set; } = 0.0f;
+    public float BankFade { get; private set; } = 0.15f;
+    public float Depth { get; private set; } = 0.15f;
+    public float DepthWidthPower { get; private set; } = 2.0f;
+    public float DepthFakeFactor { get; private set; } = 2.0f;
+    public int ParallaxIterations { get; private set; } = 10;
+    public float BottomNormalStrength { get; private set; } = 1.0f;
+    public float BottomEnvironmentIntensity { get; private set; } = 1.0f;
+    public float BottomSpecularIntensity { get; private set; } = 0.35f;
+    public float FlatMapLerp { get; private set; } = 0.0f;
+    public float ZoomBlendOut { get; private set; } = 1.0f;
+    public float ShadowTermFallback { get; private set; } = 1.0f;
+    public float CloudMaskFallback { get; private set; } = 0.0f;
+    public Vector4 WaterColorShallow { get; private set; } = new(0.0f, 0.3f, 0.5f, 0.7f);
+    public Vector4 WaterColorDeep { get; private set; } = new(0.0f, 0.05f, 0.15f, 0.85f);
     public Matrix World { get; set; } = Matrix.Identity;
 
     public RiverRenderObject()
     {
         BoundingBox = (BoundingBoxExt)new BoundingBox(Vector3.Zero, Vector3.One);
+    }
+
+    public void ApplySettings(RiverRenderSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        TextureUvScale = settings.TextureUvScale;
+        FlowNormalUvScale = settings.FlowNormalUvScale;
+        FlowNormalSpeed = settings.FlowNormalSpeed;
+        RiverFoamFactor = settings.RiverFoamFactor;
+        NoiseScale = settings.NoiseScale;
+        NoiseSpeed = settings.NoiseSpeed;
+        FlattenMultiplier = settings.FlattenMultiplier;
+        OceanFadeRate = settings.OceanFadeRate;
+        BankAmount = settings.BankAmount;
+        BankFade = settings.BankFade;
+        Depth = settings.Depth;
+        DepthWidthPower = settings.DepthWidthPower;
+        DepthFakeFactor = settings.DepthFakeFactor;
+        ParallaxIterations = settings.ParallaxIterations;
+        BottomNormalStrength = settings.BottomNormalStrength;
+        BottomEnvironmentIntensity = settings.BottomEnvironmentIntensity;
+        BottomSpecularIntensity = settings.BottomSpecularIntensity;
+        FlatMapLerp = settings.FlatMapLerp;
+        ZoomBlendOut = settings.ZoomBlendOut;
+        ShadowTermFallback = settings.ShadowTermFallback;
+        CloudMaskFallback = settings.CloudMaskFallback;
+        WaterColorShallow = settings.WaterColorShallow;
+        WaterColorDeep = settings.WaterColorDeep;
     }
 
     public void Rebuild(GraphicsDevice graphicsDevice, RiverMeshData mesh, int sourceVersion)

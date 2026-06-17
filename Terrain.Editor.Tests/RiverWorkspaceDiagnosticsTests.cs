@@ -13,6 +13,7 @@ internal static class RiverWorkspaceDiagnosticsTests
     {
         TestHarness.Run("temporary river map parses into river segments", TemporaryRiverMapParsesIntoRiverSegments);
         TestHarness.Run("temporary river map publishes river meshes through generator", TemporaryRiverMapPublishesRiverMeshesThroughGenerator);
+        TestHarness.Run("river mesh map extent uses world coordinate span", RiverMeshMapExtentUsesWorldCoordinateSpan);
     }
 
     private static void TemporaryRiverMapParsesIntoRiverSegments()
@@ -124,16 +125,41 @@ internal static class RiverWorkspaceDiagnosticsTests
     }
 
     private static TerrainManager CreateFlatTerrainManagerStub()
+        => CreateFlatTerrainManagerStub(1, 1);
+
+    private static TerrainManager CreateFlatTerrainManagerStub(int width, int height)
     {
 #pragma warning disable SYSLIB0050
         var terrainManager = (TerrainManager)FormatterServices.GetUninitializedObject(typeof(TerrainManager));
 #pragma warning restore SYSLIB0050
 
-        SetInstanceField(terrainManager, "heightDataCache", new ushort[1]);
-        SetInstanceField(terrainManager, "heightDataWidth", 1);
-        SetInstanceField(terrainManager, "heightDataHeight", 1);
+        SetInstanceField(terrainManager, "heightDataCache", new ushort[width * height]);
+        SetInstanceField(terrainManager, "heightDataWidth", width);
+        SetInstanceField(terrainManager, "heightDataHeight", height);
         SetInstanceField(terrainManager, "<HeightScale>k__BackingField", 200.0f);
         return terrainManager;
+    }
+
+    private static void RiverMeshMapExtentUsesWorldCoordinateSpan()
+    {
+        var terrainManager = CreateFlatTerrainManagerStub(5, 9);
+        var meshService = new RiverMeshService(terrainManager);
+        var segment = new RiverSegment
+        {
+            SystemId = 7,
+            Centerline =
+            [
+                new Stride.Core.Mathematics.Vector3(0, 0, 0),
+                new Stride.Core.Mathematics.Vector3(2, 0, 0),
+            ],
+            WorldLength = 2,
+            AvgHalfWidth = 2.0f,
+        };
+
+        RiverMeshData mesh = meshService.BuildRiverMesh(segment, 1.0f);
+
+        TestHarness.Assert(MathF.Abs(mesh.MapExtent - 8.0f) <= 0.0001f, "River mesh map extent should use max(heightmap dimensions - 1), matching terrain world coordinates");
+        TestHarness.Assert(MathF.Abs(mesh.Vertices[0].Width - 0.25f) <= 0.0001f, "River vertex width should be normalized by world coordinate extent, not sample count");
     }
 
     private static void SetInstanceField<TTarget, TValue>(TTarget target, string fieldName, TValue value)

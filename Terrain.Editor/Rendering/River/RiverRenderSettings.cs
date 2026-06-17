@@ -19,11 +19,14 @@ public sealed class RiverRenderSettings
     public float FlattenMultiplier { get; set; } = 1.0f;
     public float OceanFadeRate { get; set; } = 0.8f;
     public float BankAmount { get; set; } = 0.0f;
-    public float BankFade { get; set; } = 0.02f;
+    public float BankFade { get; set; } = 0.15f;
     public float Depth { get; set; } = 0.15f;
     public float DepthWidthPower { get; set; } = 2.0f;
     public float DepthFakeFactor { get; set; } = 2.0f;
     public int ParallaxIterations { get; set; } = 10;
+    public float BottomNormalStrength { get; set; } = 1.0f;
+    public float BottomEnvironmentIntensity { get; set; } = 1.0f;
+    public float BottomSpecularIntensity { get; set; } = 0.35f;
 
     public float FlatMapLerp { get; set; } = 0.0f;
     public float ZoomBlendOut { get; set; } = 1.0f;

@@ -1,0 +1,9 @@
+!Texture
+Id: a734d0f8-42ac-44f7-a2e6-de5ebfd17f93
+SerializedVersion: {Stride: 2.0.0.0}
+Tags: []
+Source: !file bottom-diffuse.dds
+Type: !ColorTextureType
+    UseSRgbSampling: true
+    ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
+IsStreamable: false

@@ -1,0 +1,9 @@
+!Texture
+Id: bdee9afb-8a7d-4828-b97e-964471588f93
+SerializedVersion: {Stride: 2.0.0.0}
+Tags: []
+Source: !file foam-noise.dds
+Type: !ColorTextureType
+    UseSRgbSampling: false
+    ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
+IsStreamable: false

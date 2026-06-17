@@ -1,0 +1,9 @@
+!Texture
+Id: 55163118-1126-4be4-8fc1-ced8dcbd678a
+SerializedVersion: {Stride: 2.0.0.0}
+Tags: []
+Source: !file water-color.dds
+Type: !ColorTextureType
+    UseSRgbSampling: true
+    ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
+IsStreamable: false

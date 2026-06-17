@@ -7,20 +7,40 @@ namespace Terrain.Editor
         stage float _RiverFoamFactor = 0.5f;
         stage float _NoiseScale = 0.25f;
         stage float _NoiseSpeed = 2.0f;
-        stage float _BankFade = 0.02f;
+        stage float _BankFade = 0.15f;
         stage float _Depth = 0.15f;
         stage float _DepthWidthPower = 2.0f;
         stage float _MapExtent = 4096.0f;
+        stage float3 _CameraWorldPosition = float3(0.0f, 0.0f, 0.0f);
         stage float2 _ViewSize = float2(1.0f, 1.0f);
         stage float _GlobalTime;
         stage float _FlatMapLerp = 0.0f;
         stage float _ZoomBlendOut = 1.0f;
         stage float _ShadowTermFallback = 1.0f;
         stage float _CloudMaskFallback = 0.0f;
+        stage float _WaterDiffuseMultiplier = 1.0f;
+        stage float3 _WaterColorMapTint = float3(0.0f, 0.0f, 0.0f);
+        stage float _WaterColorMapTintFactor = 0.0f;
+        stage float _WaterFadeShoreMaskDepth = 0.5f;
+        stage float _WaterFadeShoreMaskSharpness = 5.0f;
+        stage float _WaterSeeThroughDensity = 0.8f;
+        stage float _WaterSeeThroughShoreMaskDepth = 20.0f;
+        stage float _WaterSeeThroughShoreMaskSharpness = 1.0f;
+        stage float _WaterFresnelBias = 0.01f;
+        stage float _WaterFresnelPow = 4.3f;
         stage float4 WaterColorShallow = float4(0.0f, 0.3f, 0.5f, 0.7f);
         stage float4 WaterColorDeep = float4(0.0f, 0.05f, 0.15f, 0.85f);
         stage Texture2D<float4> RefractionTexture;
         stage SamplerState RefractionSampler;
+        stage Texture2D<float4> AmbientNormalTexture;
+        stage Texture2D<float4> FlowNormalTexture;
+        stage Texture2D<float4> FoamTexture;
+        stage Texture2D<float4> FoamRampTexture;
+        stage Texture2D<float4> FoamMapTexture;
+        stage Texture2D<float4> FoamNoiseTexture;
+        stage Texture2D<float4> WaterColorTexture;
+        stage Texture2D<float4> ReflectionSpecularTexture;
+        stage SamplerState WaterTextureSampler;
 
         float2 ComputeScreenUv(float4 shadingPosition)
         {
@@ -30,13 +50,83 @@ namespace Terrain.Editor
 
         float ComputeWorldWidth()
         {
-            return max(streams.RiverWidth * max(_MapExtent, 1.0f), 0.001f);
+            return max(streams.RiverWidth * max(_MapExtent, 1.0f) * 2.0f, 0.001f);
         }
 
-        float3 SampleRefractionColor(float2 screenUv, float3 fallbackColor)
+        float ComputeRiverWaterFade(float depth)
         {
-            float4 refraction = RefractionTexture.Sample(RefractionSampler, saturate(screenUv));
-            return lerp(fallbackColor, refraction.rgb, saturate(refraction.a));
+            float fadeSharpness = max(_WaterFadeShoreMaskSharpness, 0.0001f);
+            return 1.0f - saturate((_WaterFadeShoreMaskDepth - depth) * fadeSharpness);
+        }
+
+        float2 ComputeMapWorldUv(float3 worldPosition)
+        {
+            float2 uv = worldPosition.xz / max(_MapExtent, 1.0f);
+            uv.y = 1.0f - uv.y;
+            return uv;
+        }
+
+        float3 ApplyTerrainUnderwaterSeeThrough(float refractionDepth, float3 refractionWorldPosition, float3 waterColorMap, float3 bottomColor)
+        {
+            float3 toCameraDir = normalize(_CameraWorldPosition - refractionWorldPosition);
+            float waterDistance = refractionDepth / max(toCameraDir.y, 0.0001f);
+            float attenuation = saturate(exp(-_WaterSeeThroughDensity * max(waterDistance, 0.0f)));
+            float3 color = lerp(waterColorMap, bottomColor, attenuation);
+            float shoreMask = 1.0f - saturate((_WaterSeeThroughShoreMaskDepth - refractionDepth) * _WaterSeeThroughShoreMaskSharpness);
+            return lerp(color, waterColorMap, shoreMask);
+        }
+
+        float4 SampleRefractionSeeThrough(float2 screenUv, float2 refractionOffset, float3 surfaceWorldPosition, float surfaceDepth)
+        {
+            float4 baseRefraction = RefractionTexture.Sample(RefractionSampler, saturate(screenUv));
+            float4 distortedRefraction = RefractionTexture.Sample(RefractionSampler, saturate(screenUv + refractionOffset));
+            float3 baseWorldPosition = RiverDecompressWorldSpace(surfaceWorldPosition, baseRefraction.a, _CameraWorldPosition);
+            float3 distortedWorldPosition = RiverDecompressWorldSpace(surfaceWorldPosition, distortedRefraction.a, _CameraWorldPosition);
+            float useDistortedRefraction = (distortedRefraction.a > 0.0001f && distortedWorldPosition.y <= surfaceWorldPosition.y) ? 1.0f : 0.0f;
+            float4 refraction = lerp(baseRefraction, distortedRefraction, useDistortedRefraction);
+            float3 refractionWorldPosition = lerp(baseWorldPosition, distortedWorldPosition, useDistortedRefraction);
+            float refractionDepth = max(surfaceWorldPosition.y - refractionWorldPosition.y, 0.0f);
+            float effectiveDepth = min(max(surfaceDepth, 0.0f), refractionDepth);
+            float2 refractionWorldUv = ComputeMapWorldUv(refractionWorldPosition);
+            float4 refractionWaterColorAndSpec = WaterColorTexture.Sample(WaterTextureSampler, refractionWorldUv);
+            float3 refractionWaterColorMap = lerp(refractionWaterColorAndSpec.rgb, _WaterColorMapTint, saturate(_WaterColorMapTintFactor));
+            return float4(ApplyTerrainUnderwaterSeeThrough(effectiveDepth, refractionWorldPosition, refractionWaterColorMap, refraction.rgb), effectiveDepth);
+        }
+
+        float4 SampleFlowNormal(float2 riverUv, float worldWidth)
+        {
+            float2 flowUv0 = riverUv.yx * float2(1.0f, -1.0f);
+            flowUv0 *= float2(worldWidth, 1.0f) * _FlowNormalUvScale;
+            flowUv0.y += _GlobalTime * _FlowNormalSpeed;
+
+            float2 flowUv1 = flowUv0 * 0.713f;
+            flowUv1.y += _GlobalTime * _FlowNormalSpeed * 1.33f;
+
+            float4 flowNormal0 = FlowNormalTexture.Sample(WaterTextureSampler, flowUv0);
+            float4 flowNormal1 = FlowNormalTexture.Sample(WaterTextureSampler, flowUv1);
+            return (flowNormal0 + flowNormal1) * 0.5f;
+        }
+
+        float3 SampleAmbientNormal(float2 worldUv)
+        {
+            float2 ambientUv0 = worldUv * 24.0f + float2(_GlobalTime * 0.01f, _GlobalTime * 0.013f);
+            float2 ambientUv1 = worldUv * 47.0f + float2(-_GlobalTime * 0.017f, _GlobalTime * 0.009f);
+            float3 ambient0 = RiverUnpackNormal(AmbientNormalTexture.Sample(WaterTextureSampler, ambientUv0));
+            float3 ambient1 = RiverUnpackNormal(AmbientNormalTexture.Sample(WaterTextureSampler, ambientUv1));
+            return normalize(ambient0 + ambient1);
+        }
+
+        float ComputeFoam(float2 riverUv, float2 worldUv, float4 flowNormalSample, float depthFactor)
+        {
+            float bankFoam = RiverFoamMask(riverUv.y, streams.RiverDistanceToMain, _RiverFoamFactor);
+            float flowFoam = flowNormalSample.a * _RiverFoamFactor;
+            float2 foamUv = riverUv * float2(0.35f, 1.0f) + float2(0.0f, _GlobalTime * _NoiseSpeed * 0.04f);
+            float foamNoise = FoamNoiseTexture.Sample(WaterTextureSampler, foamUv * max(_NoiseScale, 0.0001f) * 8.0f).r;
+            float foamMap = FoamMapTexture.Sample(WaterTextureSampler, worldUv * 8.0f).r;
+            float foamDetail = FoamTexture.Sample(WaterTextureSampler, foamUv * 2.0f).r;
+            float rampInput = saturate((bankFoam + flowFoam) * lerp(0.5f, 1.25f, foamNoise) * lerp(0.6f, 1.2f, foamMap) - depthFactor * 0.15f);
+            float foamRamp = FoamRampTexture.Sample(WaterTextureSampler, float2(rampInput, 0.5f)).r;
+            return saturate(foamRamp * foamDetail);
         }
 
         stage override void PSMain()
@@ -46,30 +136,41 @@ namespace Terrain.Editor
             float depth = RiverDepthFromCrossSection(riverUv.y, _Depth, _DepthWidthPower);
             float worldDepth = depth * worldWidth + 0.1f;
             float depthFactor = saturate(RiverSafeDivide(depth, max(_Depth, 0.0001f), 0.0f));
-            float edgeFade = RiverEdgeFade(riverUv.y, _BankFade);
             float connectionFade = saturate((streams.RiverDistanceToMain - 0.1f) * 5.0f);
             float transparency = saturate(streams.RiverTransparency);
 
-            float2 flowUv0 = riverUv.yx * float2(1.0f, -1.0f);
-            flowUv0.x -= 0.5f + sin(riverUv.x * 0.2f + _GlobalTime * 0.1f) * 0.5f;
-            flowUv0 *= float2(worldWidth, 1.0f) * _FlowNormalUvScale;
-            flowUv0.y += _GlobalTime * _FlowNormalSpeed;
-            float2 flowUv1 = flowUv0 * 0.713f;
-            flowUv1.y += _GlobalTime * _FlowNormalSpeed * 1.33f;
-            float flowWave = 0.5f + 0.5f * sin((flowUv0.y + flowUv1.x) * 24.0f);
-            float noise = 0.5f + 0.5f * sin((riverUv.x * 47.0f + riverUv.y * 19.0f + _GlobalTime * _NoiseSpeed) * max(_NoiseScale, 0.0001f));
-            float foam = RiverFoamMask(riverUv.y, streams.RiverDistanceToMain, _RiverFoamFactor) * noise;
+            float2 worldUv = ComputeMapWorldUv(streams.PositionWS.xyz);
+            float4 flowNormalSample = SampleFlowNormal(riverUv, worldWidth);
+            float3 flowNormal = RiverUnpackNormal(flowNormalSample).xzy;
+            float3 ambientNormal = SampleAmbientNormal(worldUv);
+            float3 waterNormal = normalize(flowNormal + ambientNormal);
+            float normalEnergy = saturate((flowNormal.y + ambientNormal.y) * 0.25f + 0.65f);
+            float foam = ComputeFoam(riverUv, worldUv, flowNormalSample, depthFactor);
 
-            float3 waterColor = RiverBlendWaterColor(depthFactor, WaterColorShallow, WaterColorDeep);
-            float waterAlpha = RiverBlendWaterAlpha(saturate(worldDepth / max(worldWidth * max(_Depth, 0.0001f) + 0.1f, 0.0001f)), WaterColorShallow, WaterColorDeep);
-            waterColor = lerp(waterColor, float3(0.85f, 0.95f, 1.0f), foam * 0.5f);
-            waterColor *= lerp(0.92f, 1.08f, flowWave);
+            float4 waterColorAndSpec = WaterColorTexture.Sample(WaterTextureSampler, worldUv);
+            float glossMap = waterColorAndSpec.a;
+            float3 toCameraDir = normalize(_CameraWorldPosition - streams.PositionWS.xyz);
+            float facing = 1.0f - max(dot(waterNormal, toCameraDir), 0.0f);
+            float3 waterDiffuse = lerp(WaterColorDeep.rgb, WaterColorShallow.rgb, facing) * _WaterDiffuseMultiplier;
+            float3 waterColor = waterDiffuse + foam;
             float2 screenUv = ComputeScreenUv(streams.ShadingPosition);
-            waterColor = SampleRefractionColor(screenUv, waterColor);
+            float2 refractionOffset = flowNormal.xz * (0.0025f + depthFactor * 0.0035f);
+            float4 refractionResult = SampleRefractionSeeThrough(screenUv, refractionOffset, streams.PositionWS.xyz, worldDepth);
+            float3 refractionColor = refractionResult.rgb;
+            float refractionFadeDepth = refractionResult.a;
+            float waterFade = ComputeRiverWaterFade(refractionFadeDepth);
+            waterColor *= waterFade;
+            float specularMask = ReflectionSpecularTexture.Sample(WaterTextureSampler, worldUv * 0.5f + flowNormal.xz * 0.03f).r * lerp(0.5f, 1.25f, glossMap);
+            float fresnel = (saturate(_WaterFresnelBias) + pow(1.0f - saturate(abs(dot(toCameraDir, waterNormal))), max(_WaterFresnelPow, 0.0001f))) * waterFade;
+            float3 reflectionColor = specularMask * float3(0.18f, 0.24f, 0.25f);
+            waterColor += lerp(refractionColor, reflectionColor, saturate(fresnel));
+            waterColor *= lerp(0.9f, 1.1f, normalEnergy);
             waterColor = RiverApplyNeutralLighting(waterColor, _ShadowTermFallback, _CloudMaskFallback);
             waterColor = lerp(waterColor, waterColor * 0.8f + 0.2f, saturate(_FlatMapLerp));
 
-            float alpha = edgeFade * connectionFade * transparency * waterAlpha * saturate(_ZoomBlendOut);
+            float edgeFade1 = smoothstep(0.0f, max(_BankFade, 0.0001f), riverUv.y);
+            float edgeFade2 = smoothstep(0.0f, max(_BankFade, 0.0001f), 1.0f - riverUv.y);
+            float alpha = edgeFade1 * edgeFade2 * connectionFade * transparency * saturate(_ZoomBlendOut);
             streams.ColorTarget = float4(waterColor, alpha);
         }
     };

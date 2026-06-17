@@ -29,6 +29,8 @@ Run("river rendering service updates component visibility", RiverRenderingServic
 Run("river rendering service updates and clears component meshes", RiverRenderingServiceUpdatesAndClearsComponentMeshes);
 RiverViewModelAutoGenerationTests.RunAll();
 RiverWorkspaceDiagnosticsTests.RunAll();
+RiverShaderTextTests.RunAll();
+RiverShaderCompileTests.RunAll();
 LaunchSettingsResolverTests.RunAll();
 GameResourceRootLocatorTests.RunAll();
 DescriptorReaderTests.RunAll();

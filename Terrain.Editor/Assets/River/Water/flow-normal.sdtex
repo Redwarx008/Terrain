@@ -1,0 +1,9 @@
+!Texture
+Id: 2b422889-3914-4ea2-86ee-668f809ca907
+SerializedVersion: {Stride: 2.0.0.0}
+Tags: []
+Source: !file flow-normal.dds
+Type: !ColorTextureType
+    UseSRgbSampling: false
+    ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
+IsStreamable: false

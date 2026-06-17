@@ -1,6 +1,7 @@
 # River Rendering Resources
 
 These files are copied into neutral project paths so runtime code never depends on an external game installation.
+Each `.dds` has a sibling `.sdtex` Stride texture asset descriptor; runtime code loads the descriptor URL without the extension, for example `River/Water/flow-normal`.
 
 ## Bottom
 
@@ -21,6 +22,7 @@ These files are copied into neutral project paths so runtime code never depends 
 | `Water/foam-ramp.dds` | `game/gfx/map/water/foam_ramp.dds` | Foam ramp lookup. |
 | `Water/foam-map.dds` | `game/gfx/map/water/foam_map.dds` | Foam mask/noise distribution. |
 | `Water/foam-noise.dds` | `game/gfx/map/water/foam_noise.dds` | Foam animation noise. |
+| `Water/water-color.dds` | `game/gfx/map/water/watercolor_rgb_waterspec_a.dds` | CK3 water color RGB and water spec alpha lookup. |
 
 ## Environment
 

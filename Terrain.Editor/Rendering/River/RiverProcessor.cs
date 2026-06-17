@@ -54,6 +54,7 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
         bool enabled = component.Enabled && component.Settings.Visible;
         foreach (var renderObject in data.RenderObjects)
         {
+            renderObject.ApplySettings(component.Settings);
             renderObject.Enabled = enabled;
             renderObject.RenderGroup = RiverRenderingService.RiverRenderGroup;
             renderObject.World = entity.Transform.WorldMatrix;

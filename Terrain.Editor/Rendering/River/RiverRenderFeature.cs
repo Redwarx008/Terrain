@@ -1,7 +1,9 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Core.Serialization.Contents;
@@ -27,6 +29,7 @@ public enum RiverRenderDebugMode
 public sealed class RiverRenderFeature : RootRenderFeature
 {
     private static readonly InputElementDescription[] RiverInputElements = RiverVertex.Layout.CreateInputElements();
+    private static readonly FieldInfo? RenderViewDatasField = typeof(ForwardLightingRenderFeature).GetField("renderViewDatas", BindingFlags.Instance | BindingFlags.NonPublic);
 
     private DynamicEffectInstance? bottomEffect;
     private DynamicEffectInstance? surfaceEffect;
@@ -35,7 +38,9 @@ public sealed class RiverRenderFeature : RootRenderFeature
     private ImageScaler? refractionSeedScaler;
     private readonly RiverRenderResources renderResources = new();
     private readonly RiverResourceLoader riverResources = new();
+    private readonly List<RenderLight> fallbackVisibleLights = new(8);
     private ContentManager? contentManager;
+    private ForwardLightingRenderFeature? forwardLightingFeature;
     private IShadowMapRenderer? bottomShadowMapRenderer;
 
     public RiverRenderDebugMode DebugMode { get; set; }
@@ -61,7 +66,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         contentManager = Context.Services.GetSafeServiceAs<ContentManager>();
         riverResources.Load(contentManager);
         var meshRenderFeature = RenderSystem?.RenderFeatures.OfType<MeshRenderFeature>().FirstOrDefault();
-        var forwardLightingFeature = meshRenderFeature?.RenderFeatures.OfType<ForwardLightingRenderFeature>().FirstOrDefault();
+        forwardLightingFeature = meshRenderFeature?.RenderFeatures.OfType<ForwardLightingRenderFeature>().FirstOrDefault();
         bottomShadowMapRenderer = forwardLightingFeature?.ShadowMapRenderer;
 
         bottomPipelineState = CreatePipelineState(Context.GraphicsDevice, CreateDualSourceBlendState(), DepthStencilStates.DepthRead);
@@ -86,6 +91,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         surfaceEffect = null;
         refractionSeedScaler?.Dispose();
         refractionSeedScaler = null;
+        forwardLightingFeature = null;
         bottomShadowMapRenderer = null;
         bottomPipelineState = null;
         surfacePipelineState = null;
@@ -186,16 +192,152 @@ public sealed class RiverRenderFeature : RootRenderFeature
             return;
         }
 
-        var lights = Context.VisibilityGroup.Tags.Get(ForwardLightingRenderFeature.CurrentLights);
-        RenderLight? directionalLight = lights?.FirstOrDefault(static light => light.Type is LightDirectional);
-        RenderLight? skyboxLight = lights?.FirstOrDefault(static light => light.Type is LightSkybox);
-        LightShadowMapTexture? shadowMapTexture = directionalLight != null
-            ? bottomShadowMapRenderer?.FindShadowMap(renderView.LightingView ?? renderView, directionalLight)
-            : null;
+        var lightingView = renderView.LightingView ?? renderView;
+        var renderViewLightData = TryGetRenderViewLightData(lightingView);
+        var lights = renderViewLightData?.VisibleLights ?? CollectFallbackVisibleLights(lightingView);
+        var (directionalLight, shadowMapTexture) = SelectBottomDirectionalLight(lights, renderViewLightData, lightingView);
+        RenderLight? skyboxLight = SelectBottomSkyboxLight(lights);
 
         BindBottomDirectionalLightFromScene(directionalLight, shadowMapTexture);
         BindBottomEnvironmentFromScene(skyboxLight);
         bottomEffect.UpdateEffect(context.GraphicsDevice);
+    }
+
+    private ForwardLightingRenderFeature.RenderViewLightData? TryGetRenderViewLightData(RenderView lightingView)
+    {
+        if (forwardLightingFeature != null
+            && RenderViewDatasField?.GetValue(forwardLightingFeature) is Dictionary<RenderView, ForwardLightingRenderFeature.RenderViewLightData> renderViewDatas
+            && renderViewDatas.TryGetValue(lightingView, out var renderViewLightData))
+        {
+            return renderViewLightData;
+        }
+
+        return null;
+    }
+
+    private IReadOnlyList<RenderLight>? CollectFallbackVisibleLights(RenderView lightingView)
+    {
+        fallbackVisibleLights.Clear();
+
+        var lights = Context.VisibilityGroup.Tags.Get(ForwardLightingRenderFeature.CurrentLights);
+        if (lights == null)
+        {
+            return null;
+        }
+
+        var frustum = lightingView.Frustum;
+        foreach (var light in lights)
+        {
+            if (light.Type is IDirectLight directLight
+                && directLight.HasBoundingBox
+                && !frustum.Contains(ref light.BoundingBoxExt))
+            {
+                continue;
+            }
+
+            fallbackVisibleLights.Add(light);
+        }
+
+        return fallbackVisibleLights;
+    }
+
+    private (RenderLight? DirectionalLight, LightShadowMapTexture? ShadowMapTexture) SelectBottomDirectionalLight(
+        IReadOnlyList<RenderLight>? lights,
+        ForwardLightingRenderFeature.RenderViewLightData? renderViewLightData,
+        RenderView lightingView)
+    {
+        RenderLight? bestDirectionalLight = null;
+        LightShadowMapTexture? bestShadowMapTexture = null;
+
+        if (renderViewLightData != null)
+        {
+            foreach (var light in renderViewLightData.VisibleLightsWithShadows)
+            {
+                if (light.Type is not LightDirectional)
+                {
+                    continue;
+                }
+
+                var shadowMapTexture = TryGetSceneShadowMapTexture(renderViewLightData, lightingView, light);
+                if (shadowMapTexture == null)
+                {
+                    continue;
+                }
+
+                if (bestDirectionalLight == null || light.Intensity > bestDirectionalLight.Intensity)
+                {
+                    bestDirectionalLight = light;
+                    bestShadowMapTexture = shadowMapTexture;
+                }
+            }
+        }
+
+        if (bestDirectionalLight != null)
+        {
+            return (bestDirectionalLight, bestShadowMapTexture);
+        }
+
+        if (lights != null)
+        {
+            foreach (var light in lights)
+            {
+                if (light.Type is not LightDirectional)
+                {
+                    continue;
+                }
+
+                if (bestDirectionalLight == null || light.Intensity > bestDirectionalLight.Intensity)
+                {
+                    bestDirectionalLight = light;
+                }
+            }
+        }
+
+        return (bestDirectionalLight, bestDirectionalLight != null ? TryGetSceneShadowMapTexture(renderViewLightData, lightingView, bestDirectionalLight) : null);
+    }
+
+    private static RenderLight? SelectBottomSkyboxLight(IReadOnlyList<RenderLight>? lights)
+    {
+        if (lights == null)
+        {
+            return null;
+        }
+
+        RenderLight? bestSkyboxLight = null;
+        RenderLight? bestSkyboxWithCubemap = null;
+        foreach (var light in lights)
+        {
+            if (light.Type is not LightSkybox)
+            {
+                continue;
+            }
+
+            if (bestSkyboxLight == null || light.Intensity > bestSkyboxLight.Intensity)
+            {
+                bestSkyboxLight = light;
+            }
+
+            if (TryGetSceneEnvironmentTexture(light) != null
+                && (bestSkyboxWithCubemap == null || light.Intensity > bestSkyboxWithCubemap.Intensity))
+            {
+                bestSkyboxWithCubemap = light;
+            }
+        }
+
+        return bestSkyboxWithCubemap ?? bestSkyboxLight;
+    }
+
+    private LightShadowMapTexture? TryGetSceneShadowMapTexture(
+        ForwardLightingRenderFeature.RenderViewLightData? renderViewLightData,
+        RenderView lightingView,
+        RenderLight directionalLight)
+    {
+        if (renderViewLightData?.RenderLightsWithShadows.TryGetValue(directionalLight, out var shadowMapTexture) == true)
+        {
+            return shadowMapTexture;
+        }
+
+        return bottomShadowMapRenderer?.FindShadowMap(lightingView, directionalLight);
     }
 
     private void BindBottomDirectionalLightFromScene(RenderLight? directionalLight, LightShadowMapTexture? shadowMapTexture)
@@ -259,7 +401,13 @@ public sealed class RiverRenderFeature : RootRenderFeature
             return;
         }
 
-        Texture? bottomEnvironment = TryGetSceneEnvironmentTexture(skyboxLight) ?? riverResources.BottomEnvironment ?? riverResources.ReflectionSpecular;
+        Texture? bottomEnvironment = TryGetSceneEnvironmentTexture(skyboxLight);
+        if (bottomEnvironment == null && contentManager != null)
+        {
+            bottomEnvironment = riverResources.EnsureBottomEnvironment(contentManager);
+        }
+
+        bottomEnvironment ??= riverResources.ReflectionSpecular;
         Matrix skyMatrix = Matrix.Identity;
         float intensity = 1.0f;
         if (skyboxLight != null)
@@ -297,13 +445,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         effect.Parameters.Set(RiverBottomKeys._DepthFakeFactor, riverObject.DepthFakeFactor);
         effect.Parameters.Set(RiverBottomKeys._ParallaxIterations, riverObject.ParallaxIterations);
         effect.Parameters.Set(RiverBottomKeys._BottomNormalStrength, riverObject.BottomNormalStrength);
-        effect.Parameters.Set(RiverBottomKeys._BottomSunDirection, riverObject.BottomSunDirection);
-        effect.Parameters.Set(RiverBottomKeys._BottomSunColor, riverObject.BottomSunColor);
-        effect.Parameters.Set(RiverBottomKeys._BottomSunIntensity, riverObject.BottomSunIntensity);
         effect.Parameters.Set(RiverBottomKeys._BottomEnvironmentIntensity, riverObject.BottomEnvironmentIntensity);
         effect.Parameters.Set(RiverBottomKeys._BottomSpecularIntensity, riverObject.BottomSpecularIntensity);
-        effect.Parameters.Set(RiverBottomKeys._ShadowTermFallback, riverObject.ShadowTermFallback);
-        effect.Parameters.Set(RiverBottomKeys._CloudMaskFallback, riverObject.CloudMaskFallback);
     }
 
     private static void ApplySurfaceParameters(DynamicEffectInstance effect, RiverRenderObject riverObject, Vector2 viewSize)

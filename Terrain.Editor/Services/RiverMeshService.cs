@@ -313,7 +313,7 @@ public sealed class RiverMeshService
     {
         if (terrainManager != null && terrainManager.HeightCacheWidth > 0 && terrainManager.HeightCacheHeight > 0)
         {
-            return MathF.Max(terrainManager.HeightCacheWidth, terrainManager.HeightCacheHeight);
+            return MathF.Max(terrainManager.HeightCacheWidth - 1, terrainManager.HeightCacheHeight - 1);
         }
 
         return 4096.0f;

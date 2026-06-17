@@ -15,13 +15,8 @@ namespace Terrain.Editor
         stage float _ParallaxStrength = 0.04f;
         stage int _ParallaxIterations = 10;
         stage float _BottomNormalStrength = 1.0f;
-        stage float3 _BottomSunDirection = float3(0.35f, 0.75f, -0.55f);
-        stage float3 _BottomSunColor = float3(1.0f, 0.92f, 0.82f);
-        stage float _BottomSunIntensity = 1.35f;
         stage float _BottomEnvironmentIntensity = 1.0f;
         stage float _BottomSpecularIntensity = 0.35f;
-        stage float _ShadowTermFallback = 1.0f;
-        stage float _CloudMaskFallback = 0.0f;
         stage float4x4 _EnvironmentSkyMatrix = float4x4(
             1.0f, 0.0f, 0.0f, 0.0f,
             0.0f, 1.0f, 0.0f, 0.0f,

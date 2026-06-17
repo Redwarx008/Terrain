@@ -31,13 +31,8 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<float> _ParallaxStrength = ParameterKeys.NewValue<float>(0.04f);
         public static readonly ValueParameterKey<int> _ParallaxIterations = ParameterKeys.NewValue<int>(10);
         public static readonly ValueParameterKey<float> _BottomNormalStrength = ParameterKeys.NewValue<float>(1.0f);
-        public static readonly ValueParameterKey<Vector3> _BottomSunDirection = ParameterKeys.NewValue<Vector3>(new Vector3(0.35f,0.75f,-0.55f));
-        public static readonly ValueParameterKey<Vector3> _BottomSunColor = ParameterKeys.NewValue<Vector3>(new Vector3(1.0f,0.92f,0.82f));
-        public static readonly ValueParameterKey<float> _BottomSunIntensity = ParameterKeys.NewValue<float>(1.35f);
         public static readonly ValueParameterKey<float> _BottomEnvironmentIntensity = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _BottomSpecularIntensity = ParameterKeys.NewValue<float>(0.35f);
-        public static readonly ValueParameterKey<float> _ShadowTermFallback = ParameterKeys.NewValue<float>(1.0f);
-        public static readonly ValueParameterKey<float> _CloudMaskFallback = ParameterKeys.NewValue<float>(0.0f);
         public static readonly ValueParameterKey<Matrix> _EnvironmentSkyMatrix = ParameterKeys.NewValue<Matrix>(new Vector4x4(1.0f,0.0f,0.0f,0.0f,0.0f,1.0f,0.0f,0.0f,0.0f,0.0f,1.0f,0.0f,0.0f,0.0f,0.0f,1.0f));
         public static readonly ValueParameterKey<float> _EnvironmentIntensity = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _EnvironmentMipCount = ParameterKeys.NewValue<float>(1.0f);

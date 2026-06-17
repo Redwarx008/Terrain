@@ -1,0 +1,9 @@
+!Texture
+Id: 2b74f12e-decc-423c-a6fe-90b68f91ee16
+SerializedVersion: {Stride: 2.0.0.0}
+Tags: []
+Source: !file reflection-specular.dds
+Type: !ColorTextureType
+    UseSRgbSampling: false
+    ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
+IsStreamable: false

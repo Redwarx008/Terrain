@@ -173,6 +173,11 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "RiverBottomKeys.EnvironmentMapTexture", "RiverRenderFeature should bind the environment cubemap to the bottom pass");
         AssertNotContains(shader, "stage compose DirectLightGroup bottomLightGroup;", "RiverBottom should no longer depend on the brittle DirectLightGroup permutation path");
         AssertNotContains(shader, "bottomLightGroup.PrepareDirectLight(0);", "RiverBottom should not depend on a composed light group for scene shadows anymore");
+        AssertNotContains(shader, "_BottomSunDirection", "RiverBottom should not keep a river-local sun direction once bottom lighting is scene-driven");
+        AssertNotContains(shader, "_BottomSunColor", "RiverBottom should not keep a river-local sun color once bottom lighting is scene-driven");
+        AssertNotContains(shader, "_BottomSunIntensity", "RiverBottom should not keep a river-local sun intensity once bottom lighting is scene-driven");
+        AssertNotContains(shader, "_ShadowTermFallback", "RiverBottom should not keep the old neutral-lighting shadow fallback once bottom lighting is scene-driven");
+        AssertNotContains(shader, "_CloudMaskFallback", "RiverBottom should not keep the old neutral-lighting cloud fallback once bottom lighting is scene-driven");
         AssertNotContains(shader, "_BottomDiffuseMultiplier", "RiverBottom should not use a brightness multiplier to hide missing lighting");
         AssertNotContains(shader, "bottomDiffuse.rgb * depthTint * 2.0f", "RiverBottom should not darken albedo by depth tint as a substitute for CK3 material lighting");
     }
@@ -195,43 +200,43 @@ internal static class RiverShaderTextTests
         string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
 
         AssertContains(settings, "public float BottomNormalStrength { get; set; } = 1.0f;", "RiverRenderSettings should expose bottom normal strength for bottom lighting");
-        AssertContains(settings, "public Vector3 BottomSunDirection { get; set; }", "RiverRenderSettings should expose bottom directional-light direction");
-        AssertContains(settings, "public Vector3 BottomSunColor { get; set; }", "RiverRenderSettings should expose bottom directional-light color");
-        AssertContains(settings, "public float BottomSunIntensity { get; set; }", "RiverRenderSettings should expose bottom directional-light intensity");
         AssertContains(settings, "public float BottomEnvironmentIntensity { get; set; }", "RiverRenderSettings should expose bottom environment intensity");
         AssertContains(settings, "public float BottomSpecularIntensity { get; set; }", "RiverRenderSettings should expose bottom specular intensity");
+        AssertNotContains(settings, "public Vector3 BottomSunDirection { get; set; }", "RiverRenderSettings should no longer expose a river-local bottom sun direction once bottom lighting is scene-driven");
+        AssertNotContains(settings, "public Vector3 BottomSunColor { get; set; }", "RiverRenderSettings should no longer expose a river-local bottom sun color once bottom lighting is scene-driven");
+        AssertNotContains(settings, "public float BottomSunIntensity { get; set; }", "RiverRenderSettings should no longer expose a river-local bottom sun intensity once bottom lighting is scene-driven");
         AssertContains(renderObject, "public float TextureUvScale { get; private set; } = 1.0f;", "RiverRenderObject should cache texture UV scale for shader binding");
         AssertContains(renderObject, "public float OceanFadeRate { get; private set; } = 0.8f;", "RiverRenderObject should cache ocean fade rate for shader binding");
         AssertContains(renderObject, "public float BankAmount { get; private set; } = 0.0f;", "RiverRenderObject should cache bank amount for shader binding");
         AssertContains(renderObject, "public int ParallaxIterations { get; private set; } = 10;", "RiverRenderObject should cache parallax iteration count for shader binding");
         AssertContains(renderObject, "public float BottomNormalStrength { get; private set; } = 1.0f;", "RiverRenderObject should cache bottom normal strength for shader binding");
-        AssertContains(renderObject, "public Vector3 BottomSunDirection { get; private set; }", "RiverRenderObject should cache bottom directional-light direction");
-        AssertContains(renderObject, "public Vector3 BottomSunColor { get; private set; }", "RiverRenderObject should cache bottom directional-light color");
-        AssertContains(renderObject, "public float BottomSunIntensity { get; private set; }", "RiverRenderObject should cache bottom directional-light intensity");
         AssertContains(renderObject, "public float BottomEnvironmentIntensity { get; private set; }", "RiverRenderObject should cache bottom environment intensity");
         AssertContains(renderObject, "public float BottomSpecularIntensity { get; private set; }", "RiverRenderObject should cache bottom specular intensity");
+        AssertNotContains(renderObject, "public Vector3 BottomSunDirection { get; private set; }", "RiverRenderObject should not cache a river-local bottom sun direction once bottom lighting is scene-driven");
+        AssertNotContains(renderObject, "public Vector3 BottomSunColor { get; private set; }", "RiverRenderObject should not cache a river-local bottom sun color once bottom lighting is scene-driven");
+        AssertNotContains(renderObject, "public float BottomSunIntensity { get; private set; }", "RiverRenderObject should not cache a river-local bottom sun intensity once bottom lighting is scene-driven");
         AssertContains(renderObject, "public void ApplySettings(RiverRenderSettings settings)", "RiverRenderObject should snapshot river settings from the component");
         AssertContains(renderObject, "TextureUvScale = settings.TextureUvScale;", "RiverRenderObject should copy texture UV scale from RiverRenderSettings");
         AssertContains(renderObject, "OceanFadeRate = settings.OceanFadeRate;", "RiverRenderObject should copy ocean fade rate from RiverRenderSettings");
         AssertContains(renderObject, "BankAmount = settings.BankAmount;", "RiverRenderObject should copy bank amount from RiverRenderSettings");
         AssertContains(renderObject, "ParallaxIterations = settings.ParallaxIterations;", "RiverRenderObject should copy parallax iteration count from RiverRenderSettings");
         AssertContains(renderObject, "BottomNormalStrength = settings.BottomNormalStrength;", "RiverRenderObject should copy bottom normal strength from RiverRenderSettings");
-        AssertContains(renderObject, "BottomSunDirection = settings.BottomSunDirection;", "RiverRenderObject should copy bottom directional-light direction from RiverRenderSettings");
-        AssertContains(renderObject, "BottomSunColor = settings.BottomSunColor;", "RiverRenderObject should copy bottom directional-light color from RiverRenderSettings");
-        AssertContains(renderObject, "BottomSunIntensity = settings.BottomSunIntensity;", "RiverRenderObject should copy bottom directional-light intensity from RiverRenderSettings");
         AssertContains(renderObject, "BottomEnvironmentIntensity = settings.BottomEnvironmentIntensity;", "RiverRenderObject should copy bottom environment intensity from RiverRenderSettings");
         AssertContains(renderObject, "BottomSpecularIntensity = settings.BottomSpecularIntensity;", "RiverRenderObject should copy bottom specular intensity from RiverRenderSettings");
+        AssertNotContains(renderObject, "BottomSunDirection = settings.BottomSunDirection;", "RiverRenderObject should not copy a river-local bottom sun direction from RiverRenderSettings");
+        AssertNotContains(renderObject, "BottomSunColor = settings.BottomSunColor;", "RiverRenderObject should not copy a river-local bottom sun color from RiverRenderSettings");
+        AssertNotContains(renderObject, "BottomSunIntensity = settings.BottomSunIntensity;", "RiverRenderObject should not copy a river-local bottom sun intensity from RiverRenderSettings");
         AssertContains(processor, "renderObject.ApplySettings(component.Settings);", "RiverProcessor should push component settings into each render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._TextureUvScale, riverObject.TextureUvScale);", "RiverRenderFeature should bind bottom texture UV scale from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BankAmount, riverObject.BankAmount);", "RiverRenderFeature should bind bottom bank amount from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, riverObject.OceanFadeRate);", "RiverRenderFeature should bind bottom ocean fade rate from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._ParallaxIterations, riverObject.ParallaxIterations);", "RiverRenderFeature should bind bottom parallax iteration count from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomNormalStrength, riverObject.BottomNormalStrength);", "RiverRenderFeature should bind bottom normal strength from the render object");
-        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSunDirection, riverObject.BottomSunDirection);", "RiverRenderFeature should bind bottom directional-light direction from the render object");
-        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSunColor, riverObject.BottomSunColor);", "RiverRenderFeature should bind bottom directional-light color from the render object");
-        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSunIntensity, riverObject.BottomSunIntensity);", "RiverRenderFeature should bind bottom directional-light intensity from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomEnvironmentIntensity, riverObject.BottomEnvironmentIntensity);", "RiverRenderFeature should bind bottom environment intensity from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSpecularIntensity, riverObject.BottomSpecularIntensity);", "RiverRenderFeature should bind bottom specular intensity from the render object");
+        AssertNotContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSunDirection, riverObject.BottomSunDirection);", "RiverRenderFeature should not bind a river-local bottom sun direction once bottom lighting is scene-driven");
+        AssertNotContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSunColor, riverObject.BottomSunColor);", "RiverRenderFeature should not bind a river-local bottom sun color once bottom lighting is scene-driven");
+        AssertNotContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSunIntensity, riverObject.BottomSunIntensity);", "RiverRenderFeature should not bind a river-local bottom sun intensity once bottom lighting is scene-driven");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, riverObject.FlowNormalUvScale);", "RiverRenderFeature should bind surface flow-normal UV scale from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys.WaterColorShallow, riverObject.WaterColorShallow);", "RiverRenderFeature should bind shallow water color from the render object");
     }
@@ -244,10 +249,21 @@ internal static class RiverShaderTextTests
 
         AssertContains(loader, "public const string BottomEnvironmentUrl = \"Skybox texture\";", "RiverResourceLoader should keep a scene-skybox texture fallback for bottom environment binding");
         AssertContains(loader, "public Texture? BottomEnvironment { get; private set; }", "RiverResourceLoader should expose a dedicated bottom environment cubemap");
-        AssertContains(loader, "BottomEnvironment = LoadRequiredTexture(content, BottomEnvironmentUrl);", "RiverResourceLoader should load the fallback skybox cubemap for river-bottom lighting");
+        AssertContains(loader, "public Texture? EnsureBottomEnvironment(ContentManager content)", "RiverResourceLoader should lazy-load the fallback skybox cubemap only when the scene skybox is missing");
+        AssertContains(loader, "private bool bottomEnvironmentLoadAttempted;", "RiverResourceLoader should memoize whether the optional bottom environment load has already been attempted");
+        AssertContains(loader, "if (bottomEnvironmentLoadAttempted)", "RiverResourceLoader should skip repeated optional fallback loads after the first attempt");
+        AssertContains(loader, "bottomEnvironmentLoadAttempted = true;", "RiverResourceLoader should record optional fallback load attempts even when the load fails");
+        AssertContains(loader, "BottomEnvironment = LoadOptionalTexture(content, BottomEnvironmentUrl);", "RiverResourceLoader should attempt the legacy bottom environment cubemap load at most once per loader lifetime");
+        AssertNotContains(loader, "BottomEnvironment = LoadRequiredTexture(content, BottomEnvironmentUrl);", "RiverResourceLoader should not force-load the legacy bottom environment cubemap during feature startup");
         AssertContains(feature, "bottomShadowMapRenderer = forwardLightingFeature?.ShadowMapRenderer;", "RiverRenderFeature should grab Stride's shadow-map renderer from forward lighting");
-        AssertContains(feature, "RenderLight? directionalLight = lights?.FirstOrDefault", "RiverRenderFeature should select the visible scene directional light instead of relying on river-only constants");
-        AssertContains(feature, "FindShadowMap(renderView.LightingView ?? renderView, directionalLight)", "RiverRenderFeature should bind the real scene shadow map for the bottom pass");
+        AssertContains(feature, "var lightingView = renderView.LightingView ?? renderView;", "RiverRenderFeature should resolve bottom lighting from the current lighting view");
+        AssertContains(feature, "var renderViewLightData = TryGetRenderViewLightData(lightingView);", "RiverRenderFeature should ask forward lighting for the current view's light data before selecting sun and skybox");
+        AssertContains(feature, "var lights = renderViewLightData?.VisibleLights ?? CollectFallbackVisibleLights(lightingView);", "RiverRenderFeature should prefer forward lighting's per-view visible-light cache when available");
+        AssertContains(feature, "SelectBottomDirectionalLight(lights, renderViewLightData, lightingView)", "RiverRenderFeature should choose the bottom directional light through a dedicated selection helper");
+        AssertContains(feature, "renderViewLightData.VisibleLightsWithShadows", "RiverRenderFeature should prefer visible directional lights that actually have shadows");
+        AssertContains(feature, "renderViewLightData?.RenderLightsWithShadows.TryGetValue(directionalLight, out var shadowMapTexture)", "RiverRenderFeature should reuse forward lighting's shadow-map lookup when available");
+        AssertContains(feature, "SelectBottomSkyboxLight(lights)", "RiverRenderFeature should choose the bottom skybox through a dedicated selection helper");
+        AssertContains(feature, "TryGetSceneEnvironmentTexture(light) != null", "RiverRenderFeature should prefer visible skyboxes that already expose a real scene cubemap");
         AssertContains(feature, "LightDirectionalShadowMapRenderer.ShaderData", "RiverRenderFeature should read Stride's directional shadow shader data for the bottom pass");
         AssertContains(feature, "RiverBottomKeys._SceneSunDirection", "RiverRenderFeature should bind the scene directional-light direction for the bottom pass");
         AssertContains(feature, "RiverBottomKeys._SceneSunColor", "RiverRenderFeature should bind the scene directional-light color for the bottom pass");
@@ -260,6 +276,8 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "RiverBottomKeys._SceneShadowMapTextureTexelSize", "RiverRenderFeature should bind the scene shadow atlas texel size");
         AssertContains(feature, "RiverBottomKeys.SceneShadowMapTexture", "RiverRenderFeature should bind the real scene shadow atlas texture");
         AssertContains(feature, "TryGetSceneEnvironmentTexture(skyboxLight)", "RiverRenderFeature should prefer the scene LightSkybox cubemap over river-local fallback textures");
+        AssertContains(feature, "riverResources.EnsureBottomEnvironment(contentManager)", "RiverRenderFeature should only ask the loader for the legacy cubemap fallback when the scene skybox is absent");
+        AssertContains(feature, "bottomEnvironment ??= riverResources.ReflectionSpecular;", "RiverRenderFeature should keep reflection-specular as the final non-null cubemap fallback when both scene skybox and legacy skybox texture are unavailable");
         AssertContains(feature, "SkyboxKeys.CubeMap", "RiverRenderFeature should read the real scene skybox specular cubemap");
         AssertContains(feature, "RiverBottomKeys._EnvironmentSkyMatrix", "RiverRenderFeature should bind scene skybox rotation for bottom IBL");
         AssertContains(feature, "RiverBottomKeys._EnvironmentIntensity", "RiverRenderFeature should bind scene skybox intensity for bottom IBL");
@@ -268,6 +286,8 @@ internal static class RiverShaderTextTests
         AssertContains(viewportGame, "_riverComponent.Settings.BottomEnvironmentIntensity = 1.0f;", "EmbeddedStrideViewportGame should keep only bottom environment tuning as an explicit river-side multiplier");
         AssertNotContains(feature, "RiverBottomEffectKeys.BottomLightGroup", "RiverRenderFeature should not depend on a RiverBottomEffect light-group permutation anymore");
         AssertNotContains(feature, "CreateLightShaderGroup", "RiverRenderFeature should not build a composed light group for the bottom pass anymore");
+        AssertNotContains(feature, "RiverBottomKeys._ShadowTermFallback", "RiverRenderFeature should not bind the old river-local shadow fallback into the bottom pass anymore");
+        AssertNotContains(feature, "RiverBottomKeys._CloudMaskFallback", "RiverRenderFeature should not bind the old river-local cloud-mask fallback into the bottom pass anymore");
         AssertNotContains(viewportGame, "_riverComponent.Settings.BottomSunIntensity =", "EmbeddedStrideViewportGame should no longer override the scene directional-light intensity for river bottom");
     }
 
