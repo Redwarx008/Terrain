@@ -123,12 +123,7 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         UpdateMaterialParameters(component, entity, renderObject, graphicsDevice);
 
         // Update render object state
-        renderObject.Enabled = component.Enabled;
-        renderObject.RenderGroup = RenderGroup.Group0;
-        renderObject.World = Matrix.Translation(entity.WorldOffset);
-        renderObject.BoundingBox = (BoundingBoxExt)entity.Bounds;
-        renderObject.IsScalingNegative = false;
-        renderObject.IsShadowCaster = component.CastShadows;
+        ApplyRenderObjectState(component, renderObject, entity.WorldOffset, entity.Bounds);
 
         // Register with visibility group if not already registered
         if (!component.IsRegisteredWithVisibilityGroup)
@@ -136,6 +131,16 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
             VisibilityGroup.RenderObjects.Add(renderObject);
             component.IsRegisteredWithVisibilityGroup = true;
         }
+    }
+
+    private static void ApplyRenderObjectState(EditorTerrainComponent component, EditorTerrainRenderObject renderObject, Vector3 worldOffset, BoundingBox bounds)
+    {
+        renderObject.Enabled = component.Enabled;
+        renderObject.RenderGroup = RenderGroup.Group0;
+        renderObject.World = Matrix.Translation(worldOffset);
+        renderObject.BoundingBox = (BoundingBoxExt)bounds;
+        renderObject.IsScalingNegative = false;
+        renderObject.IsShadowCaster = component.CastShadows;
     }
 
     private bool EnsureMaterial(GraphicsDevice graphicsDevice, EditorTerrainComponent component, EditorTerrainRenderObject renderObject)
