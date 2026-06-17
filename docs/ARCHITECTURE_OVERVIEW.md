@@ -44,7 +44,7 @@
 | **路径编辑** | ✅ 已实现 | [Phase 6](design/terrain-editor-design-phase-6.md) |
 | **道路渲染** | ✅ 已实现 | [adr-013-vic3-path-rendering](log/decisions/adr-013-vic3-path-rendering.md) |
 | **河流网格生成** | ✅ 已实现 | [2026-06-05-1](log/2026/06/05/2026-06-05-1-river-mesh-generation-fix.md) |
-| **河流多 pass 渲染** | ✅ 已实现 | [adr-014-river-rendering-architecture](log/decisions/adr-014-river-rendering-architecture.md) |
+| **河流多 pass 渲染** | ✅ 已实现 | [adr-014-river-rendering-architecture](log/decisions/adr-014-river-rendering-architecture.md)；当前河流链路按 CK3 对齐为 `bottom -> refraction -> surface` 三段：河底/水面 shader 已接入 CK3 风格底部、水面、泡沫、水色与反射贴图资源，每个 DDS 均通过同目录 `.sdtex` 描述进入 Stride 内容库；shader 内部会把顶点流归一化半宽还原为 full-width，`_MapExtent` 由高度图世界坐标跨度 `max(width - 1, height - 1)` 绑定；`RiverRenderFeature` 维护分离的 half-res `SceneSeedColor` 与 `BottomColor`，先 seed scene color，再 copy 到 working refraction buffer；河底 pass 当前按 2026-06-17 RenderDoc capture 对齐到 CK3 这帧实际使用的 non-advanced bottom 分支：steep parallax 继续从 river ribbon/tangent UV 求偏移，但 `BottomDiffuse` / `BottomNormal` / `BottomProperties` 主采样统一改为 parallax 后的 `worldUv`，depth/profile 继续由 `tangentUv` 横截面驱动，alpha 改为 `fadeOut * connectionFade * saturate(depth * 13.0f)`，不再使用 `BottomNormal.b` depth shaping 或 advanced diffuse-alpha bank fade；`RiverBottom` 的 steep parallax 插值现在使用保符号分母 + `saturate` 权重，避免 `bottomWorldPosition` 在河心发生跨段外插；水面 water-color 按 CK3 map UV 语义执行 Y 翻转，并在反解出的 refraction world position 重新采样，surface 通过显式 bank fade 和 `PointClamp` refraction 采样露出河床/河岸颜色，避免旧的黑边和额外线性模糊；`RiverSurface` 的 see-through attenuation 现改为使用 `effectiveDepth = min(surfaceDepth, refractionDepth)`，减少由错误底距引起的河心过暗；河底 pass 不再用 diffuse multiplier 伪造亮度，而是按 CK3 bottom 路径引入 direct sun、真实 directional shadow 和 environment cubemap IBL 作为折射缓冲底色来源：`RiverRenderFeature` 现在直接从可见 `RenderLight` 绑定 scene directional light direction/color、`LightDirectionalShadowMapRenderer.ShaderData` 提供的 cascade splits / world-to-shadow / depth bias / offset scale / shadow atlas，以及 scene `LightSkybox` 的 cubemap / intensity / rotation；bottom cubemap 仅在场景 skybox 缺失时才退回 `Skybox texture` 资源，surface 继续读取 `reflection-specular` 作为水面反射/高光变化贴图；2026-06-17 的 RenderDoc 复核已确认 current `debug.rdc` 中 bottom draw `184/197` 与 surface draw `226/244` 分别读取这两类不同 cubemap；`RiverRenderSettings` 对 bottom 侧保留的 river-local 控制量现在只承担 multiplier/tuning（如 environment intensity、specular intensity、normal strength），不再承担 sun/shadow fallback 语义，并且 bottom 最终 lit color 当前增加了一个经 RenderDoc `lighting_x3` 热替换验证的 `3.0f` 能量增益，用于弥补现阶段与 CK3 在河床受光能量上的差距；pre-bottom seed payload 与 CK3 仍未完全等价，bank 泄漏仍需后续单独继续定位 |
 
 ### 编辑器层
 
@@ -150,8 +150,10 @@
 - `RiverRenderingService` 仅负责 editor façade（接收 `RiverSegment`、驱动 mesh 生成、同步可见性）
 - `RiverComponent` 持有快照化 `RiverMeshData`
 - `RiverProcessor` 负责版本同步与 `RiverRenderObject` 生命周期
-- `RiverRenderFeature` 负责河底/水面双 pass、底部折射缓冲与调试光栅状态
+- `RiverRenderFeature` 负责河底/水面双 pass、分离的 `SceneSeedColor`/`BottomColor` 折射缓冲与调试光栅状态
 - 河流 shader 统一使用 `TransformationWAndVP` 生成 `PositionWS / PositionH / DepthVS`
+- `RiverResourceLoader` 负责按 Stride 内容 URL 加载 `Assets/River/` 下的 `.sdtex` 资源：bottom diffuse/normal/properties/depth 与 water flow/foam/ambient/water-color/reflection；这些动态加载纹理必须列入 `Terrain.Editor.sdpkg` `RootAssets`，加载失败会抛出包含 URL 的异常；`RiverRenderFeature` 将这些资源绑定到 `RiverBottom` / `RiverSurface`
+- 河底 pass 使用 dual-source blending：RT0 RGB 写河底颜色，RT0 alpha 写入可由水面 pass 反解的 camera-relative bottom distance，RT1 alpha 作为混合权重；RenderDoc 对比表明 CK3 bottom 是 lit material pass（direct sun + shadow + environment cubemap IBL），当前实现按该结构计算 bottom albedo/normal/properties 的受光结果，而不是再用 `_BottomDiffuseMultiplier` 这类亮度补偿；bottom 当前对齐到 CK3 这帧实际使用的 non-advanced 分支：steep parallax 继续基于 ribbon/tangent UV 求偏移，但 `BottomDiffuse/Normal/Properties` 主采样改为 parallax 后的 `worldUv`，depth/profile 继续从 `tangentUv` 计算，alpha 改为 `fadeOut * connectionFade * saturate(depth * 13.0f)`，`BottomNormal.b` 不再参与 depth shaping；bottom lighting 现在优先走 scene-driven 语义：`RiverRenderFeature` 直接把可见 directional light 的 direction/color、`LightDirectionalShadowMapRenderer.ShaderData` 里的 cascade splits / world-to-shadow / depth bias / offset scale / shadow atlas，以及 `LightSkybox` 的 cubemap / intensity / rotation 绑定进 `RiverBottom`，只有场景 skybox 缺失时才退回 `Skybox texture` 资源；`RiverRenderSettings` 对 bottom 侧保留的 river-local 参数现在只承担 tuning multiplier（如 `_BottomEnvironmentIntensity/_BottomSpecularIntensity/_BottomNormalStrength`），不再承担 sun/shadow fallback 语义；`SceneSeedColor` 保存下采样场景种子，再通过 `CopyRegion` 复制到 `BottomColor` 作为 working refraction buffer；在当前 shader 中，`CalculateRiverBottomLighting(...)` 的结果还会追加一个经 RenderDoc `lighting_x3` 热替换验证的 `3.0f` 最终能量增益，用来先把 current river bottom 推到更接近 CK3 的河床亮度区间；水面 pass 读取折射缓冲并叠加 flow normal、ambient normal、water-color、水面 foam ramp/noise/map 和 reflection/specular 变化；water-color 贴图按地图 world UV 采样时必须执行 CK3 的 Y 翻转，RGB 作为 refraction/see-through tint map，alpha 作为 gloss/spec map；surface 处采样用于 gloss，refraction/see-through tint 则在反解出的 bottom/refraction world position 重新采样；主水色来自 facing-based shallow/deep 水色；surface alpha 使用显式 bank fade，refraction sampler 使用 `PointClamp`，避免旧路径的黑边和二次线性模糊；顶点流中的宽度是归一化 half-width，shader 给 CK3 depth / flow 使用前会还原为 full-width；pre-bottom seed payload 仍是当前链路与 CK3 的已知剩余差异
 **权衡：** 架构更复杂，但换来可维护的渲染生命周期、与 Stride render stage 的正确集成，以及后续扩展空间。
 **参考：** [adr-014-river-rendering-architecture](log/decisions/adr-014-river-rendering-architecture.md)
 
@@ -207,8 +209,8 @@
 |------|------|
 | `Terrain/Effects/Build/` | LOD 构建 |
 | `Terrain/Effects/Material/` | 材质着色器 |
-| `Terrain.Editor/Effects/RiverBottom.sdsl` | 河底 pass（折射缓冲/底色） |
-| `Terrain.Editor/Effects/RiverSurface.sdsl` | 水面 pass（流动、泡沫、折射采样） |
+| `Terrain.Editor/Effects/RiverBottom.sdsl` | 河底 pass（底部 diffuse/normal/properties/depth 采样、dual-source alpha、折射缓冲底色） |
+| `Terrain.Editor/Effects/RiverSurface.sdsl` | 水面 pass（flow normal、ambient normal、water-color、foam/foam ramp/foam map、reflection/specular、折射采样） |
 | `Terrain.Editor/Effects/RiverVertexStreams.sdsl` | 河流自定义顶点语义 |
 | `Terrain.Editor/Effects/RiverWaterCommon.sdsl` | 河流水体共用函数 |
 
@@ -256,5 +258,5 @@
 
 ---
 
-*最后更新: 2026-06-15*
+*最后更新: 2026-06-17*
 *状态: 反映当前实现状态*

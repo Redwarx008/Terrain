@@ -18,17 +18,50 @@ namespace Terrain.Editor
 {
     public static partial class RiverBottomKeys
     {
-        public static readonly ValueParameterKey<float> _BankFade = ParameterKeys.NewValue<float>(0.02f);
+        public static readonly ValueParameterKey<float> _BankFade = ParameterKeys.NewValue<float>(0.15f);
         public static readonly ValueParameterKey<float> _Depth = ParameterKeys.NewValue<float>(0.15f);
         public static readonly ValueParameterKey<float> _DepthWidthPower = ParameterKeys.NewValue<float>(2.0f);
         public static readonly ValueParameterKey<float> _MapExtent = ParameterKeys.NewValue<float>(4096.0f);
+        public static readonly ValueParameterKey<Vector3> _CameraWorldPosition = ParameterKeys.NewValue<Vector3>(new Vector3(0.0f,0.0f,0.0f));
         public static readonly ValueParameterKey<float> _DepthFakeFactor = ParameterKeys.NewValue<float>(2.0f);
+        public static readonly ValueParameterKey<float> _TextureUvScale = ParameterKeys.NewValue<float>(1.0f);
+        public static readonly ValueParameterKey<float> _OceanFadeRate = ParameterKeys.NewValue<float>(0.8f);
+        public static readonly ValueParameterKey<float> _BankAmount = ParameterKeys.NewValue<float>(0.0f);
         public static readonly ValueParameterKey<float> _BottomUvScale = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _ParallaxStrength = ParameterKeys.NewValue<float>(0.04f);
         public static readonly ValueParameterKey<int> _ParallaxIterations = ParameterKeys.NewValue<int>(10);
-        public static readonly ValueParameterKey<float> _BottomNormalStrength = ParameterKeys.NewValue<float>(0.0f);
+        public static readonly ValueParameterKey<float> _BottomNormalStrength = ParameterKeys.NewValue<float>(1.0f);
+        public static readonly ValueParameterKey<Vector3> _BottomSunDirection = ParameterKeys.NewValue<Vector3>(new Vector3(0.35f,0.75f,-0.55f));
+        public static readonly ValueParameterKey<Vector3> _BottomSunColor = ParameterKeys.NewValue<Vector3>(new Vector3(1.0f,0.92f,0.82f));
+        public static readonly ValueParameterKey<float> _BottomSunIntensity = ParameterKeys.NewValue<float>(1.35f);
+        public static readonly ValueParameterKey<float> _BottomEnvironmentIntensity = ParameterKeys.NewValue<float>(1.0f);
+        public static readonly ValueParameterKey<float> _BottomSpecularIntensity = ParameterKeys.NewValue<float>(0.35f);
+        public static readonly ValueParameterKey<float> _ShadowTermFallback = ParameterKeys.NewValue<float>(1.0f);
+        public static readonly ValueParameterKey<float> _CloudMaskFallback = ParameterKeys.NewValue<float>(0.0f);
+        public static readonly ValueParameterKey<Matrix> _EnvironmentSkyMatrix = ParameterKeys.NewValue<Matrix>(new Vector4x4(1.0f,0.0f,0.0f,0.0f,0.0f,1.0f,0.0f,0.0f,0.0f,0.0f,1.0f,0.0f,0.0f,0.0f,0.0f,1.0f));
+        public static readonly ValueParameterKey<float> _EnvironmentIntensity = ParameterKeys.NewValue<float>(1.0f);
+        public static readonly ValueParameterKey<float> _EnvironmentMipCount = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<Vector4> BottomProperties = ParameterKeys.NewValue<Vector4>(new Vector4(0.0f,0.35f,0.0f,1.0f));
         public static readonly ValueParameterKey<Vector4> BottomColorShallow = ParameterKeys.NewValue<Vector4>(new Vector4(0.28f,0.22f,0.16f,1.0f));
         public static readonly ValueParameterKey<Vector4> BottomColorDeep = ParameterKeys.NewValue<Vector4>(new Vector4(0.10f,0.075f,0.05f,1.0f));
+        public static readonly ObjectParameterKey<Texture> BottomDiffuseTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> BottomNormalTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> BottomPropertiesTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> BottomDepthTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> EnvironmentMapTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<Texture> SceneShadowMapTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> BottomTextureSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ObjectParameterKey<SamplerState> EnvironmentMapSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ObjectParameterKey<SamplerState> SceneShadowSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ValueParameterKey<Vector3> _SceneSunDirection = ParameterKeys.NewValue<Vector3>(new Vector3(0.0f,-1.0f,0.0f));
+        public static readonly ValueParameterKey<Vector3> _SceneSunColor = ParameterKeys.NewValue<Vector3>(new Vector3(0.0f,0.0f,0.0f));
+        public static readonly ValueParameterKey<int> _SceneShadowCascadeCount = ParameterKeys.NewValue<int>(0);
+        public static readonly ValueParameterKey<float> _SceneShadowBlendCascades = ParameterKeys.NewValue<float>(0.0f);
+        public static readonly ValueParameterKey<float> _SceneShadowDepthBias = ParameterKeys.NewValue<float>(0.0f);
+        public static readonly ValueParameterKey<float> _SceneShadowOffsetScale = ParameterKeys.NewValue<float>(0.0f);
+        public static readonly ValueParameterKey<float> _SceneShadowCascadeSplits = ParameterKeys.NewValue<float>();
+        public static readonly ValueParameterKey<Matrix> _SceneWorldToShadowCascadeUV = ParameterKeys.NewValue<Matrix>();
+        public static readonly ValueParameterKey<Vector2> _SceneShadowMapTextureSize = ParameterKeys.NewValue<Vector2>(new Vector2(1.0f,1.0f));
+        public static readonly ValueParameterKey<Vector2> _SceneShadowMapTextureTexelSize = ParameterKeys.NewValue<Vector2>(new Vector2(1.0f,1.0f));
     }
 }

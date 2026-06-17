@@ -681,6 +681,9 @@ public sealed class EmbeddedStrideViewportGame : Game
 
         _riverEntity = new Entity("RiverSystem");
         _riverComponent = new RiverComponent();
+        _riverComponent.Settings.BottomNormalStrength = 1.0f;
+        _riverComponent.Settings.BottomEnvironmentIntensity = 1.0f;
+        _riverComponent.Settings.BottomSpecularIntensity = 0.35f;
         _riverEntity.Add(_riverComponent);
         _scene!.Entities.Add(_riverEntity);
 

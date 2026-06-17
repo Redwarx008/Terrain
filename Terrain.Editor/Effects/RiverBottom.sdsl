@@ -2,55 +2,371 @@ namespace Terrain.Editor
 {
     shader RiverBottom : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon
     {
-        stage float _BankFade = 0.02f;
+        stage float _BankFade = 0.15f;
         stage float _Depth = 0.15f;
         stage float _DepthWidthPower = 2.0f;
         stage float _MapExtent = 4096.0f;
+        stage float3 _CameraWorldPosition = float3(0.0f, 0.0f, 0.0f);
         stage float _DepthFakeFactor = 2.0f;
+        stage float _TextureUvScale = 1.0f;
+        stage float _OceanFadeRate = 0.8f;
+        stage float _BankAmount = 0.0f;
         stage float _BottomUvScale = 1.0f;
         stage float _ParallaxStrength = 0.04f;
         stage int _ParallaxIterations = 10;
-        stage float _BottomNormalStrength = 0.0f;
+        stage float _BottomNormalStrength = 1.0f;
+        stage float3 _BottomSunDirection = float3(0.35f, 0.75f, -0.55f);
+        stage float3 _BottomSunColor = float3(1.0f, 0.92f, 0.82f);
+        stage float _BottomSunIntensity = 1.35f;
+        stage float _BottomEnvironmentIntensity = 1.0f;
+        stage float _BottomSpecularIntensity = 0.35f;
+        stage float _ShadowTermFallback = 1.0f;
+        stage float _CloudMaskFallback = 0.0f;
+        stage float4x4 _EnvironmentSkyMatrix = float4x4(
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f);
+        stage float _EnvironmentIntensity = 1.0f;
+        stage float _EnvironmentMipCount = 1.0f;
         stage float4 BottomProperties = float4(0.0f, 0.35f, 0.0f, 1.0f);
         stage float4 BottomColorShallow = float4(0.28f, 0.22f, 0.16f, 1.0f);
         stage float4 BottomColorDeep = float4(0.10f, 0.075f, 0.05f, 1.0f);
+        stage Texture2D<float4> BottomDiffuseTexture;
+        stage Texture2D<float4> BottomNormalTexture;
+        stage Texture2D<float4> BottomPropertiesTexture;
+        stage Texture2D<float4> BottomDepthTexture;
+        stage TextureCube<float4> EnvironmentMapTexture;
+        stage Texture2D SceneShadowMapTexture;
+        stage SamplerState BottomTextureSampler;
+        stage SamplerState EnvironmentMapSampler;
+        stage SamplerComparisonState SceneShadowSampler
+        {
+            Filter = COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
+            AddressU = Clamp;
+            AddressV = Clamp;
+            ComparisonFunc = LessEqual;
+        };
+        stage float3 _SceneSunDirection = float3(0.0f, -1.0f, 0.0f);
+        stage float3 _SceneSunColor = float3(0.0f, 0.0f, 0.0f);
+        stage int _SceneShadowCascadeCount = 0;
+        stage float _SceneShadowBlendCascades = 0.0f;
+        stage float _SceneShadowDepthBias = 0.0f;
+        stage float _SceneShadowOffsetScale = 0.0f;
+        stage float _SceneShadowCascadeSplits[4];
+        stage float4x4 _SceneWorldToShadowCascadeUV[4];
+        stage float2 _SceneShadowMapTextureSize = float2(1.0f, 1.0f);
+        stage float2 _SceneShadowMapTextureTexelSize = float2(1.0f, 1.0f);
 
         float ComputeWorldWidth()
         {
-            return max(streams.RiverWidth * max(_MapExtent, 1.0f), 0.001f);
+            return max(streams.RiverWidth * max(_MapExtent, 1.0f) * 2.0f, 0.001f);
         }
 
-        float2 ComputeBottomUv(float2 riverUv, float3 worldPosition, float worldDepth)
+        float CalcBottomProfileDepth(float2 tangentUv)
         {
-            float2 uv = riverUv * max(_BottomUvScale, 0.0001f);
-            float parallax = worldDepth * _ParallaxStrength;
-            uv += worldPosition.xz * 0.001f * parallax;
-            return uv;
+            float shoreAmount = 1.0f + _BankAmount;
+            float centerOffset = (shoreAmount - 1.0f) * 0.5f;
+            float crossSection = clamp(tangentUv.y * shoreAmount - centerOffset, 0.0f, 1.0f);
+            return clamp(RiverDepthFromCrossSection(crossSection, _Depth, _DepthWidthPower), 0.001f, 10.0f);
+        }
+
+        void CalculateParallaxOffsetSteep(float3 tangentSpaceToCameraDir, float3 worldSpaceToCameraDir, float2 tangentUv, float worldWidth, out float2 tangentSpaceOffset, out float2 worldSpaceOffset)
+        {
+            int minNumLayers = 2;
+            int maxNumLayers = max(_ParallaxIterations, 2);
+            float numLayers = lerp((float)maxNumLayers, (float)minNumLayers, saturate(worldSpaceToCameraDir.y));
+            float layerDepth = _Depth / numLayers;
+            float currentDepth = 0.0f;
+
+            float4 step = float4(0.0f, 0.0f, 0.0f, 0.0f);
+            float4 offset = float4(0.0f, 0.0f, 0.0f, 0.0f);
+            float depth = CalcBottomProfileDepth(tangentUv);
+
+            step.xy = (((-tangentSpaceToCameraDir.xy * _Depth) / max(tangentSpaceToCameraDir.z, 0.0001f)) / numLayers);
+            step.zw = (((-worldSpaceToCameraDir.xz * _Depth) / max(worldSpaceToCameraDir.y, 0.0001f)) / numLayers);
+            step.x *= _TextureUvScale;
+            step.zw *= worldWidth;
+
+            for (int i = 0; i < maxNumLayers; ++i)
+            {
+                if (depth <= currentDepth)
+                {
+                    break;
+                }
+
+                currentDepth += layerDepth;
+                offset += step;
+                depth = CalcBottomProfileDepth(tangentUv + offset.xy);
+            }
+
+            float prevDepth = CalcBottomProfileDepth(tangentUv + offset.xy - step.xy) - currentDepth + layerDepth;
+            float nextDepth = depth - currentDepth;
+            // Keep steep parallax interpolation inside the current segment instead of extrapolating across the river.
+            float denom = nextDepth - prevDepth;
+            float safeDenom = abs(denom) > 0.0001f ? denom : (denom >= 0.0f ? 0.0001f : -0.0001f);
+            float weight = saturate(nextDepth / safeDenom);
+            offset -= step * weight;
+
+            tangentSpaceOffset = offset.xy;
+            worldSpaceOffset = offset.zw;
+        }
+
+        void CalcParallaxedBottomUvs(float2 riverUv, float3 positionWS, float3 tangent, float3 bitangent, float3 surfaceNormal, float worldWidth, float3 viewDir, out float2 worldUv, out float2 tangentUv)
+        {
+            float2 scaledRiverUv = float2(riverUv.x * _TextureUvScale, riverUv.y);
+            float3 tangentSpaceToCameraDir = float3(
+                dot(viewDir, tangent),
+                dot(viewDir, bitangent),
+                dot(viewDir, surfaceNormal));
+
+            float2 tangentSpaceOffset;
+            float2 worldSpaceOffset;
+            CalculateParallaxOffsetSteep(tangentSpaceToCameraDir, viewDir, scaledRiverUv, worldWidth, tangentSpaceOffset, worldSpaceOffset);
+
+            worldUv = positionWS.xz + worldSpaceOffset;
+            tangentUv = scaledRiverUv + tangentSpaceOffset;
+        }
+
+        float3 ComputeDepthShapedNormal(float2 tangentUv, float underOceanFade, float3 tangent, float3 bitangent, float3 surfaceNormal, float3 normalSample)
+        {
+            float sampleWidth = 0.1f;
+            float2 depthSampleOffset = float2(0.0f, sampleWidth * 0.5f);
+            float depthBefore = CalcBottomProfileDepth(tangentUv - depthSampleOffset);
+            float depthAfter = CalcBottomProfileDepth(tangentUv + depthSampleOffset);
+            float slope = ((depthBefore - depthAfter) * underOceanFade) / sampleWidth;
+            float angle = atan(slope);
+            float3 parallaxNormal = float3(0.0f, -sin(angle), cos(angle));
+            parallaxNormal.xy += normalSample.xy;
+            return normalize(parallaxNormal.x * tangent + parallaxNormal.y * bitangent + parallaxNormal.z * surfaceNormal);
+        }
+
+        float3 RiverUnpackRRxGNormal(float4 normalSample)
+        {
+            float x = normalSample.g * 2.0f - 1.0f;
+            float y = -(normalSample.a * 2.0f - 1.0f);
+            float z = sqrt(saturate(1.0f - x * x - y * y));
+            return float3(x, y, z);
+        }
+
+        float3 RiverFresnelSchlick(float cosTheta, float3 f0)
+        {
+            float oneMinusCos = 1.0f - saturate(cosTheta);
+            float oneMinusCos2 = oneMinusCos * oneMinusCos;
+            float oneMinusCos5 = oneMinusCos2 * oneMinusCos2 * oneMinusCos;
+            return f0 + (float3(1.0f, 1.0f, 1.0f) - f0) * oneMinusCos5;
+        }
+
+        float3 RotateEnvironmentSampleDirection(float3 sampleDirection)
+        {
+            sampleDirection = mul(sampleDirection, (float3x3)_EnvironmentSkyMatrix);
+            return float3(sampleDirection.xy, -sampleDirection.z);
+        }
+
+        void CalculateSceneShadowKernelParameters(float2 position, out float2 baseUv, out float2 st)
+        {
+            float2 uv = position * _SceneShadowMapTextureSize;
+            baseUv = floor(uv + 0.5f);
+            st = uv + 0.5f - baseUv;
+            baseUv -= 0.5f;
+            baseUv *= _SceneShadowMapTextureTexelSize;
+        }
+
+        float Get5x5SceneShadowFilterKernel(float2 baseUv, float2 st, out float3 kernel[9])
+        {
+            float2 uvW0 = (4 - 3 * st);
+            float2 uvW1 = 7;
+            float2 uvW2 = (1 + 3 * st);
+
+            float2 uv0 = (3 - 2 * st) / uvW0 - 2;
+            float2 uv1 = (3 + st) / uvW1;
+            float2 uv2 = st / uvW2 + 2;
+
+            kernel[0] = float3(baseUv + uv0 * _SceneShadowMapTextureTexelSize, uvW0.x * uvW0.y);
+            kernel[1] = float3(baseUv + float2(uv1.x, uv0.y) * _SceneShadowMapTextureTexelSize, uvW1.x * uvW0.y);
+            kernel[2] = float3(baseUv + float2(uv2.x, uv0.y) * _SceneShadowMapTextureTexelSize, uvW2.x * uvW0.y);
+            kernel[3] = float3(baseUv + float2(uv0.x, uv1.y) * _SceneShadowMapTextureTexelSize, uvW0.x * uvW1.y);
+            kernel[4] = float3(baseUv + uv1 * _SceneShadowMapTextureTexelSize, uvW1.x * uvW1.y);
+            kernel[5] = float3(baseUv + float2(uv2.x, uv1.y) * _SceneShadowMapTextureTexelSize, uvW2.x * uvW1.y);
+            kernel[6] = float3(baseUv + float2(uv0.x, uv2.y) * _SceneShadowMapTextureTexelSize, uvW0.x * uvW2.y);
+            kernel[7] = float3(baseUv + float2(uv1.x, uv2.y) * _SceneShadowMapTextureTexelSize, uvW1.x * uvW2.y);
+            kernel[8] = float3(baseUv + uv2 * _SceneShadowMapTextureTexelSize, uvW2.x * uvW2.y);
+
+            return 144.0f;
+        }
+
+        float FilterSceneShadow5x5(float2 position, float positionDepth)
+        {
+            float2 baseUv;
+            float2 st;
+            CalculateSceneShadowKernelParameters(position, baseUv, st);
+
+            float3 kernel[9];
+            float normalizationFactor = Get5x5SceneShadowFilterKernel(baseUv, st, kernel);
+            float shadow = 0.0f;
+
+            [unroll]
+            for (int i = 0; i < 9; ++i)
+            {
+                shadow += kernel[i].z * SceneShadowMapTexture.SampleCmpLevelZero(SceneShadowSampler, kernel[i].xy, positionDepth);
+            }
+
+            return shadow / normalizationFactor;
+        }
+
+        float3 GetSceneShadowPositionOffset(float offsetScale, float nDotL, float3 normal)
+        {
+            float normalOffsetScale = saturate(1.0f - nDotL);
+            return 2.0f * _SceneShadowMapTextureTexelSize.x * offsetScale * normalOffsetScale * normal;
+        }
+
+        float SampleSceneShadowCascade(float3 positionWS, float3 normal, float nDotL, int cascadeIndex)
+        {
+            float3 shadowPositionWS = positionWS + GetSceneShadowPositionOffset(_SceneShadowOffsetScale, nDotL, normal);
+            float4 shadowPosition = mul(float4(shadowPositionWS, 1.0f), _SceneWorldToShadowCascadeUV[cascadeIndex]);
+            shadowPosition.z -= _SceneShadowDepthBias;
+            float safeW = abs(shadowPosition.w) > 0.0001f ? shadowPosition.w : 0.0001f;
+            shadowPosition.xyz /= safeW;
+
+            if (shadowPosition.x < 0.0f
+                || shadowPosition.x > 1.0f
+                || shadowPosition.y < 0.0f
+                || shadowPosition.y > 1.0f
+                || shadowPosition.z < 0.0f
+                || shadowPosition.z > 1.0f)
+            {
+                return 1.0f;
+            }
+
+            return FilterSceneShadow5x5(shadowPosition.xy, shadowPosition.z);
+        }
+
+        int SelectSceneShadowCascade()
+        {
+            int cascadeCount = min(max(_SceneShadowCascadeCount, 0), 4);
+            int cascadeIndex = 0;
+
+            [unroll]
+            for (int i = 0; i < 3; ++i)
+            {
+                if (i >= cascadeCount - 1)
+                {
+                    break;
+                }
+
+                if (streams.DepthVS > _SceneShadowCascadeSplits[i])
+                {
+                    cascadeIndex = i + 1;
+                }
+            }
+
+            return cascadeIndex;
+        }
+
+        float EvaluateSceneShadow(float3 positionWS, float3 normal, float nDotL)
+        {
+            int cascadeCount = min(max(_SceneShadowCascadeCount, 0), 4);
+            if (cascadeCount <= 0)
+            {
+                return 1.0f;
+            }
+
+            int cascadeIndex = SelectSceneShadowCascade();
+            float shadow = SampleSceneShadowCascade(positionWS, normal, nDotL, cascadeIndex);
+
+            if (_SceneShadowBlendCascades > 0.5f && cascadeIndex < cascadeCount - 1)
+            {
+                float nextSplit = _SceneShadowCascadeSplits[cascadeIndex];
+                float splitSize = cascadeIndex > 0
+                    ? max(nextSplit - _SceneShadowCascadeSplits[cascadeIndex - 1], 0.0001f)
+                    : max(nextSplit, 0.0001f);
+                float splitDist = (nextSplit - streams.DepthVS) / splitSize;
+                if (splitDist < 0.2f)
+                {
+                    float lerpAmount = smoothstep(0.0f, 0.2f, splitDist);
+                    float nextShadow = SampleSceneShadowCascade(positionWS, normal, nDotL, cascadeIndex + 1);
+                    shadow = lerp(nextShadow, shadow, lerpAmount);
+                }
+            }
+
+            return shadow;
+        }
+
+        float3 CalculateRiverBottomLighting(float3 positionWS, float3 albedo, float3 normal, float3 viewDir, float4 properties)
+        {
+            float perceptualRoughness = max(saturate(properties.a), 0.04f);
+            float roughness = max(perceptualRoughness * perceptualRoughness, 0.02f);
+            float specularMask = saturate(max(properties.g, BottomProperties.y));
+            float metalness = saturate(properties.b);
+            float3 diffuseColor = albedo * (1.0f - metalness);
+            float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f) * lerp(0.5f, 1.5f, specularMask), albedo, metalness);
+
+            float3 lightDir = normalize(-_SceneSunDirection);
+            float nDotL = saturate(dot(normal, lightDir));
+            float shadow = EvaluateSceneShadow(positionWS, normal, nDotL);
+            float3 directLightColorNdotL = _SceneSunColor * shadow * nDotL;
+            float3 directDiffuse = diffuseColor * directLightColorNdotL * 0.31830989f;
+
+            float3 halfDir = normalize(lightDir + viewDir);
+            float nDotH = saturate(dot(normal, halfDir));
+            float vDotH = saturate(dot(viewDir, halfDir));
+            float specularPower = exp2(lerp(7.0f, 2.0f, perceptualRoughness) * 2.0f);
+            float specularTerm = pow(nDotH, specularPower) * nDotL * (1.0f - roughness) * _BottomSpecularIntensity;
+            float3 directSpecular = RiverFresnelSchlick(vDotH, f0) * directLightColorNdotL * specularTerm;
+
+            float environmentIntensity = _EnvironmentIntensity * _BottomEnvironmentIntensity;
+            float maxEnvironmentMip = max(_EnvironmentMipCount - 1.0f, 0.0f);
+            float3 diffuseIbl = EnvironmentMapTexture.SampleLevel(EnvironmentMapSampler, RotateEnvironmentSampleDirection(normal), maxEnvironmentMip).rgb
+                * diffuseColor
+                * environmentIntensity;
+            float3 reflectionDir = RotateEnvironmentSampleDirection(reflect(-viewDir, normal));
+            float specularMip = lerp(0.0f, maxEnvironmentMip, perceptualRoughness);
+            float3 specularIbl = EnvironmentMapTexture.SampleLevel(EnvironmentMapSampler, reflectionDir, specularMip).rgb
+                * RiverFresnelSchlick(saturate(dot(normal, viewDir)), f0)
+                * _BottomSpecularIntensity
+                * environmentIntensity;
+
+            return directDiffuse + directSpecular + diffuseIbl + specularIbl;
         }
 
         stage override void PSMain()
         {
             float2 riverUv = streams.RiverUV;
             float worldWidth = ComputeWorldWidth();
-            float depth = RiverDepthFromCrossSection(riverUv.y, _Depth, _DepthWidthPower);
-            float worldDepth = depth * worldWidth;
-            float depthFactor = saturate(RiverSafeDivide(depth, max(_Depth, 0.0001f), 0.0f));
-            float edgeFade = RiverEdgeFade(riverUv.y, _BankFade);
             float connectionFade = saturate((streams.RiverDistanceToMain - 0.6f * abs(riverUv.y - 0.5f)) * 5.0f);
-            float alpha = edgeFade * connectionFade * saturate(streams.RiverTransparency);
+            float underOceanFade = 1.0f - saturate(max(0.0f, -streams.PositionWS.y) * _OceanFadeRate);
+            float fadeOut = min(underOceanFade, saturate(streams.RiverTransparency));
 
-            float2 bottomUv = ComputeBottomUv(riverUv, streams.PositionWS.xyz, worldDepth);
-            float bottomPattern = 0.5f + 0.5f * sin((bottomUv.x + bottomUv.y) * 32.0f);
-            float3 bottomNormal = normalize(lerp(float3(0.0f, 1.0f, 0.0f), streams.RiverNormal, saturate(_BottomNormalStrength)));
-            float propertyDarkening = saturate(BottomProperties.y);
-            float3 color = lerp(BottomColorShallow.rgb, BottomColorDeep.rgb, depthFactor);
-            color *= 1.0f - depthFactor * saturate(_DepthFakeFactor * 0.25f + propertyDarkening * 0.25f);
-            color *= lerp(0.85f, 1.05f, bottomPattern);
-            color *= lerp(1.0f, saturate(bottomNormal.y), saturate(_BottomNormalStrength));
+            float3 surfaceNormal = normalize(streams.RiverNormal);
+            float3 tangent = normalize(streams.RiverTangent);
+            float3 bitangent = normalize(cross(surfaceNormal, tangent));
+            float3 viewDir = normalize(_CameraWorldPosition - streams.PositionWS.xyz);
 
-            float4 packedRefraction = RiverPackRefraction(streams.PositionWS.xyz, alpha);
-            streams.ColorTarget = float4(color, alpha);
-            streams.ColorTarget1 = packedRefraction;
+            float2 worldUv;
+            float2 tangentUv;
+            CalcParallaxedBottomUvs(riverUv, streams.PositionWS.xyz, tangent, bitangent, surfaceNormal, worldWidth, viewDir, worldUv, tangentUv);
+
+            float4 bottomDiffuse = BottomDiffuseTexture.Sample(BottomTextureSampler, worldUv);
+            float4 bottomNormalSample = BottomNormalTexture.Sample(BottomTextureSampler, worldUv);
+            float4 bottomProperties = BottomPropertiesTexture.Sample(BottomTextureSampler, worldUv);
+
+            float depth = CalcBottomProfileDepth(tangentUv);
+            float worldDepth = depth * worldWidth * fadeOut;
+            float3 tangentNormal = RiverUnpackRRxGNormal(bottomNormalSample);
+            float3 textureNormal = ComputeDepthShapedNormal(tangentUv, underOceanFade, tangent, bitangent, surfaceNormal, tangentNormal);
+            float3 bottomNormal = normalize(lerp(surfaceNormal, textureNormal, saturate(_BottomNormalStrength)));
+            float3 color = CalculateRiverBottomLighting(streams.PositionWS.xyz, bottomDiffuse.rgb, bottomNormal, viewDir, bottomProperties) * 3.0f;
+
+            float edgeFade = saturate(depth * 13.0f);
+            float alpha = fadeOut * connectionFade * edgeFade;
+
+            float3 bottomWorldPosition;
+            bottomWorldPosition.xz = worldUv;
+            bottomWorldPosition.y = streams.PositionWS.y - worldDepth;
+            bottomWorldPosition.y -= pow(saturate(RiverSafeDivide(depth, max(_Depth, 0.0001f), 0.0f)), 2.0f) * _DepthFakeFactor * fadeOut;
+            float compressedWorld = RiverCompressWorldSpace(bottomWorldPosition, _CameraWorldPosition);
+            streams.ColorTarget = float4(color, compressedWorld);
+            streams.ColorTarget1 = float4(alpha, alpha, alpha, alpha);
         }
     };
 }
