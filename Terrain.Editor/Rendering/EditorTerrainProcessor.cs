@@ -128,7 +128,7 @@ public sealed class EditorTerrainProcessor : EntityProcessor<EditorTerrainCompon
         renderObject.World = Matrix.Translation(entity.WorldOffset);
         renderObject.BoundingBox = (BoundingBoxExt)entity.Bounds;
         renderObject.IsScalingNegative = false;
-        renderObject.IsShadowCaster = false;
+        renderObject.IsShadowCaster = component.CastShadows;
 
         // Register with visibility group if not already registered
         if (!component.IsRegisteredWithVisibilityGroup)
@@ -420,6 +420,11 @@ public sealed class EditorTerrainComponent : EntityComponent
     /// Whether the terrain is enabled for rendering.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Whether the terrain participates in shadow-map rendering.
+    /// </summary>
+    public bool CastShadows { get; set; } = true;
 
     /// <summary>
     /// Whether this component has been registered with the visibility group.

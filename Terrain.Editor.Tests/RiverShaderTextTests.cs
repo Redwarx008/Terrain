@@ -298,6 +298,7 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "RiverBottomKeys._EnvironmentSkyMatrix", "RiverRenderFeature should bind scene skybox rotation for bottom IBL");
         AssertContains(feature, "RiverBottomKeys._EnvironmentIntensity", "RiverRenderFeature should bind scene skybox intensity for bottom IBL");
         AssertContains(feature, "RiverBottomKeys._EnvironmentMipCount", "RiverRenderFeature should bind scene cubemap mip count for bottom IBL");
+        AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.WaterColorSampler, graphicsDevice.SamplerStates.LinearWrap);", "RiverRenderFeature should bind a dedicated water-color sampler instead of reusing the tiling normal/foam sampler implicitly");
         AssertContains(feature, "SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ReflectionSpecularTexture, riverResources.ReflectionSpecular);", "RiverRenderFeature should keep the river reflection/specular asset on the surface pass");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.ReflectionSpecularSampler, graphicsDevice.SamplerStates.LinearClamp);", "RiverRenderFeature should bind the cubemap sampler for surface reflections explicitly");
         AssertContains(viewportGame, "_riverComponent.Settings.BottomEnvironmentIntensity = 1.0f;", "EmbeddedStrideViewportGame should keep only bottom environment tuning as an explicit river-side multiplier");
@@ -321,6 +322,7 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "ReflectionSpecularTexture", "RiverSurface should declare reflection/specular texture");
         AssertContains(shader, "TextureCube<float4> ReflectionSpecularTexture", "RiverSurface should treat reflection-specular as a cubemap, matching the imported DDS asset");
         AssertContains(shader, "ReflectionSpecularSampler", "RiverSurface should use an explicit cubemap sampler for reflections");
+        AssertContains(shader, "WaterColorSampler", "RiverSurface should declare a dedicated sampler for map-space water-color lookups");
         AssertContains(shader, "WaterColorTexture", "RiverSurface should declare CK3 water color/spec texture");
         AssertContains(shader, "FlowNormalTexture.Sample", "RiverSurface should use texture-driven flow normals");
         AssertContains(shader, "AmbientNormalTexture.Sample", "RiverSurface should use ambient normal ripples");
@@ -340,11 +342,11 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "worldPosition.xz / max(_MapWorldSize, float2(1.0f, 1.0f))", "RiverSurface should normalize map UVs per axis instead of collapsing rectangular maps to a single scalar extent");
         AssertContains(shader, "uv.y = 1.0f - uv.y;", "RiverSurface should flip map-space Y like CK3 before sampling water-color maps");
         AssertContains(shader, "float2 worldUv = ComputeMapWorldUv(streams.PositionWS.xyz);", "RiverSurface should sample surface water color/spec in CK3 map world UV space");
-        AssertContains(shader, "float4 waterColorAndSpec = WaterColorTexture.Sample(WaterTextureSampler, worldUv);", "RiverSurface should sample CK3 water color/spec texture in map world UV space");
+        AssertContains(shader, "float4 waterColorAndSpec = WaterColorTexture.Sample(WaterColorSampler, worldUv);", "RiverSurface should sample CK3 water color/spec texture through a dedicated map-texture sampler");
         AssertContains(shader, "float glossMap = waterColorAndSpec.a;", "RiverSurface should use CK3 water-color alpha as the gloss/spec map");
         AssertContains(shader, "float3 DecodeRefractionWorldPosition(float3 surfaceWorldPosition, float compressedDistance)", "RiverSurface should centralize refraction-payload decode so invalid seed pixels do not decompress to camera space");
         AssertContains(shader, "float2 refractionWorldUv = ComputeMapWorldUv(refractionWorldPosition);", "RiverSurface should sample refraction tint at the refracted bottom world position like CK3");
-        AssertContains(shader, "float4 refractionWaterColorAndSpec = WaterColorTexture.Sample(WaterTextureSampler, refractionWorldUv);", "RiverSurface should resample CK3 water-color at the accepted refraction world position");
+        AssertContains(shader, "float4 refractionWaterColorAndSpec = WaterColorTexture.Sample(WaterColorSampler, refractionWorldUv);", "RiverSurface should resample CK3 water-color through the dedicated map-texture sampler");
         AssertContains(shader, "float3 refractionWaterColorMap = lerp(refractionWaterColorAndSpec.rgb, _WaterColorMapTint, saturate(_WaterColorMapTintFactor));", "RiverSurface should treat refraction water-color RGB as the see-through tint map");
         AssertContains(shader, "float4 refractionResult = SampleRefractionSeeThrough(screenUv, refractionOffset, streams.PositionWS.xyz, worldDepth);", "RiverSurface should compute CK3-style see-through refraction from the bottom buffer");
         AssertContains(shader, "float3 refractionColor = refractionResult.rgb;", "RiverSurface should keep refraction color separate from the depth used for shore fade");
@@ -365,6 +367,7 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "float edgeFade2 = smoothstep(0.0f, max(_BankFade, 0.0001f), 1.0f - riverUv.y);", "RiverSurface should make the second bank fade explicit");
         AssertNotContains(shader, "worldPosition.xz / max(_MapExtent, 1.0f)", "RiverSurface should not collapse map UVs to the max axis extent on rectangular maps");
         AssertNotContains(shader, "ReflectionSpecularTexture.Sample(WaterTextureSampler, worldUv * 0.5f + flowNormal.xz * 0.03f)", "RiverSurface should not treat the reflection cubemap as a 2D map-space variation texture");
+        AssertNotContains(shader, "WaterColorTexture.Sample(WaterTextureSampler, worldUv)", "RiverSurface should not route map-space water-color lookups through the tiling normal/foam sampler");
         AssertNotContains(shader, "WaterColorTexture.Sample(WaterTextureSampler, float2(depthFactor, 0.5f))", "RiverSurface should not sample CK3 water-color as a depth ramp");
         AssertNotContains(shader, "waterColor = lerp(waterColor, waterColorSample.rgb, 0.65f);", "RiverSurface should not strongly blend toward the dark CK3 water color texture");
         AssertNotContains(shader, "waterColor = lerp(waterColor, refractedColor, 0.72f);", "RiverSurface should not strongly blend toward the dark bottom/refraction buffer");

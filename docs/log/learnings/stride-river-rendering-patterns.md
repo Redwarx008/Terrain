@@ -612,6 +612,33 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 - RT0 alpha 直接写 payload，不参与 coverage 混合；coverage 只留在 RT1 alpha 控制颜色混合。
 - surface decode 时把 `a <= epsilon` 视为“没有有效 payload”，回退到当前水面 world position，而不是强行 `DecompressWorldSpace(...)`。
 
+### ✅ Pattern 30: map-space water-color 要有独立 sampler，但不要把“独立语义”误解成“必须 Clamp”
+**What to do:**
+- 把 `WaterColorTexture` 从 flow/foam/ambient normal 的共享 sampler 里拆出来，单独声明并绑定 `WaterColorSampler`。
+- sampler 的地址模式要跟参考实现和资产语义对齐，而不是仅凭“这是 map-space UV”就默认改成 `Clamp`。
+
+**Why it works:**
+- CK3 `jomini_water_default.fxh` 里的 `WaterColorTexture` 本身就是 `Wrap`；真正的问题不是它用了 wrap，而是如果和 flow/foam 继续共用同一个 sampler，后续很难区分“map texture 采样语义”与“tileable noise/normal 采样语义”。
+- 把 sampler 拆开之后，既能保持当前 CK3 parity，又能避免下次把 sampler 地址模式问题和 shader 采样语义问题混在一起。
+
+**Correct approach:**
+- `WaterColorTexture` / refraction tint 统一通过 dedicated `WaterColorSampler` 采样。
+- `FlowNormal` / `AmbientNormal` / `Foam*` 继续走 tileable `WaterTextureSampler`。
+- 如果未来要改地址模式，先拿 RenderDoc 或参考 shader 证明该纹理的参考行为真的不是 `Wrap`。
+
+### ✅ Pattern 31: bottom pass 已绑定 scene shadow 但结果仍全亮时，先查 atlas 是否真的有 caster 写入
+**What to do:**
+- 如果 bottom PS 已经绑定了 `SceneShadowMapTexture` / cascade 参数，但 `EvaluateSceneShadow()` 仍处处返回 `1`，先看 shadow atlas 的 resource usage 和 texture stats，再回头查 caster flags。
+- 对 editor terrain 或自定义 `RenderMesh`，优先确认 processor 是否把 `CastShadows` 正确透传到 `RenderMesh.IsShadowCaster`。
+
+**Why it works:**
+- SRV 绑定存在只说明 river shader 能读到一张 atlas，不说明 atlas 里已经有有效深度内容。
+- 如果 atlas usage 只有 `Clear + PS_Resource`，并且纹理统计是 `min=max=1.0`，问题通常在 shadow caster stage 没有任何对象写入，而不是 river shader 的 world-to-shadow 矩阵或 sampler。
+
+**Correct approach:**
+- 先用 RenderDoc 验证 shadow atlas 是否出现 `DepthStencilTarget` 写入，再检查具体 caster 的 `IsShadowCaster` 和 shadow render stage selector。
+- 本项目这次根因就是 `EditorTerrainProcessor` 把 terrain 写死成 `IsShadowCaster = false`，导致 river bottom scene shadow 绑定齐全但采到的始终是空 atlas。
+
 ---
 
 ## Code Examples

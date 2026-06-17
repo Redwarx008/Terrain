@@ -58,6 +58,7 @@ namespace Terrain.Editor
         public static readonly ObjectParameterKey<Texture> WaterColorTexture = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<Texture> ReflectionSpecularTexture = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<SamplerState> ReflectionSpecularSampler = ParameterKeys.NewObject<SamplerState>();
+        public static readonly ObjectParameterKey<SamplerState> WaterColorSampler = ParameterKeys.NewObject<SamplerState>();
         public static readonly ObjectParameterKey<SamplerState> WaterTextureSampler = ParameterKeys.NewObject<SamplerState>();
     }
 }

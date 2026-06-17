@@ -42,6 +42,7 @@ namespace Terrain.Editor
         stage Texture2D<float4> WaterColorTexture;
         stage TextureCube<float4> ReflectionSpecularTexture;
         stage SamplerState ReflectionSpecularSampler;
+        stage SamplerState WaterColorSampler;
         stage SamplerState WaterTextureSampler;
 
         float2 ComputeScreenUv(float4 shadingPosition)
@@ -97,7 +98,7 @@ namespace Terrain.Editor
             float refractionDepth = max(surfaceWorldPosition.y - refractionWorldPosition.y, 0.0f);
             float effectiveDepth = min(max(surfaceDepth, 0.0f), refractionDepth);
             float2 refractionWorldUv = ComputeMapWorldUv(refractionWorldPosition);
-            float4 refractionWaterColorAndSpec = WaterColorTexture.Sample(WaterTextureSampler, refractionWorldUv);
+            float4 refractionWaterColorAndSpec = WaterColorTexture.Sample(WaterColorSampler, refractionWorldUv);
             float3 refractionWaterColorMap = lerp(refractionWaterColorAndSpec.rgb, _WaterColorMapTint, saturate(_WaterColorMapTintFactor));
             return float4(ApplyTerrainUnderwaterSeeThrough(effectiveDepth, refractionWorldPosition, refractionWaterColorMap, refraction.rgb), effectiveDepth);
         }
@@ -156,7 +157,7 @@ namespace Terrain.Editor
             float normalEnergy = saturate((flowNormal.y + ambientNormal.y) * 0.25f + 0.65f);
             float foam = ComputeFoam(riverUv, worldUv, flowNormalSample, depthFactor);
 
-            float4 waterColorAndSpec = WaterColorTexture.Sample(WaterTextureSampler, worldUv);
+            float4 waterColorAndSpec = WaterColorTexture.Sample(WaterColorSampler, worldUv);
             float glossMap = waterColorAndSpec.a;
             float3 toCameraDir = normalize(_CameraWorldPosition - streams.PositionWS.xyz);
             float facing = 1.0f - max(dot(waterNormal, toCameraDir), 0.0f);
