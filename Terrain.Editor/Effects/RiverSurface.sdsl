@@ -11,6 +11,7 @@ namespace Terrain.Editor
         stage float _Depth = 0.15f;
         stage float _DepthWidthPower = 2.0f;
         stage float _MapExtent = 4096.0f;
+        stage float2 _MapWorldSize = float2(4096.0f, 4096.0f);
         stage float3 _CameraWorldPosition = float3(0.0f, 0.0f, 0.0f);
         stage float2 _ViewSize = float2(1.0f, 1.0f);
         stage float _GlobalTime;
@@ -39,7 +40,8 @@ namespace Terrain.Editor
         stage Texture2D<float4> FoamMapTexture;
         stage Texture2D<float4> FoamNoiseTexture;
         stage Texture2D<float4> WaterColorTexture;
-        stage Texture2D<float4> ReflectionSpecularTexture;
+        stage TextureCube<float4> ReflectionSpecularTexture;
+        stage SamplerState ReflectionSpecularSampler;
         stage SamplerState WaterTextureSampler;
 
         float2 ComputeScreenUv(float4 shadingPosition)
@@ -61,9 +63,16 @@ namespace Terrain.Editor
 
         float2 ComputeMapWorldUv(float3 worldPosition)
         {
-            float2 uv = worldPosition.xz / max(_MapExtent, 1.0f);
+            float2 uv = worldPosition.xz / max(_MapWorldSize, float2(1.0f, 1.0f));
             uv.y = 1.0f - uv.y;
             return uv;
+        }
+
+        float3 DecodeRefractionWorldPosition(float3 surfaceWorldPosition, float compressedDistance)
+        {
+            return compressedDistance > 0.0001f
+                ? RiverDecompressWorldSpace(surfaceWorldPosition, compressedDistance, _CameraWorldPosition)
+                : surfaceWorldPosition;
         }
 
         float3 ApplyTerrainUnderwaterSeeThrough(float refractionDepth, float3 refractionWorldPosition, float3 waterColorMap, float3 bottomColor)
@@ -80,8 +89,8 @@ namespace Terrain.Editor
         {
             float4 baseRefraction = RefractionTexture.Sample(RefractionSampler, saturate(screenUv));
             float4 distortedRefraction = RefractionTexture.Sample(RefractionSampler, saturate(screenUv + refractionOffset));
-            float3 baseWorldPosition = RiverDecompressWorldSpace(surfaceWorldPosition, baseRefraction.a, _CameraWorldPosition);
-            float3 distortedWorldPosition = RiverDecompressWorldSpace(surfaceWorldPosition, distortedRefraction.a, _CameraWorldPosition);
+            float3 baseWorldPosition = DecodeRefractionWorldPosition(surfaceWorldPosition, baseRefraction.a);
+            float3 distortedWorldPosition = DecodeRefractionWorldPosition(surfaceWorldPosition, distortedRefraction.a);
             float useDistortedRefraction = (distortedRefraction.a > 0.0001f && distortedWorldPosition.y <= surfaceWorldPosition.y) ? 1.0f : 0.0f;
             float4 refraction = lerp(baseRefraction, distortedRefraction, useDistortedRefraction);
             float3 refractionWorldPosition = lerp(baseWorldPosition, distortedWorldPosition, useDistortedRefraction);
@@ -160,9 +169,9 @@ namespace Terrain.Editor
             float refractionFadeDepth = refractionResult.a;
             float waterFade = ComputeRiverWaterFade(refractionFadeDepth);
             waterColor *= waterFade;
-            float specularMask = ReflectionSpecularTexture.Sample(WaterTextureSampler, worldUv * 0.5f + flowNormal.xz * 0.03f).r * lerp(0.5f, 1.25f, glossMap);
+            float3 reflectionVector = normalize(reflect(-toCameraDir, waterNormal));
+            float3 reflectionColor = ReflectionSpecularTexture.Sample(ReflectionSpecularSampler, reflectionVector).rgb * lerp(0.5f, 1.25f, glossMap);
             float fresnel = (saturate(_WaterFresnelBias) + pow(1.0f - saturate(abs(dot(toCameraDir, waterNormal))), max(_WaterFresnelPow, 0.0001f))) * waterFade;
-            float3 reflectionColor = specularMask * float3(0.18f, 0.24f, 0.25f);
             waterColor += lerp(refractionColor, reflectionColor, saturate(fresnel));
             waterColor *= lerp(0.9f, 1.1f, normalEnergy);
             waterColor = RiverApplyNeutralLighting(waterColor, _ShadowTermFallback, _CloudMaskFallback);

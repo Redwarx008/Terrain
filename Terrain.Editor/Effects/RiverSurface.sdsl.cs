@@ -27,6 +27,7 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<float> _Depth = ParameterKeys.NewValue<float>(0.15f);
         public static readonly ValueParameterKey<float> _DepthWidthPower = ParameterKeys.NewValue<float>(2.0f);
         public static readonly ValueParameterKey<float> _MapExtent = ParameterKeys.NewValue<float>(4096.0f);
+        public static readonly ValueParameterKey<Vector2> _MapWorldSize = ParameterKeys.NewValue<Vector2>(new Vector2(4096.0f,4096.0f));
         public static readonly ValueParameterKey<Vector3> _CameraWorldPosition = ParameterKeys.NewValue<Vector3>(new Vector3(0.0f,0.0f,0.0f));
         public static readonly ValueParameterKey<Vector2> _ViewSize = ParameterKeys.NewValue<Vector2>(new Vector2(1.0f,1.0f));
         public static readonly ValueParameterKey<float> _GlobalTime = ParameterKeys.NewValue<float>();
@@ -56,6 +57,7 @@ namespace Terrain.Editor
         public static readonly ObjectParameterKey<Texture> FoamNoiseTexture = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<Texture> WaterColorTexture = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<Texture> ReflectionSpecularTexture = ParameterKeys.NewObject<Texture>();
+        public static readonly ObjectParameterKey<SamplerState> ReflectionSpecularSampler = ParameterKeys.NewObject<SamplerState>();
         public static readonly ObjectParameterKey<SamplerState> WaterTextureSampler = ParameterKeys.NewObject<SamplerState>();
     }
 }

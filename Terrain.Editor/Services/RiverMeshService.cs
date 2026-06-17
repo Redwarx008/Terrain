@@ -241,7 +241,8 @@ public sealed class RiverMeshService
 
         float totalLength = segment.WorldLength > 0.001f ? segment.WorldLength : ComputePolylineLength(centerline);
         float baseHalfWidth = Math.Max(MinVisibleHalfWidth, segment.AvgHalfWidth * widthScale);
-        float mapExtent = GetMapExtent();
+        Vector2 mapWorldSize = GetMapWorldSize();
+        float mapExtent = GetMapExtent(mapWorldSize);
 
         int n = centerline.Count;
         var vertices = new List<RiverVertex>(n * 2 + 2);
@@ -298,6 +299,7 @@ public sealed class RiverMeshService
             WorldLength = totalLength,
             AvgHalfWidth = segment.AvgHalfWidth,
             MapExtent = mapExtent,
+            MapWorldSize = mapWorldSize,
         };
     }
 
@@ -309,14 +311,21 @@ public sealed class RiverMeshService
         return distances;
     }
 
-    private float GetMapExtent()
+    private Vector2 GetMapWorldSize()
     {
         if (terrainManager != null && terrainManager.HeightCacheWidth > 0 && terrainManager.HeightCacheHeight > 0)
         {
-            return MathF.Max(terrainManager.HeightCacheWidth - 1, terrainManager.HeightCacheHeight - 1);
+            return new Vector2(
+                Math.Max(terrainManager.HeightCacheWidth - 1, 0),
+                Math.Max(terrainManager.HeightCacheHeight - 1, 0));
         }
 
-        return 4096.0f;
+        return new Vector2(4096.0f, 4096.0f);
+    }
+
+    private static float GetMapExtent(Vector2 mapWorldSize)
+    {
+        return MathF.Max(mapWorldSize.X, mapWorldSize.Y);
     }
 
     private static float NormalizeRiverWidth(float halfWidth, float mapExtent)

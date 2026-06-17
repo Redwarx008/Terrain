@@ -159,6 +159,8 @@ internal static class RiverWorkspaceDiagnosticsTests
         RiverMeshData mesh = meshService.BuildRiverMesh(segment, 1.0f);
 
         TestHarness.Assert(MathF.Abs(mesh.MapExtent - 8.0f) <= 0.0001f, "River mesh map extent should use max(heightmap dimensions - 1), matching terrain world coordinates");
+        TestHarness.Assert(MathF.Abs(mesh.MapWorldSize.X - 4.0f) <= 0.0001f, "River mesh should keep the X-axis world span separately for rectangular map UV normalization");
+        TestHarness.Assert(MathF.Abs(mesh.MapWorldSize.Y - 8.0f) <= 0.0001f, "River mesh should keep the Y-axis world span separately for rectangular map UV normalization");
         TestHarness.Assert(MathF.Abs(mesh.Vertices[0].Width - 0.25f) <= 0.0001f, "River vertex width should be normalized by world coordinate extent, not sample count");
     }
 

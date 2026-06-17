@@ -15,6 +15,7 @@ public sealed class RiverMeshData
     public float WorldLength { get; init; }
     public float AvgHalfWidth { get; init; }
     public float MapExtent { get; init; } = 4096.0f;
+    public Vector2 MapWorldSize { get; init; } = new(4096.0f, 4096.0f);
 
     public RiverMeshData CloneSnapshot()
     {
@@ -28,6 +29,7 @@ public sealed class RiverMeshData
             WorldLength = WorldLength,
             AvgHalfWidth = AvgHalfWidth,
             MapExtent = MapExtent,
+            MapWorldSize = MapWorldSize,
         };
     }
 }

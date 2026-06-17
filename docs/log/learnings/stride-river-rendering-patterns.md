@@ -585,6 +585,33 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 - optional fallback 资源也要做 one-shot memoization：成功缓存成功，失败也缓存“已经尝试过”。
 - 只有在 loader 生命周期重建或显式 unload/reload 后，才允许再次尝试加载。
 
+### ✅ Pattern 29: `MapExtent` 只负责河宽/深度，矩形地图 UV 要保留独立 `MapWorldSize`
+**What to do:**
+- river shader 里如果既要用地图跨度做河宽/深度归一化，又要用 world position 去采 `water-color` / `foam-map` / refraction tint，就把这两类量拆开：
+- `MapExtent = max(width - 1, height - 1)` 仅给宽度和 depth/profile 使用
+- `MapWorldSize = float2(width - 1, height - 1)` 专门给 map-space UV 使用
+
+**Why it works:**
+- 宽度归一化确实需要单个标量上界，但 map texture UV 需要按轴独立归一化。
+- 如果把 `worldPosition.xz` 也除以 `max(width - 1, height - 1)`，矩形地图会把短边压扁，只能采到半张甚至更少的 `water-color` / `foam` / refraction tint。
+
+**Correct approach:**
+- mesh/build 阶段同时保存 `MapExtent` 与 `MapWorldSize`。
+- surface shader 的 `ComputeMapWorldUv()` 用 `MapWorldSize`；`ComputeWorldWidth()` 仍然用 `MapExtent`。
+
+### ❌ Mistake 27: 让 refraction payload alpha 和 bottom coverage 共用同一条 blend 语义
+**What to avoid:**
+- bottom pass 用 dual-source blending 写颜色时，把 RT0 alpha 也继续按 `SecondarySourceAlpha` 和 seed alpha 混合。
+- surface 侧再无条件把 `RefractionTexture.a` 当成有效的 `CompressWorldSpace` payload 去解压。
+
+**Why it's bad:**
+- 边缘/连接区域一旦只有部分 coverage，RT0 alpha 就会被混成“compressed distance * coverage + seed alpha”。
+- 如果 seed alpha 是 `0`，surface 会把这些像素错误地解压到 camera space，随后把 refraction depth、world UV 和 see-through tint 一起带偏。
+
+**Correct approach:**
+- RT0 alpha 直接写 payload，不参与 coverage 混合；coverage 只留在 RT1 alpha 控制颜色混合。
+- surface decode 时把 `a <= epsilon` 视为“没有有效 payload”，回退到当前水面 world position，而不是强行 `DecompressWorldSpace(...)`。
+
 ---
 
 ## Code Examples

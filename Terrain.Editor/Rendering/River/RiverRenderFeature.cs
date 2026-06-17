@@ -453,6 +453,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
     {
         effect.Parameters.Set(RiverSurfaceKeys._ViewSize, viewSize);
         effect.Parameters.Set(RiverSurfaceKeys._MapExtent, riverObject.MapExtent);
+        effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, riverObject.FlowNormalUvScale);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalSpeed, riverObject.FlowNormalSpeed);
         effect.Parameters.Set(RiverSurfaceKeys._RiverFoamFactor, riverObject.RiverFoamFactor);
@@ -562,6 +563,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.FoamNoiseTexture, riverResources.FoamNoise);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.WaterColorTexture, riverResources.WaterColor);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ReflectionSpecularTexture, riverResources.ReflectionSpecular);
+        surfaceEffect.Parameters.Set(RiverSurfaceKeys.ReflectionSpecularSampler, graphicsDevice.SamplerStates.LinearClamp);
     }
 
     private static void SetTexture(ParameterCollection parameters, ObjectParameterKey<Texture> key, Texture? texture)
@@ -575,8 +577,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         blendState.RenderTargets[0].BlendEnable = true;
         blendState.RenderTargets[0].ColorSourceBlend = Blend.SecondarySourceAlpha;
         blendState.RenderTargets[0].ColorDestinationBlend = Blend.InverseSecondarySourceAlpha;
-        blendState.RenderTargets[0].AlphaSourceBlend = Blend.SecondarySourceAlpha;
-        blendState.RenderTargets[0].AlphaDestinationBlend = Blend.InverseSecondarySourceAlpha;
+        blendState.RenderTargets[0].AlphaSourceBlend = Blend.One;
+        blendState.RenderTargets[0].AlphaDestinationBlend = Blend.Zero;
         return blendState;
     }
 

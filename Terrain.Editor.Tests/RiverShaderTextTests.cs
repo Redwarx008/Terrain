@@ -8,6 +8,7 @@ internal static class RiverShaderTextTests
     {
         TestHarness.Run("river ck3 texture assets have correct Stride color-space flags", Ck3TextureAssetsHaveStrideDescriptors);
         TestHarness.Run("river ck3 texture assets are bundle roots for dynamic loading", Ck3TextureAssetsAreBundleRoots);
+        TestHarness.Run("river reflection specular asset remains a cubemap", ReflectionSpecularAssetRemainsCubemap);
         TestHarness.Run("river bottom shader samples texture assets", BottomShaderSamplesTextureAssets);
         TestHarness.Run("river common shader uses ck3 river depth profile", CommonShaderUsesCk3RiverDepthProfile);
         TestHarness.Run("river bottom shader matches ck3 capture world-uv semantics", BottomShaderMatchesCk3CaptureWorldUvSemantics);
@@ -84,6 +85,18 @@ internal static class RiverShaderTextTests
         {
             AssertContains(package, $":{url}", $"{url} should be a RootAsset so dynamic Content.Load includes it in the bundle");
         }
+    }
+
+    private static void ReflectionSpecularAssetRemainsCubemap()
+    {
+        string assetPath = GetRepositoryPath("Terrain.Editor/Assets/River/Environment/reflection-specular.dds");
+        using var stream = File.OpenRead(assetPath);
+        using var reader = new BinaryReader(stream);
+
+        TestHarness.AssertEqual("DDS ", new string(reader.ReadChars(4)), "Reflection cubemap asset should keep the DDS file signature");
+        stream.Position = 112;
+        uint caps2 = reader.ReadUInt32();
+        TestHarness.Assert((caps2 & 0x00000200u) != 0, "Reflection cubemap asset should keep the DDS cubemap capability flag");
     }
 
     private static void BottomShaderSamplesTextureAssets()
@@ -206,6 +219,7 @@ internal static class RiverShaderTextTests
         AssertNotContains(settings, "public Vector3 BottomSunColor { get; set; }", "RiverRenderSettings should no longer expose a river-local bottom sun color once bottom lighting is scene-driven");
         AssertNotContains(settings, "public float BottomSunIntensity { get; set; }", "RiverRenderSettings should no longer expose a river-local bottom sun intensity once bottom lighting is scene-driven");
         AssertContains(renderObject, "public float TextureUvScale { get; private set; } = 1.0f;", "RiverRenderObject should cache texture UV scale for shader binding");
+        AssertContains(renderObject, "public Vector2 MapWorldSize { get; private set; } = new(4096.0f, 4096.0f);", "RiverRenderObject should cache per-axis map world size for rectangular map UV normalization");
         AssertContains(renderObject, "public float OceanFadeRate { get; private set; } = 0.8f;", "RiverRenderObject should cache ocean fade rate for shader binding");
         AssertContains(renderObject, "public float BankAmount { get; private set; } = 0.0f;", "RiverRenderObject should cache bank amount for shader binding");
         AssertContains(renderObject, "public int ParallaxIterations { get; private set; } = 10;", "RiverRenderObject should cache parallax iteration count for shader binding");
@@ -226,6 +240,7 @@ internal static class RiverShaderTextTests
         AssertNotContains(renderObject, "BottomSunDirection = settings.BottomSunDirection;", "RiverRenderObject should not copy a river-local bottom sun direction from RiverRenderSettings");
         AssertNotContains(renderObject, "BottomSunColor = settings.BottomSunColor;", "RiverRenderObject should not copy a river-local bottom sun color from RiverRenderSettings");
         AssertNotContains(renderObject, "BottomSunIntensity = settings.BottomSunIntensity;", "RiverRenderObject should not copy a river-local bottom sun intensity from RiverRenderSettings");
+        AssertContains(renderObject, "MapWorldSize = mesh.MapWorldSize;", "RiverRenderObject should keep the per-axis map world size from the generated river mesh");
         AssertContains(processor, "renderObject.ApplySettings(component.Settings);", "RiverProcessor should push component settings into each render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._TextureUvScale, riverObject.TextureUvScale);", "RiverRenderFeature should bind bottom texture UV scale from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BankAmount, riverObject.BankAmount);", "RiverRenderFeature should bind bottom bank amount from the render object");
@@ -237,6 +252,7 @@ internal static class RiverShaderTextTests
         AssertNotContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSunDirection, riverObject.BottomSunDirection);", "RiverRenderFeature should not bind a river-local bottom sun direction once bottom lighting is scene-driven");
         AssertNotContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSunColor, riverObject.BottomSunColor);", "RiverRenderFeature should not bind a river-local bottom sun color once bottom lighting is scene-driven");
         AssertNotContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomSunIntensity, riverObject.BottomSunIntensity);", "RiverRenderFeature should not bind a river-local bottom sun intensity once bottom lighting is scene-driven");
+        AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);", "RiverRenderFeature should bind per-axis map world size into the surface shader");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, riverObject.FlowNormalUvScale);", "RiverRenderFeature should bind surface flow-normal UV scale from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys.WaterColorShallow, riverObject.WaterColorShallow);", "RiverRenderFeature should bind shallow water color from the render object");
     }
@@ -283,6 +299,7 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "RiverBottomKeys._EnvironmentIntensity", "RiverRenderFeature should bind scene skybox intensity for bottom IBL");
         AssertContains(feature, "RiverBottomKeys._EnvironmentMipCount", "RiverRenderFeature should bind scene cubemap mip count for bottom IBL");
         AssertContains(feature, "SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ReflectionSpecularTexture, riverResources.ReflectionSpecular);", "RiverRenderFeature should keep the river reflection/specular asset on the surface pass");
+        AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.ReflectionSpecularSampler, graphicsDevice.SamplerStates.LinearClamp);", "RiverRenderFeature should bind the cubemap sampler for surface reflections explicitly");
         AssertContains(viewportGame, "_riverComponent.Settings.BottomEnvironmentIntensity = 1.0f;", "EmbeddedStrideViewportGame should keep only bottom environment tuning as an explicit river-side multiplier");
         AssertNotContains(feature, "RiverBottomEffectKeys.BottomLightGroup", "RiverRenderFeature should not depend on a RiverBottomEffect light-group permutation anymore");
         AssertNotContains(feature, "CreateLightShaderGroup", "RiverRenderFeature should not build a composed light group for the bottom pass anymore");
@@ -302,6 +319,8 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "FoamMapTexture", "RiverSurface should declare foam map texture");
         AssertContains(shader, "FoamNoiseTexture", "RiverSurface should declare foam noise texture");
         AssertContains(shader, "ReflectionSpecularTexture", "RiverSurface should declare reflection/specular texture");
+        AssertContains(shader, "TextureCube<float4> ReflectionSpecularTexture", "RiverSurface should treat reflection-specular as a cubemap, matching the imported DDS asset");
+        AssertContains(shader, "ReflectionSpecularSampler", "RiverSurface should use an explicit cubemap sampler for reflections");
         AssertContains(shader, "WaterColorTexture", "RiverSurface should declare CK3 water color/spec texture");
         AssertContains(shader, "FlowNormalTexture.Sample", "RiverSurface should use texture-driven flow normals");
         AssertContains(shader, "AmbientNormalTexture.Sample", "RiverSurface should use ambient normal ripples");
@@ -318,10 +337,12 @@ internal static class RiverShaderTextTests
         string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
 
         AssertContains(shader, "float2 ComputeMapWorldUv(float3 worldPosition)", "RiverSurface should centralize CK3 map-space UV conversion");
+        AssertContains(shader, "worldPosition.xz / max(_MapWorldSize, float2(1.0f, 1.0f))", "RiverSurface should normalize map UVs per axis instead of collapsing rectangular maps to a single scalar extent");
         AssertContains(shader, "uv.y = 1.0f - uv.y;", "RiverSurface should flip map-space Y like CK3 before sampling water-color maps");
         AssertContains(shader, "float2 worldUv = ComputeMapWorldUv(streams.PositionWS.xyz);", "RiverSurface should sample surface water color/spec in CK3 map world UV space");
         AssertContains(shader, "float4 waterColorAndSpec = WaterColorTexture.Sample(WaterTextureSampler, worldUv);", "RiverSurface should sample CK3 water color/spec texture in map world UV space");
         AssertContains(shader, "float glossMap = waterColorAndSpec.a;", "RiverSurface should use CK3 water-color alpha as the gloss/spec map");
+        AssertContains(shader, "float3 DecodeRefractionWorldPosition(float3 surfaceWorldPosition, float compressedDistance)", "RiverSurface should centralize refraction-payload decode so invalid seed pixels do not decompress to camera space");
         AssertContains(shader, "float2 refractionWorldUv = ComputeMapWorldUv(refractionWorldPosition);", "RiverSurface should sample refraction tint at the refracted bottom world position like CK3");
         AssertContains(shader, "float4 refractionWaterColorAndSpec = WaterColorTexture.Sample(WaterTextureSampler, refractionWorldUv);", "RiverSurface should resample CK3 water-color at the accepted refraction world position");
         AssertContains(shader, "float3 refractionWaterColorMap = lerp(refractionWaterColorAndSpec.rgb, _WaterColorMapTint, saturate(_WaterColorMapTintFactor));", "RiverSurface should treat refraction water-color RGB as the see-through tint map");
@@ -330,13 +351,20 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "float refractionFadeDepth = refractionResult.a;", "RiverSurface should use the same refraction depth as CK3 for water fade");
         AssertContains(shader, "float4 baseRefraction = RefractionTexture.Sample(RefractionSampler, saturate(screenUv));", "RiverSurface should first sample the undistorted bottom buffer like CK3");
         AssertContains(shader, "float4 distortedRefraction = RefractionTexture.Sample(RefractionSampler, saturate(screenUv + refractionOffset));", "RiverSurface should sample distorted refraction separately from the base sample");
+        AssertContains(shader, "compressedDistance > 0.0001f", "RiverSurface should treat missing refraction payload alpha as invalid instead of decompressing from zero distance");
+        AssertContains(shader, "float3 baseWorldPosition = DecodeRefractionWorldPosition(surfaceWorldPosition, baseRefraction.a);", "RiverSurface should decode the undistorted refraction payload through the invalid-alpha guard");
+        AssertContains(shader, "float3 distortedWorldPosition = DecodeRefractionWorldPosition(surfaceWorldPosition, distortedRefraction.a);", "RiverSurface should decode the distorted refraction payload through the invalid-alpha guard");
         AssertContains(shader, "float useDistortedRefraction = (distortedRefraction.a > 0.0001f && distortedWorldPosition.y <= surfaceWorldPosition.y) ? 1.0f : 0.0f;", "RiverSurface should reject distorted refraction samples that land outside the bottom buffer or above the water surface");
         AssertContains(shader, "float4 refraction = lerp(baseRefraction, distortedRefraction, useDistortedRefraction);", "RiverSurface should fall back to the base bottom sample near river banks instead of sampling clear black");
         AssertContains(shader, "float waterDistance = refractionDepth / max(toCameraDir.y, 0.0001f);", "RiverSurface should use CK3's camera-ray water distance for underwater see-through attenuation");
         AssertContains(shader, "ApplyTerrainUnderwaterSeeThrough(effectiveDepth, refractionWorldPosition, refractionWaterColorMap, refraction.rgb)", "RiverSurface should cap see-through attenuation by the shallower of surface depth and refracted bottom depth");
         AssertContains(shader, "float3 waterDiffuse = lerp(WaterColorDeep.rgb, WaterColorShallow.rgb, facing) * _WaterDiffuseMultiplier;", "RiverSurface should derive primary water diffuse from angle-facing shallow/deep colors");
+        AssertContains(shader, "float3 reflectionVector = normalize(reflect(-toCameraDir, waterNormal));", "RiverSurface should build a real reflection vector before sampling the cubemap");
+        AssertContains(shader, "ReflectionSpecularTexture.Sample(ReflectionSpecularSampler, reflectionVector)", "RiverSurface should sample the reflection cubemap directly instead of treating it as a 2D lookup strip");
         AssertContains(shader, "float edgeFade1 = smoothstep(0.0f, max(_BankFade, 0.0001f), riverUv.y);", "RiverSurface should make the first bank fade explicit");
         AssertContains(shader, "float edgeFade2 = smoothstep(0.0f, max(_BankFade, 0.0001f), 1.0f - riverUv.y);", "RiverSurface should make the second bank fade explicit");
+        AssertNotContains(shader, "worldPosition.xz / max(_MapExtent, 1.0f)", "RiverSurface should not collapse map UVs to the max axis extent on rectangular maps");
+        AssertNotContains(shader, "ReflectionSpecularTexture.Sample(WaterTextureSampler, worldUv * 0.5f + flowNormal.xz * 0.03f)", "RiverSurface should not treat the reflection cubemap as a 2D map-space variation texture");
         AssertNotContains(shader, "WaterColorTexture.Sample(WaterTextureSampler, float2(depthFactor, 0.5f))", "RiverSurface should not sample CK3 water-color as a depth ramp");
         AssertNotContains(shader, "waterColor = lerp(waterColor, waterColorSample.rgb, 0.65f);", "RiverSurface should not strongly blend toward the dark CK3 water color texture");
         AssertNotContains(shader, "waterColor = lerp(waterColor, refractedColor, 0.72f);", "RiverSurface should not strongly blend toward the dark bottom/refraction buffer");
@@ -352,6 +380,8 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "refractionSeedScaler.SetOutput(renderResources.SceneSeedColor);", "RiverRenderFeature should seed scene color into SceneSeedColor first");
         AssertContains(feature, "commandList.CopyRegion(renderResources.SceneSeedColor, 0, null, renderResources.BottomColor, 0);", "RiverRenderFeature should copy the scene seed into the working bottom/refraction buffer before the bottom pass");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.PointClamp);", "RiverRenderFeature should sample refraction with PointClamp to match CK3 bank behavior");
+        AssertContains(feature, "blendState.RenderTargets[0].AlphaSourceBlend = Blend.One;", "RiverRenderFeature should write refraction payload alpha directly instead of blending it by bottom coverage");
+        AssertContains(feature, "blendState.RenderTargets[0].AlphaDestinationBlend = Blend.Zero;", "RiverRenderFeature should not preserve the scene-seed alpha under partially covered bottom pixels");
         AssertNotContains(feature, "RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp", "RiverRenderFeature should not keep the previous LinearClamp refraction sampler binding");
     }
 
@@ -369,8 +399,8 @@ internal static class RiverShaderTextTests
         AssertContains(bottom, "bottomWorldPosition.xz = worldUv;", "RiverBottom should place the submerged bottom position at the parallaxed world UV");
         AssertContains(bottom, "bottomWorldPosition.y = streams.PositionWS.y - worldDepth;", "RiverBottom should drop the submerged bottom position by the computed world depth");
         AssertContains(bottom, "float compressedWorld = RiverCompressWorldSpace(bottomWorldPosition, _CameraWorldPosition);", "RiverBottom should pack bottom position distance into refraction alpha using the render feature supplied camera position");
-        AssertContains(surface, "float3 baseWorldPosition = RiverDecompressWorldSpace(surfaceWorldPosition, baseRefraction.a, _CameraWorldPosition);", "RiverSurface should recover the undistorted bottom world position from refraction alpha using the render feature supplied camera position");
-        AssertContains(surface, "float3 distortedWorldPosition = RiverDecompressWorldSpace(surfaceWorldPosition, distortedRefraction.a, _CameraWorldPosition);", "RiverSurface should recover the distorted bottom world position before accepting the offset sample");
+        AssertContains(surface, "float3 baseWorldPosition = DecodeRefractionWorldPosition(surfaceWorldPosition, baseRefraction.a);", "RiverSurface should recover the undistorted bottom world position through the invalid-alpha guard");
+        AssertContains(surface, "float3 distortedWorldPosition = DecodeRefractionWorldPosition(surfaceWorldPosition, distortedRefraction.a);", "RiverSurface should recover the distorted bottom world position through the invalid-alpha guard");
         AssertContains(surface, "float3 toCameraDir = normalize(_CameraWorldPosition - streams.PositionWS.xyz);", "RiverSurface should compute facing from the explicit camera position");
         AssertNotContains(bottom, "Eye.xyz", "RiverBottom should not use Eye because this DynamicEffect shader does not import that material global");
         AssertNotContains(surface, "Eye.xyz", "RiverSurface should not use Eye because this DynamicEffect shader does not import that material global");
