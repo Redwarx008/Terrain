@@ -79,7 +79,7 @@ internal static class EditorResourceWriterTests
     private static void HeightmapWriterSavesToResolvedTarget()
     {
         string root = CreateWorkspace();
-        string output = Path.Combine(root, "mod", "map_data", "heightmap.png");
+        string output = Path.Combine(root, "mod", "map", "heightmap.png");
         var session = CreateSession(root, heightmapPath: output);
 
         new HeightmapWriter().Write(session, [0, ushort.MaxValue, 123, 456], width: 2, height: 2);
@@ -94,7 +94,7 @@ internal static class EditorResourceWriterTests
     private static void BiomeMaskWriterSavesToResolvedTarget()
     {
         string root = CreateWorkspace();
-        string output = Path.Combine(root, "mod", "map_data", "biome_mask.png");
+        string output = Path.Combine(root, "mod", "map", "biome_mask.png");
         var session = CreateSession(root, biomeMaskPath: output);
         var mask = new BiomeMask(2, 2);
         mask.SetValue(0, 0, 7);
@@ -111,14 +111,14 @@ internal static class EditorResourceWriterTests
     private static void HeightmapWriterFailsOnReadOnlyTargetWithoutTouchingFallback()
     {
         string root = CreateWorkspace();
-        string baseFallback = Path.Combine(root, "base", "map_data", "heightmap.png");
-        string modTarget = Path.Combine(root, "mod", "map_data", "heightmap.png");
+        string baseFallback = Path.Combine(root, "base", "map", "heightmap.png");
+        string modTarget = Path.Combine(root, "mod", "map", "heightmap.png");
         Directory.CreateDirectory(Path.GetDirectoryName(baseFallback)!);
         File.WriteAllText(baseFallback, "base heightmap fallback");
 
         EditorResourceSession session = CreateSession(
             root,
-            heightmap: new ResolvedGameResource("map_data/heightmap.png", modTarget, "mod", IsWritable: false, HasLowerPriorityFallback: true));
+            heightmap: new ResolvedGameResource("map/heightmap.png", modTarget, "mod", IsWritable: false, HasLowerPriorityFallback: true));
 
         TestHarness.AssertThrows<InvalidOperationException>(
             () => new HeightmapWriter().Write(session, [1, 2, 3, 4], width: 2, height: 2),
@@ -131,7 +131,7 @@ internal static class EditorResourceWriterTests
     private static void MaterialDescriptorWriterPreservesRelativeTexturePaths()
     {
         string root = CreateWorkspace();
-        string output = Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml");
+        string output = Path.Combine(root, "mod", "map", "materials", "descriptor.toml");
         var session = CreateSession(root, materialDescriptorPath: output);
 
         new MaterialDescriptorWriter().Write(session,
@@ -152,7 +152,7 @@ internal static class EditorResourceWriterTests
     private static void MaterialDescriptorWriterRewritesExistingHeaderWithFixedTemplate()
     {
         string root = CreateWorkspace();
-        string output = Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml");
+        string output = Path.Combine(root, "mod", "map", "materials", "descriptor.toml");
         var session = CreateSession(root, materialDescriptorPath: output);
         WriteExistingFile(output, "# legacy descriptor header\n# keep-me-out\nversion = 99\n");
 
@@ -173,14 +173,14 @@ internal static class EditorResourceWriterTests
     private static void MaterialDescriptorWriterFailsOnReadOnlyTargetWithoutTouchingFallback()
     {
         string root = CreateWorkspace();
-        string baseFallback = Path.Combine(root, "base", "map_data", "materials", "descriptor.toml");
-        string modTarget = Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml");
+        string baseFallback = Path.Combine(root, "base", "map", "materials", "descriptor.toml");
+        string modTarget = Path.Combine(root, "mod", "map", "materials", "descriptor.toml");
         Directory.CreateDirectory(Path.GetDirectoryName(baseFallback)!);
         File.WriteAllText(baseFallback, "base descriptor fallback");
 
         EditorResourceSession session = CreateSession(
             root,
-            materialDescriptor: new ResolvedGameResource("map_data/materials/descriptor.toml", modTarget, "mod", IsWritable: false, HasLowerPriorityFallback: true));
+            materialDescriptor: new ResolvedGameResource("map/materials/descriptor.toml", modTarget, "mod", IsWritable: false, HasLowerPriorityFallback: true));
 
         TestHarness.AssertThrows<InvalidOperationException>(
             () => new MaterialDescriptorWriter().Write(session,
@@ -196,7 +196,7 @@ internal static class EditorResourceWriterTests
     private static void MapDefinitionWriterPreservesMapDataEntriesAndHeightScale()
     {
         string root = CreateWorkspace();
-        string output = Path.Combine(root, "mod", "map_data", "default.toml");
+        string output = Path.Combine(root, "mod", "map", "default.toml");
         var session = CreateSession(root, mapDefinitionPath: output);
 
         new MapDefinitionWriter().Write(session, new RuntimeMapDefinition
@@ -223,7 +223,7 @@ internal static class EditorResourceWriterTests
     private static void MapDefinitionWriterRewritesExistingHeaderWithFixedTemplate()
     {
         string root = CreateWorkspace();
-        string output = Path.Combine(root, "mod", "map_data", "default.toml");
+        string output = Path.Combine(root, "mod", "map", "default.toml");
         var session = CreateSession(root, mapDefinitionPath: output);
         WriteExistingFile(output, "# legacy map header\n# stale-map-header\nversion = 99\n");
 
@@ -249,7 +249,7 @@ internal static class EditorResourceWriterTests
     private static void BiomeSettingsWriterPersistsMaterialIdReferences()
     {
         string root = CreateWorkspace();
-        string output = Path.Combine(root, "mod", "map_data", "biome_settings.toml");
+        string output = Path.Combine(root, "mod", "map", "biome_settings.toml");
         var session = CreateSession(root, biomeSettingsPath: output);
 
         new BiomeSettingsWriter().Write(
@@ -271,7 +271,7 @@ internal static class EditorResourceWriterTests
     private static void BiomeSettingsWriterRewritesExistingHeaderWithFixedTemplate()
     {
         string root = CreateWorkspace();
-        string output = Path.Combine(root, "mod", "map_data", "biome_settings.toml");
+        string output = Path.Combine(root, "mod", "map", "biome_settings.toml");
         var session = CreateSession(root, biomeSettingsPath: output);
         WriteExistingFile(output, "# legacy biome header\n# stale-biome-header\nversion = 99\n");
 
@@ -293,7 +293,7 @@ internal static class EditorResourceWriterTests
     private static void BiomeSettingsWriterPreservesAdvancedModifierFields()
     {
         string root = CreateWorkspace();
-        string output = Path.Combine(root, "mod", "map_data", "biome_settings.toml");
+        string output = Path.Combine(root, "mod", "map", "biome_settings.toml");
         var session = CreateSession(root, biomeSettingsPath: output);
 
         new BiomeSettingsWriter().Write(
@@ -337,12 +337,12 @@ internal static class EditorResourceWriterTests
         }
 
         return new EditorResourceSession(
-            Resource("map_data/default.toml", mapDefinitionPath ?? Path.Combine(root, "mod", "map_data", "default.toml")),
-            heightmap ?? Resource("map_data/heightmap.png", heightmapPath ?? Path.Combine(root, "mod", "map_data", "heightmap.png")),
-            Resource("map_data/terrain.terrain", Path.Combine(root, "mod", "map_data", "terrain.terrain")),
-            Resource("map_data/biome_mask.png", biomeMaskPath ?? Path.Combine(root, "mod", "map_data", "biome_mask.png")),
-            Resource("map_data/biome_settings.toml", biomeSettingsPath ?? Path.Combine(root, "mod", "map_data", "biome_settings.toml")),
-            materialDescriptor ?? Resource("map_data/materials/descriptor.toml", materialDescriptorPath ?? Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml")),
+            Resource("map/default.toml", mapDefinitionPath ?? Path.Combine(root, "mod", "map", "default.toml")),
+            heightmap ?? Resource("map/heightmap.png", heightmapPath ?? Path.Combine(root, "mod", "map", "heightmap.png")),
+            Resource("map/terrain.terrain", Path.Combine(root, "mod", "map", "terrain.terrain")),
+            Resource("map/biome_mask.png", biomeMaskPath ?? Path.Combine(root, "mod", "map", "biome_mask.png")),
+            Resource("map/biome_settings.toml", biomeSettingsPath ?? Path.Combine(root, "mod", "map", "biome_settings.toml")),
+            materialDescriptor ?? Resource("map/materials/descriptor.toml", materialDescriptorPath ?? Path.Combine(root, "mod", "map", "materials", "descriptor.toml")),
             new RuntimeMapDefinition
             {
                 HeightmapPath = "heightmap.png",

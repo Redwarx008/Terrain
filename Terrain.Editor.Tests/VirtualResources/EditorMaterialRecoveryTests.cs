@@ -16,7 +16,7 @@ internal static class EditorMaterialRecoveryTests
     private static void RecoveryCreatesDedicatedRuntimeFallbackSlotsForMissingMaterialIds()
     {
         string root = CreateWorkspace();
-        string descriptorPath = Path.Combine(root, "game", "map_data", "materials", "descriptor.toml");
+        string descriptorPath = Path.Combine(root, "game", "map", "materials", "descriptor.toml");
         Directory.CreateDirectory(Path.GetDirectoryName(descriptorPath)!);
 
         var descriptor = new RuntimeMaterialDescriptor();
@@ -68,7 +68,7 @@ internal static class EditorMaterialRecoveryTests
     private static void RecoveryMarksMissingAlbedoAsNonBlockingTextureFallback()
     {
         string root = CreateWorkspace();
-        string descriptorPath = Path.Combine(root, "game", "map_data", "materials", "descriptor.toml");
+        string descriptorPath = Path.Combine(root, "game", "map", "materials", "descriptor.toml");
         Directory.CreateDirectory(Path.GetDirectoryName(descriptorPath)!);
 
         var descriptor = new RuntimeMaterialDescriptor();
@@ -109,8 +109,8 @@ internal static class EditorMaterialRecoveryTests
     private static void RecoveryResolvesMaterialTexturesThroughVirtualResourceLookup()
     {
         string root = CreateWorkspace();
-        string descriptorPath = Path.Combine(root, "base", "map_data", "materials", "descriptor.toml");
-        string resolvedTexturePath = Path.Combine(root, "mod", "map_data", "materials", "grass.png");
+        string descriptorPath = Path.Combine(root, "base", "map", "materials", "descriptor.toml");
+        string resolvedTexturePath = Path.Combine(root, "mod", "map", "materials", "grass.png");
         Directory.CreateDirectory(Path.GetDirectoryName(descriptorPath)!);
         Directory.CreateDirectory(Path.GetDirectoryName(resolvedTexturePath)!);
         File.WriteAllText(resolvedTexturePath, "texture");
@@ -141,7 +141,7 @@ internal static class EditorMaterialRecoveryTests
             descriptor,
             descriptorPath,
             settings,
-            virtualPath => virtualPath == "map_data/materials/grass.png" ? resolvedTexturePath : null);
+            virtualPath => virtualPath == "map/materials/grass.png" ? resolvedTexturePath : null);
 
         EditorResolvedMaterialSlot grassSlot = result.Slots.Single(slot => slot.MaterialId == "grass");
         TestHarness.AssertEqual(resolvedTexturePath, grassSlot.AlbedoTexturePath, "albedo should come from the resolved winning layer");
@@ -152,7 +152,7 @@ internal static class EditorMaterialRecoveryTests
     private static void RecoveryThrowsWhenRuntimeFallbackSlotsAreExhaustedBeforeReservedSentinel()
     {
         string root = CreateWorkspace();
-        string descriptorPath = Path.Combine(root, "game", "map_data", "materials", "descriptor.toml");
+        string descriptorPath = Path.Combine(root, "game", "map", "materials", "descriptor.toml");
         Directory.CreateDirectory(Path.GetDirectoryName(descriptorPath)!);
 
         var descriptor = new RuntimeMaterialDescriptor();

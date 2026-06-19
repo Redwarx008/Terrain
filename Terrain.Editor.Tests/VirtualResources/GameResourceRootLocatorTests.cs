@@ -18,7 +18,7 @@ internal static class GameResourceRootLocatorTests
         string gameRoot = Path.Combine(root, "game");
         string binaryRoot = Path.Combine(root, "Bin", "Editor", "Debug", "win-x64");
         File.WriteAllText(Path.Combine(root, "Terrain.sln"), string.Empty);
-        Directory.CreateDirectory(Path.Combine(gameRoot, "map_data"));
+        Directory.CreateDirectory(Path.Combine(gameRoot, "map"));
         Directory.CreateDirectory(binaryRoot);
 
         string resolved = GameResourceRootLocator.FindFrom(binaryRoot);
@@ -33,8 +33,8 @@ internal static class GameResourceRootLocatorTests
         string binaryRoot = Path.Combine(root, "Bin", "Editor", "Debug", "win-x64");
         string binaryGameRoot = Path.Combine(binaryRoot, "game");
         File.WriteAllText(Path.Combine(root, "Terrain.sln"), string.Empty);
-        Directory.CreateDirectory(Path.Combine(gameRoot, "map_data"));
-        Directory.CreateDirectory(Path.Combine(binaryGameRoot, "map_data"));
+        Directory.CreateDirectory(Path.Combine(gameRoot, "map"));
+        Directory.CreateDirectory(Path.Combine(binaryGameRoot, "map"));
 
         string resolved = GameResourceRootLocator.FindFrom(binaryRoot);
 
@@ -48,7 +48,7 @@ internal static class GameResourceRootLocatorTests
     {
         string root = CreateWorkspace();
         string gameRoot = Path.Combine(root, "game");
-        string nestedDirectory = Path.Combine(gameRoot, "map_data", "materials");
+        string nestedDirectory = Path.Combine(gameRoot, "map", "materials");
         Directory.CreateDirectory(nestedDirectory);
 
         string resolvedFromRoot = GameResourceRootLocator.FindFrom(gameRoot);
@@ -63,8 +63,8 @@ internal static class GameResourceRootLocatorTests
         string root = CreateWorkspace();
         string baseRoot = Path.Combine(root, "game");
         string modRoot = Path.Combine(root, "mods", "example_mod");
-        Directory.CreateDirectory(Path.Combine(baseRoot, "map_data"));
-        Directory.CreateDirectory(Path.Combine(modRoot, "map_data"));
+        Directory.CreateDirectory(Path.Combine(baseRoot, "map"));
+        Directory.CreateDirectory(Path.Combine(modRoot, "map"));
 
         var resolver = new GameResourceResolver(new[]
         {
@@ -72,10 +72,10 @@ internal static class GameResourceRootLocatorTests
             new GameResourceLayer("example_mod", modRoot, isBaseLayer: false),
         });
 
-        ResolvedGameResource target = resolver.ResolveWritableTarget("map_data/terrain.terrain");
+        ResolvedGameResource target = resolver.ResolveWritableTarget("map/terrain.terrain");
 
         TestHarness.AssertEqual(
-            Path.GetFullPath(Path.Combine(modRoot, "map_data", "terrain.terrain")),
+            Path.GetFullPath(Path.Combine(modRoot, "map", "terrain.terrain")),
             target.ResolvedPath,
             "missing file should target top writable layer");
         TestHarness.AssertEqual("example_mod", target.SourceLayerId, "writable target should point at highest priority layer");

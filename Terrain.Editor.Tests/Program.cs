@@ -11,16 +11,21 @@ Directory.CreateDirectory(tempDir);
 
 Run("source-to-confluence segment includes semantic endpoints", SourceToConfluenceSegmentIncludesEndpoints);
 Run("confluence creates source-to-confluence branch segments", ConfluenceCreatesSourceToConfluenceBranchSegments);
+Run("branch honors adjacent confluence marker before side continuation", BranchHonorsAdjacentConfluenceMarkerBeforeSideContinuation);
+Run("confluence to none segment is reversed to flow into confluence", ConfluenceToNoneSegmentIsReversedToFlowIntoConfluence);
+Run("bifurcation to none segment is reversed to flow into bifurcation", BifurcationToNoneSegmentIsReversedToFlowIntoBifurcation);
 Run("semantic endpoints do not shrink average river width", SemanticEndpointsDoNotShrinkAverageRiverWidth);
 Run("special endpoints require adjacent river pixels", SpecialEndpointsRequireAdjacentRiverPixels);
 Run("centerline simplification removes pixel stair steps", CenterlineSimplificationRemovesPixelStairSteps);
 Run("centerline smoothing cuts hard corners", CenterlineSmoothingCutsHardCorners);
-Run("ribbon indices preserve reference strip organization with stride-visible winding", RibbonIndicesPreserveReferenceStripOrganizationWithStrideVisibleWinding);
+Run("ribbon indices preserve boundary strip organization with stride-visible winding", RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding);
 Run("mitered corner preserves river half width", MiteredCornerPreservesRiverHalfWidth);
 Run("tapered river endpoints keep visible cap width", TaperedRiverEndpointsKeepVisibleCapWidth);
-Run("river vertex layout exposes reference semantics", RiverVertexLayoutExposesReferenceSemantics);
+Run("river vertex layout exposes target semantics", RiverVertexLayoutExposesTargetSemantics);
 Run("river vertex position uses homogeneous coordinates", RiverVertexPositionUsesHomogeneousCoordinates);
-Run("river vertex mesh exposes reference attributes", RiverVertexMeshExposesReferenceAttributes);
+Run("river vertex mesh exposes target attributes", RiverVertexMeshExposesTargetAttributes);
+Run("river vertex longitudinal uv uses river define scale", RiverVertexLongitudinalUvUsesRiverDefineScale);
+Run("river vertex mesh preserves sloped ribbon basis", RiverVertexMeshPreservesSlopedRibbonBasis);
 Run("river render resources compute half resolution", RiverRenderResourcesComputeHalfResolution);
 Run("river component uses river processor", RiverComponentUsesRiverProcessor);
 Run("river component versioning", TestRiverComponentVersioning);
@@ -119,6 +124,77 @@ void ConfluenceCreatesSourceToConfluenceBranchSegments()
     Assert(segments.All(s => s.Cells[^1] == (2, 2)), "every branch should include the confluence as its final endpoint");
 }
 
+void BranchHonorsAdjacentConfluenceMarkerBeforeSideContinuation()
+{
+    var path = Path.Combine(tempDir, "adjacent-confluence-priority.png");
+    using (var image = new Image<Rgba32>(5, 4))
+    {
+        image[0, 1] = new Rgba32(0, 255, 0);
+        image[1, 1] = new Rgba32(0x00, 0xe1, 0xff);
+        image[2, 1] = new Rgba32(0x00, 0xe1, 0xff);
+        image[3, 1] = new Rgba32(255, 0, 0);
+        image[2, 2] = new Rgba32(0x00, 0xe1, 0xff);
+        image.Save(path);
+    }
+
+    var service = new RiverMapService();
+    Assert(service.Load(path), "river map should load");
+    var segments = service.ExtractSegments();
+
+    AssertEqual(1, segments.Count, "segment count");
+    var segment = segments[0];
+    AssertEqual(SegmentEndKind.Source, segment.StartKind, "start kind");
+    AssertEqual(SegmentEndKind.Confluence, segment.EndKind, "end kind");
+    AssertEqual((0, 1), segment.Cells[0], "segment should still start at source marker");
+    AssertEqual((3, 1), segment.Cells[^1], "segment should prioritize the adjacent confluence marker");
+}
+
+void ConfluenceToNoneSegmentIsReversedToFlowIntoConfluence()
+{
+    var path = Path.Combine(tempDir, "confluence-none-direction.png");
+    using (var image = new Image<Rgba32>(4, 3))
+    {
+        image[0, 1] = new Rgba32(255, 0, 0);
+        image[1, 1] = new Rgba32(0x00, 0xe1, 0xff);
+        image[2, 1] = new Rgba32(0x00, 0xe1, 0xff);
+        image.Save(path);
+    }
+
+    var service = new RiverMapService();
+    Assert(service.Load(path), "river map should load");
+    var segments = service.ExtractSegments();
+
+    AssertEqual(1, segments.Count, "segment count");
+    var segment = segments[0];
+    AssertEqual(SegmentEndKind.None, segment.StartKind, "start kind");
+    AssertEqual(SegmentEndKind.Confluence, segment.EndKind, "end kind");
+    AssertEqual((2, 1), segment.Cells[0], "segment should start from the open river end after normalization");
+    AssertEqual((0, 1), segment.Cells[^1], "segment should end at the confluence marker");
+}
+
+void BifurcationToNoneSegmentIsReversedToFlowIntoBifurcation()
+{
+    var path = Path.Combine(tempDir, "bifurcation-none-direction.png");
+    using (var image = new Image<Rgba32>(4, 3))
+    {
+        image[0, 1] = new Rgba32(255, 252, 0);
+        image[1, 1] = new Rgba32(0x00, 0xe1, 0xff);
+        image[2, 1] = new Rgba32(0x00, 0xe1, 0xff);
+        image.Save(path);
+    }
+
+    var service = new RiverMapService();
+    Assert(service.Load(path), "river map should load");
+    var segments = service.ExtractSegments();
+
+    AssertEqual(1, segments.Count, "segment count");
+    var segment = segments[0];
+    AssertEqual(SegmentEndKind.None, segment.StartKind, "start kind");
+    AssertEqual(SegmentEndKind.Bifurcation, segment.EndKind, "end kind");
+    AssertEqual((2, 1), segment.Cells[0], "segment should start from the open river end after normalization");
+    AssertEqual((0, 1), segment.Cells[^1], "segment should end at the bifurcation marker");
+}
+
 void SemanticEndpointsDoNotShrinkAverageRiverWidth()
 {
     var path = Path.Combine(tempDir, "wide-source-confluence.png");
@@ -135,7 +211,7 @@ void SemanticEndpointsDoNotShrinkAverageRiverWidth()
     var segments = service.ExtractSegments();
 
     AssertEqual(1, segments.Count, "segment count");
-    AssertNearlyEqual(1.375f, segments[0].AvgHalfWidth, 0.0001f, "average width should only use river palette pixels");
+    AssertNearlyEqual(1.75f, segments[0].AvgHalfWidth, 0.0001f, "average width should only use river palette pixels");
 }
 
 void SpecialEndpointsRequireAdjacentRiverPixels()
@@ -193,7 +269,7 @@ void CenterlineSmoothingCutsHardCorners()
     Assert(smoothed.Any(point => Math.Abs(point.X - 1.0f) < 0.0001f && Math.Abs(point.Z - 0.25f) < 0.0001f), "smoothing should create a point after the corner");
 }
 
-void RibbonIndicesPreserveReferenceStripOrganizationWithStrideVisibleWinding()
+void RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding()
 {
     var segment = new RiverSegment
     {
@@ -211,7 +287,7 @@ void RibbonIndicesPreserveReferenceStripOrganizationWithStrideVisibleWinding()
 
     AssertEqual(6, vertices.Length, "three centerline samples should produce interleaved left/right boundary vertices");
     AssertEqual(12, indices.Length, "three centerline samples should produce four triangle-list faces");
-    AssertSequenceEqual([0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5], indices, "indices should preserve reference left/right strip organization with Stride-visible triangle winding");
+    AssertSequenceEqual([0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5], indices, "indices should preserve boundary left/right strip organization with Stride-visible triangle winding");
 }
 
 void MiteredCornerPreservesRiverHalfWidth()
@@ -261,7 +337,7 @@ void TaperedRiverEndpointsKeepVisibleCapWidth()
     Assert(endWidth > 0.1f, "tapered end cap should keep visible width");
 }
 
-void RiverVertexLayoutExposesReferenceSemantics()
+void RiverVertexLayoutExposesTargetSemantics()
 {
     var elements = Terrain.Editor.Rendering.River.RiverVertex.Layout.VertexElements;
 
@@ -283,7 +359,7 @@ void RiverVertexPositionUsesHomogeneousCoordinates()
     AssertEqual(System.Runtime.InteropServices.Marshal.SizeOf<Terrain.Editor.Rendering.River.RiverVertex>(), Terrain.Editor.Rendering.River.RiverVertex.Layout.VertexStride, "RiverVertex layout stride matches struct size");
 }
 
-void RiverVertexMeshExposesReferenceAttributes()
+void RiverVertexMeshExposesTargetAttributes()
 {
     var segment = new RiverSegment
     {
@@ -316,6 +392,56 @@ void RiverVertexMeshExposesReferenceAttributes()
     AssertNearlyEqual(0.0f, first.DistanceToMain, 0.0001f, "tapered source starts with zero distance-to-main fade");
     AssertNearlyEqual(1.0f, mesh.Vertices[^1].DistanceToMain, 0.0001f, "non-tapered downstream end keeps full distance-to-main fade");
     Assert(mesh.BoundingSphere.Radius > 0.0f, "BuildRiverMesh computes bounds");
+}
+
+void RiverVertexLongitudinalUvUsesRiverDefineScale()
+{
+    var segment = new RiverSegment
+    {
+        Centerline =
+        [
+            new Vector3(0, 0, 0),
+            new Vector3(10, 0, 0),
+        ],
+        WorldLength = 10,
+        AvgHalfWidth = 0.5f,
+        TaperStart = true,
+    };
+
+    var mesh = new RiverMeshService(null!).BuildRiverMesh(segment, 1.0f);
+
+    AssertNearlyEqual(0.0f, mesh.Vertices[0].UV.X, 0.0001f, "river longitudinal UV should start at zero");
+    AssertNearlyEqual(4.0f, mesh.Vertices[^1].UV.X, 0.0001f, "river longitudinal UV should use map-unit distance times river UV scale");
+    AssertNearlyEqual(0.0f, mesh.Vertices[0].DistanceToMain, 0.0001f, "distance-to-main should still use normalized progress");
+    AssertNearlyEqual(1.0f, mesh.Vertices[^1].DistanceToMain, 0.0001f, "distance-to-main should not use scaled longitudinal UV");
+}
+
+void RiverVertexMeshPreservesSlopedRibbonBasis()
+{
+    var segment = new RiverSegment
+    {
+        SystemId = 10,
+        Centerline =
+        [
+            new Vector3(0, 0, 0),
+            new Vector3(10, 2, 0),
+        ],
+        WorldLength = MathF.Sqrt(104.0f),
+        AvgHalfWidth = 0.5f,
+    };
+
+    var mesh = new RiverMeshService(null!).BuildRiverMesh(segment, 1.0f);
+    var left = mesh.Vertices[0];
+    var right = mesh.Vertices[1];
+    Vector3 side = Vector3.Normalize(right.Position.XYZ() - left.Position.XYZ());
+    Vector3 expectedNormal = Vector3.Normalize(Vector3.Cross(side, left.Tangent));
+
+    Assert(left.Tangent.Y > 0.0f, "river tangent should preserve centerline slope for target bottom lighting");
+    AssertNearlyEqual(0.0f, Vector3.Dot(left.Tangent, left.Normal), 0.0001f, "river normal should be perpendicular to sloped tangent");
+    AssertNearlyEqual(0.0f, Vector3.Dot(side, left.Normal), 0.0001f, "river normal should be perpendicular to ribbon side");
+    AssertNearlyEqual(expectedNormal.X, left.Normal.X, 0.0001f, "river normal x should come from ribbon basis");
+    AssertNearlyEqual(expectedNormal.Y, left.Normal.Y, 0.0001f, "river normal y should come from ribbon basis");
+    AssertNearlyEqual(expectedNormal.Z, left.Normal.Z, 0.0001f, "river normal z should come from ribbon basis");
 }
 
 void RiverRenderResourcesComputeHalfResolution()

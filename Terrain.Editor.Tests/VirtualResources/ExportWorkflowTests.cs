@@ -12,8 +12,8 @@ internal static class ExportWorkflowTests
     private static void ExportManagerRollsBackFailedExportWithoutTouchingFallback()
     {
         string root = CreateWorkspace();
-        string baseFallback = Path.Combine(root, "base", "map_data", "terrain.terrain");
-        string modTarget = Path.Combine(root, "mod", "map_data", "terrain.terrain");
+        string baseFallback = Path.Combine(root, "base", "map", "terrain.terrain");
+        string modTarget = Path.Combine(root, "mod", "map", "terrain.terrain");
         Directory.CreateDirectory(Path.GetDirectoryName(baseFallback)!);
         File.WriteAllText(baseFallback, "base terrain fallback");
 

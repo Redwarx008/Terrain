@@ -17,7 +17,7 @@ internal static class RiverViewModelAutoGenerationTests
 
     private static void GeneratesWhenGeneratorAttachesAfterRiverMapLoad()
     {
-        var source = new FakeRiverMapSource(new RiverCell[4, 3], "map_data/rivers.png");
+        var source = new FakeRiverMapSource(new RiverCell[4, 3], "map/rivers.png");
         using var viewModel = new RiverViewModel(source);
         var generator = new FakeRiverMeshGenerator(new RiverGenerationResult(2, 3, 8));
 
@@ -36,7 +36,7 @@ internal static class RiverViewModelAutoGenerationTests
         var generator = new FakeRiverMeshGenerator(new RiverGenerationResult(1, 2, 6));
 
         viewModel.SetGenerator(generator);
-        source.SetRiverMap(new RiverCell[5, 6], "map_data/rivers.png");
+        source.SetRiverMap(new RiverCell[5, 6], "map/rivers.png");
 
         TestHarness.AssertEqual(1, generator.GenerateCalls, "generator should run when a river map is loaded after generator wiring");
         TestHarness.AssertEqual(5, generator.LastWidth, "generator should receive the loaded river map width");
@@ -46,7 +46,7 @@ internal static class RiverViewModelAutoGenerationTests
 
     private static void RegeneratesWhenWidthScaleChanges()
     {
-        var source = new FakeRiverMapSource(new RiverCell[2, 2], "map_data/rivers.png");
+        var source = new FakeRiverMapSource(new RiverCell[2, 2], "map/rivers.png");
         using var viewModel = new RiverViewModel(source);
         var generator = new FakeRiverMeshGenerator(new RiverGenerationResult(1, 1, 4));
 
@@ -59,7 +59,7 @@ internal static class RiverViewModelAutoGenerationTests
 
     private static void ClearsGeneratedMeshesWhenRiverMapIsCleared()
     {
-        var source = new FakeRiverMapSource(new RiverCell[2, 2], "map_data/rivers.png");
+        var source = new FakeRiverMapSource(new RiverCell[2, 2], "map/rivers.png");
         using var viewModel = new RiverViewModel(source);
         var generator = new FakeRiverMeshGenerator(new RiverGenerationResult(1, 1, 4));
 

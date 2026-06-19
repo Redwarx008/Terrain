@@ -9,11 +9,11 @@ namespace Terrain.Resources;
 
 public sealed class GameRuntimeResourceBootstrap
 {
-    private const string MapDataDirectory = "map_data";
-    private const string DefaultMapDefinitionPath = "map_data/default.toml";
-    private const string BiomeMaskPath = "map_data/biome_mask.png";
-    private const string BiomeSettingsPath = "map_data/biome_settings.toml";
-    private const string MaterialDescriptorPath = "map_data/materials/descriptor.toml";
+    private const string MapDataDirectory = "map";
+    private const string DefaultMapDefinitionPath = "map/default.toml";
+    private const string BiomeMaskPath = "map/biome_mask.png";
+    private const string BiomeSettingsPath = "map/biome_settings.toml";
+    private const string MaterialDescriptorPath = "map/materials/descriptor.toml";
 
     private readonly GameResourceResolver resolver;
 
@@ -99,7 +99,7 @@ public sealed class GameRuntimeResourceBootstrap
         if (relativePath == null)
             return null;
 
-        return resolver.ResolveRequiredFile($"map_data/materials/{relativePath}").ResolvedPath;
+        return resolver.ResolveRequiredFile($"map/materials/{relativePath}").ResolvedPath;
     }
 
     private static string ToMapDataVirtualPath(string relativePath)

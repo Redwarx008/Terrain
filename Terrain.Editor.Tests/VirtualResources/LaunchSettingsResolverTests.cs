@@ -112,13 +112,13 @@ internal static class LaunchSettingsResolverTests
     private static void ResolverPrefersHighestPriorityLayer()
     {
         string root = CreateWorkspace();
-        Directory.CreateDirectory(Path.Combine(root, "map_data"));
-        Directory.CreateDirectory(Path.Combine(root, "mod_a", "map_data"));
-        Directory.CreateDirectory(Path.Combine(root, "mod_b", "map_data"));
+        Directory.CreateDirectory(Path.Combine(root, "map"));
+        Directory.CreateDirectory(Path.Combine(root, "mod_a", "map"));
+        Directory.CreateDirectory(Path.Combine(root, "mod_b", "map"));
 
-        File.WriteAllText(Path.Combine(root, "map_data", "default.toml"), "base");
-        File.WriteAllText(Path.Combine(root, "mod_a", "map_data", "default.toml"), "mod_a");
-        File.WriteAllText(Path.Combine(root, "mod_b", "map_data", "default.toml"), "mod_b");
+        File.WriteAllText(Path.Combine(root, "map", "default.toml"), "base");
+        File.WriteAllText(Path.Combine(root, "mod_a", "map", "default.toml"), "mod_a");
+        File.WriteAllText(Path.Combine(root, "mod_b", "map", "default.toml"), "mod_b");
 
         var layers = new[]
         {
@@ -128,7 +128,7 @@ internal static class LaunchSettingsResolverTests
         };
 
         var resolver = new GameResourceResolver(layers);
-        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map_data/default.toml");
+        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map/default.toml");
 
         TestHarness.AssertEqual("mod_b", resolved.SourceLayerId, "highest priority layer");
         TestHarness.AssertEqual("mod_b", File.ReadAllText(resolved.ResolvedPath), "resolved file contents");
@@ -137,11 +137,11 @@ internal static class LaunchSettingsResolverTests
     private static void ResolverReportsWritableHitAndFallbackState()
     {
         string root = CreateWorkspace();
-        Directory.CreateDirectory(Path.Combine(root, "map_data"));
-        Directory.CreateDirectory(Path.Combine(root, "mod_a", "map_data"));
+        Directory.CreateDirectory(Path.Combine(root, "map"));
+        Directory.CreateDirectory(Path.Combine(root, "mod_a", "map"));
 
-        string baseFile = Path.Combine(root, "map_data", "heightmap.png");
-        string modFile = Path.Combine(root, "mod_a", "map_data", "heightmap.png");
+        string baseFile = Path.Combine(root, "map", "heightmap.png");
+        string modFile = Path.Combine(root, "mod_a", "map", "heightmap.png");
         File.WriteAllText(baseFile, "base");
         File.WriteAllText(modFile, "mod");
 
@@ -151,7 +151,7 @@ internal static class LaunchSettingsResolverTests
             new GameResourceLayer("mod_a", Path.Combine(root, "mod_a"), isBaseLayer: false),
         });
 
-        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map_data/heightmap.png");
+        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map/heightmap.png");
 
         TestHarness.Assert(resolved.IsWritable, "resolved hit should be writable in temp workspace");
         TestHarness.Assert(resolved.HasLowerPriorityFallback, "resolved mod file should report covered base fallback");
@@ -165,18 +165,18 @@ internal static class LaunchSettingsResolverTests
             new GameResourceLayer("base", root, isBaseLayer: true),
         });
 
-        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile(Path.Combine(root, "map_data", "heightmap.png")), "absolute virtual path should be rejected");
-        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("C:\\map_data\\heightmap.png"), "drive-rooted virtual path should be rejected");
-        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("\\\\server\\share\\map_data\\heightmap.png"), "UNC virtual path should be rejected");
-        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("\\map_data\\heightmap.png"), "root-relative virtual path should be rejected");
-        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("/map_data/heightmap.png"), "slash-rooted virtual path should be rejected");
+        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile(Path.Combine(root, "map", "heightmap.png")), "absolute virtual path should be rejected");
+        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("C:\\map\\heightmap.png"), "drive-rooted virtual path should be rejected");
+        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("\\\\server\\share\\map\\heightmap.png"), "UNC virtual path should be rejected");
+        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("\\map\\heightmap.png"), "root-relative virtual path should be rejected");
+        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("/map/heightmap.png"), "slash-rooted virtual path should be rejected");
     }
 
     private static void ResolverAllowsFileNamesContainingDoubleDots()
     {
         string root = CreateWorkspace();
-        Directory.CreateDirectory(Path.Combine(root, "map_data"));
-        string file = Path.Combine(root, "map_data", "biome..png");
+        Directory.CreateDirectory(Path.Combine(root, "map"));
+        string file = Path.Combine(root, "map", "biome..png");
         File.WriteAllText(file, "biome");
 
         var resolver = new GameResourceResolver(new[]
@@ -184,7 +184,7 @@ internal static class LaunchSettingsResolverTests
             new GameResourceLayer("base", root, isBaseLayer: true),
         });
 
-        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map_data/biome..png");
+        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map/biome..png");
 
         TestHarness.AssertEqual(Path.GetFullPath(file), resolved.ResolvedPath, "double dot file name should resolve");
     }
@@ -197,14 +197,14 @@ internal static class LaunchSettingsResolverTests
             new GameResourceLayer("base", root, isBaseLayer: true),
         });
 
-        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("map_data/../heightmap.png"), "parent traversal segment should be rejected");
+        AssertThrowsInvalidData(() => resolver.ResolveRequiredFile("map/../heightmap.png"), "parent traversal segment should be rejected");
     }
 
     private static void ResolverCanonicalizesEmptyAndDotPathSegments()
     {
         string root = CreateWorkspace();
-        Directory.CreateDirectory(Path.Combine(root, "map_data"));
-        string file = Path.Combine(root, "map_data", "heightmap.png");
+        Directory.CreateDirectory(Path.Combine(root, "map"));
+        string file = Path.Combine(root, "map", "heightmap.png");
         File.WriteAllText(file, "height");
 
         var resolver = new GameResourceResolver(new[]
@@ -212,17 +212,17 @@ internal static class LaunchSettingsResolverTests
             new GameResourceLayer("base", root, isBaseLayer: true),
         });
 
-        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map_data//./heightmap.png");
+        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map//./heightmap.png");
 
-        TestHarness.AssertEqual("map_data/heightmap.png", resolved.VirtualPath, "canonical virtual path");
+        TestHarness.AssertEqual("map/heightmap.png", resolved.VirtualPath, "canonical virtual path");
         TestHarness.AssertEqual(Path.GetFullPath(file), resolved.ResolvedPath, "canonicalized path should resolve");
     }
 
     private static void ResolverCanonicalizesBackslashPathSeparators()
     {
         string root = CreateWorkspace();
-        Directory.CreateDirectory(Path.Combine(root, "map_data"));
-        string file = Path.Combine(root, "map_data", "heightmap.png");
+        Directory.CreateDirectory(Path.Combine(root, "map"));
+        string file = Path.Combine(root, "map", "heightmap.png");
         File.WriteAllText(file, "height");
 
         var resolver = new GameResourceResolver(new[]
@@ -230,9 +230,9 @@ internal static class LaunchSettingsResolverTests
             new GameResourceLayer("base", root, isBaseLayer: true),
         });
 
-        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map_data\\heightmap.png");
+        ResolvedGameResource resolved = resolver.ResolveRequiredFile("map\\heightmap.png");
 
-        TestHarness.AssertEqual("map_data/heightmap.png", resolved.VirtualPath, "backslash virtual path should be canonicalized");
+        TestHarness.AssertEqual("map/heightmap.png", resolved.VirtualPath, "backslash virtual path should be canonicalized");
         TestHarness.AssertEqual(Path.GetFullPath(file), resolved.ResolvedPath, "backslash path should resolve");
     }
 

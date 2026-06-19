@@ -82,7 +82,7 @@ internal static class EditorAuthoringResourceMapperTests
     private static void PreservesExistingMaterialIdsWhenSlotNamesChange()
     {
         string root = CreateWorkspace();
-        string descriptorPath = Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml");
+        string descriptorPath = Path.Combine(root, "mod", "map", "materials", "descriptor.toml");
         var descriptor = new RuntimeMaterialDescriptor();
         descriptor.Materials.Add(new RuntimeMaterialEntry
         {
@@ -106,7 +106,7 @@ internal static class EditorAuthoringResourceMapperTests
     private static void ThumbnailProviderResolvesShortMaterialPathsFromSession()
     {
         string root = CreateWorkspace();
-        string materialsDirectory = Path.Combine(root, "mod", "map_data", "materials");
+        string materialsDirectory = Path.Combine(root, "mod", "map", "materials");
         Directory.CreateDirectory(materialsDirectory);
         string texturePath = Path.Combine(materialsDirectory, "grass.png");
         File.WriteAllText(texturePath, "placeholder");
@@ -121,7 +121,7 @@ internal static class EditorAuthoringResourceMapperTests
     private static void LoadsMaterialDescriptorIntoSlots()
     {
         string root = CreateWorkspace();
-        string descriptorPath = Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml");
+        string descriptorPath = Path.Combine(root, "mod", "map", "materials", "descriptor.toml");
         var descriptor = new RuntimeMaterialDescriptor();
         descriptor.Materials.Add(new RuntimeMaterialEntry
         {
@@ -136,8 +136,8 @@ internal static class EditorAuthoringResourceMapperTests
         manager.ApplyDescriptor(descriptor, descriptorPath);
 
         TestHarness.AssertEqual("Soft Grass", manager[5].Name, "material slot name");
-        TestHarness.AssertEqual(Path.Combine(root, "mod", "map_data", "materials", "grass.png"), manager[5].AlbedoTexturePath, "albedo should resolve beside descriptor");
-        TestHarness.AssertEqual(Path.Combine(root, "mod", "map_data", "materials", "grass_n.png"), manager[5].NormalTexturePath, "normal should resolve beside descriptor");
+        TestHarness.AssertEqual(Path.Combine(root, "mod", "map", "materials", "grass.png"), manager[5].AlbedoTexturePath, "albedo should resolve beside descriptor");
+        TestHarness.AssertEqual(Path.Combine(root, "mod", "map", "materials", "grass_n.png"), manager[5].NormalTexturePath, "normal should resolve beside descriptor");
         TestHarness.AssertEqual(5, manager.SelectedSlotIndex, "first active material slot should be selected");
     }
 
@@ -192,12 +192,12 @@ internal static class EditorAuthoringResourceMapperTests
         }
 
         return new EditorResourceSession(
-            Resource("map_data/default.toml", Path.Combine(root, "mod", "map_data", "default.toml")),
-            Resource("map_data/heightmap.png", Path.Combine(root, "mod", "map_data", "heightmap.png")),
-            Resource("map_data/terrain.terrain", Path.Combine(root, "mod", "map_data", "terrain.terrain")),
-            Resource("map_data/biome_mask.png", Path.Combine(root, "mod", "map_data", "biome_mask.png")),
-            Resource("map_data/biome_settings.toml", Path.Combine(root, "mod", "map_data", "biome_settings.toml")),
-            Resource("map_data/materials/descriptor.toml", Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml")),
+            Resource("map/default.toml", Path.Combine(root, "mod", "map", "default.toml")),
+            Resource("map/heightmap.png", Path.Combine(root, "mod", "map", "heightmap.png")),
+            Resource("map/terrain.terrain", Path.Combine(root, "mod", "map", "terrain.terrain")),
+            Resource("map/biome_mask.png", Path.Combine(root, "mod", "map", "biome_mask.png")),
+            Resource("map/biome_settings.toml", Path.Combine(root, "mod", "map", "biome_settings.toml")),
+            Resource("map/materials/descriptor.toml", Path.Combine(root, "mod", "map", "materials", "descriptor.toml")),
             new RuntimeMapDefinition
             {
                 HeightmapPath = "heightmap.png",

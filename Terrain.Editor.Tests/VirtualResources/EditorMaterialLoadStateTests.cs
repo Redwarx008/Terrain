@@ -59,12 +59,12 @@ internal static class EditorMaterialLoadStateTests
         }
 
         return new EditorResourceSession(
-            Resource("map_data/default.toml", "C:\\temp\\default.toml"),
-            Resource("map_data/heightmap.png", "C:\\temp\\heightmap.png"),
-            Resource("map_data/terrain.terrain", "C:\\temp\\terrain.terrain"),
-            Resource("map_data/biome_mask.png", "C:\\temp\\biome_mask.png"),
-            Resource("map_data/biome_settings.toml", "C:\\temp\\biome_settings.toml"),
-            Resource("map_data/materials/descriptor.toml", "C:\\temp\\descriptor.toml"),
+            Resource("map/default.toml", "C:\\temp\\default.toml"),
+            Resource("map/heightmap.png", "C:\\temp\\heightmap.png"),
+            Resource("map/terrain.terrain", "C:\\temp\\terrain.terrain"),
+            Resource("map/biome_mask.png", "C:\\temp\\biome_mask.png"),
+            Resource("map/biome_settings.toml", "C:\\temp\\biome_settings.toml"),
+            Resource("map/materials/descriptor.toml", "C:\\temp\\descriptor.toml"),
             new RuntimeMapDefinition
             {
                 HeightmapPath = "heightmap.png",

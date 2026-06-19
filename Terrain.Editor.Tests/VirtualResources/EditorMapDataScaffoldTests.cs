@@ -70,9 +70,9 @@ internal static class EditorMapDataScaffoldTests
 
         GameResourceResolver resolver = GameResourceResolverBootstrap.CreateForAppDirectory(appRoot);
 
-        string defaultToml = Path.Combine(gameRoot, "map_data", "default.toml");
-        string descriptorToml = Path.Combine(gameRoot, "map_data", "materials", "descriptor.toml");
-        string biomeSettingsToml = Path.Combine(gameRoot, "map_data", "biome_settings.toml");
+        string defaultToml = Path.Combine(gameRoot, "map", "default.toml");
+        string descriptorToml = Path.Combine(gameRoot, "map", "materials", "descriptor.toml");
+        string biomeSettingsToml = Path.Combine(gameRoot, "map", "biome_settings.toml");
         string materialsDirectory = Path.GetDirectoryName(descriptorToml)!;
 
         TestHarness.Assert(!Directory.Exists(materialsDirectory), "materials directory should start missing for cold-start scaffold coverage");
@@ -102,9 +102,9 @@ internal static class EditorMapDataScaffoldTests
 
         GameResourceResolver resolver = GameResourceResolverBootstrap.CreateForAppDirectory(appRoot);
 
-        string defaultToml = Path.Combine(gameRoot, "map_data", "default.toml");
-        string descriptorToml = Path.Combine(gameRoot, "map_data", "materials", "descriptor.toml");
-        string biomeSettingsToml = Path.Combine(gameRoot, "map_data", "biome_settings.toml");
+        string defaultToml = Path.Combine(gameRoot, "map", "default.toml");
+        string descriptorToml = Path.Combine(gameRoot, "map", "materials", "descriptor.toml");
+        string biomeSettingsToml = Path.Combine(gameRoot, "map", "biome_settings.toml");
 
         new EditorMapDataScaffoldService().EnsureScaffold(resolver);
 
@@ -132,8 +132,8 @@ internal static class EditorMapDataScaffoldTests
     private static void ScaffoldLeavesExistingInvalidMapDefinitionUntouched()
     {
         (string root, string appRoot, string gameRoot) = CreateWorkspace();
-        Directory.CreateDirectory(Path.Combine(gameRoot, "map_data", "materials"));
-        string defaultToml = Path.Combine(gameRoot, "map_data", "default.toml");
+        Directory.CreateDirectory(Path.Combine(gameRoot, "map", "materials"));
+        string defaultToml = Path.Combine(gameRoot, "map", "default.toml");
         string original = """
 version = 1
 
@@ -159,7 +159,7 @@ height_scale = 100.0
         string gameRoot = Path.Combine(root, "game");
         string appRoot = Path.Combine(root, "bin", "Debug", "net8.0");
         Directory.CreateDirectory(gameRoot);
-        Directory.CreateDirectory(Path.Combine(gameRoot, "map_data"));
+        Directory.CreateDirectory(Path.Combine(gameRoot, "map"));
         Directory.CreateDirectory(appRoot);
         File.WriteAllText(Path.Combine(root, "Terrain.sln"), string.Empty);
         return (root, appRoot, gameRoot);

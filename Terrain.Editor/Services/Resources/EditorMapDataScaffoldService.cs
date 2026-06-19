@@ -8,9 +8,9 @@ namespace Terrain.Editor.Services.Resources;
 
 public sealed class EditorMapDataScaffoldService
 {
-    private const string MapDefinitionPath = "map_data/default.toml";
-    private const string BiomeSettingsPath = "map_data/biome_settings.toml";
-    private const string MaterialDescriptorPath = "map_data/materials/descriptor.toml";
+    private const string MapDefinitionPath = "map/default.toml";
+    private const string BiomeSettingsPath = "map/biome_settings.toml";
+    private const string MaterialDescriptorPath = "map/materials/descriptor.toml";
 
     public void EnsureScaffold(GameResourceResolver resolver)
     {

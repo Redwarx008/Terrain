@@ -6,7 +6,7 @@ namespace Terrain.Resources;
 public static class GameResourceRootLocator
 {
     private const string GameDirectoryName = "game";
-    private const string MapDataDirectoryName = "map_data";
+    private const string MapDataDirectoryName = "map";
 
     public static string FindFrom(string startPath)
     {

@@ -137,11 +137,11 @@ internal static class EditorResourceSaveServiceTests
     private static SaveFixture CreatePopulatedSaveFixture()
     {
         string root = CreateWorkspace();
-        string mapDefinitionPath = Path.Combine(root, "mod", "map_data", "default.toml");
-        string heightmapPath = Path.Combine(root, "mod", "map_data", "heightmap.png");
-        string biomeMaskPath = Path.Combine(root, "mod", "map_data", "biome_mask.png");
-        string biomeSettingsPath = Path.Combine(root, "mod", "map_data", "biome_settings.toml");
-        string materialDescriptorPath = Path.Combine(root, "mod", "map_data", "materials", "descriptor.toml");
+        string mapDefinitionPath = Path.Combine(root, "mod", "map", "default.toml");
+        string heightmapPath = Path.Combine(root, "mod", "map", "heightmap.png");
+        string biomeMaskPath = Path.Combine(root, "mod", "map", "biome_mask.png");
+        string biomeSettingsPath = Path.Combine(root, "mod", "map", "biome_settings.toml");
+        string materialDescriptorPath = Path.Combine(root, "mod", "map", "materials", "descriptor.toml");
         Directory.CreateDirectory(Path.GetDirectoryName(materialDescriptorPath)!);
         File.WriteAllText(mapDefinitionPath, "original-default");
         File.WriteAllText(heightmapPath, "original-heightmap");
@@ -202,12 +202,12 @@ internal static class EditorResourceSaveServiceTests
         }
 
         return new EditorResourceSession(
-            Resource("map_data/default.toml", mapDefinitionPath),
-            Resource("map_data/heightmap.png", heightmapPath),
-            Resource("map_data/terrain.terrain", Path.Combine(root, "mod", "map_data", "terrain.terrain")),
-            Resource("map_data/biome_mask.png", biomeMaskPath),
-            Resource("map_data/biome_settings.toml", biomeSettingsPath),
-            Resource("map_data/materials/descriptor.toml", materialDescriptorPath),
+            Resource("map/default.toml", mapDefinitionPath),
+            Resource("map/heightmap.png", heightmapPath),
+            Resource("map/terrain.terrain", Path.Combine(root, "mod", "map", "terrain.terrain")),
+            Resource("map/biome_mask.png", biomeMaskPath),
+            Resource("map/biome_settings.toml", biomeSettingsPath),
+            Resource("map/materials/descriptor.toml", materialDescriptorPath),
             new RuntimeMapDefinition
             {
                 HeightmapPath = "heightmap.png",

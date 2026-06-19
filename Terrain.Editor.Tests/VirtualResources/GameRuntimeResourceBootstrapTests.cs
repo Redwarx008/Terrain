@@ -29,13 +29,13 @@ internal static class GameRuntimeResourceBootstrapTests
 
         TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(CreateResolver(root)).Load();
 
-        TestHarness.AssertEqual(FullPath(root, "map_data", "terrain.terrain"), bundle.TerrainDataPath, "terrain data path");
-        TestHarness.AssertEqual(FullPath(root, "map_data", "biome_mask.png"), bundle.BiomeMaskPath, "biome mask path");
-        TestHarness.AssertEqual(FullPath(root, "map_data", "biome_settings.toml"), bundle.BiomeSettingsPath, "biome settings path");
-        TestHarness.AssertEqual(FullPath(root, "map_data", "materials", "descriptor.toml"), bundle.MaterialDescriptorPath, "material descriptor path");
-        TestHarness.AssertEqual(FullPath(root, "map_data", "materials"), bundle.MaterialsDirectory, "materials directory");
-        TestHarness.AssertEqual(FullPath(root, "map_data", "materials", "grass_a.png"), bundle.MaterialTextureSlots[0].AlbedoPath, "resolved albedo path");
-        TestHarness.AssertEqual(FullPath(root, "map_data", "rivers.png"), bundle.RiversPath, "rivers path");
+        TestHarness.AssertEqual(FullPath(root, "map", "terrain.terrain"), bundle.TerrainDataPath, "terrain data path");
+        TestHarness.AssertEqual(FullPath(root, "map", "biome_mask.png"), bundle.BiomeMaskPath, "biome mask path");
+        TestHarness.AssertEqual(FullPath(root, "map", "biome_settings.toml"), bundle.BiomeSettingsPath, "biome settings path");
+        TestHarness.AssertEqual(FullPath(root, "map", "materials", "descriptor.toml"), bundle.MaterialDescriptorPath, "material descriptor path");
+        TestHarness.AssertEqual(FullPath(root, "map", "materials"), bundle.MaterialsDirectory, "materials directory");
+        TestHarness.AssertEqual(FullPath(root, "map", "materials", "grass_a.png"), bundle.MaterialTextureSlots[0].AlbedoPath, "resolved albedo path");
+        TestHarness.AssertEqual(FullPath(root, "map", "rivers.png"), bundle.RiversPath, "rivers path");
         TestHarness.AssertEqual(250.0f, bundle.HeightScale, "height scale");
         TestHarness.AssertEqual(1, bundle.MaterialDescriptor.Materials.Count, "material count");
         TestHarness.AssertEqual(1, bundle.BiomeSettings.Layers.Count, "biome layer count");
@@ -45,11 +45,11 @@ internal static class GameRuntimeResourceBootstrapTests
     {
         string root = CreateWorkspace();
         WriteResourceBundle(root);
-        File.Delete(Path.Combine(root, "map_data", "heightmap.png"));
+        File.Delete(Path.Combine(root, "map", "heightmap.png"));
 
         TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(CreateResolver(root)).Load();
 
-        TestHarness.AssertEqual(FullPath(root, "map_data", "terrain.terrain"), bundle.TerrainDataPath, "runtime should still resolve terrain data");
+        TestHarness.AssertEqual(FullPath(root, "map", "terrain.terrain"), bundle.TerrainDataPath, "runtime should still resolve terrain data");
     }
 
     private static void BootstrapIgnoresInvalidHeightmapDeclaration()
@@ -59,7 +59,7 @@ internal static class GameRuntimeResourceBootstrapTests
 
         TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(CreateResolver(root)).Load();
 
-        TestHarness.AssertEqual(FullPath(root, "map_data", "terrain.terrain"), bundle.TerrainDataPath, "runtime should ignore invalid heightmap declaration");
+        TestHarness.AssertEqual(FullPath(root, "map", "terrain.terrain"), bundle.TerrainDataPath, "runtime should ignore invalid heightmap declaration");
     }
 
     private static void BootstrapDoesNotRequireHeightmapDeclaration()
@@ -69,33 +69,33 @@ internal static class GameRuntimeResourceBootstrapTests
 
         TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(CreateResolver(root)).Load();
 
-        TestHarness.AssertEqual(FullPath(root, "map_data", "terrain.terrain"), bundle.TerrainDataPath, "runtime should not require heightmap declaration");
+        TestHarness.AssertEqual(FullPath(root, "map", "terrain.terrain"), bundle.TerrainDataPath, "runtime should not require heightmap declaration");
     }
 
     private static void BootstrapRequiresTerrainDataResource()
     {
         string root = CreateWorkspace();
         WriteResourceBundle(root);
-        File.Delete(Path.Combine(root, "map_data", "terrain.terrain"));
+        File.Delete(Path.Combine(root, "map", "terrain.terrain"));
 
         FileNotFoundException ex = TestHarness.AssertThrows<FileNotFoundException>(
             () => new GameRuntimeResourceBootstrap(CreateResolver(root)).Load(),
             "missing terrain data should throw FileNotFoundException");
 
-        TestHarness.AssertEqual("map_data/terrain.terrain", ex.FileName, "missing terrain data virtual path");
+        TestHarness.AssertEqual("map/terrain.terrain", ex.FileName, "missing terrain data virtual path");
     }
 
     private static void BootstrapRequiresBiomeMaskResource()
     {
         string root = CreateWorkspace();
         WriteResourceBundle(root);
-        File.Delete(Path.Combine(root, "map_data", "biome_mask.png"));
+        File.Delete(Path.Combine(root, "map", "biome_mask.png"));
 
         FileNotFoundException ex = TestHarness.AssertThrows<FileNotFoundException>(
             () => new GameRuntimeResourceBootstrap(CreateResolver(root)).Load(),
             "missing biome mask should throw FileNotFoundException");
 
-        TestHarness.AssertEqual("map_data/biome_mask.png", ex.FileName, "missing biome mask virtual path");
+        TestHarness.AssertEqual("map/biome_mask.png", ex.FileName, "missing biome mask virtual path");
     }
 
     private static void BootstrapKeepsRiversOptional()
@@ -115,7 +115,7 @@ internal static class GameRuntimeResourceBootstrapTests
 
         TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(CreateResolver(root)).Load();
 
-        TestHarness.AssertEqual(FullPath(root, "map_data", "rivers.png"), bundle.RiversPath, "declared rivers path");
+        TestHarness.AssertEqual(FullPath(root, "map", "rivers.png"), bundle.RiversPath, "declared rivers path");
     }
 
     private static void BootstrapKeepsDeclaredRiversMissingOptional()
@@ -186,7 +186,7 @@ internal static class GameRuntimeResourceBootstrapTests
         TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(resolver).Load();
 
         TestHarness.AssertEqual(333.0f, bundle.HeightScale, "height scale should come from highest priority default.toml");
-        TestHarness.AssertEqual(FullPath(modRoot, "map_data", "terrain.terrain"), bundle.TerrainDataPath, "terrain data should come from highest priority layer");
+        TestHarness.AssertEqual(FullPath(modRoot, "map", "terrain.terrain"), bundle.TerrainDataPath, "terrain data should come from highest priority layer");
     }
 
     private static void BootstrapResolvesMaterialTexturesThroughResourceLayers()
@@ -196,9 +196,9 @@ internal static class GameRuntimeResourceBootstrapTests
         string modRoot = Path.Combine(root, "mod");
         WriteResourceBundle(baseRoot);
         WriteResourceBundle(modRoot);
-        File.Delete(Path.Combine(modRoot, "map_data", "materials", "grass_a.png"));
-        File.WriteAllText(Path.Combine(baseRoot, "map_data", "materials", "grass_n.png"), "base normal");
-        File.WriteAllText(Path.Combine(modRoot, "map_data", "materials", "descriptor.toml"), """
+        File.Delete(Path.Combine(modRoot, "map", "materials", "grass_a.png"));
+        File.WriteAllText(Path.Combine(baseRoot, "map", "materials", "grass_n.png"), "base normal");
+        File.WriteAllText(Path.Combine(modRoot, "map", "materials", "descriptor.toml"), """
 version = 1
 
 [[materials]]
@@ -217,8 +217,8 @@ normal = "grass_n.png"
 
         TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(resolver).Load();
 
-        TestHarness.AssertEqual(FullPath(baseRoot, "map_data", "materials", "grass_a.png"), bundle.MaterialTextureSlots[0].AlbedoPath, "missing mod albedo should fall back to base");
-        TestHarness.AssertEqual(FullPath(baseRoot, "map_data", "materials", "grass_n.png"), bundle.MaterialTextureSlots[0].NormalPath, "missing mod normal should fall back to base");
+        TestHarness.AssertEqual(FullPath(baseRoot, "map", "materials", "grass_a.png"), bundle.MaterialTextureSlots[0].AlbedoPath, "missing mod albedo should fall back to base");
+        TestHarness.AssertEqual(FullPath(baseRoot, "map", "materials", "grass_n.png"), bundle.MaterialTextureSlots[0].NormalPath, "missing mod normal should fall back to base");
     }
 
     private static GameResourceResolver CreateResolver(string root)
@@ -239,7 +239,7 @@ normal = "grass_n.png"
         string heightmapText = "heightmap",
         string heightmapDeclaration = "heightmap = \"heightmap.png\"")
     {
-        string mapData = Path.Combine(root, "map_data");
+        string mapData = Path.Combine(root, "map");
         string materials = Path.Combine(mapData, "materials");
         Directory.CreateDirectory(materials);
 

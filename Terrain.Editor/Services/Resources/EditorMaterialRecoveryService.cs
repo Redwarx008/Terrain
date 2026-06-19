@@ -173,5 +173,5 @@ public sealed class EditorMaterialRecoveryService
         return Path.Combine(descriptorDirectory, texturePath.Trim());
     }
 
-    private static string ToMaterialTextureVirtualPath(string texturePath) => $"map_data/materials/{texturePath.Trim()}";
+    private static string ToMaterialTextureVirtualPath(string texturePath) => $"map/materials/{texturePath.Trim()}";
 }

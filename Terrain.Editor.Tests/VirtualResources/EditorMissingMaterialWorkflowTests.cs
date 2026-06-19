@@ -15,7 +15,7 @@ internal static class EditorMissingMaterialWorkflowTests
     private static void RecoveryReportsMissingPropertiesTextureAsNonBlockingFallback()
     {
         string root = CreateWorkspace();
-        string descriptorPath = Path.Combine(root, "game", "map_data", "materials", "descriptor.toml");
+        string descriptorPath = Path.Combine(root, "game", "map", "materials", "descriptor.toml");
         Directory.CreateDirectory(Path.GetDirectoryName(descriptorPath)!);
 
         var descriptor = new RuntimeMaterialDescriptor();
@@ -44,7 +44,7 @@ internal static class EditorMissingMaterialWorkflowTests
     private static void RecoveryReportsAbsoluteMissingTexturePaths()
     {
         string root = CreateWorkspace();
-        string descriptorPath = Path.Combine(root, "game", "map_data", "materials", "descriptor.toml");
+        string descriptorPath = Path.Combine(root, "game", "map", "materials", "descriptor.toml");
         Directory.CreateDirectory(Path.GetDirectoryName(descriptorPath)!);
 
         var descriptor = new RuntimeMaterialDescriptor();
@@ -65,8 +65,8 @@ internal static class EditorMissingMaterialWorkflowTests
             settings,
             ResolveMissingMaterialTexture);
 
-        string expectedAlbedoPath = Path.Combine(root, "game", "map_data", "materials", "missing_grass.png");
-        string expectedNormalPath = Path.Combine(root, "game", "map_data", "materials", "missing_grass_n.png");
+        string expectedAlbedoPath = Path.Combine(root, "game", "map", "materials", "missing_grass.png");
+        string expectedNormalPath = Path.Combine(root, "game", "map", "materials", "missing_grass_n.png");
 
         EditorMaterialLoadIssue albedoIssue = result.LoadState.Issues.Single(entry => entry.Kind == EditorMaterialLoadIssueKind.MissingAlbedoTexture);
         EditorMaterialLoadIssue normalIssue = result.LoadState.Issues.Single(entry => entry.Kind == EditorMaterialLoadIssueKind.MissingNormalTexture);
@@ -80,7 +80,7 @@ internal static class EditorMissingMaterialWorkflowTests
     private static void RecoveryStateBlocksSaveAndExportWhenBiomeReferencesMissingMaterialId()
     {
         string root = CreateWorkspace();
-        string descriptorPath = Path.Combine(root, "game", "map_data", "materials", "descriptor.toml");
+        string descriptorPath = Path.Combine(root, "game", "map", "materials", "descriptor.toml");
         Directory.CreateDirectory(Path.GetDirectoryName(descriptorPath)!);
 
         var descriptor = new RuntimeMaterialDescriptor();
@@ -124,12 +124,12 @@ internal static class EditorMissingMaterialWorkflowTests
         }
 
         return new EditorResourceSession(
-            Resource("map_data/default.toml", Path.Combine(root, "game", "map_data", "default.toml")),
-            Resource("map_data/heightmap.png", Path.Combine(root, "game", "map_data", "heightmap.png")),
-            Resource("map_data/terrain.terrain", Path.Combine(root, "game", "map_data", "terrain.terrain")),
-            Resource("map_data/biome_mask.png", Path.Combine(root, "game", "map_data", "biome_mask.png")),
-            Resource("map_data/biome_settings.toml", Path.Combine(root, "game", "map_data", "biome_settings.toml")),
-            Resource("map_data/materials/descriptor.toml", Path.Combine(root, "game", "map_data", "materials", "descriptor.toml")),
+            Resource("map/default.toml", Path.Combine(root, "game", "map", "default.toml")),
+            Resource("map/heightmap.png", Path.Combine(root, "game", "map", "heightmap.png")),
+            Resource("map/terrain.terrain", Path.Combine(root, "game", "map", "terrain.terrain")),
+            Resource("map/biome_mask.png", Path.Combine(root, "game", "map", "biome_mask.png")),
+            Resource("map/biome_settings.toml", Path.Combine(root, "game", "map", "biome_settings.toml")),
+            Resource("map/materials/descriptor.toml", Path.Combine(root, "game", "map", "materials", "descriptor.toml")),
             new RuntimeMapDefinition
             {
                 HeightmapPath = "heightmap.png",

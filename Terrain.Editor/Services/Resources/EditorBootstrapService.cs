@@ -10,11 +10,11 @@ namespace Terrain.Editor.Services.Resources;
 public sealed class EditorBootstrapService
 {
     private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
-    private const string MapDataDirectory = "map_data";
-    private const string MapDefinitionPath = "map_data/default.toml";
-    private const string BiomeMaskPath = "map_data/biome_mask.png";
-    private const string BiomeSettingsPath = "map_data/biome_settings.toml";
-    private const string MaterialDescriptorPath = "map_data/materials/descriptor.toml";
+    private const string MapDataDirectory = "map";
+    private const string MapDefinitionPath = "map/default.toml";
+    private const string BiomeMaskPath = "map/biome_mask.png";
+    private const string BiomeSettingsPath = "map/biome_settings.toml";
+    private const string MaterialDescriptorPath = "map/materials/descriptor.toml";
 
     public EditorResourceSession LoadCurrentSession(string? appDirectory = null)
     {

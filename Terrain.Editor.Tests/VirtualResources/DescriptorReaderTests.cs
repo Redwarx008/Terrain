@@ -994,7 +994,7 @@ texture_mask_channel = 2
 
     private static string CreateMapData()
     {
-        string root = Path.Combine(Path.GetTempPath(), "terrain-map-definition-tests", Guid.NewGuid().ToString("N"), "map_data");
+        string root = Path.Combine(Path.GetTempPath(), "terrain-map-definition-tests", Guid.NewGuid().ToString("N"), "map");
         Directory.CreateDirectory(root);
         return root;
     }

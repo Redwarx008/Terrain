@@ -14,8 +14,8 @@ internal static class AtomicResourceWriteTransactionTests
     private static void TransactionDisposePreservesBackupsForUncommittedWork()
     {
         string root = CreateWorkspace();
-        string targetPath = Path.Combine(root, "map_data", "default.toml");
-        string backupPath = Path.Combine(root, "map_data", "default.toml.test-backup");
+        string targetPath = Path.Combine(root, "map", "default.toml");
+        string backupPath = Path.Combine(root, "map", "default.toml.test-backup");
         Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
         File.WriteAllText(backupPath, "original-backup");
 
@@ -31,8 +31,8 @@ internal static class AtomicResourceWriteTransactionTests
     private static void TransactionRestoresEarlierReplacedFilesWhenLaterCommitStepFails()
     {
         string root = CreateWorkspace();
-        string firstTarget = Path.Combine(root, "map_data", "default.toml");
-        string secondTarget = Path.Combine(root, "map_data", "biome_settings.toml");
+        string firstTarget = Path.Combine(root, "map", "default.toml");
+        string secondTarget = Path.Combine(root, "map", "biome_settings.toml");
         Directory.CreateDirectory(Path.GetDirectoryName(firstTarget)!);
         File.WriteAllText(firstTarget, "original-default");
         File.WriteAllText(secondTarget, "original-biome-settings");
@@ -51,7 +51,7 @@ internal static class AtomicResourceWriteTransactionTests
         TestHarness.AssertEqual("original-default", File.ReadAllText(firstTarget), "earlier replaced target should be restored");
         TestHarness.AssertEqual("original-biome-settings", File.ReadAllText(secondTarget), "failing target should remain unchanged");
         TestHarness.Assert(
-            !Directory.EnumerateFiles(Path.Combine(root, "map_data"), "*.backup", SearchOption.TopDirectoryOnly).Any(),
+            !Directory.EnumerateFiles(Path.Combine(root, "map"), "*.backup", SearchOption.TopDirectoryOnly).Any(),
             "successful rollback should clean transaction backup files");
     }
 

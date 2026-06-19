@@ -57,7 +57,7 @@ internal static class TerrainRuntimeLoadBehaviorTests
             component,
             CreateResourceBundle,
             out _,
-            _ => throw new FileNotFoundException("terrain data missing", "map_data/terrain.terrain"),
+            _ => throw new FileNotFoundException("terrain data missing", "map/terrain.terrain"),
             logError: diagnostics.Add);
 
         TestHarness.Assert(!loaded, "missing terrain data should fail the runtime load");
@@ -65,7 +65,7 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Assert(component.HasRuntimeLoadFailure, "failed runtime load should latch the failure gate");
         TestHarness.Assert(!TerrainProcessor.ShouldAttemptRuntimeLoad(component), "same config should not retry after a real runtime load failure");
         TestHarness.Assert(
-            diagnostics.Any(message => message.Contains("map_data/terrain.terrain", StringComparison.Ordinal)),
+            diagnostics.Any(message => message.Contains("map/terrain.terrain", StringComparison.Ordinal)),
             "runtime load error should mention the missing terrain data path");
     }
 
