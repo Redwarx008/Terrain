@@ -1,28 +1,23 @@
 # River Rendering Resources
 
-These files are copied into neutral project paths so runtime code never depends on an external game installation.
-Each `.dds` has a sibling `.sdtex` Stride texture asset descriptor; runtime code loads the descriptor URL without the extension, for example `River/Water/flow-normal`.
+`Environment/` remains a Stride content asset directory. River bottom and water DDS files live under `game/map/water` and are loaded directly from the file system by `RiverResourceLoader`.
 
-## Bottom
-
-| Project file | Source path | Usage |
-|---|---|---|
-| `Bottom/bottom-diffuse.dds` | `game/gfx/map/rivers/river_bottom_diffuse.dds` | River bed base color. |
-| `Bottom/bottom-normal.dds` | `game/gfx/map/rivers/river_bottom_normal.dds` | River bed normal detail. |
-| `Bottom/bottom-properties.dds` | `game/gfx/map/rivers/river_bottom_gloss.dds` | River bed roughness/gloss-style property input. |
-| `Bottom/bottom-depth.dds` | `game/gfx/map/textures/river_depth.dds` | River depth/profile lookup input. |
-
-## Water
+## Bottom And Water
 
 | Project file | Source path | Usage |
 |---|---|---|
-| `Water/ambient-normal.dds` | `game/gfx/map/water/ambient_normal.dds` | Ambient water normal detail. |
-| `Water/flow-normal.dds` | `game/gfx/map/water/flow_normal.dds` | Animated flow normal detail. |
-| `Water/foam.dds` | `game/gfx/map/water/foam.dds` | Foam pattern. |
-| `Water/foam-ramp.dds` | `game/gfx/map/water/foam_ramp.dds` | Foam ramp lookup. |
-| `Water/foam-map.dds` | `game/gfx/map/water/foam_map.dds` | Foam mask/noise distribution. |
-| `Water/foam-noise.dds` | `game/gfx/map/water/foam_noise.dds` | Foam animation noise. |
-| `Water/water-color.dds` | `game/gfx/map/water/watercolor_rgb_waterspec_a.dds` | CK3 water color RGB and water spec alpha lookup. |
+| `game/map/water/bottom_diffuse.dds` | `game/gfx/map/rivers/river_bottom_diffuse.dds` | River bed base color. |
+| `game/map/water/bottom_normal.dds` | `game/gfx/map/rivers/river_bottom_normal.dds` | River bed normal detail. |
+| `game/map/water/bottom_properties.dds` | `game/gfx/map/rivers/river_bottom_gloss.dds` | River bed roughness/gloss-style property input. |
+| `game/map/water/bottom_depth.dds` | `game/gfx/map/textures/river_depth.dds` | River depth/profile lookup input. |
+| `game/map/water/ambient_normal.dds` | `game/gfx/map/water/ambient_normal.dds` | Ambient water normal detail. |
+| `game/map/water/flow_normal.dds` | `game/gfx/map/water/flow_normal.dds` | Animated flow normal detail. |
+| `game/map/water/foam.dds` | `game/gfx/map/water/foam.dds` | Foam pattern. |
+| `game/map/water/foam_ramp.dds` | `game/gfx/map/water/foam_ramp.dds` | Foam ramp lookup. |
+| `game/map/water/foam_map.dds` | `game/gfx/map/water/foam_map.dds` | Foam mask/noise distribution. |
+| `game/map/water/foam_noise.dds` | `game/gfx/map/water/foam_noise.dds` | Foam animation noise. |
+| `game/map/water/shadow_color.dds` | `game/gfx/map/textures/shadow_color.dds` | Terrain shadow tint noise/color input. |
+| `game/map/water/water_color.dds` | `game/gfx/map/water/watercolor_rgb_waterspec_a.dds` | Water color RGB and water spec alpha lookup. |
 
 ## Environment
 
@@ -30,4 +25,4 @@ Each `.dds` has a sibling `.sdtex` Stride texture asset descriptor; runtime code
 |---|---|---|
 | `Environment/reflection-specular.dds` | `game/gfx/map/environment/qwantani_8k_nosun_cube_specular.dds` | Specular reflection fallback. |
 
-Runtime code should refer only to the neutral project paths above.
+Runtime code should refer to `game/map/water` for Bottom/Water textures and to the neutral Stride content URL `River/Environment/reflection-specular` for the environment cubemap.

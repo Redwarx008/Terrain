@@ -1,9 +1,0 @@
-!Texture
-Id: ee6be492-c410-468e-9cb4-e171aa233664
-SerializedVersion: {Stride: 2.0.0.0}
-Tags: []
-Source: !file ambient-normal.dds
-Type: !ColorTextureType
-    UseSRgbSampling: false
-    ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
-IsStreamable: false

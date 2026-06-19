@@ -2,9 +2,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using Stride.Core;
+using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
 using Stride.Core.Serialization.Contents;
 using Stride.Graphics;
@@ -14,6 +16,7 @@ using Stride.Rendering.Images;
 using Stride.Rendering.Lights;
 using Stride.Rendering.Shadows;
 using Stride.Rendering.Skyboxes;
+using Terrain.Editor.Rendering;
 using Terrain.Editor.Services;
 
 namespace Terrain.Editor.Rendering.River;
@@ -30,18 +33,20 @@ public sealed class RiverRenderFeature : RootRenderFeature
 {
     private static readonly InputElementDescription[] RiverInputElements = RiverVertex.Layout.CreateInputElements();
     private static readonly FieldInfo? RenderViewDatasField = typeof(ForwardLightingRenderFeature).GetField("renderViewDatas", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
 
     private DynamicEffectInstance? bottomEffect;
     private DynamicEffectInstance? surfaceEffect;
     private MutablePipelineState? bottomPipelineState;
     private MutablePipelineState? surfacePipelineState;
-    private ImageScaler? refractionSeedScaler;
+    private ImageEffectShader? sceneSeedEffect;
     private readonly RiverRenderResources renderResources = new();
     private readonly RiverResourceLoader riverResources = new();
     private readonly List<RenderLight> fallbackVisibleLights = new(8);
     private ContentManager? contentManager;
     private ForwardLightingRenderFeature? forwardLightingFeature;
     private IShadowMapRenderer? bottomShadowMapRenderer;
+    private bool loggedMissingSurfaceTerrain;
 
     public RiverRenderDebugMode DebugMode { get; set; }
 
@@ -60,17 +65,17 @@ public sealed class RiverRenderFeature : RootRenderFeature
         bottomEffect.Initialize(Context.Services);
         surfaceEffect = new DynamicEffectInstance("RiverSurface");
         surfaceEffect.Initialize(Context.Services);
-        refractionSeedScaler = new ImageScaler(SamplingPattern.Linear, delaySetRenderTargets: true);
-        refractionSeedScaler.Initialize(Context);
+        sceneSeedEffect = new ImageEffectShader("RiverSceneSeed", delaySetRenderTargets: true);
+        sceneSeedEffect.Initialize(Context);
 
         contentManager = Context.Services.GetSafeServiceAs<ContentManager>();
-        riverResources.Load(contentManager);
+        riverResources.Load(Context.GraphicsDevice, contentManager);
         var meshRenderFeature = RenderSystem?.RenderFeatures.OfType<MeshRenderFeature>().FirstOrDefault();
         forwardLightingFeature = meshRenderFeature?.RenderFeatures.OfType<ForwardLightingRenderFeature>().FirstOrDefault();
         bottomShadowMapRenderer = forwardLightingFeature?.ShadowMapRenderer;
 
         bottomPipelineState = CreatePipelineState(Context.GraphicsDevice, CreateDualSourceBlendState(), DepthStencilStates.DepthRead);
-        surfacePipelineState = CreatePipelineState(Context.GraphicsDevice, BlendStates.AlphaBlend, DepthStencilStates.DepthRead);
+        surfacePipelineState = CreatePipelineState(Context.GraphicsDevice, CreateSurfaceBlendState(), DepthStencilStates.DepthRead);
     }
 
     protected override void Destroy()
@@ -89,8 +94,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         bottomEffect = null;
         surfaceEffect?.Dispose();
         surfaceEffect = null;
-        refractionSeedScaler?.Dispose();
-        refractionSeedScaler = null;
+        sceneSeedEffect?.Dispose();
+        sceneSeedEffect = null;
         forwardLightingFeature = null;
         bottomShadowMapRenderer = null;
         bottomPipelineState = null;
@@ -136,7 +141,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         {
             using (context.PushRenderTargetsAndRestore())
             {
-                SeedSceneColorFromScene(context, sceneColor);
+                SeedSceneColorFromScene(context, renderView, sceneColor);
                 CopySceneSeedToBottomColor(commandList);
                 commandList.SetRenderTargetAndViewport(renderResources.BottomDepth, renderResources.BottomColor);
                 commandList.Clear(renderResources.BottomDepth, DepthStencilClearOptions.DepthBuffer);
@@ -150,29 +155,66 @@ public sealed class RiverRenderFeature : RootRenderFeature
         }
 
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionTexture, renderResources.BottomColor);
-        surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.PointClamp);
+        surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);
+        if (!BindSurfaceRequiredInputs())
+        {
+            return;
+        }
         DrawPass(context, renderView, renderViewStage, startIndex, endIndex, surfaceEffect, surfacePipelineState, renderResources.BottomColor);
     }
 
-    private void SeedSceneColorFromScene(RenderDrawContext context, Texture? sceneColor)
+    private void SeedSceneColorFromScene(RenderDrawContext context, RenderView renderView, Texture? sceneColor)
     {
-        if (renderResources.SceneSeedColor == null)
-        {
-            return;
-        }
+        Debug.Assert(renderResources.SceneSeedColor != null, "River scene seed color target has not been allocated.");
+        Debug.Assert(sceneColor != null, "River scene seed requires a scene color render target.");
+        Debug.Assert(sceneSeedEffect != null, "River scene seed effect has not been initialized.");
+        Debug.Assert(!ReferenceEquals(sceneColor, renderResources.SceneSeedColor), "River scene seed input and output must be different textures.");
 
-        if (sceneColor != null
-            && refractionSeedScaler != null
-            && !ReferenceEquals(sceneColor, renderResources.SceneSeedColor))
-        {
-            refractionSeedScaler.Color = new Color4(1.0f, 1.0f, 1.0f, 0.0f);
-            refractionSeedScaler.SetInput(0, sceneColor);
-            refractionSeedScaler.SetOutput(renderResources.SceneSeedColor);
-            refractionSeedScaler.Draw(context, "River refraction scene seed");
-            return;
-        }
+        var seedTarget = renderResources.SceneSeedColor!;
+        var seedSource = sceneColor!;
+        var seedEffect = sceneSeedEffect!;
 
-        context.CommandList.Clear(renderResources.SceneSeedColor, new Color4(0.0f, 0.0f, 0.0f, 0.0f));
+        var sceneDepthSource = GetPresenterSceneDepthSource(context.GraphicsDevice, seedSource);
+        var sceneDepth = context.Resolver.ResolveDepthStencil(sceneDepthSource);
+        Debug.Assert(sceneDepth != null, "River scene seed requires a depth buffer that can be resolved as a shader resource.");
+
+        try
+        {
+            seedEffect.Parameters.Set(DepthBaseKeys.DepthStencil, sceneDepth);
+            seedEffect.Parameters.Set(CameraKeys.ViewSize, new Vector2(seedSource.Width, seedSource.Height));
+            seedEffect.Parameters.Set(CameraKeys.ZProjection, CameraKeys.ZProjectionACalculate(
+                renderView.NearClipPlane,
+                renderView.FarClipPlane));
+            seedEffect.Parameters.Set(CameraKeys.NearClipPlane, renderView.NearClipPlane);
+            seedEffect.Parameters.Set(CameraKeys.FarClipPlane, renderView.FarClipPlane);
+            var viewInverse = Matrix.Invert(renderView.View);
+            seedEffect.Parameters.Set(TransformationKeys.ViewInverse, ref viewInverse);
+            seedEffect.Parameters.Set(TransformationKeys.Eye, new Vector4(viewInverse.TranslationVector, 1.0f));
+            Matrix.Invert(ref renderView.Projection, out var projectionInverse);
+            seedEffect.Parameters.Set(TransformationKeys.ProjectionInverse, ref projectionInverse);
+            seedEffect.Parameters.Set(TexturingKeys.Sampler, context.GraphicsDevice.SamplerStates.LinearClamp);
+            seedEffect.SetInput(0, seedSource);
+            seedEffect.SetOutput(seedTarget);
+            seedEffect.Draw(context, "River refraction scene seed");
+        }
+        finally
+        {
+            context.Resolver.ReleaseDepthStenctilAsShaderResource(sceneDepth);
+        }
+    }
+
+    private static Texture GetPresenterSceneDepthSource(GraphicsDevice graphicsDevice, Texture sceneColor)
+    {
+        var presenter = graphicsDevice.Presenter;
+        Debug.Assert(presenter != null, "River scene seed requires GraphicsDevice.Presenter. Offscreen river rendering must provide an explicit scene-depth source before enabling this pass.");
+
+        var sceneDepth = presenter?.DepthStencilBuffer;
+        Debug.Assert(sceneDepth != null, "River scene seed requires GraphicsDevice.Presenter.DepthStencilBuffer.");
+        Debug.Assert(
+            sceneDepth == null || (sceneDepth.ViewWidth == sceneColor.ViewWidth && sceneDepth.ViewHeight == sceneColor.ViewHeight),
+            $"River scene seed depth size {sceneDepth?.ViewWidth}x{sceneDepth?.ViewHeight} must match scene color size {sceneColor.ViewWidth}x{sceneColor.ViewHeight}.");
+
+        return sceneDepth!;
     }
 
     private void CopySceneSeedToBottomColor(CommandList commandList)
@@ -351,10 +393,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         Vector3 sceneSunColor = directionalLight?.Color.ToVector3() ?? Vector3.Zero;
         int cascadeCount = 0;
         float shadowBlendCascades = 0.0f;
-        float shadowDepthBias = 0.0f;
-        float shadowOffsetScale = 0.0f;
-        Vector2 shadowMapTextureSize = Vector2.One;
-        Vector2 shadowMapTextureTexelSize = Vector2.One;
+        float sceneShadowDepthBias = 0.01f;
         float[] shadowCascadeSplits = [0.0f, 0.0f, 0.0f, 0.0f];
         Matrix[] worldToShadowCascadeUv =
         [
@@ -370,27 +409,18 @@ public sealed class RiverRenderFeature : RootRenderFeature
             cascadeCount = Math.Min(Math.Min(shadowMapTexture.CascadeCount, shaderData.CascadeSplits.Length), worldToShadowCascadeUv.Length);
             Array.Copy(shaderData.CascadeSplits, shadowCascadeSplits, cascadeCount);
             Array.Copy(shaderData.WorldToShadowCascadeUV, worldToShadowCascadeUv, cascadeCount);
-            shadowDepthBias = shaderData.DepthBias;
-            shadowOffsetScale = shaderData.OffsetScale;
             shadowBlendCascades = (shadowMapTexture.ShadowType & LightShadowType.BlendCascade) != 0 ? 1.0f : 0.0f;
+            sceneShadowDepthBias = shaderData.DepthBias;
             sceneShadowMapTexture = shaderData.Texture;
-            if (sceneShadowMapTexture != null)
-            {
-                shadowMapTextureSize = new Vector2(sceneShadowMapTexture.Width, sceneShadowMapTexture.Height);
-                shadowMapTextureTexelSize = 1.0f / shadowMapTextureSize;
-            }
         }
 
         bottomEffect.Parameters.Set(RiverBottomKeys._SceneSunDirection, sceneSunDirection);
         bottomEffect.Parameters.Set(RiverBottomKeys._SceneSunColor, sceneSunColor);
         bottomEffect.Parameters.Set(RiverBottomKeys._SceneShadowCascadeCount, cascadeCount);
         bottomEffect.Parameters.Set(RiverBottomKeys._SceneShadowBlendCascades, shadowBlendCascades);
-        bottomEffect.Parameters.Set(RiverBottomKeys._SceneShadowDepthBias, shadowDepthBias);
-        bottomEffect.Parameters.Set(RiverBottomKeys._SceneShadowOffsetScale, shadowOffsetScale);
+        bottomEffect.Parameters.Set(RiverBottomKeys._SceneShadowDepthBias, sceneShadowDepthBias);
         bottomEffect.Parameters.Set(RiverBottomKeys._SceneShadowCascadeSplits, shadowCascadeSplits);
         bottomEffect.Parameters.Set(RiverBottomKeys._SceneWorldToShadowCascadeUV, worldToShadowCascadeUv);
-        bottomEffect.Parameters.Set(RiverBottomKeys._SceneShadowMapTextureSize, shadowMapTextureSize);
-        bottomEffect.Parameters.Set(RiverBottomKeys._SceneShadowMapTextureTexelSize, shadowMapTextureTexelSize);
         bottomEffect.Parameters.SetObject(RiverBottomKeys.SceneShadowMapTexture, sceneShadowMapTexture);
     }
 
@@ -402,12 +432,12 @@ public sealed class RiverRenderFeature : RootRenderFeature
         }
 
         Texture? bottomEnvironment = TryGetSceneEnvironmentTexture(skyboxLight);
-        if (bottomEnvironment == null && contentManager != null)
+        Debug.Assert(bottomEnvironment != null, "River bottom requires a real scene skybox cubemap.");
+        if (bottomEnvironment == null)
         {
-            bottomEnvironment = riverResources.EnsureBottomEnvironment(contentManager);
+            throw new InvalidOperationException("River bottom requires a real scene skybox cubemap.");
         }
 
-        bottomEnvironment ??= riverResources.ReflectionSpecular;
         Matrix skyMatrix = Matrix.Identity;
         float intensity = 1.0f;
         if (skyboxLight != null)
@@ -438,20 +468,22 @@ public sealed class RiverRenderFeature : RootRenderFeature
         effect.Parameters.Set(RiverBottomKeys._MapExtent, riverObject.MapExtent);
         effect.Parameters.Set(RiverBottomKeys._TextureUvScale, riverObject.TextureUvScale);
         effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, riverObject.OceanFadeRate);
+        effect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);
         effect.Parameters.Set(RiverBottomKeys._BankAmount, riverObject.BankAmount);
         effect.Parameters.Set(RiverBottomKeys._BankFade, riverObject.BankFade);
         effect.Parameters.Set(RiverBottomKeys._Depth, riverObject.Depth);
         effect.Parameters.Set(RiverBottomKeys._DepthWidthPower, riverObject.DepthWidthPower);
+        effect.Parameters.Set(RiverBottomKeys._WorldToMapUnitScale, 0.5f);
         effect.Parameters.Set(RiverBottomKeys._DepthFakeFactor, riverObject.DepthFakeFactor);
         effect.Parameters.Set(RiverBottomKeys._ParallaxIterations, riverObject.ParallaxIterations);
         effect.Parameters.Set(RiverBottomKeys._BottomNormalStrength, riverObject.BottomNormalStrength);
         effect.Parameters.Set(RiverBottomKeys._BottomEnvironmentIntensity, riverObject.BottomEnvironmentIntensity);
-        effect.Parameters.Set(RiverBottomKeys._BottomSpecularIntensity, riverObject.BottomSpecularIntensity);
     }
 
-    private static void ApplySurfaceParameters(DynamicEffectInstance effect, RiverRenderObject riverObject, Vector2 viewSize)
+    private static void ApplySurfaceParameters(DynamicEffectInstance effect, RiverRenderObject riverObject, Vector2 viewSize, Matrix viewMatrix, float globalTime)
     {
         effect.Parameters.Set(RiverSurfaceKeys._ViewSize, viewSize);
+        effect.Parameters.Set(RiverSurfaceKeys._ViewMatrix, viewMatrix);
         effect.Parameters.Set(RiverSurfaceKeys._MapExtent, riverObject.MapExtent);
         effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, riverObject.FlowNormalUvScale);
@@ -459,13 +491,16 @@ public sealed class RiverRenderFeature : RootRenderFeature
         effect.Parameters.Set(RiverSurfaceKeys._RiverFoamFactor, riverObject.RiverFoamFactor);
         effect.Parameters.Set(RiverSurfaceKeys._NoiseScale, riverObject.NoiseScale);
         effect.Parameters.Set(RiverSurfaceKeys._NoiseSpeed, riverObject.NoiseSpeed);
+        effect.Parameters.Set(RiverSurfaceKeys._FlattenMult, riverObject.FlattenMultiplier);
         effect.Parameters.Set(RiverSurfaceKeys._BankFade, riverObject.BankFade);
         effect.Parameters.Set(RiverSurfaceKeys._Depth, riverObject.Depth);
         effect.Parameters.Set(RiverSurfaceKeys._DepthWidthPower, riverObject.DepthWidthPower);
+        effect.Parameters.Set(RiverSurfaceKeys._GlobalTime, globalTime);
         effect.Parameters.Set(RiverSurfaceKeys._FlatMapLerp, riverObject.FlatMapLerp);
-        effect.Parameters.Set(RiverSurfaceKeys._ZoomBlendOut, riverObject.ZoomBlendOut);
-        effect.Parameters.Set(RiverSurfaceKeys._ShadowTermFallback, riverObject.ShadowTermFallback);
-        effect.Parameters.Set(RiverSurfaceKeys._CloudMaskFallback, riverObject.CloudMaskFallback);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionScale, riverObject.WaterRefractionScale);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionShoreMaskDepth, riverObject.WaterRefractionShoreMaskDepth);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionShoreMaskSharpness, riverObject.WaterRefractionShoreMaskSharpness);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionFade, riverObject.WaterRefractionFade);
         effect.Parameters.Set(RiverSurfaceKeys.WaterColorShallow, riverObject.WaterColorShallow);
         effect.Parameters.Set(RiverSurfaceKeys.WaterColorDeep, riverObject.WaterColorDeep);
     }
@@ -516,7 +551,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
             effect.Parameters.Set(CameraKeys.ViewSize, renderView.ViewSize);
             if (ReferenceEquals(effect, surfaceEffect))
             {
-                ApplySurfaceParameters(effect, riverObject, renderView.ViewSize);
+                ApplySurfaceParameters(effect, riverObject, renderView.ViewSize, renderView.View, (float)context.RenderContext.Time.Total.TotalSeconds);
             }
             else if (ReferenceEquals(effect, bottomEffect))
             {
@@ -525,7 +560,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
             if (refractionTexture != null)
             {
                 effect.Parameters.Set(RiverSurfaceKeys.RefractionTexture, refractionTexture);
-                effect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.PointClamp);
+                effect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);
             }
 
             effect.Apply(graphicsContext);
@@ -562,9 +597,128 @@ public sealed class RiverRenderFeature : RootRenderFeature
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.FoamRampTexture, riverResources.FoamRamp);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.FoamMapTexture, riverResources.FoamMap);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.FoamNoiseTexture, riverResources.FoamNoise);
+        SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ShadowNoiseTexture, riverResources.ShadowColor);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.WaterColorTexture, riverResources.WaterColor);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ReflectionSpecularTexture, riverResources.ReflectionSpecular);
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.ReflectionSpecularSampler, graphicsDevice.SamplerStates.LinearClamp);
+        surfaceEffect.Parameters.Set(RiverSurfaceKeys.ShadowNoiseSampler, graphicsDevice.SamplerStates.LinearWrap);
+        surfaceEffect.Parameters.Set(RiverSurfaceKeys.TerrainHeightSampler, graphicsDevice.SamplerStates.LinearClamp);
+    }
+
+    private bool BindSurfaceRequiredInputs()
+    {
+        Debug.Assert(surfaceEffect != null);
+
+        bool terrainBound = TryBindEditorTerrainInputs();
+        if (!terrainBound)
+        {
+            if (!loggedMissingSurfaceTerrain)
+            {
+                Log.Warning("River surface map-lighting skipped because editor terrain height slices are not available.");
+                loggedMissingSurfaceTerrain = true;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool TryBindEditorTerrainInputs()
+    {
+        if (surfaceEffect == null)
+        {
+            return false;
+        }
+
+        var terrain = Context.VisibilityGroup.RenderObjects
+            .OfType<EditorTerrainRenderObject>()
+            .FirstOrDefault(static renderObject => renderObject.TerrainEntity != null);
+        var entity = terrain?.TerrainEntity;
+        if (terrain == null || entity == null || entity.Slices.Count == 0)
+        {
+            return false;
+        }
+
+        var parameters = surfaceEffect.Parameters;
+        SetEditorTerrainSliceTextures(parameters, entity, terrain);
+        SetEditorTerrainSliceBounds(parameters, entity);
+        parameters.Set(RiverSurfaceKeys.SliceCount, entity.Slices.Count);
+        parameters.Set(RiverSurfaceKeys.HeightScale, entity.HeightScale);
+
+        parameters.Set(RiverSurfaceKeys._TerrainWorldOffsetXZ, new Vector2(entity.WorldOffset.X, entity.WorldOffset.Z));
+        parameters.Set(RiverSurfaceKeys._TerrainNormalStepSize, Vector2.One);
+        var terrainWorldSize = new Vector2(Math.Max(entity.HeightmapWidth - 1, 1), Math.Max(entity.HeightmapHeight - 1, 1));
+        var worldSpaceToTerrain = new Vector2(1.0f / terrainWorldSize.X, 1.0f / terrainWorldSize.Y);
+        parameters.Set(RiverSurfaceKeys._WorldSpaceToTerrain0To1, worldSpaceToTerrain);
+        parameters.Set(RiverSurfaceKeys._InverseWorldSize, worldSpaceToTerrain);
+        return true;
+    }
+
+    private static void SetEditorTerrainSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity, EditorTerrainRenderObject renderObject)
+    {
+        var firstSliceTexture = renderObject.HeightmapSliceTextures[0] ?? entity.Slices[0].Texture;
+        SetEditorTerrainSliceTexture(parameters, 0, renderObject.HeightmapSliceTextures[0] ?? firstSliceTexture);
+        SetEditorTerrainSliceTexture(parameters, 1, renderObject.HeightmapSliceTextures[1] ?? firstSliceTexture);
+        SetEditorTerrainSliceTexture(parameters, 2, renderObject.HeightmapSliceTextures[2] ?? firstSliceTexture);
+        SetEditorTerrainSliceTexture(parameters, 3, renderObject.HeightmapSliceTextures[3] ?? firstSliceTexture);
+        SetEditorTerrainSliceTexture(parameters, 4, renderObject.HeightmapSliceTextures[4] ?? firstSliceTexture);
+        SetEditorTerrainSliceTexture(parameters, 5, renderObject.HeightmapSliceTextures[5] ?? firstSliceTexture);
+        SetEditorTerrainSliceTexture(parameters, 6, renderObject.HeightmapSliceTextures[6] ?? firstSliceTexture);
+        SetEditorTerrainSliceTexture(parameters, 7, renderObject.HeightmapSliceTextures[7] ?? firstSliceTexture);
+    }
+
+    private static void SetEditorTerrainSliceTexture(ParameterCollection parameters, int sliceIndex, Texture texture)
+    {
+        switch (sliceIndex)
+        {
+            case 0: parameters.Set(RiverSurfaceKeys.HeightmapSlice0, texture); break;
+            case 1: parameters.Set(RiverSurfaceKeys.HeightmapSlice1, texture); break;
+            case 2: parameters.Set(RiverSurfaceKeys.HeightmapSlice2, texture); break;
+            case 3: parameters.Set(RiverSurfaceKeys.HeightmapSlice3, texture); break;
+            case 4: parameters.Set(RiverSurfaceKeys.HeightmapSlice4, texture); break;
+            case 5: parameters.Set(RiverSurfaceKeys.HeightmapSlice5, texture); break;
+            case 6: parameters.Set(RiverSurfaceKeys.HeightmapSlice6, texture); break;
+            case 7: parameters.Set(RiverSurfaceKeys.HeightmapSlice7, texture); break;
+        }
+    }
+
+    private static void SetEditorTerrainSliceBounds(ParameterCollection parameters, EditorTerrainEntity entity)
+    {
+        SetEditorTerrainSliceBounds(parameters, 0, GetEditorTerrainSliceBounds(entity, 0));
+        SetEditorTerrainSliceBounds(parameters, 1, GetEditorTerrainSliceBounds(entity, 1));
+        SetEditorTerrainSliceBounds(parameters, 2, GetEditorTerrainSliceBounds(entity, 2));
+        SetEditorTerrainSliceBounds(parameters, 3, GetEditorTerrainSliceBounds(entity, 3));
+        SetEditorTerrainSliceBounds(parameters, 4, GetEditorTerrainSliceBounds(entity, 4));
+        SetEditorTerrainSliceBounds(parameters, 5, GetEditorTerrainSliceBounds(entity, 5));
+        SetEditorTerrainSliceBounds(parameters, 6, GetEditorTerrainSliceBounds(entity, 6));
+        SetEditorTerrainSliceBounds(parameters, 7, GetEditorTerrainSliceBounds(entity, 7));
+    }
+
+    private static Vector4 GetEditorTerrainSliceBounds(EditorTerrainEntity entity, int sliceIndex)
+    {
+        if (sliceIndex >= entity.Slices.Count)
+        {
+            return new Vector4(0, 0, 1, 1);
+        }
+
+        var slice = entity.Slices[sliceIndex];
+        return new Vector4(slice.StartSampleX, slice.StartSampleZ, slice.Width, slice.Height);
+    }
+
+    private static void SetEditorTerrainSliceBounds(ParameterCollection parameters, int sliceIndex, Vector4 bounds)
+    {
+        switch (sliceIndex)
+        {
+            case 0: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds0, bounds); break;
+            case 1: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds1, bounds); break;
+            case 2: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds2, bounds); break;
+            case 3: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds3, bounds); break;
+            case 4: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds4, bounds); break;
+            case 5: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds5, bounds); break;
+            case 6: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds6, bounds); break;
+            case 7: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds7, bounds); break;
+        }
     }
 
     private static void SetTexture(ParameterCollection parameters, ObjectParameterKey<Texture> key, Texture? texture)
@@ -580,6 +734,18 @@ public sealed class RiverRenderFeature : RootRenderFeature
         blendState.RenderTargets[0].ColorDestinationBlend = Blend.InverseSecondarySourceAlpha;
         blendState.RenderTargets[0].AlphaSourceBlend = Blend.One;
         blendState.RenderTargets[0].AlphaDestinationBlend = Blend.Zero;
+        return blendState;
+    }
+
+    private static BlendStateDescription CreateSurfaceBlendState()
+    {
+        var blendState = BlendStateDescription.Default;
+        blendState.RenderTargets[0].BlendEnable = true;
+        blendState.RenderTargets[0].ColorSourceBlend = Blend.SourceAlpha;
+        blendState.RenderTargets[0].ColorDestinationBlend = Blend.InverseSourceAlpha;
+        blendState.RenderTargets[0].AlphaSourceBlend = Blend.SourceAlpha;
+        blendState.RenderTargets[0].AlphaDestinationBlend = Blend.InverseSourceAlpha;
+        blendState.RenderTargets[0].ColorWriteChannels = ColorWriteChannels.Red | ColorWriteChannels.Green | ColorWriteChannels.Blue;
         return blendState;
     }
 

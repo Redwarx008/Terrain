@@ -6,8 +6,8 @@ internal static class RiverShaderTextTests
 
     public static void RunAll()
     {
-        TestHarness.Run("river texture assets have correct Stride color-space flags", RiverTextureAssetsHaveStrideDescriptors);
-        TestHarness.Run("river texture assets are bundle roots for dynamic loading", RiverTextureAssetsAreBundleRoots);
+        TestHarness.Run("river texture files exist in game map water", RiverTextureFilesExistInGameMapWater);
+        TestHarness.Run("river bottom and water textures are not bundle roots", RiverBottomAndWaterTexturesAreNotBundleRoots);
         TestHarness.Run("river reflection specular asset remains a cubemap", ReflectionSpecularAssetRemainsCubemap);
         TestHarness.Run("river bottom lighting uses map scene environment inputs", BottomLightingUsesMapSceneEnvironmentInputs);
         TestHarness.Run("river bottom shader samples texture assets", BottomShaderSamplesTextureAssets);
@@ -30,54 +30,37 @@ internal static class RiverShaderTextTests
         TestHarness.Run("river resource loader does not silently ignore missing textures", ResourceLoaderDoesNotSilentlyIgnoreMissingTextures);
     }
 
-    private static void RiverTextureAssetsHaveStrideDescriptors()
+    private static void RiverTextureFilesExistInGameMapWater()
     {
-        (string DescriptorPath, string SourcePath, bool UseSRgbSampling)[] assets =
+        string[] fileNames =
         [
-            ("Terrain.Editor/Assets/River/Bottom/bottom-diffuse.sdtex", "bottom-diffuse.dds", true),
-            ("Terrain.Editor/Assets/River/Bottom/bottom-normal.sdtex", "bottom-normal.dds", false),
-            ("Terrain.Editor/Assets/River/Bottom/bottom-properties.sdtex", "bottom-properties.dds", false),
-            ("Terrain.Editor/Assets/River/Bottom/bottom-depth.sdtex", "bottom-depth.dds", false),
-            ("Terrain.Editor/Assets/River/Water/ambient-normal.sdtex", "ambient-normal.dds", false),
-            ("Terrain.Editor/Assets/River/Water/flow-normal.sdtex", "flow-normal.dds", false),
-            ("Terrain.Editor/Assets/River/Water/foam.sdtex", "foam.dds", false),
-            ("Terrain.Editor/Assets/River/Water/foam-ramp.sdtex", "foam-ramp.dds", false),
-            ("Terrain.Editor/Assets/River/Water/foam-map.sdtex", "foam-map.dds", false),
-            ("Terrain.Editor/Assets/River/Water/foam-noise.sdtex", "foam-noise.dds", false),
-            ("Terrain.Editor/Assets/River/Water/shadow-color.sdtex", "shadow-color.dds", true),
-            ("Terrain.Editor/Assets/River/Water/water-color.sdtex", "water-color.dds", false),
-            ("Terrain.Editor/Assets/River/Environment/reflection-specular.sdtex", "reflection-specular.dds", false),
+            "bottom_diffuse.dds",
+            "bottom_normal.dds",
+            "bottom_properties.dds",
+            "bottom_depth.dds",
+            "ambient_normal.dds",
+            "flow_normal.dds",
+            "foam.dds",
+            "foam_ramp.dds",
+            "foam_map.dds",
+            "foam_noise.dds",
+            "shadow_color.dds",
+            "water_color.dds",
         ];
 
-        foreach (var (descriptorPath, sourcePath, useSRgbSampling) in assets)
+        foreach (string fileName in fileNames)
         {
-            string fullDescriptorPath = GetRepositoryPath(descriptorPath);
-            TestHarness.Assert(File.Exists(fullDescriptorPath), $"{descriptorPath} should exist so Content.Load can resolve river texture assets");
-
-            string descriptor = File.ReadAllText(fullDescriptorPath);
-            AssertContains(descriptor, "!Texture", $"{descriptorPath} should be a Stride texture asset");
-            AssertContains(descriptor, sourcePath, $"{descriptorPath} should point at {sourcePath}");
-            AssertContains(descriptor, "!ColorTextureType", $"{descriptorPath} should import packed DDS channels without normal-map conversion");
-            AssertContains(
-                descriptor,
-                $"UseSRgbSampling: {useSRgbSampling.ToString().ToLowerInvariant()}",
-                $"{descriptorPath} should preserve the approved color-space sampling mode");
-
-            string fullSourcePath = Path.Combine(Path.GetDirectoryName(fullDescriptorPath)!, sourcePath);
-            TestHarness.Assert(File.Exists(fullSourcePath), $"{sourcePath} should exist next to {descriptorPath}");
-
-            if (descriptorPath.EndsWith("water-color.sdtex", StringComparison.Ordinal))
-            {
-                AssertContains(descriptor, "IsCompressed: false", "water-color should avoid Stride BC3 recompression and preserve source color bytes");
-            }
+            string fullPath = GetRepositoryPath($"game/map/water/{fileName}");
+            TestHarness.Assert(File.Exists(fullPath), $"{fileName} should exist in game/map/water for direct river texture loading");
+            TestHarness.Assert(new FileInfo(fullPath).Length > 0, $"{fileName} should not be empty");
         }
     }
 
-    private static void RiverTextureAssetsAreBundleRoots()
+    private static void RiverBottomAndWaterTexturesAreNotBundleRoots()
     {
         string package = ReadRepositoryText("Terrain.Editor/Terrain.Editor.sdpkg");
 
-        string[] urls =
+        string[] removedUrls =
         [
             "River/Bottom/bottom-diffuse",
             "River/Bottom/bottom-normal",
@@ -91,13 +74,14 @@ internal static class RiverShaderTextTests
             "River/Water/foam-noise",
             "River/Water/shadow-color",
             "River/Water/water-color",
-            "River/Environment/reflection-specular",
         ];
 
-        foreach (string url in urls)
+        foreach (string url in removedUrls)
         {
-            AssertContains(package, $":{url}", $"{url} should be a RootAsset so dynamic Content.Load includes it in the bundle");
+            AssertNotContains(package, $":{url}", $"{url} should not be a RootAsset because river Bottom/Water textures are direct files under game/map/water");
         }
+
+        AssertContains(package, ":River/Environment/reflection-specular", "River environment reflection cubemap should remain a Stride RootAsset");
     }
 
     private static void ReflectionSpecularAssetRemainsCubemap()
@@ -446,7 +430,7 @@ internal static class RiverShaderTextTests
         AssertNotContains(shader, "ApplyFogOfWar", "RiverSurface should not run strategy-layer fog-of-war color adjustment");
         AssertNotContains(shader, "SampleFogOfWarAlphaRaw", "RiverSurface should not sample strategy-layer fog-of-war alpha");
 
-        AssertContains(loader, "ShadowColorUrl = \"River/Water/shadow-color\"", "RiverResourceLoader should load the shadow tint texture through a neutral asset URL");
+        AssertContains(loader, "ShadowColorFileName = \"shadow_color.dds\"", "RiverResourceLoader should load the shadow tint texture from game/map/water");
         AssertContains(feature, "TryBindEditorTerrainInputs()", "RiverRenderFeature should bind editor terrain height slices into the surface pass");
         AssertContains(feature, "RiverSurfaceKeys.ShadowNoiseTexture", "RiverRenderFeature should bind the shadow tint texture into the surface pass");
         AssertContains(feature, "RiverSurfaceKeys.HeightmapSlice0", "RiverRenderFeature should bind editor terrain height slices into the river surface key set");
@@ -522,8 +506,15 @@ internal static class RiverShaderTextTests
     {
         string loader = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverResourceLoader.cs");
 
-        AssertContains(loader, "catch (Exception exception)", "RiverResourceLoader should explicitly handle load failures instead of silently returning null");
-        AssertContains(loader, "throw new InvalidOperationException($\"River texture asset '{url}' could not be loaded. Ensure the .sdtex is included as a RootAsset in Terrain.Editor.sdpkg.\", exception);", "RiverResourceLoader should rethrow load failures with actionable context");
+        AssertContains(loader, "LoadRequiredLocalTexture", "RiverResourceLoader should have an explicit local file loading path for Bottom/Water textures");
+        AssertContains(loader, "game/map/water", "RiverResourceLoader should report the local river texture directory when a file is missing");
+        AssertContains(loader, "Log.Error($\"River local texture file '{path}' is missing from game/map/water.\");", "RiverResourceLoader should log missing local texture files before failing");
+        AssertContains(loader, "File.OpenRead(path)", "RiverResourceLoader should let missing local files fail naturally after logging");
+        AssertContains(loader, "Texture.Load(", "RiverResourceLoader should create GPU textures directly from DDS streams");
+        AssertContains(loader, "ReflectionSpecularUrl = \"River/Environment/reflection-specular\"", "RiverResourceLoader should keep the environment reflection cubemap as a Stride content asset");
+        AssertNotContains(loader, "catch (Exception", "RiverResourceLoader should not catch texture load exceptions; load failures should crash with their original exception");
+        AssertNotContains(loader, "River/Water/", "RiverResourceLoader should not keep Stride content URLs for water textures");
+        AssertNotContains(loader, "River/Bottom/", "RiverResourceLoader should not keep Stride content URLs for bottom textures");
     }
 
     private static string ReadRepositoryText(string relativePath)

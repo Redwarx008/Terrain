@@ -1,9 +1,0 @@
-!Texture
-Id: fda200cf-a11d-48cf-9e83-6cad2401afbf
-SerializedVersion: {Stride: 2.0.0.0}
-Tags: []
-Source: !file foam-map.dds
-Type: !ColorTextureType
-    UseSRgbSampling: false
-    ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
-IsStreamable: false
