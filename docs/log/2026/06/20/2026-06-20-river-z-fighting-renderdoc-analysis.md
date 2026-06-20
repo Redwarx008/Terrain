@@ -27,7 +27,7 @@
 **Current State Before Fix:**
 - River rendering uses `bottom -> refraction -> surface`.
 - `RiverSurface` outputs only `SV_Target`; it does not write `SV_Depth`.
-- `RiverRenderFeature` uses `DepthStencilStates.DepthRead`, so river surface tests against scene depth but does not write it.
+- `RiverRenderFeature` used `DepthStencilStates.DepthRead`, so river surface tested against scene depth and did not write it, but inherited Stride's default `LessEqual` compare.
 - Bottom and surface shared a small rasterizer bias: `DepthBias=-1`, `SlopeScaleDepthBias=-1`.
 
 ---
@@ -102,11 +102,11 @@ Clamping generated river vertices to sampled terrain height was a plausible firs
 
 ## Decisions Made
 
-### Decision 1: Keep Surface DepthRead / No Depth Write
+### Decision 1: Keep Read-Only Depth, But Use Strict Less
 
-**Decision:** Preserve `DepthStencilStates.DepthRead` for the surface pass.
+**Decision:** Preserve depth testing without depth writes, but use an explicit `DepthStencilStateDescription` with `DepthBufferFunction=Less`.
 
-**Rationale:** CK3 surface overlays terrain while leaving terrain depth in place. Disabling depth entirely would let rivers draw through unrelated foreground geometry.
+**Rationale:** CK3 surface overlays terrain while leaving terrain depth in place, but its water draw uses strict `Less`. Stride's built-in `DepthRead` uses `LessEqual`, which allowed equal-depth hidden river fragments to pass after the strong bias. Disabling depth entirely would let rivers draw through unrelated foreground geometry.
 
 ### Decision 2: Split Bottom And Surface Rasterizer Bias
 
@@ -114,6 +114,10 @@ Clamping generated river vertices to sampled terrain height was a plausible firs
 - bottom: `DepthBias=-1`, `SlopeScaleDepthBias=-1`
 - initial surface probe: `DepthBias=-512`, `SlopeScaleDepthBias=-4`
 - follow-up CK3 close-view measurement: effective surface depth is about `0.00298` in front of terrain, equivalent to roughly `DepthBias=-50000` on D24; surface now uses `DepthBias=-50000`, `SlopeScaleDepthBias=0`
+- follow-up CK3 hidden-river capture raw rasterizer state: visible water draw `1087` uses `DepthBias=-50000`, `SlopeScaledDepthBias=0`, `DepthBiasClamp=0`; another water/material draw `1150` uses `DepthBias=-100`; draw `1789` uses `DepthBias=-30000`, `SlopeScaledDepthBias=-2`. CK3 does not clamp the water rasterizer bias. Hidden river pixels still fail depth because their post-transform water depth remains behind the occluding terrain after bias.
+- follow-up project capture `C:\Users\Redwa\Desktop\debug.rdc`: river surface draw `736` used the same `DepthBias=-50000`, `SlopeScaledDepthBias=0`, `DepthBiasClamp=0`, `CullMode=Back`, but used `LessEqual` depth compare via `DepthStencilStates.DepthRead`. Pixel `(1152,430)` had terrain depth `0.999668`; the biased river fragment landed at the same stored depth and passed because equality was allowed. CK3 visible water draw `1087` uses strict `Less`, so equal-depth hidden fragments are rejected. River passes now use an explicit read-only depth state with `DepthBufferFunction=Less`.
+- follow-up updated project capture `C:\Users\Redwa\Desktop\debug.rdc`: the mountain overlay is no longer an equality case. Surface draw `3360` passes because `DepthBias=-50000` moves the water by about `0.00298` in D24 depth. Hidden mountain samples have terrain depth `0.99749..0.99769` and biased river `SV_Position.z=0.99595..0.99618`; without the full bias, the river would still be about `0.00144..0.00152` behind the terrain.
+- final comparison: CK3's raw `-50000` depends on its effective near clip/depth distribution. CK3 visible draw `1087` has `w=31.24`, biased `SV_Position.z=0.677015`; adding back the D24 bias gives about `0.679995`, implying an effective near plane around `10`. Project draw `3360` and terrain draw `204` implied near plane around `0.1`, matching the old `EmbeddedStrideViewportGame` setting. The editor camera is now changed to `NearClipPlane=10` on both asset-scene and fallback-scene paths, so surface can use the CK3 raw `DepthBias=-50000`, `SlopeScaledDepthBias=0`, strict `Less`.
 
 **Rationale:** The artifact only needs the surface pass to be stably in front of terrain. Bottom renders to the river/refraction target and should not inherit a larger scene-depth-oriented bias.
 
@@ -128,7 +132,7 @@ Clamping generated river vertices to sampled terrain height was a plausible firs
 - `Terrain.Editor/Rendering/River/RiverRenderFeature.cs`
   - Added separate bottom/surface rasterizer bias constants.
   - Split surface rasterizer state from bottom rasterizer state.
-  - Surface still uses `DepthStencilStates.DepthRead`.
+  - River passes now use an explicit read-only depth state with strict `Less`.
 - `Terrain.Editor/Services/RiverMeshService.cs`
   - Removed the temporary `LiftAboveTerrain` clamp from `BuildRiverMesh`.
 - `Terrain.Editor.Tests/Program.cs`
@@ -142,12 +146,14 @@ Clamping generated river vertices to sampled terrain height was a plausible firs
 
 ## Verification
 
-- `dotnet build Terrain.Editor/Terrain.Editor.csproj -c Debug`
+- `git diff --check -- Terrain.Editor/Rendering/River/RiverRenderFeature.cs Terrain.Editor.Tests/RiverRenderFeatureRuntimeTests.cs docs/log/2026/06/20/2026-06-20-river-z-fighting-renderdoc-analysis.md docs/ARCHITECTURE_OVERVIEW.md docs/CURRENT_FEATURES.md`
+  - Passed; Git only reported existing LF-to-CRLF normalization warnings.
+- `dotnet build Terrain.Editor.Tests/Terrain.Editor.Tests.csproj -c Debug /p:UseAppHost=false /p:OutDir="artifacts/verify-test/"`
   - Passed.
-  - Warnings only: existing NuGet vulnerability warnings, unused fields/events, and WinForms DPI manifest warning.
-- `dotnet run --project Terrain.Editor.Tests/Terrain.Editor.Tests.csproj -c Debug /p:UseAppHost=false`
-  - New/changed river tests passed, including `river surface rasterizer uses stronger depth bias than bottom`.
-  - Final failure remains the pre-existing repository hygiene test: tracked files still exist under `game/map/...`.
+  - Warnings only: existing NuGet vulnerability warnings.
+- `dotnet Terrain.Editor.Tests/artifacts/verify-test/Terrain.Editor.Tests.dll`
+  - River-related tests passed, including `river surface rasterizer uses stronger depth bias than bottom` (asserts `DepthBias=-50000` with no clamp), `river depth read uses strict less compare like target water`, and `editor camera uses target near clip for river depth bias`.
+  - Final exit code remains `1` due to known unrelated failures: tracked files still exist under `game/map/...`, and isolated `OutDir` makes several text tests infer source paths like `E:\Terrain.Editor\...`.
 
 ---
 

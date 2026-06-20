@@ -38,6 +38,8 @@ public sealed class EmbeddedStrideViewportGame : Game
     private static readonly Vector3 MapToSunDirection = new Vector3(-0.8181818f, 0.54545456f, -0.18181819f);
     private const float MapEnvironmentIntensity = 20.0f;
     private const float EditorToneMapExposureEv = -2.0f;
+    private const float EditorCameraNearClip = 10.0f;
+    private const float EditorCameraFarClip = 100000.0f;
 
     private readonly EditorTerrainModeController _modeController = new();
     private readonly RiverWireframeModeController _riverWireframeModeController = new();
@@ -590,6 +592,7 @@ public sealed class EmbeddedStrideViewportGame : Game
             _scene = null;
             return false;
         }
+        ConfigureEditorCameraClipPlanes(_camera);
 
         ApplyMapLighting(_scene);
 
@@ -620,8 +623,8 @@ public sealed class EmbeddedStrideViewportGame : Game
 
         _camera = new CameraComponent
         {
-            NearClipPlane = 0.1f,
-            FarClipPlane = 100000.0f,
+            NearClipPlane = EditorCameraNearClip,
+            FarClipPlane = EditorCameraFarClip,
         };
 
         var cameraEntity = new Entity("Editor Camera")
@@ -683,6 +686,12 @@ public sealed class EmbeddedStrideViewportGame : Game
         SceneSystem.SceneInstance = new SceneInstance(Services, _scene);
         InitializeTerrainManager(defaultTerrainTexture);
         CreateBrushDecalEntity();
+    }
+
+    private static void ConfigureEditorCameraClipPlanes(CameraComponent camera)
+    {
+        camera.NearClipPlane = EditorCameraNearClip;
+        camera.FarClipPlane = EditorCameraFarClip;
     }
 
     private void InitializeTerrainManager(Texture? defaultTerrainTexture)
@@ -794,11 +803,27 @@ public sealed class EmbeddedStrideViewportGame : Game
                 || entity.Get<LightComponent>() != null
                 || entity.Get<BackgroundComponent>() != null)
             {
-                editorScene.Entities.Add(entity.Clone());
+                var editorEntity = entity.Clone();
+                RemoveNonEditorSceneComponents(editorEntity);
+                editorScene.Entities.Add(editorEntity);
             }
         }
 
         return editorScene;
+    }
+
+    private static void RemoveNonEditorSceneComponents(Entity entity)
+    {
+        var componentsToRemove = entity.Components
+            .Where(static component => component is not TransformComponent
+                && component is not CameraComponent
+                && component is not LightComponent
+                && component is not BackgroundComponent)
+            .ToArray();
+        foreach (EntityComponent component in componentsToRemove)
+        {
+            entity.Remove(component);
+        }
     }
 
     private static void EnsureEditorTerrainRenderFeature(GraphicsCompositor graphicsCompositor)

@@ -34,6 +34,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
     private const int BottomDepthBias = -1;
     private const float BottomSlopeScaleDepthBias = -1.0f;
     private const int SurfaceDepthBias = -50000;
+    private const float TargetSurfaceDepthBiasNearClip = 10.0f;
+    private const float SurfaceDepthBiasNearClipScaleExponent = 0.5f;
     private const float SurfaceSlopeScaleDepthBias = 0.0f;
 
     private static readonly InputElementDescription[] RiverInputElements = RiverVertex.Layout.CreateInputElements();
@@ -81,12 +83,12 @@ public sealed class RiverRenderFeature : RootRenderFeature
         bottomPipelineState = CreatePipelineState(
             Context.GraphicsDevice,
             CreateDualSourceBlendState(),
-            DepthStencilStates.DepthRead,
+            CreateDepthStencilState(),
             CreateRasterizerState(wireframe: false, isSurface: false));
         surfacePipelineState = CreatePipelineState(
             Context.GraphicsDevice,
             CreateSurfaceBlendState(),
-            DepthStencilStates.DepthRead,
+            CreateDepthStencilState(),
             CreateRasterizerState(wireframe: false, isSurface: true));
     }
 
@@ -146,8 +148,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         PrepareBottomSceneLighting(context, renderView);
         surfaceEffect.UpdateEffect(graphicsDevice);
         BindRiverTextures(graphicsDevice);
-        ApplyDebugRasterizerState(bottomPipelineState, isSurface: false);
-        ApplyDebugRasterizerState(surfacePipelineState, isSurface: true);
+        ApplyDebugRasterizerState(bottomPipelineState, isSurface: false, nearClipPlane: renderView.NearClipPlane);
+        ApplyDebugRasterizerState(surfacePipelineState, isSurface: true, nearClipPlane: renderView.NearClipPlane);
 
         if (DebugMode != RiverRenderDebugMode.SurfaceOnly)
         {
@@ -577,9 +579,9 @@ public sealed class RiverRenderFeature : RootRenderFeature
         }
     }
 
-    private void ApplyDebugRasterizerState(MutablePipelineState pipelineState, bool isSurface)
+    private void ApplyDebugRasterizerState(MutablePipelineState pipelineState, bool isSurface, float nearClipPlane)
     {
-        pipelineState.State.RasterizerState = CreateRasterizerState(DebugMode == RiverRenderDebugMode.Wireframe, isSurface);
+        pipelineState.State.RasterizerState = CreateRasterizerStateForRenderView(DebugMode == RiverRenderDebugMode.Wireframe, isSurface, nearClipPlane);
     }
 
     private void BindRiverTextures(GraphicsDevice graphicsDevice)
@@ -654,11 +656,37 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
     private static RasterizerStateDescription CreateRasterizerState(bool wireframe, bool isSurface)
     {
-        return new RasterizerStateDescription(CullMode.None)
+        return new RasterizerStateDescription(CullMode.Back)
         {
             FillMode = wireframe ? FillMode.Wireframe : FillMode.Solid,
             DepthBias = isSurface ? SurfaceDepthBias : BottomDepthBias,
             SlopeScaleDepthBias = isSurface ? SurfaceSlopeScaleDepthBias : BottomSlopeScaleDepthBias,
+        };
+    }
+
+    private static RasterizerStateDescription CreateRasterizerStateForRenderView(bool wireframe, bool isSurface, float nearClipPlane)
+    {
+        return new RasterizerStateDescription(CullMode.Back)
+        {
+            FillMode = wireframe ? FillMode.Wireframe : FillMode.Solid,
+            DepthBias = isSurface ? ResolveSurfaceDepthBias(nearClipPlane) : BottomDepthBias,
+            SlopeScaleDepthBias = isSurface ? SurfaceSlopeScaleDepthBias : BottomSlopeScaleDepthBias,
+        };
+    }
+
+    private static int ResolveSurfaceDepthBias(float nearClipPlane)
+    {
+        float normalizedNear = MathUtil.Clamp(nearClipPlane / TargetSurfaceDepthBiasNearClip, 0.0f, 1.0f);
+        float scaledMagnitude = Math.Abs(SurfaceDepthBias) * MathF.Pow(normalizedNear, SurfaceDepthBiasNearClipScaleExponent);
+        int depthBias = Math.Max(Math.Abs(BottomDepthBias), (int)MathF.Round(scaledMagnitude));
+        return -depthBias;
+    }
+
+    private static DepthStencilStateDescription CreateDepthStencilState()
+    {
+        return new DepthStencilStateDescription(depthEnable: true, depthWriteEnable: false)
+        {
+            DepthBufferFunction = CompareFunction.Less
         };
     }
 }

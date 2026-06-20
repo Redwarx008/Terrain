@@ -98,6 +98,7 @@ Hierarchy:
                         Id: 30e15808-a2eb-4691-b1a5-15c658c53f74
                         Name: null
                         Projection: Perspective
+                        NearClipPlane: 10.0
                         FarClipPlane: 100000.0
                         Slot: aa82821e-a0b7-4ac6-a4e7-7930bbac699c
                     91a17be5c01f5bc39182f3ae5861e110: !Terrain.BasicCameraController,Terrain

@@ -11,6 +11,7 @@ internal static class RiverRenderFeatureRuntimeTests
         TestHarness.Run("river dual-source blend state keeps payload alpha direct-write", DualSourceBlendStateKeepsPayloadAlphaDirectWrite);
         TestHarness.Run("river surface blend state matches target non-premultiplied rgb-only pass", SurfaceBlendStateMatchesTargetNonPremultipliedRgbOnlyPass);
         TestHarness.Run("river surface rasterizer uses stronger depth bias than bottom", SurfaceRasterizerUsesStrongerDepthBiasThanBottom);
+        TestHarness.Run("river depth read uses strict less compare like target water", DepthReadUsesStrictLessCompareLikeTargetWater);
     }
 
     private static void DualSourceBlendStateKeepsPayloadAlphaDirectWrite()
@@ -57,7 +58,41 @@ internal static class RiverRenderFeatureRuntimeTests
         var bottomState = (RasterizerStateDescription)bottomResult!;
         var surfaceState = (RasterizerStateDescription)surfaceResult!;
         TestHarness.AssertEqual(-1, bottomState.DepthBias, "Bottom pass should keep its small historical depth bias");
-        TestHarness.AssertEqual(-50000, surfaceState.DepthBias, "Surface pass should use CK3-scale fixed D24 depth bias");
+        TestHarness.AssertEqual(CullMode.Back, surfaceState.CullMode, "Surface pass should cull back faces like the target water pass");
+        TestHarness.AssertEqual(-50000, surfaceState.DepthBias, "Surface pass should use the target fixed bias with the editor camera near plane matched to the target");
+        TestHarness.AssertEqual(0.0f, surfaceState.DepthBiasClamp, "Surface pass should not rely on clamp to compensate for an over-large fixed bias");
         TestHarness.AssertEqual(0.0f, surfaceState.SlopeScaleDepthBias, "Surface pass should not add slope bias on top of the CK3-scale fixed bias");
+
+        MethodInfo? createRasterizerStateForRenderView = typeof(RiverRenderFeature).GetMethod("CreateRasterizerStateForRenderView", BindingFlags.NonPublic | BindingFlags.Static);
+        TestHarness.Assert(createRasterizerStateForRenderView != null, "RiverRenderFeature should adapt surface depth bias to the actual render-view near clip");
+
+        object? legacyNearResult = createRasterizerStateForRenderView!.Invoke(null, new object?[] { false, true, 0.1f });
+        object? targetNearResult = createRasterizerStateForRenderView.Invoke(null, new object?[] { false, true, 10.0f });
+        TestHarness.Assert(legacyNearResult is RasterizerStateDescription, "Render-view rasterizer factory should return a RasterizerStateDescription for legacy near");
+        TestHarness.Assert(targetNearResult is RasterizerStateDescription, "Render-view rasterizer factory should return a RasterizerStateDescription for target near");
+
+        var legacyNearSurfaceState = (RasterizerStateDescription)legacyNearResult!;
+        var targetNearSurfaceState = (RasterizerStateDescription)targetNearResult!;
+        TestHarness.AssertEqual(-5000, legacyNearSurfaceState.DepthBias, "Legacy near=0.1 render views should derive a smaller surface bias from the target near-clip calibration");
+        TestHarness.AssertEqual(-50000, targetNearSurfaceState.DepthBias, "Target near=10 render views should keep the CK3 raw surface bias");
+
+        object? intermediateNearResult = createRasterizerStateForRenderView.Invoke(null, new object?[] { false, true, 2.5f });
+        TestHarness.Assert(intermediateNearResult is RasterizerStateDescription, "Render-view rasterizer factory should return a RasterizerStateDescription for intermediate near");
+        var intermediateNearSurfaceState = (RasterizerStateDescription)intermediateNearResult!;
+        TestHarness.AssertEqual(-25000, intermediateNearSurfaceState.DepthBias, "Surface depth bias should scale continuously with the actual render-view near clip instead of switching between hard-coded presets");
+    }
+
+    private static void DepthReadUsesStrictLessCompareLikeTargetWater()
+    {
+        MethodInfo? createDepthStencilState = typeof(RiverRenderFeature).GetMethod("CreateDepthStencilState", BindingFlags.NonPublic | BindingFlags.Static);
+        TestHarness.Assert(createDepthStencilState != null, "RiverRenderFeature should keep a dedicated depth-stencil-state factory");
+
+        object? result = createDepthStencilState!.Invoke(null, null);
+        TestHarness.Assert(result is DepthStencilStateDescription, "River depth-state factory should return a DepthStencilStateDescription");
+
+        var state = (DepthStencilStateDescription)result!;
+        TestHarness.Assert(state.DepthBufferEnable, "River passes should keep depth testing enabled");
+        TestHarness.Assert(!state.DepthBufferWriteEnable, "River passes should not write scene depth");
+        TestHarness.AssertEqual(CompareFunction.Less, state.DepthBufferFunction, "River passes should reject equal-depth hidden fragments instead of using LessEqual");
     }
 }

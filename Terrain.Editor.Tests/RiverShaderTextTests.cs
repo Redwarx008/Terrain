@@ -11,6 +11,7 @@ internal static class RiverShaderTextTests
         TestHarness.Run("river reflection specular asset remains a cubemap", ReflectionSpecularAssetRemainsCubemap);
         TestHarness.Run("river bottom lighting uses map scene environment inputs", BottomLightingUsesMapSceneEnvironmentInputs);
         TestHarness.Run("editor tonemap uses fixed exposure for map lighting", EditorToneMapUsesFixedExposureForMapLighting);
+        TestHarness.Run("editor camera uses target near clip for river depth bias", EditorCameraUsesTargetNearClipForRiverDepthBias);
         TestHarness.Run("river bottom shader samples texture assets", BottomShaderSamplesTextureAssets);
         TestHarness.Run("river common shader uses cosine river depth profile", CommonShaderUsesCosineRiverDepthProfile);
         TestHarness.Run("river bottom shader uses target advanced uv and parallax semantics", BottomShaderUsesTargetAdvancedUvAndParallaxSemantics);
@@ -140,6 +141,27 @@ internal static class RiverShaderTextTests
         AssertContains(viewportGame, "toneMap.AutoKeyValue = false;", "Editor tonemap should not derive key value from terrain luminance");
         AssertContains(viewportGame, "toneMap.TemporalAdaptation = false;", "Editor tonemap should not retain frame-history exposure changes");
         AssertContains(viewportGame, "toneMap.Exposure = EditorToneMapExposureEv;", "Editor tonemap should bind the fixed exposure value");
+    }
+
+    private static void EditorCameraUsesTargetNearClipForRiverDepthBias()
+    {
+        string viewportGame = ReadRepositoryText("Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs").Replace("\r\n", "\n");
+        string renderFeature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
+        string mainScene = ReadRepositoryText("Terrain/Assets/MainScene.sdscene");
+
+        AssertContains(viewportGame, "EditorCameraNearClip = 10.0f", "Editor camera near clip should match the target water depth-bias distribution");
+        AssertContains(viewportGame, "EditorCameraFarClip = 100000.0f", "Editor camera far clip should keep the large terrain view range");
+        AssertContains(viewportGame, "ConfigureEditorCameraClipPlanes(_camera);", "Asset-loaded editor scene should override the camera clip planes");
+        AssertContains(viewportGame, "NearClipPlane = EditorCameraNearClip", "Fallback editor scene should use the shared near clip");
+        AssertContains(viewportGame, "FarClipPlane = EditorCameraFarClip", "Fallback editor scene should use the shared far clip");
+        AssertContains(viewportGame, "RemoveNonEditorSceneComponents(editorEntity);", "Asset-loaded editor scene should not keep runtime camera scripts that compete with the embedded editor camera controller");
+        AssertContains(viewportGame, "component is not TransformComponent", "Editor scene cloning should preserve transforms");
+        AssertContains(viewportGame, "component is not CameraComponent", "Editor scene cloning should preserve camera components");
+        AssertContains(viewportGame, "component is not LightComponent", "Editor scene cloning should preserve lighting components");
+        AssertContains(viewportGame, "component is not BackgroundComponent", "Editor scene cloning should preserve background components");
+        AssertContains(mainScene, "NearClipPlane: 10.0", "MainScene camera asset should also serialize the target near clip so stale/default asset data cannot keep near at 0.1");
+        AssertContains(mainScene, "FarClipPlane: 100000.0", "MainScene camera asset should preserve the large terrain far clip");
+        AssertContains(renderFeature, "SurfaceDepthBias = -50000", "River surface should use the target raw depth bias once the editor near clip matches the target distribution");
     }
 
     private static void BottomShaderSamplesTextureAssets()
