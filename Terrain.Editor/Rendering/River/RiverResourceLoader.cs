@@ -23,7 +23,6 @@ public sealed class RiverResourceLoader : IDisposable
     private const string FoamRampFileName = "foam_ramp.dds";
     private const string FoamMapFileName = "foam_map.dds";
     private const string FoamNoiseFileName = "foam_noise.dds";
-    private const string ShadowColorFileName = "shadow_color.dds";
     private const string WaterColorFileName = "water_color.dds";
     public const string ReflectionSpecularUrl = "River/Environment/reflection-specular";
 
@@ -37,7 +36,6 @@ public sealed class RiverResourceLoader : IDisposable
     public Texture? FoamRamp { get; private set; }
     public Texture? FoamMap { get; private set; }
     public Texture? FoamNoise { get; private set; }
-    public Texture? ShadowColor { get; private set; }
     public Texture? WaterColor { get; private set; }
     public Texture? ReflectionSpecular { get; private set; }
 
@@ -59,7 +57,6 @@ public sealed class RiverResourceLoader : IDisposable
         FoamRamp = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamRampFileName, loadAsSrgb: false);
         FoamMap = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamMapFileName, loadAsSrgb: false);
         FoamNoise = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamNoiseFileName, loadAsSrgb: false);
-        ShadowColor = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, ShadowColorFileName, loadAsSrgb: true);
         WaterColor = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, WaterColorFileName, loadAsSrgb: false);
         ReflectionSpecular = LoadRequiredContentTexture(content, ReflectionSpecularUrl);
     }
@@ -78,7 +75,6 @@ public sealed class RiverResourceLoader : IDisposable
         DisposeLocalTexture(FoamRamp);
         DisposeLocalTexture(FoamMap);
         DisposeLocalTexture(FoamNoise);
-        DisposeLocalTexture(ShadowColor);
         DisposeLocalTexture(WaterColor);
         UnloadContentTexture(content, ReflectionSpecular);
         Dispose();
@@ -96,7 +92,6 @@ public sealed class RiverResourceLoader : IDisposable
         FoamRamp = null;
         FoamMap = null;
         FoamNoise = null;
-        ShadowColor = null;
         WaterColor = null;
         ReflectionSpecular = null;
     }

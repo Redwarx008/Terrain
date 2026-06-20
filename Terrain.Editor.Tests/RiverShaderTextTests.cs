@@ -24,7 +24,7 @@ internal static class RiverShaderTextTests
         TestHarness.Run("river surface shader uses target water normals and flow", SurfaceShaderUsesTargetWaterNormalsAndFlow);
         TestHarness.Run("river surface shader follows target refraction and fade semantics", SurfaceShaderFollowsTargetRefractionAndFadeSemantics);
         TestHarness.Run("river surface shader uses target water lighting structure", SurfaceShaderUsesTargetWaterLightingStructure);
-        TestHarness.Run("river surface shader applies debug4 post wrapper", SurfaceShaderAppliesDebug4PostWrapper);
+        TestHarness.Run("river surface shader does not apply removed post wrapper", SurfaceShaderDoesNotApplyRemovedPostWrapper);
         TestHarness.Run("river render feature separates scene seed from working refraction buffer", RenderFeatureSeparatesSceneSeedFromWorkingBuffer);
         TestHarness.Run("river scene seed writes depth payload instead of clearing alpha", RenderFeatureSceneSeedWritesDepthPayload);
         TestHarness.Run("river bottom shader packs refraction distance for surface see through", BottomShaderPacksRefractionDistanceForSurfaceSeeThrough);
@@ -45,7 +45,6 @@ internal static class RiverShaderTextTests
             "foam_ramp.dds",
             "foam_map.dds",
             "foam_noise.dds",
-            "shadow_color.dds",
             "water_color.dds",
         ];
 
@@ -422,48 +421,31 @@ internal static class RiverShaderTextTests
         AssertNotContains(shader, "normalEnergy", "RiverSurface should not keep the old global normal-energy color gain");
     }
 
-    private static void SurfaceShaderAppliesDebug4PostWrapper()
+    private static void SurfaceShaderDoesNotApplyRemovedPostWrapper()
     {
         string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
         string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
         string loader = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverResourceLoader.cs");
 
         AssertContains(shader, "CalcRiverAdvanced(waterColor);", "RiverSurface PS should still compute the target water body");
-        AssertContains(shader, "waterColor = ApplySurfacePostProcessing(waterColor, streams.PositionWS.xyz);", "RiverSurface PS should run the restored post wrapper after CalcRiverAdvanced");
-        AssertContains(shader, "streams.ColorTarget = waterColor;", "RiverSurface PS should write the post-processed river color");
-        AssertContains(shader, "stage Texture2D<float> HeightmapSlice0;", "RiverSurface should declare editor terrain height slice inputs for terrain-normal tint");
-        AssertContains(shader, "stage Texture2D<float4> ShadowNoiseTexture;", "RiverSurface should declare the shadow tint texture used by the restored wrapper");
-        AssertContains(shader, "float3 CalculateRiverTerrainNormal(float2 worldPositionXZ)", "RiverSurface should calculate terrain normals from project terrain height data");
-        AssertContains(shader, "stage float2 _MapSadowTintNoiseUVTiling = float2(500.0f, 500.0f);", "RiverSurface should restore the target shadow tint tiling parameter used in debug4");
-        AssertContains(shader, "stage float _MapSadowTintStrength = 0.5f;", "RiverSurface should restore the target shadow tint strength parameter used in debug4");
-        AssertContains(shader, "stage float _MapSadowTintThresholdMin = 0.1f;", "RiverSurface should restore the target shadow tint threshold parameter used in debug4");
-        AssertContains(shader, "stage float _FogBegin2 = 5728.3252f;", "RiverSurface should restore the target distance fog begin parameter used in debug4");
-        AssertContains(shader, "stage float _FogEnd2 = 208999.7031f;", "RiverSurface should restore the target distance fog end parameter used in debug4");
-        AssertContains(shader, "float3 ApplyOvercastContrast", "RiverSurface should restore the debug4 overcast contrast helper for shadow/cloud wrapper parity");
-        AssertContains(shader, "float3 ApplyTerrainShadowTintWithClouds", "RiverSurface should restore terrain shadow tint after CalcRiverAdvanced");
-        AssertContains(shader, "float2 colorMapCoords = worldPositionXZ * _WorldSpaceToTerrain0To1;", "RiverSurface shadow tint should use the debug4 map-space shadow-color UV path");
-        AssertContains(shader, "ShadowNoiseTexture.Sample(ShadowNoiseSampler, colorMapCoords * _MapSadowTintNoiseUVTiling)", "RiverSurface should sample shadow_color through the restored target tint path");
-        AssertContains(shader, "float terrainNdotL = saturate(dot(terrainNormal, normalize(_TerrainSunnySunDir))) + 1e-5f;", "RiverSurface should use target terrain sun direction for terrain shadow tint");
-        AssertContains(shader, "float finalShadowTerm = saturate(2.0f - terrainShadowTerm - shadowTerm);", "RiverSurface should restore target shadow-term composition instead of simplified normal-y tint");
-        AssertContains(shader, "return ApplyOvercastContrast(color, shadowTintMask * cloudMask);", "RiverSurface should keep target overcast contrast hook from debug4");
-        AssertContains(shader, "float CalculateDistanceFogFactor(float3 worldPosition)", "RiverSurface should restore target map distance fog factor helper");
-        AssertContains(shader, "float fogMin = min((sqDistance - _FogBegin2) / max(_FogEnd2 - _FogBegin2, 0.0001f), _FogMax);", "RiverSurface should restore target squared-distance fog calculation");
-        AssertContains(shader, "float3 CalculateFogColor(float3 color, float3 worldPosition, float fogFactor)", "RiverSurface should restore target fog color helper");
-        AssertContains(shader, "float3 blendedFogColor = min(_FogColor + blendFactor * _RelativeFogColor, float3(1.0f, 1.0f, 1.0f));", "RiverSurface should restore target relative fog color blend");
-        AssertContains(shader, "fogFactor *= 1.0f + 0.5f * noiseValue;", "RiverSurface should restore target fog noise modulation");
-        AssertContains(shader, "float3 ApplyMapDistanceFogWithoutFoW", "RiverSurface should restore map distance fog after CalcRiverAdvanced");
-        AssertContains(shader, "stage float2 _InverseWorldSize", "RiverSurface should expose the debug4 cloud-shadow inverse world size input");
-        AssertContains(shader, "stage float _HasCloudShadowEnabled = 1.0f;", "RiverSurface should expose the debug4 procedural cloud shadow toggle");
-        AssertContains(shader, "float GetCloudShadowMask(float2 coordinate)", "RiverSurface should restore the debug4 time-varying procedural cloud shadow helper");
-        AssertContains(shader, "float adjustedTime = _GlobalTime * 0.01f;", "RiverSurface cloud shadow should derive movement from GlobalTime like debug4");
-        AssertContains(shader, "float2 uv00 = coordinate * _InverseWorldSize * float2(2.0f, 1.0f);", "RiverSurface cloud shadow should use the debug4 world-size UV mapping");
-        AssertContains(shader, "float cloudMask = GetCloudShadowMask(worldPosition.xz);", "RiverSurface post step should evaluate the debug4 cloud mask");
-        AssertContains(shader, "color.rgb = ApplyTerrainShadowTintWithClouds(color.rgb, worldPosition.xz, cloudMask, 1.0f);", "RiverSurface post step should tint final water color from editor terrain normals");
-        AssertContains(shader, "color.rgb = lerp(color.rgb, float3(0.0f, 0.01f, 0.02f), cloudMask * 0.8f);", "RiverSurface should restore the debug4 cloudy water-color lerp");
-        AssertContains(shader, "color.rgb = ApplyMapDistanceFogWithoutFoW(color.rgb, worldPosition);", "RiverSurface post step should run map distance fog without fog-of-war");
-        AssertContains(shader, "color.a *= 1.0f - _FlatMapLerp;", "RiverSurface post step should keep flat-map alpha fade");
-        AssertContains(shader, "color.a *= zoomBlendOut;", "RiverSurface post step should keep zoom alpha fade");
-        AssertContains(shader, "if (color.a < 0.00001f)", "RiverSurface post step should restore the debug4 alpha discard after wrapper alpha fades");
+        AssertContains(shader, "streams.ColorTarget = waterColor;", "RiverSurface PS should write CalcRiverAdvanced output directly");
+        AssertNotContains(shader, "ApplySurfacePostProcessing", "RiverSurface should not keep the removed post wrapper");
+        AssertNotContains(shader, "HeightmapSlice0", "RiverSurface should not declare editor terrain height slices for removed terrain shadow tint");
+        AssertNotContains(shader, "ShadowNoiseTexture", "RiverSurface should not declare shadow tint textures after removing the wrapper");
+        AssertNotContains(shader, "CalculateRiverTerrainNormal", "RiverSurface should not calculate terrain normals after removing terrain shadow tint");
+        AssertNotContains(shader, "_MapSadowTint", "RiverSurface should not keep shadow tint parameters after removing the wrapper");
+        AssertNotContains(shader, "_FogBegin2", "RiverSurface should not keep wrapper distance-fog parameters");
+        AssertNotContains(shader, "_FogEnd2", "RiverSurface should not keep wrapper distance-fog parameters");
+        AssertNotContains(shader, "ApplyOvercastContrast", "RiverSurface should not keep the wrapper overcast contrast helper");
+        AssertNotContains(shader, "ApplyTerrainShadowTintWithClouds", "RiverSurface should not keep terrain shadow tint after CalcRiverAdvanced");
+        AssertNotContains(shader, "ApplyMapDistanceFogWithoutFoW", "RiverSurface should not keep wrapper map distance fog");
+        AssertNotContains(shader, "_InverseWorldSize", "RiverSurface should not expose procedural cloud-shadow world-size inputs");
+        AssertNotContains(shader, "_HasCloudShadowEnabled", "RiverSurface should not expose the removed procedural cloud shadow toggle");
+        AssertNotContains(shader, "GetCloudShadowMask", "RiverSurface should not keep the time-varying procedural cloud shadow helper");
+        AssertNotContains(shader, "color.a *= 1.0f - _FlatMapLerp;", "RiverSurface should not keep wrapper flat-map alpha fade");
+        AssertNotContains(shader, "color.a *= zoomBlendOut;", "RiverSurface should not keep wrapper zoom alpha fade");
+        AssertNotContains(shader, "ShadowNoiseSampler", "RiverSurface should not keep the removed shadow tint sampler");
+        AssertNotContains(shader, "TerrainHeightSampler", "RiverSurface should not keep the removed terrain height sampler");
         AssertNotContains(shader, "float terrainShadow = saturate((1.0f - terrainNormal.y) * 1.35f);", "RiverSurface should not keep the simplified post-restore normal-y tint approximation");
         AssertNotContains(shader, "float fogFactor = smoothstep(4500.0f, 11000.0f, cameraDistance);", "RiverSurface should not keep the simplified post-restore distance fog approximation");
         AssertNotContains(shader, "_ShadowTermFallback", "RiverSurface should not keep the old shadow fallback parameter");
@@ -475,13 +457,15 @@ internal static class RiverShaderTextTests
         AssertNotContains(shader, "ApplyFogOfWar", "RiverSurface should not run strategy-layer fog-of-war color adjustment");
         AssertNotContains(shader, "SampleFogOfWarAlphaRaw", "RiverSurface should not sample strategy-layer fog-of-war alpha");
 
-        AssertContains(loader, "ShadowColorFileName = \"shadow_color.dds\"", "RiverResourceLoader should load the restored shadow tint texture from game/map/water");
-        AssertContains(feature, "TryBindEditorTerrainInputs()", "RiverRenderFeature should bind editor terrain height slices into the surface pass");
-        AssertContains(feature, "RiverSurfaceKeys.ShadowNoiseTexture", "RiverRenderFeature should bind the shadow tint texture into the surface pass");
-        AssertContains(feature, "RiverSurfaceKeys.HeightmapSlice0", "RiverRenderFeature should bind editor terrain height slices into the river surface key set");
-        AssertContains(feature, "RiverSurfaceKeys._InverseWorldSize", "RiverRenderFeature should bind procedural cloud-shadow world size inputs for debug4 parity");
-        AssertContains(feature, "RiverSurfaceKeys._HasCloudShadowEnabled", "RiverRenderFeature should bind the debug4 procedural cloud-shadow toggle");
-        AssertContains(feature, "RiverSurfaceKeys.TerrainHeightSampler", "RiverRenderFeature should bind terrain height samplers into the surface pass");
+        AssertNotContains(loader, "ShadowColorFileName", "RiverResourceLoader should not require shadow_color.dds after removing the wrapper");
+        AssertNotContains(loader, "ShadowColor", "RiverResourceLoader should not keep the removed shadow tint texture property");
+        AssertNotContains(feature, "TryBindEditorTerrainInputs()", "RiverRenderFeature should not bind editor terrain height slices into the surface pass");
+        AssertNotContains(feature, "RiverSurfaceKeys.ShadowNoiseTexture", "RiverRenderFeature should not bind the removed shadow tint texture");
+        AssertNotContains(feature, "RiverSurfaceKeys.HeightmapSlice0", "RiverRenderFeature should not bind editor terrain height slices into river surface");
+        AssertNotContains(feature, "RiverSurfaceKeys._InverseWorldSize", "RiverRenderFeature should not bind procedural cloud-shadow world-size inputs");
+        AssertNotContains(feature, "RiverSurfaceKeys._HasCloudShadowEnabled", "RiverRenderFeature should not bind the removed procedural cloud-shadow toggle");
+        AssertNotContains(feature, "RiverSurfaceKeys.TerrainHeightSampler", "RiverRenderFeature should not bind terrain height samplers into the surface pass");
+        AssertNotContains(feature, "RiverSurfaceKeys.ShadowNoiseSampler", "RiverRenderFeature should not bind removed shadow tint samplers into the surface pass");
         AssertNotContains(feature, "SurfaceFogOfWarAlphaTexture", "RiverRenderFeature should not expose fog-of-war as a river surface input");
         AssertNotContains(feature, "FogOfWarAlphaTexture", "RiverRenderFeature should not bind fog-of-war textures into the river surface pass");
         AssertNotContains(feature, "FogOfWarAlphaSampler", "RiverRenderFeature should not bind a fog-of-war sampler into the river surface pass");
@@ -561,7 +545,8 @@ internal static class RiverShaderTextTests
         AssertContains(loader, "Texture.Load(", "RiverResourceLoader should create GPU textures directly from DDS streams");
         AssertContains(loader, "WaterColor = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, WaterColorFileName, loadAsSrgb: false);", "RiverResourceLoader should load water-color DDS as a UNorm texture");
         AssertContains(loader, "ReflectionSpecularUrl = \"River/Environment/reflection-specular\"", "RiverResourceLoader should keep the environment reflection cubemap as a Stride content asset");
-        AssertContains(loader, "ShadowColor = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, ShadowColorFileName, loadAsSrgb: true);", "RiverResourceLoader should load the restored shadow tint texture");
+        AssertNotContains(loader, "ShadowColorFileName", "RiverResourceLoader should not require removed shadow tint texture files");
+        AssertNotContains(loader, "ShadowColor = LoadRequiredLocalTexture", "RiverResourceLoader should not load removed shadow tint textures");
         AssertNotContains(loader, "catch (Exception", "RiverResourceLoader should not catch texture load exceptions; load failures should crash with their original exception");
         AssertNotContains(loader, "River/Water/", "RiverResourceLoader should not keep Stride content URLs for water textures");
         AssertNotContains(loader, "River/Bottom/", "RiverResourceLoader should not keep Stride content URLs for bottom textures");

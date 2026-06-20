@@ -8,7 +8,6 @@ namespace Terrain.Editor
         stage float _NoiseScale = 0.25f;
         stage float _NoiseSpeed = 2.0f;
         stage float _FlattenMult = 1.0f;
-        stage float _BankFade = 0.025f;
         stage float _Depth = 0.15f;
         stage float _DepthWidthPower = 2.0f;
         stage float _MapExtent = 4096.0f;
@@ -57,24 +56,6 @@ namespace Terrain.Editor
         stage float3 _DefaultEnvironmentSunDiffuse = float3(1.0f, 0.86783814f, 0.7548521f);
         stage float _DefaultEnvironmentSunIntensity = 20.0f;
         stage float3 _WaterToSunDir = float3(-0.543915f, 0.5933618f, 0.5933618f);
-        stage float3 _TerrainSunnySunDir = float3(-0.4755282f, 0.58778524f, 0.65450853f);
-        stage float3 _ToWaterSunnySunDir = float3(-0.4755282f, 0.58778524f, 0.65450853f);
-        stage float3 _ToWaterOvercastSunDir = float3(-0.4755282f, 0.58778524f, 0.65450853f);
-        stage float2 _MapSadowTintNoiseUVTiling = float2(500.0f, 500.0f);
-        stage float _MapSadowTintStrength = 0.5f;
-        stage float _MapSadowTintThresholdMin = 0.1f;
-        stage float _MapSadowTintThresholdMax = 0.4f;
-        stage float2 _InverseWorldSize = float2(0.000244140625f, 0.000244140625f);
-        stage float _HasCloudShadowEnabled = 1.0f;
-        stage float _FogMax = 0.2f;
-        stage float _FogBegin2 = 5728.3252f;
-        stage float _FogEnd2 = 208999.7031f;
-        stage float3 _FogColor = float3(0.07805659f, 0.1869885f, 0.3344578f);
-        stage float3 _RelativeFogColor = float3(0.6f, 0.2f, -0.2f);
-        stage float _RelativeFogBegin = 100.0f;
-        stage float _RelativeFogEnd = 400.0f;
-        stage float _RelativeFogHeightBegin = 10.0f;
-        stage float _RelativeFogHeightEnd = 40.0f;
         stage float _WaterFoamScale = 0.3f;
         stage float _WaterFoamDistortFactor = 0.1f;
         stage float _WaterFoamShoreMaskDepth = 0.0f;
@@ -93,34 +74,10 @@ namespace Terrain.Editor
         stage Texture2D<float4> FoamMapTexture;
         stage Texture2D<float4> FoamNoiseTexture;
         stage Texture2D<float4> WaterColorTexture;
-        stage Texture2D<float4> ShadowNoiseTexture;
-        stage Texture2D<float> HeightmapSlice0;
-        stage Texture2D<float> HeightmapSlice1;
-        stage Texture2D<float> HeightmapSlice2;
-        stage Texture2D<float> HeightmapSlice3;
-        stage Texture2D<float> HeightmapSlice4;
-        stage Texture2D<float> HeightmapSlice5;
-        stage Texture2D<float> HeightmapSlice6;
-        stage Texture2D<float> HeightmapSlice7;
         stage TextureCube<float4> ReflectionSpecularTexture;
         stage SamplerState ReflectionSpecularSampler;
         stage SamplerState WaterColorSampler;
         stage SamplerState WaterTextureSampler;
-        stage SamplerState ShadowNoiseSampler;
-        stage SamplerState TerrainHeightSampler;
-        stage int SliceCount = 0;
-        stage float HeightScale = 1.0f;
-        stage float2 _TerrainWorldOffsetXZ = float2(0.0f, 0.0f);
-        stage float2 _TerrainNormalStepSize = float2(1.0f, 1.0f);
-        stage float2 _WorldSpaceToTerrain0To1 = float2(1.0f, 1.0f);
-        stage float4 HeightmapSliceBounds0 = float4(0.0f, 0.0f, 1.0f, 1.0f);
-        stage float4 HeightmapSliceBounds1 = float4(0.0f, 0.0f, 1.0f, 1.0f);
-        stage float4 HeightmapSliceBounds2 = float4(0.0f, 0.0f, 1.0f, 1.0f);
-        stage float4 HeightmapSliceBounds3 = float4(0.0f, 0.0f, 1.0f, 1.0f);
-        stage float4 HeightmapSliceBounds4 = float4(0.0f, 0.0f, 1.0f, 1.0f);
-        stage float4 HeightmapSliceBounds5 = float4(0.0f, 0.0f, 1.0f, 1.0f);
-        stage float4 HeightmapSliceBounds6 = float4(0.0f, 0.0f, 1.0f, 1.0f);
-        stage float4 HeightmapSliceBounds7 = float4(0.0f, 0.0f, 1.0f, 1.0f);
 
         struct SWaterParameters
         {
@@ -321,217 +278,6 @@ namespace Terrain.Editor
             return ReflectionSpecularTexture.Sample(ReflectionSpecularSampler, reflectionVector).rgb * _WaterCubemapIntensity;
         }
 
-        float4 GetEditorTerrainSliceBounds(int sliceIndex)
-        {
-            float4 bounds = HeightmapSliceBounds0;
-            switch (sliceIndex)
-            {
-                case 1: bounds = HeightmapSliceBounds1; break;
-                case 2: bounds = HeightmapSliceBounds2; break;
-                case 3: bounds = HeightmapSliceBounds3; break;
-                case 4: bounds = HeightmapSliceBounds4; break;
-                case 5: bounds = HeightmapSliceBounds5; break;
-                case 6: bounds = HeightmapSliceBounds6; break;
-                case 7: bounds = HeightmapSliceBounds7; break;
-            }
-
-            return bounds;
-        }
-
-        bool IsInsideEditorTerrainSlice(float2 sampleCoord, float4 bounds)
-        {
-            return sampleCoord.x >= bounds.x
-                && sampleCoord.x <= bounds.x + bounds.z - 1.0f
-                && sampleCoord.y >= bounds.y
-                && sampleCoord.y <= bounds.y + bounds.w - 1.0f;
-        }
-
-        int ResolveEditorTerrainSliceIndex(float2 sampleCoord)
-        {
-            if (SliceCount >= 1 && IsInsideEditorTerrainSlice(sampleCoord, HeightmapSliceBounds0)) return 0;
-            if (SliceCount >= 2 && IsInsideEditorTerrainSlice(sampleCoord, HeightmapSliceBounds1)) return 1;
-            if (SliceCount >= 3 && IsInsideEditorTerrainSlice(sampleCoord, HeightmapSliceBounds2)) return 2;
-            if (SliceCount >= 4 && IsInsideEditorTerrainSlice(sampleCoord, HeightmapSliceBounds3)) return 3;
-            if (SliceCount >= 5 && IsInsideEditorTerrainSlice(sampleCoord, HeightmapSliceBounds4)) return 4;
-            if (SliceCount >= 6 && IsInsideEditorTerrainSlice(sampleCoord, HeightmapSliceBounds5)) return 5;
-            if (SliceCount >= 7 && IsInsideEditorTerrainSlice(sampleCoord, HeightmapSliceBounds6)) return 6;
-            if (SliceCount >= 8 && IsInsideEditorTerrainSlice(sampleCoord, HeightmapSliceBounds7)) return 7;
-            return 0;
-        }
-
-        float SampleEditorTerrainHeightLinear(float2 sampleCoord)
-        {
-            if (SliceCount <= 0)
-            {
-                return 0.0f;
-            }
-
-            int sliceIndex = ResolveEditorTerrainSliceIndex(sampleCoord);
-            float4 bounds = GetEditorTerrainSliceBounds(sliceIndex);
-            float2 localCoord = clamp(sampleCoord - bounds.xy, float2(0.0f, 0.0f), max(bounds.zw - 1.0f, float2(0.0f, 0.0f)));
-            float2 uv = (localCoord + 0.5f) / max(bounds.zw, float2(1.0f, 1.0f));
-            float height = HeightmapSlice0.SampleLevel(TerrainHeightSampler, uv, 0.0f).x * HeightScale;
-
-            switch (sliceIndex)
-            {
-                case 1: height = HeightmapSlice1.SampleLevel(TerrainHeightSampler, uv, 0.0f).x * HeightScale; break;
-                case 2: height = HeightmapSlice2.SampleLevel(TerrainHeightSampler, uv, 0.0f).x * HeightScale; break;
-                case 3: height = HeightmapSlice3.SampleLevel(TerrainHeightSampler, uv, 0.0f).x * HeightScale; break;
-                case 4: height = HeightmapSlice4.SampleLevel(TerrainHeightSampler, uv, 0.0f).x * HeightScale; break;
-                case 5: height = HeightmapSlice5.SampleLevel(TerrainHeightSampler, uv, 0.0f).x * HeightScale; break;
-                case 6: height = HeightmapSlice6.SampleLevel(TerrainHeightSampler, uv, 0.0f).x * HeightScale; break;
-                case 7: height = HeightmapSlice7.SampleLevel(TerrainHeightSampler, uv, 0.0f).x * HeightScale; break;
-            }
-
-            return height;
-        }
-
-        float3 CalculateRiverTerrainNormal(float2 worldPositionXZ)
-        {
-            if (SliceCount <= 0)
-            {
-                return float3(0.0f, 1.0f, 0.0f);
-            }
-
-            float2 sampleCoord = worldPositionXZ - _TerrainWorldOffsetXZ;
-            float2 stepSize = max(_TerrainNormalStepSize, float2(1.0f, 1.0f));
-            float heightLeft = SampleEditorTerrainHeightLinear(sampleCoord + float2(-stepSize.x, 0.0f));
-            float heightRight = SampleEditorTerrainHeightLinear(sampleCoord + float2(stepSize.x, 0.0f));
-            float heightDown = SampleEditorTerrainHeightLinear(sampleCoord + float2(0.0f, -stepSize.y));
-            float heightUp = SampleEditorTerrainHeightLinear(sampleCoord + float2(0.0f, stepSize.y));
-            return normalize(float3(heightLeft - heightRight, stepSize.x + stepSize.y, heightDown - heightUp));
-        }
-
-        float3 ApplyOvercastContrast(float3 color, float blendAmount)
-        {
-            if (blendAmount < 0.0001f)
-            {
-                return color;
-            }
-
-            float currentLuminance = dot(color, float3(0.299f, 0.587f, 0.114f));
-            const float minLuminance = 0.008f;
-            float targetLuminance = minLuminance + (currentLuminance - minLuminance) * (1.0f - blendAmount);
-            return color * (targetLuminance / max(currentLuminance, 0.001f));
-        }
-
-        float3 ApplyTerrainShadowTintWithClouds(float3 color, float2 worldPositionXZ, float cloudMask, float shadowTerm)
-        {
-            float3 terrainNormal = CalculateRiverTerrainNormal(worldPositionXZ);
-            float2 colorMapCoords = worldPositionXZ * _WorldSpaceToTerrain0To1;
-            float4 tintColor = ShadowNoiseTexture.Sample(ShadowNoiseSampler, colorMapCoords * _MapSadowTintNoiseUVTiling);
-            float tintStrength = _MapSadowTintStrength * tintColor.a;
-            float terrainNdotL = saturate(dot(terrainNormal, normalize(_TerrainSunnySunDir))) + 1e-5f;
-            float terrainShadowTerm = smoothstep(_MapSadowTintThresholdMin, _MapSadowTintThresholdMax, terrainNdotL);
-            float finalShadowTerm = saturate(2.0f - terrainShadowTerm - shadowTerm);
-            float shadowTintMask = tintStrength * finalShadowTerm;
-            float shadowOutsideClouds = saturate(shadowTintMask - cloudMask);
-            color = lerp(color, tintColor.rgb, shadowOutsideClouds);
-            return ApplyOvercastContrast(color, shadowTintMask * cloudMask);
-        }
-
-        float CalcRandom(float2 value)
-        {
-            return frac(sin(dot(value, float2(12.9898f, 78.233f))) * 43758.5453f);
-        }
-
-        float CalcNoise(float2 value)
-        {
-            float2 cell = floor(value);
-            float2 fraction = frac(value);
-            float a = CalcRandom(cell);
-            float b = CalcRandom(cell + float2(1.0f, 0.0f));
-            float c = CalcRandom(cell + float2(0.0f, 1.0f));
-            float d = CalcRandom(cell + float2(1.0f, 1.0f));
-            float2 smoothFraction = fraction * fraction * (3.0f - 2.0f * fraction);
-            return lerp(lerp(a, b, smoothFraction.x), lerp(c, d, smoothFraction.x), smoothFraction.y);
-        }
-
-        float Levels(float value, float minValue, float maxValue)
-        {
-            return saturate((value - minValue) / (maxValue - minValue));
-        }
-
-        float Overlay(float baseValue, float blendValue)
-        {
-            if (baseValue < 0.5f)
-            {
-                return 2.0f * baseValue * blendValue;
-            }
-
-            return 1.0f - 2.0f * (1.0f - baseValue) * (1.0f - blendValue);
-        }
-
-        float GetCloud(float2 p)
-        {
-            float f = 0.0f;
-            f += 0.50000f * CalcNoise(p);
-            p *= 2.01f;
-            f += 0.25000f * CalcNoise(p);
-            p *= 2.02f;
-            f += 0.12500f * CalcNoise(p);
-            p *= 2.03f;
-            f += 0.06250f * CalcNoise(p);
-            p *= 2.04f;
-            f += 0.03125f * CalcNoise(p);
-            return f;
-        }
-
-        float GetCloudShadowMask(float2 coordinate)
-        {
-            if (_HasCloudShadowEnabled != 1.0f)
-            {
-                return 0.0f;
-            }
-
-            float zoomFadeFactor = min(1.0f, pow(1.0f - _WaterZoomedInZoomedOutFactor + 0.24f, 6.0f));
-            if (zoomFadeFactor < 0.01f)
-            {
-                return 0.0f;
-            }
-
-            float adjustedTime = _GlobalTime * 0.01f;
-            float2 cloudMovement = adjustedTime * float2(-1.0f, 0.4f);
-            float2 uv00 = coordinate * _InverseWorldSize * float2(2.0f, 1.0f);
-            float2 uv02 = uv00 * 36.0f * 5.0f + cloudMovement * 12.0f;
-            float2 uv03 = uv00 * 36.0f * 11.4f + cloudMovement * 25.0f;
-
-            float cloudBase = Levels(GetCloud(uv02), 0.455f, 0.705f);
-            float cloudDetail = Levels(GetCloud(uv03), 0.215f, 0.645f);
-            float cloudFine = Levels(GetCloud(uv03 * 2.0f + cloudMovement), 0.03f, 0.63f);
-            float cloudMask = Overlay(cloudBase, cloudDetail);
-            cloudMask = Overlay(cloudMask, cloudFine);
-            return saturate(cloudMask) * zoomFadeFactor;
-        }
-
-        float CalculateDistanceFogFactor(float3 worldPosition)
-        {
-            float3 diff = worldPosition - _CameraWorldPosition;
-            float sqDistance = dot(diff, diff);
-            float fogFactor = 1.0f - abs(normalize(diff).y);
-            float fogMin = min((sqDistance - _FogBegin2) / max(_FogEnd2 - _FogBegin2, 0.0001f), _FogMax);
-            return saturate(fogMin * fogFactor);
-        }
-
-        float3 CalculateFogColor(float3 color, float3 worldPosition, float fogFactor)
-        {
-            float blendFactor = smoothstep(_CameraWorldPosition.x + _RelativeFogBegin, _CameraWorldPosition.x - _RelativeFogEnd, worldPosition.x);
-            float3 blendedFogColor = min(_FogColor + blendFactor * _RelativeFogColor, float3(1.0f, 1.0f, 1.0f));
-            float heightFactor = smoothstep(_RelativeFogHeightBegin, _RelativeFogHeightEnd, worldPosition.y);
-            float noiseValue = CalcNoise(worldPosition.xz * 0.02f);
-            fogFactor *= 1.0f + 0.5f * noiseValue;
-            fogFactor *= 1.0f - heightFactor;
-            return lerp(color, blendedFogColor, fogFactor);
-        }
-
-        float3 ApplyMapDistanceFogWithoutFoW(float3 color, float3 worldPosition)
-        {
-            float fogFactor = CalculateDistanceFogFactor(worldPosition);
-            float zoomFadeFactor = min(1.0f, pow(1.0f - _WaterZoomedInZoomedOutFactor + 0.15f, 6.0f));
-            fogFactor *= zoomFadeFactor;
-            return CalculateFogColor(color, worldPosition, fogFactor);
-        }
-
         void CalcWater(
             float4 InputScreenSpacePos,
             float3 InputWorldSpacePos,
@@ -638,33 +384,10 @@ namespace Terrain.Editor
             waterColor.a = saturate(depth * 2.0f / max(_Depth, 0.0001f)) * transparency * connectionFade;
         }
 
-        float4 ApplySurfacePostProcessing(float4 color, float3 worldPosition)
-        {
-            float zoomBlendOut = ComputeSurfaceZoomBlendOut();
-            if (zoomBlendOut < 0.00001f)
-            {
-                discard;
-            }
-
-            float cloudMask = GetCloudShadowMask(worldPosition.xz);
-            color.rgb = ApplyTerrainShadowTintWithClouds(color.rgb, worldPosition.xz, cloudMask, 1.0f);
-            color.rgb = lerp(color.rgb, float3(0.0f, 0.01f, 0.02f), cloudMask * 0.8f);
-            color.rgb = ApplyMapDistanceFogWithoutFoW(color.rgb, worldPosition);
-            color.a *= 1.0f - _FlatMapLerp;
-            color.a *= zoomBlendOut;
-            if (color.a < 0.00001f)
-            {
-                discard;
-            }
-
-            return color;
-        }
-
         stage override void PSMain()
         {
             float4 waterColor;
             CalcRiverAdvanced(waterColor);
-            waterColor = ApplySurfacePostProcessing(waterColor, streams.PositionWS.xyz);
             streams.ColorTarget = waterColor;
         }
     };

@@ -31,6 +31,11 @@ public enum RiverRenderDebugMode
 
 public sealed class RiverRenderFeature : RootRenderFeature
 {
+    private const int BottomDepthBias = -1;
+    private const float BottomSlopeScaleDepthBias = -1.0f;
+    private const int SurfaceDepthBias = -512;
+    private const float SurfaceSlopeScaleDepthBias = -4.0f;
+
     private static readonly InputElementDescription[] RiverInputElements = RiverVertex.Layout.CreateInputElements();
     private static readonly FieldInfo? RenderViewDatasField = typeof(ForwardLightingRenderFeature).GetField("renderViewDatas", BindingFlags.Instance | BindingFlags.NonPublic);
     private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
@@ -73,8 +78,16 @@ public sealed class RiverRenderFeature : RootRenderFeature
         forwardLightingFeature = meshRenderFeature?.RenderFeatures.OfType<ForwardLightingRenderFeature>().FirstOrDefault();
         bottomShadowMapRenderer = forwardLightingFeature?.ShadowMapRenderer;
 
-        bottomPipelineState = CreatePipelineState(Context.GraphicsDevice, CreateDualSourceBlendState(), DepthStencilStates.DepthRead);
-        surfacePipelineState = CreatePipelineState(Context.GraphicsDevice, CreateSurfaceBlendState(), DepthStencilStates.DepthRead);
+        bottomPipelineState = CreatePipelineState(
+            Context.GraphicsDevice,
+            CreateDualSourceBlendState(),
+            DepthStencilStates.DepthRead,
+            CreateRasterizerState(wireframe: false, isSurface: false));
+        surfacePipelineState = CreatePipelineState(
+            Context.GraphicsDevice,
+            CreateSurfaceBlendState(),
+            DepthStencilStates.DepthRead,
+            CreateRasterizerState(wireframe: false, isSurface: true));
     }
 
     protected override void Destroy()
@@ -133,8 +146,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         PrepareBottomSceneLighting(context, renderView);
         surfaceEffect.UpdateEffect(graphicsDevice);
         BindRiverTextures(graphicsDevice);
-        ApplyDebugRasterizerState(bottomPipelineState);
-        ApplyDebugRasterizerState(surfacePipelineState);
+        ApplyDebugRasterizerState(bottomPipelineState, isSurface: false);
+        ApplyDebugRasterizerState(surfacePipelineState, isSurface: true);
 
         if (DebugMode != RiverRenderDebugMode.SurfaceOnly)
         {
@@ -155,7 +168,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionTexture, renderResources.BottomColor);
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);
-        TryBindEditorTerrainInputs();
         DrawPass(context, renderView, renderViewStage, startIndex, endIndex, surfaceEffect, surfacePipelineState, renderResources.BottomColor);
     }
 
@@ -482,16 +494,12 @@ public sealed class RiverRenderFeature : RootRenderFeature
         effect.Parameters.Set(RiverSurfaceKeys._ViewMatrix, viewMatrix);
         effect.Parameters.Set(RiverSurfaceKeys._MapExtent, riverObject.MapExtent);
         effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);
-        var mapWorldSize = new Vector2(Math.Max(riverObject.MapWorldSize.X, 1.0f), Math.Max(riverObject.MapWorldSize.Y, 1.0f));
-        effect.Parameters.Set(RiverSurfaceKeys._InverseWorldSize, new Vector2(1.0f / mapWorldSize.X, 1.0f / mapWorldSize.Y));
-        effect.Parameters.Set(RiverSurfaceKeys._HasCloudShadowEnabled, 1.0f);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, riverObject.FlowNormalUvScale);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalSpeed, riverObject.FlowNormalSpeed);
         effect.Parameters.Set(RiverSurfaceKeys._RiverFoamFactor, riverObject.RiverFoamFactor);
         effect.Parameters.Set(RiverSurfaceKeys._NoiseScale, riverObject.NoiseScale);
         effect.Parameters.Set(RiverSurfaceKeys._NoiseSpeed, riverObject.NoiseSpeed);
         effect.Parameters.Set(RiverSurfaceKeys._FlattenMult, riverObject.FlattenMultiplier);
-        effect.Parameters.Set(RiverSurfaceKeys._BankFade, riverObject.BankFade);
         effect.Parameters.Set(RiverSurfaceKeys._Depth, riverObject.Depth);
         effect.Parameters.Set(RiverSurfaceKeys._DepthWidthPower, riverObject.DepthWidthPower);
         effect.Parameters.Set(RiverSurfaceKeys._GlobalTime, globalTime);
@@ -569,9 +577,9 @@ public sealed class RiverRenderFeature : RootRenderFeature
         }
     }
 
-    private void ApplyDebugRasterizerState(MutablePipelineState pipelineState)
+    private void ApplyDebugRasterizerState(MutablePipelineState pipelineState, bool isSurface)
     {
-        pipelineState.State.RasterizerState = CreateRasterizerState(DebugMode == RiverRenderDebugMode.Wireframe);
+        pipelineState.State.RasterizerState = CreateRasterizerState(DebugMode == RiverRenderDebugMode.Wireframe, isSurface);
     }
 
     private void BindRiverTextures(GraphicsDevice graphicsDevice)
@@ -596,109 +604,9 @@ public sealed class RiverRenderFeature : RootRenderFeature
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.FoamRampTexture, riverResources.FoamRamp);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.FoamMapTexture, riverResources.FoamMap);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.FoamNoiseTexture, riverResources.FoamNoise);
-        SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ShadowNoiseTexture, riverResources.ShadowColor);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.WaterColorTexture, riverResources.WaterColor);
         SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ReflectionSpecularTexture, riverResources.ReflectionSpecular);
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.ReflectionSpecularSampler, graphicsDevice.SamplerStates.LinearClamp);
-        surfaceEffect.Parameters.Set(RiverSurfaceKeys.ShadowNoiseSampler, graphicsDevice.SamplerStates.LinearWrap);
-        surfaceEffect.Parameters.Set(RiverSurfaceKeys.TerrainHeightSampler, graphicsDevice.SamplerStates.LinearClamp);
-    }
-
-    private void TryBindEditorTerrainInputs()
-    {
-        if (surfaceEffect == null)
-        {
-            return;
-        }
-
-        var terrain = Context.VisibilityGroup.RenderObjects
-            .OfType<EditorTerrainRenderObject>()
-            .FirstOrDefault(static renderObject => renderObject.TerrainEntity != null);
-        var entity = terrain?.TerrainEntity;
-        if (terrain == null || entity == null || entity.Slices.Count == 0)
-        {
-            surfaceEffect.Parameters.Set(RiverSurfaceKeys.SliceCount, 0);
-            return;
-        }
-
-        var parameters = surfaceEffect.Parameters;
-        SetEditorTerrainSliceTextures(parameters, entity, terrain);
-        SetEditorTerrainSliceBounds(parameters, entity);
-        parameters.Set(RiverSurfaceKeys.SliceCount, entity.Slices.Count);
-        parameters.Set(RiverSurfaceKeys.HeightScale, entity.HeightScale);
-
-        parameters.Set(RiverSurfaceKeys._TerrainWorldOffsetXZ, new Vector2(entity.WorldOffset.X, entity.WorldOffset.Z));
-        parameters.Set(RiverSurfaceKeys._TerrainNormalStepSize, Vector2.One);
-        var terrainWorldSize = new Vector2(Math.Max(entity.HeightmapWidth - 1, 1), Math.Max(entity.HeightmapHeight - 1, 1));
-        var inverseTerrainWorldSize = new Vector2(1.0f / terrainWorldSize.X, 1.0f / terrainWorldSize.Y);
-        parameters.Set(RiverSurfaceKeys._WorldSpaceToTerrain0To1, inverseTerrainWorldSize);
-        parameters.Set(RiverSurfaceKeys._InverseWorldSize, inverseTerrainWorldSize);
-    }
-
-    private static void SetEditorTerrainSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity, EditorTerrainRenderObject renderObject)
-    {
-        var firstSliceTexture = renderObject.HeightmapSliceTextures[0] ?? entity.Slices[0].Texture;
-        SetEditorTerrainSliceTexture(parameters, 0, renderObject.HeightmapSliceTextures[0] ?? firstSliceTexture);
-        SetEditorTerrainSliceTexture(parameters, 1, renderObject.HeightmapSliceTextures[1] ?? firstSliceTexture);
-        SetEditorTerrainSliceTexture(parameters, 2, renderObject.HeightmapSliceTextures[2] ?? firstSliceTexture);
-        SetEditorTerrainSliceTexture(parameters, 3, renderObject.HeightmapSliceTextures[3] ?? firstSliceTexture);
-        SetEditorTerrainSliceTexture(parameters, 4, renderObject.HeightmapSliceTextures[4] ?? firstSliceTexture);
-        SetEditorTerrainSliceTexture(parameters, 5, renderObject.HeightmapSliceTextures[5] ?? firstSliceTexture);
-        SetEditorTerrainSliceTexture(parameters, 6, renderObject.HeightmapSliceTextures[6] ?? firstSliceTexture);
-        SetEditorTerrainSliceTexture(parameters, 7, renderObject.HeightmapSliceTextures[7] ?? firstSliceTexture);
-    }
-
-    private static void SetEditorTerrainSliceTexture(ParameterCollection parameters, int sliceIndex, Texture texture)
-    {
-        switch (sliceIndex)
-        {
-            case 0: parameters.Set(RiverSurfaceKeys.HeightmapSlice0, texture); break;
-            case 1: parameters.Set(RiverSurfaceKeys.HeightmapSlice1, texture); break;
-            case 2: parameters.Set(RiverSurfaceKeys.HeightmapSlice2, texture); break;
-            case 3: parameters.Set(RiverSurfaceKeys.HeightmapSlice3, texture); break;
-            case 4: parameters.Set(RiverSurfaceKeys.HeightmapSlice4, texture); break;
-            case 5: parameters.Set(RiverSurfaceKeys.HeightmapSlice5, texture); break;
-            case 6: parameters.Set(RiverSurfaceKeys.HeightmapSlice6, texture); break;
-            case 7: parameters.Set(RiverSurfaceKeys.HeightmapSlice7, texture); break;
-        }
-    }
-
-    private static void SetEditorTerrainSliceBounds(ParameterCollection parameters, EditorTerrainEntity entity)
-    {
-        SetEditorTerrainSliceBounds(parameters, 0, GetEditorTerrainSliceBounds(entity, 0));
-        SetEditorTerrainSliceBounds(parameters, 1, GetEditorTerrainSliceBounds(entity, 1));
-        SetEditorTerrainSliceBounds(parameters, 2, GetEditorTerrainSliceBounds(entity, 2));
-        SetEditorTerrainSliceBounds(parameters, 3, GetEditorTerrainSliceBounds(entity, 3));
-        SetEditorTerrainSliceBounds(parameters, 4, GetEditorTerrainSliceBounds(entity, 4));
-        SetEditorTerrainSliceBounds(parameters, 5, GetEditorTerrainSliceBounds(entity, 5));
-        SetEditorTerrainSliceBounds(parameters, 6, GetEditorTerrainSliceBounds(entity, 6));
-        SetEditorTerrainSliceBounds(parameters, 7, GetEditorTerrainSliceBounds(entity, 7));
-    }
-
-    private static Vector4 GetEditorTerrainSliceBounds(EditorTerrainEntity entity, int sliceIndex)
-    {
-        if (sliceIndex >= entity.Slices.Count)
-        {
-            return new Vector4(0, 0, 1, 1);
-        }
-
-        var slice = entity.Slices[sliceIndex];
-        return new Vector4(slice.StartSampleX, slice.StartSampleZ, slice.Width, slice.Height);
-    }
-
-    private static void SetEditorTerrainSliceBounds(ParameterCollection parameters, int sliceIndex, Vector4 bounds)
-    {
-        switch (sliceIndex)
-        {
-            case 0: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds0, bounds); break;
-            case 1: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds1, bounds); break;
-            case 2: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds2, bounds); break;
-            case 3: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds3, bounds); break;
-            case 4: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds4, bounds); break;
-            case 5: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds5, bounds); break;
-            case 6: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds6, bounds); break;
-            case 7: parameters.Set(RiverSurfaceKeys.HeightmapSliceBounds7, bounds); break;
-        }
     }
 
     private static void SetTexture(ParameterCollection parameters, ObjectParameterKey<Texture> key, Texture? texture)
@@ -729,24 +637,28 @@ public sealed class RiverRenderFeature : RootRenderFeature
         return blendState;
     }
 
-    private static MutablePipelineState CreatePipelineState(GraphicsDevice graphicsDevice, BlendStateDescription blendState, DepthStencilStateDescription depthStencilState)
+    private static MutablePipelineState CreatePipelineState(
+        GraphicsDevice graphicsDevice,
+        BlendStateDescription blendState,
+        DepthStencilStateDescription depthStencilState,
+        RasterizerStateDescription rasterizerState)
     {
         var pipelineState = new MutablePipelineState(graphicsDevice);
         pipelineState.State.PrimitiveType = PrimitiveType.TriangleList;
         pipelineState.State.InputElements = RiverInputElements;
         pipelineState.State.BlendState = blendState;
         pipelineState.State.DepthStencilState = depthStencilState;
-        pipelineState.State.RasterizerState = CreateRasterizerState(wireframe: false);
+        pipelineState.State.RasterizerState = rasterizerState;
         return pipelineState;
     }
 
-    private static RasterizerStateDescription CreateRasterizerState(bool wireframe)
+    private static RasterizerStateDescription CreateRasterizerState(bool wireframe, bool isSurface)
     {
         return new RasterizerStateDescription(CullMode.None)
         {
             FillMode = wireframe ? FillMode.Wireframe : FillMode.Solid,
-            DepthBias = -1,
-            SlopeScaleDepthBias = -1.0f,
+            DepthBias = isSurface ? SurfaceDepthBias : BottomDepthBias,
+            SlopeScaleDepthBias = isSurface ? SurfaceSlopeScaleDepthBias : BottomSlopeScaleDepthBias,
         };
     }
 }

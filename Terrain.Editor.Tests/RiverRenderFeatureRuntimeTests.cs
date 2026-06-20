@@ -10,6 +10,7 @@ internal static class RiverRenderFeatureRuntimeTests
     {
         TestHarness.Run("river dual-source blend state keeps payload alpha direct-write", DualSourceBlendStateKeepsPayloadAlphaDirectWrite);
         TestHarness.Run("river surface blend state matches target non-premultiplied rgb-only pass", SurfaceBlendStateMatchesTargetNonPremultipliedRgbOnlyPass);
+        TestHarness.Run("river surface rasterizer uses stronger depth bias than bottom", SurfaceRasterizerUsesStrongerDepthBiasThanBottom);
     }
 
     private static void DualSourceBlendStateKeepsPayloadAlphaDirectWrite()
@@ -41,5 +42,22 @@ internal static class RiverRenderFeatureRuntimeTests
         TestHarness.AssertEqual(Blend.SourceAlpha, blendState.RenderTargets[0].ColorSourceBlend, "Surface RT0 color should use non-premultiplied source alpha like the target pass");
         TestHarness.AssertEqual(Blend.InverseSourceAlpha, blendState.RenderTargets[0].ColorDestinationBlend, "Surface RT0 color should preserve destination by inverse source alpha");
         TestHarness.AssertEqual(ColorWriteChannels.Red | ColorWriteChannels.Green | ColorWriteChannels.Blue, blendState.RenderTargets[0].ColorWriteChannels, "Surface RT0 should only write RGB like the target pass");
+    }
+
+    private static void SurfaceRasterizerUsesStrongerDepthBiasThanBottom()
+    {
+        MethodInfo? createRasterizerState = typeof(RiverRenderFeature).GetMethod("CreateRasterizerState", BindingFlags.NonPublic | BindingFlags.Static);
+        TestHarness.Assert(createRasterizerState != null, "RiverRenderFeature should keep a dedicated rasterizer-state factory");
+
+        object? bottomResult = createRasterizerState!.Invoke(null, new object?[] { false, false });
+        object? surfaceResult = createRasterizerState.Invoke(null, new object?[] { false, true });
+        TestHarness.Assert(bottomResult is RasterizerStateDescription, "River bottom rasterizer factory should return a RasterizerStateDescription");
+        TestHarness.Assert(surfaceResult is RasterizerStateDescription, "River surface rasterizer factory should return a RasterizerStateDescription");
+
+        var bottomState = (RasterizerStateDescription)bottomResult!;
+        var surfaceState = (RasterizerStateDescription)surfaceResult!;
+        TestHarness.AssertEqual(-1, bottomState.DepthBias, "Bottom pass should keep its small historical depth bias");
+        TestHarness.Assert(surfaceState.DepthBias < bottomState.DepthBias, "Surface pass should use a stronger negative depth bias than bottom");
+        TestHarness.Assert(surfaceState.SlopeScaleDepthBias < bottomState.SlopeScaleDepthBias, "Surface pass should use stronger negative slope depth bias than bottom");
     }
 }
