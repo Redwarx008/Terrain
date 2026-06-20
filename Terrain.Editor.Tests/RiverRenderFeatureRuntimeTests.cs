@@ -57,7 +57,7 @@ internal static class RiverRenderFeatureRuntimeTests
         var bottomState = (RasterizerStateDescription)bottomResult!;
         var surfaceState = (RasterizerStateDescription)surfaceResult!;
         TestHarness.AssertEqual(-1, bottomState.DepthBias, "Bottom pass should keep its small historical depth bias");
-        TestHarness.Assert(surfaceState.DepthBias < bottomState.DepthBias, "Surface pass should use a stronger negative depth bias than bottom");
-        TestHarness.Assert(surfaceState.SlopeScaleDepthBias < bottomState.SlopeScaleDepthBias, "Surface pass should use stronger negative slope depth bias than bottom");
+        TestHarness.AssertEqual(-50000, surfaceState.DepthBias, "Surface pass should use CK3-scale fixed D24 depth bias");
+        TestHarness.AssertEqual(0.0f, surfaceState.SlopeScaleDepthBias, "Surface pass should not add slope bias on top of the CK3-scale fixed bias");
     }
 }

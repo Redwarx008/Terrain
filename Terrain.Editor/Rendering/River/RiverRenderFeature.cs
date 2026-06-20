@@ -33,8 +33,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
 {
     private const int BottomDepthBias = -1;
     private const float BottomSlopeScaleDepthBias = -1.0f;
-    private const int SurfaceDepthBias = -512;
-    private const float SurfaceSlopeScaleDepthBias = -4.0f;
+    private const int SurfaceDepthBias = -50000;
+    private const float SurfaceSlopeScaleDepthBias = 0.0f;
 
     private static readonly InputElementDescription[] RiverInputElements = RiverVertex.Layout.CreateInputElements();
     private static readonly FieldInfo? RenderViewDatasField = typeof(ForwardLightingRenderFeature).GetField("renderViewDatas", BindingFlags.Instance | BindingFlags.NonPublic);

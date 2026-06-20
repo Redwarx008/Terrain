@@ -112,7 +112,8 @@ Clamping generated river vertices to sampled terrain height was a plausible firs
 
 **Decision:** Bottom keeps the old small bias; surface gets an independent stronger negative rasterizer depth bias:
 - bottom: `DepthBias=-1`, `SlopeScaleDepthBias=-1`
-- surface: `DepthBias=-512`, `SlopeScaleDepthBias=-4`
+- initial surface probe: `DepthBias=-512`, `SlopeScaleDepthBias=-4`
+- follow-up CK3 close-view measurement: effective surface depth is about `0.00298` in front of terrain, equivalent to roughly `DepthBias=-50000` on D24; surface now uses `DepthBias=-50000`, `SlopeScaleDepthBias=0`
 
 **Rationale:** The artifact only needs the surface pass to be stably in front of terrain. Bottom renders to the river/refraction target and should not inherit a larger scene-depth-oriented bias.
 
@@ -160,4 +161,3 @@ Clamping generated river vertices to sampled terrain height was a plausible firs
 ### What To Avoid
 - Do not reintroduce per-vertex terrain clamping as the primary fix for this issue.
 - Do not disable surface depth testing globally unless a later capture proves foreground occlusion is handled elsewhere.
-
