@@ -1,6 +1,6 @@
 namespace Terrain.Editor
 {
-    shader RiverBottom : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon
+    shader RiverBottom : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon, RiverStrideLighting
     {
         stage float _BankFade = 0.025f;
         stage float _Depth = 0.15f;
@@ -18,13 +18,6 @@ namespace Terrain.Editor
         stage int _ParallaxIterations = 10;
         stage float _BottomNormalStrength = 1.0f;
         stage float _BottomEnvironmentIntensity = 1.0f;
-        stage float4x4 _EnvironmentSkyMatrix = float4x4(
-            1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f);
-        stage float _EnvironmentIntensity = 1.0f;
-        stage float _EnvironmentMipCount = 1.0f;
         stage float4 BottomProperties = float4(0.0f, 0.35f, 0.0f, 1.0f);
         stage float4 BottomColorShallow = float4(0.28f, 0.22f, 0.16f, 1.0f);
         stage float4 BottomColorDeep = float4(0.10f, 0.075f, 0.05f, 1.0f);
@@ -32,27 +25,7 @@ namespace Terrain.Editor
         stage Texture2D<float4> BottomNormalTexture;
         stage Texture2D<float4> BottomPropertiesTexture;
         stage Texture2D<float4> BottomDepthTexture;
-        stage TextureCube<float4> EnvironmentMapTexture;
-        stage Texture2D SceneShadowMapTexture;
         stage SamplerState BottomTextureSampler;
-        stage SamplerState EnvironmentMapSampler;
-        stage SamplerComparisonState SceneShadowSampler
-        {
-            Filter = COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
-            AddressU = Clamp;
-            AddressV = Clamp;
-            ComparisonFunc = LessEqual;
-        };
-        stage float3 _SceneSunDirection = float3(0.0f, -1.0f, 0.0f);
-        stage float3 _SceneSunColor = float3(0.0f, 0.0f, 0.0f);
-        stage int _SceneShadowCascadeCount = 0;
-        stage float _SceneShadowBlendCascades = 0.0f;
-        stage float _SceneShadowFadeFactor = 1.0f;
-        stage float _SceneShadowDepthBias = 0.01f;
-        stage float _SceneShadowKernelScale = 0.0009765625f;
-        stage float _SceneShadowScreenSpaceScale = 16384.0f;
-        stage float _SceneShadowCascadeSplits[4];
-        stage float4x4 _SceneWorldToShadowCascadeUV[4];
 
         float ComputeWorldWidth()
         {
@@ -143,61 +116,6 @@ namespace Terrain.Editor
             return float3(x, y, z);
         }
 
-        float3 RiverFresnelSchlick(float cosTheta, float3 f0)
-        {
-            float oneMinusCos = 1.0f - saturate(cosTheta);
-            float oneMinusCos2 = oneMinusCos * oneMinusCos;
-            float oneMinusCos5 = oneMinusCos2 * oneMinusCos2 * oneMinusCos;
-            return f0 + (float3(1.0f, 1.0f, 1.0f) - f0) * oneMinusCos5;
-        }
-
-        float3 RiverMetalnessToDiffuse(float metalness, float3 albedo)
-        {
-            return albedo * (1.0f - metalness);
-        }
-
-        float3 RiverMetalnessToSpecular(float metalness, float3 albedo, float specularColor)
-        {
-            return lerp(float3(specularColor, specularColor, specularColor), albedo, metalness);
-        }
-
-        float RiverD_GGX(float nDotH, float roughness)
-        {
-            float a2 = roughness * roughness;
-            float denom = nDotH * nDotH * (a2 - 1.0f) + 1.0f;
-            return a2 / max(3.14159265f * denom * denom, 0.00001f);
-        }
-
-        float RiverV_Optimized(float lDotH, float roughness)
-        {
-            float k = roughness * 0.5f;
-            float k2 = k * k;
-            return 0.25f / max(lDotH * lDotH * (1.0f - k2) + k2, 0.00001f);
-        }
-
-        float3 RiverGetSpecularDominantDir(float3 normal, float3 reflectionDir, float roughness)
-        {
-            float smoothness = 1.0f - roughness;
-            float lerpFactor = smoothness * (sqrt(smoothness) + roughness);
-            return normalize(lerp(normal, reflectionDir, lerpFactor));
-        }
-
-        float RiverGetReductionInMicrofacets(float roughness)
-        {
-            return 1.0f / (roughness * roughness + 1.0f);
-        }
-
-        float RiverBurleyToMipSimple(float perceptualRoughness, float maxMip)
-        {
-            float scale = perceptualRoughness * (1.7f - 0.7f * perceptualRoughness);
-            return scale * maxMip;
-        }
-
-        float3 RotateEnvironmentSampleDirection(float3 sampleDirection)
-        {
-            return mul((float3x3)_EnvironmentSkyMatrix, sampleDirection);
-        }
-
         float3 RotateNormalToTerrain(float3 normal, float3 terrainNormal)
         {
             terrainNormal = normalize(terrainNormal);
@@ -214,162 +132,17 @@ namespace Terrain.Editor
             return lerp(dot(axis, normal) * axis, normal, cos(angle)) + cross(axis, normal) * sin(angle);
         }
 
-        float4 GetSceneShadowDiscSample(int sampleIndex)
-        {
-            switch (sampleIndex)
-            {
-                case 0:
-                    return float4(0.1287810057f, -0.1814530045f, 0.05233899876f, 0.5729820132f);
-                case 1:
-                    return float4(-0.5287250280f, 0.4128170013f, -0.4425239861f, -0.5076029897f);
-                case 2:
-                    return float4(0.6531159878f, 0.4026649892f, 0.2516950071f, -0.7764689922f);
-                default:
-                    return float4(-0.8220829964f, -0.05966699868f, 0.8247640133f, -0.1849530041f);
-            }
-        }
-
-        float CalcRandom(float2 seed)
-        {
-            float dotProduct = dot(seed, float2(12.9898f, 78.233f));
-            return frac(sin(dotProduct) * 43758.5453f);
-        }
-
-        float2 RotateShadowDisc(float2 disc, float2 rotate)
-        {
-            return float2(
-                disc.x * rotate.x - disc.y * rotate.y,
-                disc.x * rotate.y + disc.y * rotate.x);
-        }
-
-        float CalculateRiverBottomShadow(float4 shadowProj, float4 waterSurfaceProj)
-        {
-            shadowProj.xyz = shadowProj.xyz / shadowProj.w;
-            waterSurfaceProj.xyz = waterSurfaceProj.xyz / waterSurfaceProj.w;
-
-            float randomAngle = CalcRandom(round(_SceneShadowScreenSpaceScale * shadowProj.xy)) * 3.14159f * 2.0f;
-            float2 rotate = float2(cos(randomAngle), sin(randomAngle));
-            float shadowCompareDepth = min(shadowProj.z, waterSurfaceProj.z) - _SceneShadowDepthBias;
-
-            float shadowTerm = 0.0f;
-            [unroll]
-            for (int i = 0; i < 4; ++i)
-            {
-                float4 samples = GetSceneShadowDiscSample(i) * _SceneShadowKernelScale;
-                shadowTerm += SceneShadowMapTexture.SampleCmpLevelZero(SceneShadowSampler, shadowProj.xy + RotateShadowDisc(samples.xy, rotate), shadowCompareDepth);
-                shadowTerm += SceneShadowMapTexture.SampleCmpLevelZero(SceneShadowSampler, shadowProj.xy + RotateShadowDisc(samples.zw, rotate), shadowCompareDepth);
-            }
-
-            shadowTerm = shadowTerm / 8.0f;
-
-            const float fadeStrength = 32.0f;
-            float3 fadeFactor = saturate(float3(1.0f - abs(0.5f - shadowProj.xy) * 2.0f, 1.0f - shadowProj.z) * fadeStrength);
-            shadowTerm = lerp(1.0f, shadowTerm, min(min(fadeFactor.x, fadeFactor.y), fadeFactor.z));
-
-            return lerp(1.0f, shadowTerm, _SceneShadowFadeFactor);
-        }
-
-        float SampleSceneShadowCascade(float3 positionWS, float waterDepth, float3 toSunDir, int cascadeIndex)
-        {
-            float sunRaySurfaceIntersection = waterDepth / toSunDir.y;
-            float3 waterSurfacePos = positionWS + sunRaySurfaceIntersection * toSunDir;
-            float4 waterSurfaceProj = mul(float4(waterSurfacePos, 1.0f), _SceneWorldToShadowCascadeUV[cascadeIndex]);
-            float4 shadowProj = mul(float4(positionWS, 1.0f), _SceneWorldToShadowCascadeUV[cascadeIndex]);
-
-            return CalculateRiverBottomShadow(shadowProj, waterSurfaceProj);
-        }
-
-        int SelectSceneShadowCascade()
-        {
-            int cascadeCount = min(max(_SceneShadowCascadeCount, 0), 4);
-            int cascadeIndex = 0;
-
-            [unroll]
-            for (int i = 0; i < 3; ++i)
-            {
-                if (i >= cascadeCount - 1)
-                {
-                    break;
-                }
-
-                if (streams.DepthVS > _SceneShadowCascadeSplits[i])
-                {
-                    cascadeIndex = i + 1;
-                }
-            }
-
-            return cascadeIndex;
-        }
-
-        float EvaluateSceneShadow(float3 positionWS, float waterDepth, float3 toSunDir)
-        {
-            int cascadeCount = min(max(_SceneShadowCascadeCount, 0), 4);
-            if (cascadeCount <= 0)
-            {
-                return 1.0f;
-            }
-
-            int cascadeIndex = SelectSceneShadowCascade();
-            float shadow = SampleSceneShadowCascade(positionWS, waterDepth, toSunDir, cascadeIndex);
-
-            if (_SceneShadowBlendCascades > 0.5f && cascadeIndex < cascadeCount - 1)
-            {
-                float nextSplit = _SceneShadowCascadeSplits[cascadeIndex];
-                float splitSize = cascadeIndex > 0
-                    ? max(nextSplit - _SceneShadowCascadeSplits[cascadeIndex - 1], 0.0001f)
-                    : max(nextSplit, 0.0001f);
-                float splitDist = (nextSplit - streams.DepthVS) / splitSize;
-                if (splitDist < 0.2f)
-                {
-                    float lerpAmount = smoothstep(0.0f, 0.2f, splitDist);
-                    float nextShadow = SampleSceneShadowCascade(positionWS, waterDepth, toSunDir, cascadeIndex + 1);
-                    shadow = lerp(nextShadow, shadow, lerpAmount);
-                }
-            }
-
-            return shadow;
-        }
-
         float3 CalculateRiverBottomLighting(float3 positionWS, float waterDepth, float3 albedo, float3 normal, float3 viewDir, float4 properties)
         {
             float perceptualRoughness = saturate(properties.a);
-            float roughness = perceptualRoughness * perceptualRoughness;
             float metalness = saturate(properties.b);
-            float specularColor = 0.25f * saturate(properties.g);
-            float3 diffuseColor = RiverMetalnessToDiffuse(metalness, albedo);
-            float3 f0 = RiverMetalnessToSpecular(metalness, albedo, specularColor);
-
-            float3 lightDir = normalize(-_SceneSunDirection);
-            float3 halfDir = normalize(lightDir + viewDir);
-            float shadow = EvaluateSceneShadow(positionWS, waterDepth, lightDir);
-            float3 lightIntensity = _SceneSunColor * shadow;
-            float nDotL = saturate(dot(normal, lightDir)) + 0.00001f;
-            float nDotH = saturate(dot(normal, halfDir));
-            float lDotH = saturate(dot(lightDir, halfDir));
-
-            float3 directDiffuse = 0.31830989f * diffuseColor * lightIntensity * nDotL;
-            float3 directSpecular = RiverD_GGX(nDotH, lerp(0.03f, 1.0f, roughness))
-                * RiverFresnelSchlick(lDotH, f0)
-                * RiverV_Optimized(lDotH, roughness)
-                * lightIntensity
-                * nDotL;
-
-            float environmentIntensity = _EnvironmentIntensity * _BottomEnvironmentIntensity;
-            float maxEnvironmentMip = max(_EnvironmentMipCount - 3.0f, 0.0f);
-            float3 diffuseRadiance = EnvironmentMapTexture.SampleLevel(EnvironmentMapSampler, RotateEnvironmentSampleDirection(normal), maxEnvironmentMip).rgb * environmentIntensity;
-            float3 diffuseIbl = diffuseRadiance * diffuseColor;
-
-            float3 reflectionDir = reflect(-viewDir, normal);
-            float3 dominantReflectionDir = RiverGetSpecularDominantDir(normal, reflectionDir, roughness);
-            float nDotR = saturate(dot(normal, dominantReflectionDir));
-            float3 specularReflection = RiverFresnelSchlick(nDotR, f0);
-            float specularFade = RiverGetReductionInMicrofacets(roughness);
-            float specularMip = RiverBurleyToMipSimple(perceptualRoughness, maxEnvironmentMip);
-            float3 specularIblDirection = RotateEnvironmentSampleDirection(dominantReflectionDir);
-            float3 specularRadiance = EnvironmentMapTexture.SampleLevel(EnvironmentMapSampler, specularIblDirection, specularMip).rgb * environmentIntensity;
-            float3 specularIbl = specularRadiance * specularFade * specularReflection;
-
-            return directDiffuse + directSpecular + diffuseIbl + specularIbl;
+            float specularAmount = saturate(properties.g);
+            float glossiness = saturate(1.0f - perceptualRoughness);
+            float3 diffuseColor = albedo * (1.0f - metalness);
+            float3 specularColor = lerp(float3(0.04f, 0.04f, 0.04f) * specularAmount, albedo, metalness);
+            float3 lightDir = RiverStrideGetMainLightDirection();
+            float shadow = RiverStrideEvaluateSceneShadow(positionWS, waterDepth, lightDir, streams.DepthVS);
+            return RiverStrideComputeLighting(diffuseColor, specularColor, glossiness, normal, viewDir, shadow, _BottomEnvironmentIntensity);
         }
 
         stage override void PSMain()

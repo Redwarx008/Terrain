@@ -85,6 +85,11 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
+    <Compile Update="Effects\RiverStrideLighting.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -111,6 +116,9 @@
     </None>
     <None Update="Effects\RiverWaterCommon.sdsl">
       <LastGenOutput>RiverWaterCommon.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\RiverStrideLighting.sdsl">
+      <LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>
     </None>
   </ItemGroup>
 

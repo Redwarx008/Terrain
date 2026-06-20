@@ -1,6 +1,6 @@
 namespace Terrain.Editor
 {
-    shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon
+    shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon, RiverStrideLighting
     {
         stage float _FlowNormalSpeed = 0.075f;
         stage float _FlowNormalUvScale = 0.4f;
@@ -53,9 +53,6 @@ namespace Terrain.Editor
         stage float _WaterWave3NormalFlatten = 1.5f;
         stage float _WaterFlowNormalFlatten = 1.5f;
         stage float _WaterHeight = 3.0f;
-        stage float3 _DefaultEnvironmentSunDiffuse = float3(1.0f, 0.86783814f, 0.7548521f);
-        stage float _DefaultEnvironmentSunIntensity = 20.0f;
-        stage float3 _WaterToSunDir = float3(-0.543915f, 0.5933618f, 0.5933618f);
         stage float _WaterFoamScale = 0.3f;
         stage float _WaterFoamDistortFactor = 0.1f;
         stage float _WaterFoamShoreMaskDepth = 0.0f;
@@ -245,31 +242,6 @@ namespace Terrain.Editor
             return saturate(dot(foam, foamRamp));
         }
 
-        float GetNonLinearGlossiness(float Glossiness)
-        {
-            return exp2(11.0f * Glossiness);
-        }
-
-        float3 FresnelSchlick(float3 SpecularColor, float3 E, float3 H)
-        {
-            return SpecularColor + (float3(1.0f, 1.0f, 1.0f) - SpecularColor) * pow(1.0f - saturate(dot(E, H)), 5.0f);
-        }
-
-        void ImprovedBlinnPhong(float3 LightColor, float3 ToLightDir, float3 ToCameraDir, float3 Normal, float3 SpecularColor, float NonLinearGlossiness, out float3 DiffuseLightOut, out float3 SpecularLightOut)
-        {
-            float3 halfDir = normalize(ToCameraDir + ToLightDir);
-            float ndotl = saturate(dot(Normal, ToLightDir));
-            float ndoth = saturate(dot(Normal, halfDir));
-            float normalization = (NonLinearGlossiness + 2.0f) / 8.0f;
-            SpecularLightOut = normalization * pow(ndoth, NonLinearGlossiness) * FresnelSchlick(SpecularColor, ToLightDir, halfDir) * LightColor * ndotl;
-            DiffuseLightOut = LightColor * ndotl;
-        }
-
-        float3 ComposeLight(float3 Diffuse, float3 AmbientLight, float3 DiffuseLight, float3 SpecularLight)
-        {
-            return ((AmbientLight + DiffuseLight) * Diffuse) + SpecularLight;
-        }
-
         float3 CalcReflection(float3 Normal, float3 ToCameraDir)
         {
             float3 reflectionNormal = Normal;
@@ -308,22 +280,21 @@ namespace Terrain.Editor
             float3 waterDiffuse = lerp(WaterColorDeep.rgb, WaterColorShallow.rgb, facing) * _WaterDiffuseMultiplier;
 
             float fowGlossiness = lerp(_WaterGlossBase, glossMap, saturate(_WaterZoomedInZoomedOutFactor));
-
-            float3 diffuseLight = float3(0.0f, 0.0f, 0.0f);
-            float3 specularLight = float3(0.0f, 0.0f, 0.0f);
-            float3 waterToSunDir = normalize(_WaterToSunDir);
-            float nonLinearGlossiness = GetNonLinearGlossiness(fowGlossiness) * _WaterGlossScale;
-            ImprovedBlinnPhong(
-                _DefaultEnvironmentSunDiffuse * _DefaultEnvironmentSunIntensity,
-                waterToSunDir,
-                toCameraDir,
+            float3 lightDir = RiverStrideGetMainLightDirection();
+            float shadow = RiverStrideEvaluateSceneShadow(InputWorldSpacePos, 0.0f, lightDir, streams.DepthVS);
+            float3 waterSpecularColor = float3(_WaterSpecular, _WaterSpecular, _WaterSpecular);
+            float3 lightColorNdotL = RiverStrideGetMainLightColorNdotL(waterNormal, shadow);
+            float3 waterColor = RiverStrideComputeLighting(
+                waterDiffuse + foam,
+                waterSpecularColor,
+                fowGlossiness,
                 waterNormal,
-                float3(_WaterSpecular, _WaterSpecular, _WaterSpecular),
-                nonLinearGlossiness,
-                diffuseLight,
-                specularLight);
-
-            float3 waterColor = ComposeLight(waterDiffuse + foam, float3(0.0f, 0.0f, 0.0f), diffuseLight, specularLight * _WaterSpecularFactor);
+                toCameraDir,
+                shadow, 1.0f);
+            waterColor += RiverStrideComputeDirectSpecular(
+                waterSpecularColor,
+                _WaterGlossScale * fowGlossiness,
+                waterNormal, toCameraDir, lightDir, lightColorNdotL) * (_WaterSpecularFactor - 1.0f);
             float3 refractionColor = CalcRefraction(InputWorldSpacePos, waterNormal, InputScreenSpacePos.xy, waterColorAndSpec.rgb, InputDepth);
 
             float depth = InputDepth;

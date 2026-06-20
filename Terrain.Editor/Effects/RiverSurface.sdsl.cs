@@ -69,9 +69,6 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<float> _WaterWave3NormalFlatten = ParameterKeys.NewValue<float>(1.5f);
         public static readonly ValueParameterKey<float> _WaterFlowNormalFlatten = ParameterKeys.NewValue<float>(1.5f);
         public static readonly ValueParameterKey<float> _WaterHeight = ParameterKeys.NewValue<float>(3.0f);
-        public static readonly ValueParameterKey<Vector3> _DefaultEnvironmentSunDiffuse = ParameterKeys.NewValue<Vector3>(new Vector3(1.0f,0.86783814f,0.7548521f));
-        public static readonly ValueParameterKey<float> _DefaultEnvironmentSunIntensity = ParameterKeys.NewValue<float>(20.0f);
-        public static readonly ValueParameterKey<Vector3> _WaterToSunDir = ParameterKeys.NewValue<Vector3>(new Vector3(-0.543915f,0.5933618f,0.5933618f));
         public static readonly ValueParameterKey<float> _WaterFoamScale = ParameterKeys.NewValue<float>(0.3f);
         public static readonly ValueParameterKey<float> _WaterFoamDistortFactor = ParameterKeys.NewValue<float>(0.1f);
         public static readonly ValueParameterKey<float> _WaterFoamShoreMaskDepth = ParameterKeys.NewValue<float>(0.0f);

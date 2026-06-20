@@ -17,14 +17,17 @@ internal static class RiverShaderTextTests
         TestHarness.Run("river bottom shader uses target advanced uv and parallax semantics", BottomShaderUsesTargetAdvancedUvAndParallaxSemantics);
         TestHarness.Run("river bottom shader uses target advanced alpha semantics", BottomShaderUsesTargetAdvancedAlphaSemantics);
         TestHarness.Run("river bottom shader uses target bottom shadow path", BottomShaderUsesTargetBottomShadowPath);
-        TestHarness.Run("river bottom shader uses scene material lighting", BottomShaderUsesSceneMaterialLighting);
+        TestHarness.Run("river shared lighting shader follows Stride standard material equations", SharedLightingShaderFollowsStrideStandardMaterialEquations);
+        TestHarness.Run("river shared lighting shader numeric helpers match Stride formulas", SharedLightingShaderNumericHelpersMatchStrideFormulas);
+        TestHarness.Run("river bottom shader uses shared Stride lighting", BottomShaderUsesSharedStrideLighting);
         TestHarness.Run("river bottom shader does not apply a global lighting energy boost", BottomShaderDoesNotApplyGlobalLightingEnergyBoost);
         TestHarness.Run("river render objects carry settings into shader binding", RenderObjectCarriesRiverSettingsToShaderBinding);
-        TestHarness.Run("river bottom lighting inputs come from scene bindings", BottomLightingInputsComeFromSceneBindings);
+        TestHarness.Run("river surface shader uses shared Stride lighting", SurfaceShaderUsesSharedStrideLighting);
+        TestHarness.Run("river scene lighting inputs bind to bottom and surface", RiverSceneLightingInputsBindToBottomAndSurface);
+        TestHarness.Run("river shared lighting shader is registered for Stride key generation", SharedLightingShaderIsRegisteredForStrideKeyGeneration);
         TestHarness.Run("river surface shader samples water texture assets", SurfaceShaderSamplesWaterTextureAssets);
         TestHarness.Run("river surface shader uses target water normals and flow", SurfaceShaderUsesTargetWaterNormalsAndFlow);
         TestHarness.Run("river surface shader follows target refraction and fade semantics", SurfaceShaderFollowsTargetRefractionAndFadeSemantics);
-        TestHarness.Run("river surface shader uses target water lighting structure", SurfaceShaderUsesTargetWaterLightingStructure);
         TestHarness.Run("river surface shader does not apply removed post wrapper", SurfaceShaderDoesNotApplyRemovedPostWrapper);
         TestHarness.Run("river render feature separates scene seed from working refraction buffer", RenderFeatureSeparatesSceneSeedFromWorkingBuffer);
         TestHarness.Run("river scene seed writes depth payload instead of clearing alpha", RenderFeatureSceneSeedWritesDepthPayload);
@@ -223,50 +226,147 @@ internal static class RiverShaderTextTests
 
     private static void BottomShaderUsesTargetBottomShadowPath()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverBottom.sdsl");
+        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverStrideLighting.sdsl");
 
-        AssertContains(shader, "float CalcRandom(float2 seed)", "RiverBottom should use the target random-disc shadow rotation helper");
-        AssertContains(shader, "float2 RotateShadowDisc(float2 disc, float2 rotate)", "RiverBottom should rotate the CK3 disc kernel per pixel");
+        AssertContains(shader, "float RiverStrideCalcRandom(float2 seed)", "RiverBottom should use the target random-disc shadow rotation helper through shared river lighting");
+        AssertContains(shader, "float2 RiverStrideRotateShadowDisc(float2 disc, float2 rotate)", "RiverBottom should rotate the CK3 disc kernel per pixel through shared river lighting");
         AssertContains(shader, "float sunRaySurfaceIntersection = waterDepth / toSunDir.y;", "RiverBottom should intersect the sun ray with the water surface using the target depth formula");
         AssertContains(shader, "float shadowCompareDepth = min(shadowProj.z, waterSurfaceProj.z) - _SceneShadowDepthBias;", "RiverBottom should exclude the water surface from shadow casting while respecting the active scene shadow producer bias");
-        AssertContains(shader, "float4 samples = GetSceneShadowDiscSample(i) * _SceneShadowKernelScale;", "RiverBottom should use the target disc sample kernel");
+        AssertContains(shader, "float4 samples = RiverStrideGetSceneShadowDiscSample(i) * _SceneShadowKernelScale;", "RiverBottom should use the target disc sample kernel through shared river lighting");
         AssertContains(shader, "shadowTerm = shadowTerm / 8.0f;", "RiverBottom should average the two-samples-per-entry CK3 shadow kernel");
-        AssertContains(shader, "float shadow = EvaluateSceneShadow(positionWS, waterDepth, lightDir);", "RiverBottom direct lighting should use the target bottom shadow evaluation");
         AssertContains(shader, "float3 fadeFactor = saturate(float3(1.0f - abs(0.5f - shadowProj.xy) * 2.0f, 1.0f - shadowProj.z) * fadeStrength);", "RiverBottom should fade shadowing near cascade edges like the target path");
         AssertNotContains(shader, "Get5x5SceneShadowFilterKernel", "RiverBottom should no longer use the old 5x5 shadow kernel helper");
         AssertNotContains(shader, "FilterSceneShadow5x5", "RiverBottom should no longer use the old fixed 5x5 shadow filter");
         AssertNotContains(shader, "GetSceneShadowPositionOffset", "RiverBottom should not use a normal-offset shadow substitute for the bottom water-surface exclusion");
     }
 
-    private static void BottomShaderUsesSceneMaterialLighting()
+    private static void SharedLightingShaderFollowsStrideStandardMaterialEquations()
+    {
+        string shaderPath = GetRepositoryPath("Terrain.Editor/Effects/RiverStrideLighting.sdsl");
+        TestHarness.Assert(File.Exists(shaderPath), "RiverStrideLighting.sdsl should exist before shared lighting equation checks");
+        string shader = File.ReadAllText(shaderPath);
+
+        AssertContains(shader, "shader RiverStrideLighting : RiverWaterCommon", "RiverStrideLighting should be a shared mixin available to both river passes");
+        AssertContains(shader, "float3 RiverStrideComputeDirectDiffuse(float3 diffuseColor, float3 lightColorNdotL)", "RiverStrideLighting should centralize Stride Lambert direct diffuse");
+        AssertContains(shader, "return diffuseColor * lightColorNdotL;", "Direct Lambert diffuse should match Stride after MaterialSurfaceLightingAndShading applies PI");
+        AssertContains(shader, "float RiverStrideNormalDistributionGGX(float alphaRoughness, float nDotH)", "RiverStrideLighting should use GGX normal distribution");
+        AssertContains(shader, "float RiverStrideVisibilitySmithSchlickGGX(float alphaRoughness, float nDotL, float nDotV)", "RiverStrideLighting should use Stride-style Smith-Schlick visibility");
+        AssertContains(shader, "return visibilityL * visibilityV / max(nDotL * nDotV, 0.00001f);", "Smith-Schlick visibility should match Stride's visibility term, not only the geometric attenuation");
+        AssertContains(shader, "float3 RiverStrideFresnelSchlick(float3 specularColor, float lDotH)", "RiverStrideLighting should use Schlick Fresnel");
+        AssertContains(shader, "return 3.14159265f * specular * lightColorNdotL;", "Direct microfacet specular should include Stride's final direct-light PI multiplier");
+        AssertContains(shader, "float2 RiverStrideDFGPolynomial(float3 specularColor, float alphaRoughness, float nDotV)", "RiverStrideLighting should use the Stride polynomial DFG path for environment specular");
+        AssertContains(shader, "float x = 1.0f - alphaRoughness;", "Stride DFG polynomial should use one minus alpha roughness as x");
+        AssertContains(shader, "float y = nDotV;", "Stride DFG polynomial should use NdotV directly as y");
+        AssertContains(shader, "bias *= saturate(50.0f * specularColor.y);", "Stride DFG polynomial should dampen bias by the specular color");
+        AssertContains(shader, "sqrt(alphaRoughness) * _EnvironmentMipCount", "Stride roughness cubemap sampling should use sqrt(alpha roughness) times mip count");
+        AssertContains(shader, "sampleDirection = mul(sampleDirection, (float3x3)_EnvironmentSkyMatrix);", "Skybox rotation should match Stride LightSkyboxShader's vector-matrix order");
+        AssertContains(shader, "return float3(0.0f, 0.0f, 0.0f);", "River diffuse IBL should stay zero when the scene only provides a specular skybox environment");
+        AssertContains(shader, "sampleDirection = float3(sampleDirection.xy, -sampleDirection.z);", "Skybox sampling should match Stride LightSkyboxShader's cubemap Z flip");
+    }
+
+    private static void SharedLightingShaderNumericHelpersMatchStrideFormulas()
+    {
+        float visibility = VisibilitySmithSchlickGgx(alphaRoughness: 0.36f, nDotL: 0.42f, nDotV: 0.68f);
+        AssertNearlyEqual(2.585333f, visibility, 0.00001f, "RiverStride visibility should match Stride BRDFMicrofacet.VisibilitySmithSchlickGGX");
+
+        (float scale, float bias) = DfgPolynomial(specularY: 0.01f, alphaRoughness: 0.36f, nDotV: 0.3f);
+        AssertNearlyEqual(0.846103f, scale, 0.00001f, "RiverStride DFG scale should match Stride polynomial");
+        AssertNearlyEqual(0.076949f, bias, 0.00001f, "RiverStride DFG bias should include Stride's specular-color damping");
+
+        float mip = MathF.Sqrt(0.36f) * 10.0f;
+        AssertNearlyEqual(6.0f, mip, 0.00001f, "RiverStride specular IBL mip should match RoughnessCubeMapEnvironmentColor");
+    }
+
+    private static void BottomShaderUsesSharedStrideLighting()
     {
         string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverBottom.sdsl");
-        string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
 
-        AssertContains(shader, "TextureCube<float4> EnvironmentMapTexture", "RiverBottom should bind a cube environment map for bottom lighting");
-        AssertContains(shader, "EnvironmentMapTexture.SampleLevel", "RiverBottom should sample environment IBL instead of baking brightness into diffuse");
-        AssertContains(shader, "CalculateRiverBottomLighting", "RiverBottom should route bottom albedo through a material lighting function");
-        AssertContains(shader, "float specularColor = 0.25f * saturate(properties.g);", "RiverBottom should remap bottom specular to material specular color");
-        AssertContains(shader, "RiverD_GGX", "RiverBottom direct specular should use a GGX distribution");
-        AssertContains(shader, "RiverV_Optimized", "RiverBottom direct specular should use the optimized visibility term");
-        AssertContains(shader, "RiverGetSpecularDominantDir", "RiverBottom specular IBL should use dominant reflection direction");
-        AssertContains(shader, "RiverBurleyToMipSimple", "RiverBottom specular IBL should map perceptual roughness to cubemap mip");
-        AssertContains(shader, "float maxEnvironmentMip = max(_EnvironmentMipCount - 3.0f, 0.0f);", "RiverBottom IBL should use the target max mip formula including the mip-zero offset");
-        AssertContains(shader, "_SceneSunDirection", "RiverBottom should bind the visible scene directional-light direction");
-        AssertContains(shader, "_SceneSunColor", "RiverBottom should bind the visible scene directional-light color");
-        AssertContains(shader, "_SceneWorldToShadowCascadeUV", "RiverBottom should bind the real scene world-to-shadow matrices");
-        AssertContains(shader, "float shadow = EvaluateSceneShadow(positionWS, waterDepth, lightDir);", "RiverBottom direct light should route through the target bottom shadow projection");
-        AssertContains(shader, "RotateEnvironmentSampleDirection", "RiverBottom should centralize scene skybox rotation for IBL sampling");
-        AssertContains(shader, "return mul((float3x3)_EnvironmentSkyMatrix, sampleDirection);", "RiverBottom IBL rotation should match the target cubemap rotation without flipping Z");
-        AssertContains(shader, "RiverUnpackRRxGNormal", "RiverBottom should use packed bottom normals");
-        AssertContains(shader, "float3 tangent = normalize(streams.RiverTangent);", "RiverBottom should use the input tangent orientation directly for bottom normal-map TBN");
-        AssertContains(shader, "parallaxNormal.x * tangent + parallaxNormal.y * bitangent + parallaxNormal.z * surfaceNormal", "RiverBottom should transform the sampled bottom normal through the river tangent basis");
-        AssertNotContains(shader, "bottomNormal = normalize(RotateNormalToTerrain(bottomNormal, surfaceNormal));", "RiverBottom should not apply the advanced terrain-normal rotation in the target capture's old bottom path");
-        AssertContains(shader, "CalculateRiverBottomLighting(bottomLightingPosition, worldDepth, bottomDiffuse.rgb, bottomNormal, bottomViewDir, bottomProperties);", "RiverBottom should light the submerged bottom world position before fake-depth compression");
-        AssertContains(feature, "RiverBottomKeys.EnvironmentMapTexture", "RiverRenderFeature should bind the environment cubemap to the bottom pass");
-        AssertNotContains(shader, "_BottomSunDirection", "RiverBottom should not keep a river-local sun direction once bottom lighting is scene-driven");
-        AssertNotContains(shader, "_ShadowTermFallback", "RiverBottom should not keep the old neutral-lighting shadow fallback once bottom lighting is scene-driven");
-        AssertNotContains(shader, "bottomDiffuse.rgb * depthTint * 2.0f", "RiverBottom should not darken albedo by depth tint as a substitute for material lighting");
+        AssertContains(shader, "shader RiverBottom : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon, RiverStrideLighting", "RiverBottom should mix in shared Stride lighting");
+        AssertContains(shader, "float shadow = RiverStrideEvaluateSceneShadow(positionWS, waterDepth, lightDir, streams.DepthVS);", "RiverBottom should preserve water-depth-aware scene shadowing");
+        AssertContains(shader, "return RiverStrideComputeLighting(diffuseColor, specularColor, glossiness, normal, viewDir, shadow, _BottomEnvironmentIntensity);", "RiverBottom should route final lighting through the shared Stride helper");
+        AssertNotContains(shader, "RiverD_GGX", "RiverBottom should not keep its separate GGX implementation");
+        AssertNotContains(shader, "RiverV_Optimized", "RiverBottom should not keep its separate visibility implementation");
+        AssertNotContains(shader, "RiverGetSpecularDominantDir", "RiverBottom should not keep its separate dominant-direction IBL implementation");
+    }
+
+    private static void SurfaceShaderUsesSharedStrideLighting()
+    {
+        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
+
+        AssertContains(shader, "shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon, RiverStrideLighting", "RiverSurface should mix in shared Stride lighting");
+        AssertContains(shader, "float shadow = RiverStrideEvaluateSceneShadow(InputWorldSpacePos, 0.0f, lightDir, streams.DepthVS);", "RiverSurface should receive scene shadowing through the shared river shadow path");
+        AssertContains(shader, "float3 waterSpecularColor = float3(_WaterSpecular, _WaterSpecular, _WaterSpecular);", "RiverSurface should build water specular color once before shared lighting");
+        AssertContains(shader, "float3 waterColor = RiverStrideComputeLighting(", "RiverSurface should route water lighting through the shared Stride helper");
+        AssertContains(shader, "waterDiffuse + foam", "RiverSurface shared lighting should include water diffuse and foam");
+        AssertContains(shader, "waterSpecularColor", "RiverSurface shared lighting should use the prepared water specular color");
+        AssertContains(shader, "fowGlossiness", "RiverSurface shared lighting should use the target glossiness");
+        AssertContains(shader, "shadow, 1.0f", "RiverSurface shared lighting should use scene shadowing with full environment intensity");
+        AssertContains(shader, "float3 lightDir = RiverStrideGetMainLightDirection();", "RiverSurface should use the shared main light direction helper");
+        AssertContains(shader, "float3 lightColorNdotL = RiverStrideGetMainLightColorNdotL(waterNormal, shadow);", "RiverSurface should use the shared light color and NdotL helper");
+        AssertContains(shader, "waterColor += RiverStrideComputeDirectSpecular(", "RiverSurface should add a direct-specular correction for the existing water specular factor");
+        AssertContains(shader, "_WaterGlossScale * fowGlossiness", "RiverSurface direct-specular correction should preserve water gloss scaling");
+        AssertContains(shader, "waterNormal, toCameraDir, lightDir, lightColorNdotL", "RiverSurface direct-specular correction should use shared light parameters");
+        AssertContains(shader, "* (_WaterSpecularFactor - 1.0f);", "RiverSurface should preserve the existing water specular factor without changing diffuse energy");
+        AssertNotContains(shader, "_DefaultEnvironmentSunDiffuse", "RiverSurface should stop declaring an independent sun color");
+        AssertNotContains(shader, "_DefaultEnvironmentSunIntensity", "RiverSurface should stop declaring an independent sun intensity");
+        AssertNotContains(shader, "_WaterToSunDir", "RiverSurface should stop declaring an independent sun direction");
+        AssertNotContains(shader, "ImprovedBlinnPhong", "RiverSurface should not use its separate Blinn-Phong light model");
+        AssertNotContains(shader, "ComposeLight", "RiverSurface should not use its separate light composition helper");
+    }
+
+    private static void RiverSceneLightingInputsBindToBottomAndSurface()
+    {
+        string loader = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverResourceLoader.cs");
+        string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
+        string viewportGame = ReadRepositoryText("Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs");
+
+        AssertContains(feature, "PrepareRiverSceneLighting(context, renderView);", "RiverRenderFeature should prepare scene lighting for all river passes");
+        AssertContains(feature, "bottomShadowMapRenderer = forwardLightingFeature?.ShadowMapRenderer;", "RiverRenderFeature should grab Stride's shadow-map renderer from forward lighting");
+        AssertContains(feature, "var lightingView = renderView.LightingView ?? renderView;", "RiverRenderFeature should resolve river lighting from the current lighting view");
+        AssertContains(feature, "LightDirectionalShadowMapRenderer.ShaderData", "RiverRenderFeature should read Stride's directional shadow shader data for river passes");
+        AssertContains(feature, "sceneShadowDepthBias = shaderData.DepthBias;", "RiverRenderFeature should carry Stride's active shadow depth bias into the shared compare path");
+        AssertContains(feature, "BindDirectionalLightToEffect(bottomEffect?.Parameters", "RiverRenderFeature should bind directional light data to RiverBottom");
+        AssertContains(feature, "BindDirectionalLightToEffect(surfaceEffect?.Parameters", "RiverRenderFeature should bind directional light data to RiverSurface");
+        AssertContains(feature, "BindEnvironmentToEffect(bottomEffect?.Parameters", "RiverRenderFeature should bind skybox data to RiverBottom");
+        AssertContains(feature, "BindEnvironmentToEffect(surfaceEffect?.Parameters", "RiverRenderFeature should bind skybox data to RiverSurface");
+        AssertContains(feature, "RiverStrideLightingKeys._SceneSunDirection", "RiverRenderFeature should use shared generated lighting keys");
+        AssertContains(feature, "RiverStrideLightingKeys._SceneShadowDepthBias", "RiverRenderFeature should bind active scene shadow depth bias through shared lighting keys");
+        AssertContains(feature, "RiverStrideLightingKeys._SceneWorldToShadowCascadeUV", "RiverRenderFeature should bind real scene world-to-shadow matrices through shared lighting keys");
+        AssertContains(feature, "RiverStrideLightingKeys.SceneShadowMapTexture", "RiverRenderFeature should bind the shared shadow map key");
+        AssertContains(feature, "SkyboxKeys.CubeMap", "RiverRenderFeature should read the real scene skybox specular cubemap");
+        AssertContains(feature, "River bottom requires a real scene skybox cubemap.", "RiverRenderFeature should still reject non-target bottom environment fallbacks");
+        AssertContains(feature, "RiverStrideLightingKeys.EnvironmentMapTexture", "RiverRenderFeature should bind the shared environment map key");
+        AssertContains(feature, "RiverStrideLightingKeys._EnvironmentSkyMatrix", "RiverRenderFeature should bind scene skybox rotation through shared lighting keys");
+        AssertContains(feature, "RiverStrideLightingKeys._EnvironmentIntensity", "RiverRenderFeature should bind scene skybox intensity through shared lighting keys");
+        AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.WaterColorSampler, graphicsDevice.SamplerStates.LinearWrap);", "RiverRenderFeature should bind a dedicated water-color sampler");
+        AssertContains(feature, "SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ReflectionSpecularTexture, riverResources.ReflectionSpecular);", "RiverRenderFeature should keep the river reflection/specular asset on the surface pass");
+        AssertContains(viewportGame, "_riverComponent.Settings.BottomEnvironmentIntensity = 1.0f;", "EmbeddedStrideViewportGame should keep only bottom environment tuning as an explicit river-side multiplier");
+        AssertNotContains(feature, "RiverBottomEffectKeys.BottomLightGroup", "RiverRenderFeature should not depend on a brittle light-group permutation");
+        AssertNotContains(feature, "RiverBottomKeys._ShadowTermFallback", "RiverRenderFeature should not bind the old river-local shadow fallback into the bottom pass");
+        AssertNotContains(feature, "RiverBottomKeys._SceneSunDirection", "Scene lighting should no longer be bottom-only");
+        AssertNotContains(feature, "RiverBottomKeys._SceneSunColor", "Scene sun color should no longer be bottom-only");
+        AssertNotContains(feature, "RiverBottomKeys._SceneShadowDepthBias", "Scene shadow depth bias should no longer be bottom-only");
+        AssertNotContains(feature, "RiverBottomKeys._SceneWorldToShadowCascadeUV", "Scene shadow matrices should no longer be bottom-only");
+        AssertNotContains(feature, "RiverBottomKeys.SceneShadowMapTexture", "Scene shadow map should no longer be bottom-only");
+        AssertNotContains(feature, "RiverBottomKeys.EnvironmentMapTexture", "Scene environment should no longer be bottom-only");
+        AssertNotContains(feature, "RiverBottomKeys._EnvironmentSkyMatrix", "Scene skybox rotation should no longer be bottom-only");
+        AssertNotContains(feature, "RiverBottomKeys._EnvironmentIntensity", "Scene skybox intensity should no longer be bottom-only");
+        AssertNotContains(loader, "BottomEnvironmentUrl", "RiverResourceLoader should not keep a bottom environment fallback URL once river IBL is scene-only");
+        AssertNotContains(loader, "EnsureBottomEnvironment", "RiverResourceLoader should not keep a bottom environment fallback loader once river IBL is scene-only");
+        AssertNotContains(feature, "riverResources.EnsureBottomEnvironment", "RiverRenderFeature should not fall back to an optional skybox texture for river IBL");
+        AssertNotContains(feature, "bottomEnvironment ??= riverResources.ReflectionSpecular", "RiverRenderFeature should not use the surface reflection fallback cubemap for river IBL");
+        AssertNotContains(viewportGame, "_riverComponent.Settings.BottomSunIntensity =", "EmbeddedStrideViewportGame should no longer override the scene directional-light intensity for river bottom");
+    }
+
+    private static void SharedLightingShaderIsRegisteredForStrideKeyGeneration()
+    {
+        string project = ReadRepositoryText("Terrain.Editor/Terrain.Editor.csproj");
+        string package = ReadRepositoryText("Terrain.Editor/Terrain.Editor.sdpkg");
+
+        AssertContains(package, "!dir Effects", "Terrain.Editor.sdpkg should include the Effects folder that contains RiverStrideLighting.sdsl");
+        AssertContains(project, "<Compile Update=\"Effects\\RiverStrideLighting.sdsl.cs\">", "Terrain.Editor.csproj should compile generated RiverStrideLighting shader keys");
+        AssertContains(project, "<None Update=\"Effects\\RiverStrideLighting.sdsl\">", "Terrain.Editor.csproj should register RiverStrideLighting for shader key generation metadata");
+        AssertContains(project, "<LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>", "Terrain.Editor.csproj should name the generated RiverStrideLighting key file");
     }
 
     private static void BottomShaderDoesNotApplyGlobalLightingEnergyBoost()
@@ -310,38 +410,6 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);", "RiverRenderFeature should bind per-axis map world size into the surface shader");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionScale, riverObject.WaterRefractionScale);", "RiverRenderFeature should bind refraction scale from the render object");
         AssertNotContains(feature, "_BottomSpecularIntensity", "RiverRenderFeature should not bind river-local bottom specular intensity");
-    }
-
-    private static void BottomLightingInputsComeFromSceneBindings()
-    {
-        string loader = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverResourceLoader.cs");
-        string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
-        string viewportGame = ReadRepositoryText("Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs");
-
-        AssertContains(feature, "bottomShadowMapRenderer = forwardLightingFeature?.ShadowMapRenderer;", "RiverRenderFeature should grab Stride's shadow-map renderer from forward lighting");
-        AssertContains(feature, "var lightingView = renderView.LightingView ?? renderView;", "RiverRenderFeature should resolve bottom lighting from the current lighting view");
-        AssertContains(feature, "SelectBottomDirectionalLight(lights, renderViewLightData, lightingView)", "RiverRenderFeature should choose the bottom directional light through a dedicated selection helper");
-        AssertContains(feature, "LightDirectionalShadowMapRenderer.ShaderData", "RiverRenderFeature should read Stride's directional shadow shader data for the bottom pass");
-        AssertContains(feature, "RiverBottomKeys._SceneSunDirection", "RiverRenderFeature should bind the scene directional-light direction for the bottom pass");
-        AssertContains(feature, "RiverBottomKeys._SceneSunColor", "RiverRenderFeature should bind the scene directional-light color for the bottom pass");
-        AssertContains(feature, "sceneShadowDepthBias = shaderData.DepthBias;", "RiverRenderFeature should carry Stride's active shadow depth bias into the bottom compare path");
-        AssertContains(feature, "RiverBottomKeys._SceneShadowDepthBias", "RiverRenderFeature should bind the active scene shadow depth bias for the bottom pass");
-        AssertContains(feature, "RiverBottomKeys._SceneWorldToShadowCascadeUV", "RiverRenderFeature should bind the real scene world-to-shadow matrices");
-        AssertContains(feature, "RiverBottomKeys.SceneShadowMapTexture", "RiverRenderFeature should bind the real scene shadow atlas texture");
-        AssertContains(feature, "SkyboxKeys.CubeMap", "RiverRenderFeature should read the real scene skybox specular cubemap");
-        AssertContains(feature, "River bottom requires a real scene skybox cubemap.", "RiverRenderFeature should reject non-CK3 bottom environment fallbacks");
-        AssertContains(feature, "RiverBottomKeys._EnvironmentSkyMatrix", "RiverRenderFeature should bind scene skybox rotation for bottom IBL");
-        AssertContains(feature, "RiverBottomKeys._EnvironmentIntensity", "RiverRenderFeature should bind scene skybox intensity for bottom IBL");
-        AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.WaterColorSampler, graphicsDevice.SamplerStates.LinearWrap);", "RiverRenderFeature should bind a dedicated water-color sampler");
-        AssertContains(feature, "SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ReflectionSpecularTexture, riverResources.ReflectionSpecular);", "RiverRenderFeature should keep the river reflection/specular asset on the surface pass");
-        AssertContains(viewportGame, "_riverComponent.Settings.BottomEnvironmentIntensity = 1.0f;", "EmbeddedStrideViewportGame should keep only bottom environment tuning as an explicit river-side multiplier");
-        AssertNotContains(feature, "RiverBottomEffectKeys.BottomLightGroup", "RiverRenderFeature should not depend on a brittle light-group permutation");
-        AssertNotContains(feature, "RiverBottomKeys._ShadowTermFallback", "RiverRenderFeature should not bind the old river-local shadow fallback into the bottom pass");
-        AssertNotContains(loader, "BottomEnvironmentUrl", "RiverResourceLoader should not keep a bottom environment fallback URL once bottom IBL is scene-only");
-        AssertNotContains(loader, "EnsureBottomEnvironment", "RiverResourceLoader should not keep a bottom environment fallback loader once bottom IBL is scene-only");
-        AssertNotContains(feature, "riverResources.EnsureBottomEnvironment", "RiverRenderFeature should not fall back to an optional skybox texture for bottom IBL");
-        AssertNotContains(feature, "bottomEnvironment ??= riverResources.ReflectionSpecular", "RiverRenderFeature should not use the surface reflection fallback cubemap for bottom IBL");
-        AssertNotContains(viewportGame, "_riverComponent.Settings.BottomSunIntensity =", "EmbeddedStrideViewportGame should no longer override the scene directional-light intensity for river bottom");
     }
 
     private static void SurfaceShaderSamplesWaterTextureAssets()
@@ -421,27 +489,6 @@ internal static class RiverShaderTextTests
         AssertNotContains(shader, "_DepthFactor", "RiverSurface should not pass a cross-section depth factor into water shading");
         AssertNotContains(shader, "effectiveDepth", "RiverSurface see-through should not cap refraction depth by surface depth");
         AssertNotContains(shader, "RiverDepthFromCrossSection(riverUv.y", "RiverSurface should not use the bank-width power helper for this path");
-    }
-
-    private static void SurfaceShaderUsesTargetWaterLightingStructure()
-    {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
-
-        AssertContains(shader, "stage float3 _DefaultEnvironmentSunDiffuse = float3(1.0f, 0.86783814f, 0.7548521f);", "RiverSurface should expose map sun diffuse color");
-        AssertContains(shader, "stage float _DefaultEnvironmentSunIntensity = 20.0f;", "RiverSurface should expose map sun intensity");
-        AssertContains(shader, "stage float _WaterZoomedInZoomedOutFactor = 0.0f;", "RiverSurface should expose the target water zoom factor used by CalcWater");
-        AssertContains(shader, "stage float3 _WaterToSunDir = float3(-0.543915f, 0.5933618f, 0.5933618f);", "RiverSurface should expose the target water sun direction used by CalcWater");
-        AssertContains(shader, "void ImprovedBlinnPhong(", "RiverSurface should use the target water direct-light model");
-        AssertContains(shader, "float fowGlossiness = lerp(_WaterGlossBase, glossMap, saturate(_WaterZoomedInZoomedOutFactor));", "RiverSurface should match target gloss interpolation");
-        AssertContains(shader, "float nonLinearGlossiness = GetNonLinearGlossiness(fowGlossiness) * _WaterGlossScale;", "RiverSurface should use the target water gloss scale parameter");
-        AssertContains(shader, "_DefaultEnvironmentSunDiffuse * _DefaultEnvironmentSunIntensity", "RiverSurface should light water from the map sun inputs without gloss-map gating");
-        AssertContains(shader, "float3 waterColor = ComposeLight(waterDiffuse + foam, float3(0.0f, 0.0f, 0.0f), diffuseLight, specularLight * _WaterSpecularFactor);", "RiverSurface should compose diffuse and specular before refraction/reflection");
-        AssertContains(shader, "float3 reflectionColor = CalcReflection(waterNormal, toCameraDir);", "RiverSurface should use target cubemap intensity directly");
-        AssertNotContains(shader, "sunIntensityMask", "RiverSurface should not gate target sun lighting by the water color map gloss channel");
-        AssertNotContains(shader, "GetWaterGlossScale", "RiverSurface should not keep the old shadow-mask gloss helper");
-        AssertNotContains(shader, "GetWaterCubemapIntensity", "RiverSurface should not keep the old shadow-mask cubemap helper");
-        AssertNotContains(shader, "lerp(0.35f, 1.0f, ndotl)", "RiverSurface should not keep the old neutral diffuse approximation");
-        AssertNotContains(shader, "normalEnergy", "RiverSurface should not keep the old global normal-energy color gain");
     }
 
     private static void SurfaceShaderDoesNotApplyRemovedPostWrapper()
@@ -583,6 +630,47 @@ internal static class RiverShaderTextTests
     private static string GetRepositoryPath(string relativePath)
     {
         return Path.Combine(RepositoryRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    private static float VisibilitySmithSchlickGgx(float alphaRoughness, float nDotL, float nDotV)
+    {
+        float k = alphaRoughness * 0.5f;
+        float visibilityL = nDotL / (nDotL * (1.0f - k) + k);
+        float visibilityV = nDotV / (nDotV * (1.0f - k) + k);
+        return visibilityL * visibilityV / (nDotL * nDotV);
+    }
+
+    private static (float Scale, float Bias) DfgPolynomial(float specularY, float alphaRoughness, float nDotV)
+    {
+        float x = 1.0f - alphaRoughness;
+        float y = nDotV;
+
+        float bias = Saturate(MathF.Min(
+            -0.1688f * x + 1.895f * x * x,
+            0.9903f - 4.853f * y + 8.404f * y * y - 5.069f * y * y * y));
+
+        float delta = Saturate(
+            0.6045f
+            + 1.699f * x
+            - 0.5228f * y
+            - 3.603f * x * x
+            + 1.404f * x * y
+            + 0.1939f * y * y
+            + 2.661f * x * x * x);
+
+        float scale = delta - bias;
+        bias *= Saturate(50.0f * specularY);
+        return (scale, bias);
+    }
+
+    private static float Saturate(float value)
+    {
+        return Math.Clamp(value, 0.0f, 1.0f);
+    }
+
+    private static void AssertNearlyEqual(float expected, float actual, float tolerance, string message)
+    {
+        TestHarness.Assert(MathF.Abs(expected - actual) <= tolerance, $"{message}. Expected: {expected}. Actual: {actual}.");
     }
 
     private static void AssertContains(string source, string expected, string message)
