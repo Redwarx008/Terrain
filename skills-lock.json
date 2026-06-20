@@ -100,6 +100,11 @@
       "source": "liuzhengdongfortest/easysdd",
       "sourceType": "github",
       "computedHash": "62fc2829f7cf61e9a037f742b525b55796f546e7a80b633aedffcf8907f38eff"
+    },
+    "stride-shader-asset-workflow": {
+      "source": "E:\\Stride Projects\\Terrain\\.agents\\skills\\stride-shader-asset-workflow",
+      "sourceType": "local",
+      "computedHash": "1da0801237ddfc2dafc8058213a5924a445b9098d9be73c691905b607c655df8"
     }
   }
 }
