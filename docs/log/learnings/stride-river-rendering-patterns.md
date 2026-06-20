@@ -63,7 +63,7 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 ### 7. 河流宽度流和 CK3 depth/fade 语义不完全等价
 - 当前 `RiverMeshService` 写入顶点流的宽度是 `halfWidth / mapExtent`，这是归一化半宽，不是 CK3 shader 中参与 depth / flow UV 的 full-width。
 - `RiverBottom` / `RiverSurface` 中用于 CK3 depth、flow scale 的宽度应先还原为 `halfWidth * 2`，否则 `worldDepth` 会系统性偏小。
-- CK3 的 raw shore fade 阈值直接套在窄 Stride ribbon 上，会让 `waterFade` 把中心主水色清零，只剩暗 bottom/refraction；水面 shader 应用 cross-section `depthFactor` 提供视觉深度下限。
+- CK3 的 raw shore fade 阈值直接套在窄 Stride ribbon 上，会让 `waterFade` 把中心主水色清零，只剩暗 bottom/refraction；水面 shader 应用 cross-section `depthFactor` 提供视觉深度下限，同时保持 CK3 的 fade 公式本身不变。
 
 ### 8. 岸边 alpha ramp 必须覆盖 waterFade 黑色 ramp
 - `waterFade` 可能先把近岸 RGB 压到 0；如果 `_BankFade` 太窄，`edgeFade` 会在同一区域已经变成 1。
@@ -78,7 +78,21 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 ### 10. 地图尺寸传世界坐标跨度，不传采样数
 - 地形世界坐标范围是 `0..width-1` / `0..height-1`，因此 river shader 的 `_MapExtent` 应使用 `max(width - 1, height - 1)`。
 - `RiverWidth` 归一化和 `PositionWS / _MapExtent` world UV 必须使用同一尺度。
+
+### 11. 路径提取在 junction 邻域要优先踏入 semantic marker
+- 真实 `rivers.png` 不保证 `Confluence/Bifurcation` marker 恰好落在唯一拓扑分叉中心；最后一个 branch river cell 可能同时邻接 marker 和 side continuation。
+- 如果 `TracePath` 只按“排除来路后剩余 filled neighbor 必须唯一”前进，segment 会在 junction 前一格提前终止，真实资产里会把大量 `EndKind` 退化成 `None`。
+- 更稳妥的规则是：当且仅当存在唯一相邻 `Source/Confluence/Bifurcation` marker 时，优先踏入该 marker；只有没有 marker 可踏时，才要求普通 `River` 邻居唯一。
+- 这条规则不会直接证明 river tangent 方向已经和 CK3 完全一致，但它能先恢复真实 branch 的 semantic endpoint，让后续 flow/taper/tangent 诊断建立在更可信的 graph 上。
 - SDSL 默认值只是 fallback；RenderDoc 中应从 shader trace 寄存器或 disasm 反推实际绑定值，不要只看默认 `4096.0f`。
+
+### 11.5 segment 方向必须和 mesh/taper/flow 语义对齐
+- `RiverMapService.TracePath()` 从 special pixel 往外追踪时，天然会生成一批 `Confluence->None`、`Bifurcation->None` 这类 segment。
+- `RiverMeshService` 的 tangent、parallax、surface flow 和 `RiverBottom` 的 TBN 都直接依赖 `segment.Cells` 顺序；如果方向没归一，RenderDoc 上会看到：
+  - `surfaceNormal` 直接打光正常，但经过 bottom normal-map + TBN 后 `nDotL` 接近 0；
+  - 单独翻 `bitangent` 能变亮，而整条 `tangent` 链翻转会更亮，同时流向也一起纠正。
+- 当前项目里更稳定的归一规则是：`Source/None` 作为上游端，`Confluence/Bifurcation` 作为下游端；实现上可用一个简单 rank（`Source=0, None=1, Confluence/Bifurcation=2`）来决定是否反转 segment。
+- 这条规则和现有 `RiverMeshGenerator` 的 `TaperStart = Source/None`、`TaperEnd = Confluence/Bifurcation` 完全一致；如果两者不一致，就会出现 taper、flow 和 lighting 各修各的现象。
 
 ### 11. CK3 water-color map UV 必须 Y 翻转并在折射位置重采样
 - CK3 `jomini_river_surface.fxh` 先设置 `Params._WorldUV = WorldSpacePos.xz / MapSize`，再执行 `Params._WorldUV.y = 1.0f - Params._WorldUV.y`。
@@ -100,6 +114,27 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 - 在 RenderDoc 里热替换 `RiverBottom` 做颜色实验时，如果只顾着改 `o0.rgb`，却没有保持原始 `o0.a` 打包语义，surface pass 的 refraction / water-color / see-through 路径会一起跑偏。
 - 实际验证：把 `184` 热替换成“直接输出 `BottomDiffuse`”后，bottom RT 本身明显变亮，但 `213` 的最终水面同时出现与颜色实验无关的大幅变化；根因不是 bottom RGB，而是错误的 `o0.a` 让 surface 误解了 bottom distance。
 - 因此用 RenderDoc 热替换验证 bottom 明暗时，优先相信 `184` 的 bottom RT 和 pixel history；除非能精确保留原始 distance packing，否则不要直接用 `213` 的最终图去判断 bottom 颜色逻辑。
+
+### 15. 纹理采样诊断图必须按 draw 覆盖 mask 统计
+- `C:\Users\Redwa\Desktop\debug-river-after-surface-alpha_frame798.rdc` 和 `ck3-river.rdc` 的 FoamMap 诊断一度因全图均值误判：本地背景是亮地形，CK3 背景是暗地形，全图统计会把背景差异算进 `1 - FoamMap.r`。
+- 正确方法是先用纯红 shader replacement 导出目标 draw 的覆盖 mask，再只在 mask 内统计诊断图。
+- 2026-06-18 复核后，本地河面区域 `1 - FoamMap.r` 均值约 `173/255`，CK3 河面区域约 `184/255`，同量级；因此不能把当前黑水面主因归结为 FoamMap UV 错。
+
+### 16. CK3 pass wrapper 也是 shader 语义，不能只移植 include 函数
+- CK3 `river_surface.shader` 在 `CalcRiverAdvanced(Input)._Color` 后继续执行 shadow map、cloud shadow、terrain shadow tint、fog of war、map distance fog。
+- 本地如果只移植 `jomini_river_surface.fxh -> CalcWater`，但省略 `river_surface.shader` 的 wrapper 后处理，就不能称为 surface pass 语义完全等价。
+- RenderDoc disasm 中这些 wrapper 逻辑和 `CalcWater` 在同一个 surface PS 内；排查差异时要按完整 PS 边界对齐，而不是按源码 include 文件边界对齐。
+
+### 17. 先比较 refraction RT 的 writer，再比较 river surface 的 reader
+- 当本地 `RiverSurface.sdsl` 和 CK3 `CalcWater` 文本上已经非常接近，但画面仍明显不同，下一步不要继续盯 surface 常量。
+- 应先找“surface 读的那张 RT 是谁写出来的”，再比较这个 writer pass 的 bindings、资源语义和像素 payload。
+- 2026-06-19 的对位里，current `248` 只绑定 scene color + depth，而 CK3 `304` 已绑定 `HeightLookup/PackedHeight/FogOfWarAlpha`、terrain 材质纹理、shadow/environment 等；这证明两边喂给 surface 的 `RefractionTexture/JominiRefraction` 不是同一种 payload。
+- 只有 writer pass 也对齐后，再去判断 surface reader 是否还存在真正的公式差异。
+
+### 18. bank 明暗先热改 bottom `RT0.a`，不要先猜 surface
+- 如果 river surface 主公式已经和参考项目基本同构，但 bank 仍偏亮，最快的验证不是继续调 `WaterFade` 或 `see-through`，而是直接热改 bottom pass 写进 refraction RT 的 `RT0.a`。
+- 2026-06-19 的实验里，current `248` seed alpha 即使被强行改到 `80`，`276` 仍会把 `RT0.a` 重写回自己的值；而只要把 `276` 的 `RT0.a` 从 `9.67` 提到约 `12`，`305` bank 就会从 `0.333/0.239/0.154` 跳到明显更暗的分支。
+- 这类现象说明问题在 bottom payload 的阈值翻支，而不是 seed RGB 或 surface 常量的线性偏差。
 
 ---
 
@@ -189,7 +224,8 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 
 **Correct approach:**
 - shader 内部先把归一化半宽还原为 full-width：`streams.RiverWidth * max(_MapExtent, 1.0f) * 2.0f`。
-- `RiverSurface` 的 water fade 应优先使用 refraction buffer 反解出的深度：`effectiveDepth = min(surfaceDepth, refractionDepth)`；如果出现黑岸，再用 RenderDoc 证明是 `waterFade` 问题后单独处理。
+- `RiverSurface` 的 physical depth 应来自 refraction buffer 反解出的深度：`effectiveDepth = min(surfaceDepth, refractionDepth)`。
+- 对当前窄 ribbon，`ComputeRiverWaterFade(physicalDepth, depthFactor)` 应使用 `max(physicalDepth, depthFactor * _WaterFadeShoreMaskDepth)` 作为输入深度下限，再套用 CK3 `1 - saturate((maskDepth - depth) * sharpness)` 公式。
 
 ### ❌ Mistake 8: 用 diffuse multiplier 掩盖 bottom lighting 缺失
 **What to avoid:**
@@ -206,14 +242,16 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 ### ❌ Mistake 9: 让 near-shore waterFade 黑色区域变成完全不透明
 **What to avoid:**
 - 把 `_BankFade` 设得比 waterFade 的黑色过渡区更窄，例如 `0.02f`，导致 `UV.y≈0.04` 已经 `edgeFade=1`。
+- 把这条早期 surface 黑边经验直接当成 CK3 bottom/material 的默认参数结论。
 
 **Why it's bad:**
 - Pixel history 会显示 surface pass 自己输出 `RGB=(0,0,0), A=1` 覆盖亮地形；这不是 bottom 亮度或 blend state 能正确修复的问题。
 
 **Correct approach:**
-- edge alpha ramp 必须覆盖 near-shore waterFade 黑斜坡；当前默认 `_BankFade=0.15f` 与岸边 foam mask 宽度一致，并能避免 opaque black edge。
+- edge alpha ramp 是否需要覆盖 near-shore waterFade 黑斜坡，必须由 surface pixel history 证明，不能从 bottom pass 亮度问题反推。
+- CK3 当前 bottom material cbuffer 复核到的 `_BankFade` 是 `0.025`；如果 surface 仍出现 opaque black edge，应单独诊断 `waterFade` / water-color / refraction，而不是把 `_BankFade=0.15f` 固化为 CK3 对齐默认。
 
-### ❌ Mistake 10: 把 waterFade depth-floor 当成最终 CK3 方案
+### ❌ Mistake 10: 把 edge-alpha waterFade depth-floor 当成最终 CK3 方案
 **What to avoid:**
 - 只因为黑岸变亮，就长期保留 `edgeFade * _WaterFadeShoreMaskDepth` 或反函数 `edgeVisibleDepth` 这类 depth floor。
 - 在没有检查 water-color UV、refraction world-position 和 bottom RT alpha/RGB 前，把所有暗岸问题都归咎于 `waterFade`。
@@ -225,6 +263,7 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 **Correct approach:**
 - 先用 RenderDoc pixel history/debug_pixel 证明暗色来自哪个阶段：bottom RT、water-color tint、refraction see-through、waterFade 或最终 alpha blend。
 - 对 CK3 surface，map UV 需要 Y 翻转，refraction tint 需要在 `RefractionWorldSpacePos` 重新采 `WaterColorTexture`。
+- 如果证据显示中心水面只是因为窄 ribbon physical depth 偏小而 `WaterFade≈0`，使用 cross-section `depthFactor` 作为视觉深度下限；不要用 `edgeFade` 或 alpha 反推 depth。
 
 ### ❌ Mistake 11: 把 SDSL 默认 `_MapExtent` 当作运行时事实
 **What to avoid:**
@@ -272,17 +311,19 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 - 如果只是验证 bottom 颜色逻辑，优先比较 `184` 的 `shaderOut/postMod/export_render_target`。
 - 只有在能保持原始 `o0.a` 语义时，才用 `213` 的最终图做结论。
 
-### ❌ Mistake 15: 把颜色贴图也按线性数据贴图导入
+### ❌ Mistake 15: 把所有颜色贴图套同一种色彩空间规则
 **What to avoid:**
-- 给 `bottom-diffuse.dds`、`water-color.dds` 这类颜色贴图的 `.sdtex` 也统一写 `UseSRgbSampling: false`，和 normal/properties/depth/foam-noise 一起一刀切处理。
+- 看到 `bottom-diffuse.dds` 是颜色贴图后，就把 `water-color.dds` 也一起按 sRGB view 加载。
+- 反过来，也不要把 normal/properties/depth/foam-noise 这类 data map 和水色图混为一谈。
 
 **Why it's bad:**
-- CK3 的 `BottomDiffuse` 和 `WaterColorTexture` 在 shader 里承担的是 albedo / tint 语义，不是 packed data 语义。
-- 这类颜色贴图如果不做 sRGB 解码，shader 里拿到的是偏亮、偏灰、偏洗掉的中间调；RenderDoc 对比会表现为当前 refraction/bottom 缓冲在近岸显著高于 CK3，同位置更难出现暖棕河床。
+- `WaterColorTexture` 虽然用于 tint/spec lookup，但当前目标语义要求从 `water_color.dds` 创建 UNorm/linear view；如果按 sRGB view 读，采样值会被硬件额外 decode。
+- `BottomDiffuse` 仍可作为 albedo color map 单独验证；它的结论不能自动套到 `WaterColorTexture`。
 
 **Correct approach:**
-- 区分 color map 和 data map：
-- `bottom-diffuse`、`water-color` 应优先按颜色贴图语义导入并验证是否需要 sRGB sampling。
+- 逐张资源按 capture 绑定和 shader 语义定色彩空间，不按文件夹或“看起来是颜色图”批量归类。
+- 当前 `water_color.dds` 使用 `Texture.Load(..., loadAsSrgb:false)`，shader 不做手动 `DecodeWaterColorSrgb`。
+- `bottom-diffuse` 需要继续用 RenderDoc 单独验证 albedo 色彩空间。
 - `bottom-normal`、`bottom-properties`、`bottom-depth`、`flow-normal`、`foam-map`、`foam-noise` 这类 packed data 继续保持线性采样。
 - 修正前后要用 RenderDoc 直接比 `184`/`332` 的 raw refraction sample，而不是只看最终截图。
 
@@ -412,18 +453,18 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 - 然后只绑定一次 `EnvironmentMapTexture`。
 - 验证时不要只看 `get_bindings` 的 slot 名称，要再查 cubemap resource usage：正确状态下 bottom 应读 scene skybox 的预滤波 cubemap，surface 才读 river reflection cubemap。
 
-### ✅ Pattern 21: `worldUv` 和 `tangentUv` 的 diffuse-only 热替换都暗时，先修 bottom lighting energy
-**What to do:**
-- 在 RenderDoc 里对同一颗代表像素至少做三组 bottom hot-edit：`tangent_diffuse_only`、`worlduv_diffuse_only`、`lighting_x3`。
-- 先量化 bottom/surface 代表像素，而不是只看导图主观印象。
+### ❌ Mistake 22: 把 `lighting_x3` hot-edit 当成 CK3 等价实现固化
+**What to avoid:**
+- 在 RenderDoc 里看到 `lighting_x3` 能把 current bottom 亮度推近目标后，直接把 `CalculateRiverBottomLighting(...) * 3.0f` 写进 `RiverBottom.sdsl`。
+- 只比较 surface 主观亮度，不复核 CK3 bottom PS disasm 和 bottom RT 代表像素。
 
-**Why it works:**
-- 如果 `tangent_diffuse_only` 和 `worlduv_diffuse_only` 都把 bottom 压到原亮度的大约一半，而 `lighting_x3` 能把 bottom 直接抬到约 `3x`、surface 只小幅跟着变亮，那么主矛盾就是 bottom lighting energy，不是 UV 分支。
-- 这种情况下继续先追 `worldUv` / `tangentUv` 路径，只会把时间花在二级问题上。
+**Why it's bad:**
+- 2026-06-18 复核 `ck3-river.rdc` EID 332 表明 CK3 bottom 最终输出没有全局 `* 3.0f`；本地 `debug.rdc` EID 290 的 `* 3.0f` 只是把未放大的 `[0.167,0.142,0.103]` 推到 `[0.501,0.427,0.314]`，造成 bottom 过亮。
+- 这种增益会掩盖真正的 channel/lighting 组成差异：去掉它以后，current 仍比 CK3 `[0.159,0.105,0.055]` 偏绿/蓝，说明后续应拆 direct/IBL/albedo，而不是继续调全局亮度。
 
 **Correct approach:**
-- 先用 hot-edit 证明“采样路径变体”和“最终 lighting energy”谁的影响量级更大。
-- 如果只有 `lighting_x3` 接近 CK3，就优先在 `RiverBottom` 的最终 lit color 上做最小能量校准，再决定是否继续回头重写 UV 路径。
+- hot-edit 可以用于量级诊断，但落地前必须和 CK3 disasm/pixel history 对齐。
+- 如果 CK3 没有同构的 final gain，就不要把它固化；改为保留 scene-driven lighting 结构，继续用 per-term trace 查通道偏差。
 
 ### ✅ Pattern 22: 用 seed-alpha 常数热替换区分“bank-edge 泄漏”和“主河道主体色”
 **What to do:**
@@ -531,9 +572,11 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 - `debug.rdc` 的 current `event 157` 本质是 bright HDR scene seed copy；代表像素约为 `(2.248, 2.594, 0.755, 0)`。
 - `ck3-river.rdc` 的 `event 304` 已经是独立暗 pre-bottom payload；代表像素约为 `(0.021, 0.038, 0.016, 80.69)`。
 - 实测只把 current alpha 从 `0` 改到 `50`，bank 最终颜色会从约 `(4.18, 5.02, 1.45)` 继续恶化到 `(4.31, 5.16, 1.50)`。
+- 2026-06-19 更新后的 `C:\Users\Redwa\Desktop\debug.rdc` 里，这个结论仍成立，只是事件号漂移到了 `223 -> 248 -> 276 -> 305`：`223` 的 transparent-stage scene RT 代表像素约为 `(2.1289, 1.3848, 0.8491, 1)`，说明问题首先出在 current 取到的源 RT 就不是 CK3 那种独立暗 payload，而不只是 alpha 缺了一个 camera-distance。
 
 **Correct approach:**
 - 把 pre-bottom 视为独立 payload pass，而不是 scene copy 的一个小变体。
+- 如果 current 是在 transparent stage 里直接读 `commandList.RenderTargets[0]`，先验证这个 RT 的能量级和语义，再决定要不要继续追 seed shader 或 alpha。
 - 诊断时必须同时记录：
 - pre-bottom 像素
 - bottom `shaderOut/postMod`
@@ -639,7 +682,481 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 - 先用 RenderDoc 验证 shadow atlas 是否出现 `DepthStencilTarget` 写入，再检查具体 caster 的 `IsShadowCaster` 和 shadow render stage selector。
 - 本项目这次根因就是 `EditorTerrainProcessor` 把 terrain 写死成 `IsShadowCaster = false`，导致 river bottom scene shadow 绑定齐全但采到的始终是空 atlas。
 
+### ✅ Pattern 32: 对齐 CK3 bottom lighting 时要拆 direct / diffuse IBL / specular IBL
+**What to do:**
+- 对 CK3 bottom shader 先用 RenderDoc trace 找到最终累加点，而不是只比较 `o0.rgb`。
+- 本轮 CK3 EID 332 的关键累加是：direct 后约 `[0.1436,0.0920,0.0437]`，diffuse IBL 只增加 `[0.0141,0.0118,0.00935]`，specular IBL 只增加 `[0.0009,0.0010,0.0016]`。
+
+**Why it works:**
+- current 旧 shader 的 specular IBL 在代表像素约 `[0.0110,0.0174,0.0233]`，比 CK3 高一个数量级且明显偏蓝；单看 final RGB 容易误判成“整体亮度不够”或“贴图颜色不对”。
+- CK3 bottom 的黄橙感主要来自 warm direct sun + material albedo，IBL 是小的修饰项，不能让 river-local specular multiplier 把蓝色 cubemap 放大。
+
+**Correct approach:**
+- `RiverBottom` 应使用 CK3 material BRDF：`0.25 * properties.g` spec remap、metalness diffuse/spec split、GGX direct、dominant specular IBL、Burley roughness-to-mip。
+- lighting/view position 要用 fake-depth 前的 submerged bottom position；fake depth 只影响 refraction payload 压缩，不应参与 lighting。
+- 不要再落地 `_BottomSpecularIntensity` 或全局 `* 3.0f` 这类 river-local energy workaround。
+
+### ❌ Mistake 28: 把 Background skybox、river fallback cubemap 和 CK3 JominiEnvironmentMap 当成同一个输入
+**What to avoid:**
+- 看到 `Skybox texture`、`River/Environment/reflection-specular` 或 CK3 `environment_terrain_sunny.dds` 都是 cubemap，就认为它们对 river bottom lighting 等价。
+- 只改 river fallback cubemap 或 `_BottomEnvironmentIntensity`，期望影响已经绑定 scene skybox 的 bottom pass。
+
+**Why it's bad:**
+- 当前 Stride bottom pass 绑定的是 `LightSkybox.Skybox.SpecularLightingParameters[SkyboxKeys.CubeMap]`，不是 `BackgroundComponent.Texture`，也不是 river fallback `reflection-specular`。
+- Stride `SkyboxGenerator` 会对 skybox source 做 GGX specular prefilter 并生成 runtime cubemap；CK3 `JominiEnvironmentMap` 是已经用于 shader 的 prefiltered environment resource，不能默认等价于 Stride 对同一 DDS 再处理后的结果。
+- `debug.rdc` EID 276 证明 current bottom 使用的是 HDR/blue scene cubemap `ResourceId::276`，而 CK3 EID 332 使用低值 `BC1_SRGB` cubemap `ResourceId::6427` 再乘 `CubemapIntensity=20`。
+
+**Correct approach:**
+- 诊断 bottom IBL 时必须记录三件事：
+- `EnvironmentMapTexture` 的实际 `ResourceId` / format / mip stats。
+- scene skybox light 的 `Intensity` 和 sky rotation。
+- CK3 对应 cbuffer 的 `CubemapIntensity` / `CubemapYRotation` / environment resource stats。
+- 如果要贴近 CK3，优先修 scene-level light/environment setup；不要把差异塞回 river-local fallback 常量。
+
+### ❌ Mistake 29: 把 CK3 cbuffer 里的 SunDiffuse 线性值直接传给 Stride LightComponent.SetColor
+**What to avoid:**
+- 看到 CK3 cbuffer 里 `SunDiffuse=[1,0.867838,0.754852]`，就直接调用 `light.SetColor(new Color3(1,0.867838,0.754852))`。
+- 只看 C# 常量正确，不用 RenderDoc 复核最终 `_SceneSunColor`。
+
+**Why it's bad:**
+- CK3 cbuffer 里的值已经是 shader 使用的线性 GPU 输入。
+- Stride `LightComponent.SetColor` 存的是 gamma-space provider 值；`LightProcessor` 在 linear color space 下会调用 `Color3.ToLinear()` 再乘 intensity。
+- 直接传 CK3 线性值会被二次转 linear，最终从目标 `[20,17.3568,15.0970]` 变成约 `[20,14.505,10.602]`，bottom direct lighting 会明显偏暗偏红/缺黄。
+
+**Correct approach:**
+- 保留 CK3 目标线性 diffuse 常量用于对照。
+- 传给 `LightComponent.SetColor` 前先执行 `ToSRgb()`，让 Stride 后续 `ToLinear() * intensity` 回到 CK3 cbuffer 值。
+- 每次改 scene light 后，用 RenderDoc 直接读 bottom pass Globals cbuffer，确认 `_SceneSunColor` 而不是只确认 C# 常量。
+
+### ❌ Mistake 30: 把单帧 tangent hot-replace 结论固化成 shader 固定取反
+**What to avoid:**
+- 只用一个河段/一个 capture 的 `nDotL` hot-replace 结果，就把 `RiverBottom` 写死为 `-normalize(streams.RiverTangent)`。
+- 看到某个像素翻转 tangent 会变亮，就跳过 CK3 源码和更多河段方向验证。
+
+**Why it's bad:**
+- `debug-current-codex-ribbon-normal_frame870.rdc` 证明 ribbon normal 修复后，bottom pass 代表像素仍然只有 `[0.013,0.016,0.017]`。
+- 该帧同一像素 tangent 为 `-X`，所以 shader 里固定取反看似能把 direct sun `nDotL` 从近零提升到 `0.86/0.88`。
+- 后续 `C:\Users\Redwa\Desktop\debug.rdc` 的同类 bottom 像素输入 tangent 为 `+X`；已编译进 GPU 的固定取反让代表像素仍只有 `nDotL≈0.17`，而 no-flip hot-replace 提升到 `0.72/0.82`。
+- 追加同帧 replacement PS 输出 `R=no-flip nDotL`、`G=flip nDotL`：`(562,239)` 为 `0.8949/0.0297`，`(528,301)` 为 `0.8595/0.1122`；no-flip direct-light replacement 将 `(562,239)` 从原始 `[0.074,0.055,0.042]` 提升到黄棕 `[0.233,0.146,0.065]`。
+- CK3 `jomini_river_bottom.fxh` 的实际 TBN 是 `float3 Tangent = normalize(Input.Tangent);`，固定 shader 取反并不等价。
+
+**Correct approach:**
+- mesh 层保留中心线 tangent 的真实方向和坡度，供几何/未来逻辑使用。
+- `RiverBottom` 按 CK3 源码直接使用 `float3 tangent = normalize(streams.RiverTangent);`，不要在 shader 中硬编码方向修正。
+- 每次怀疑 bottom 过暗时，先用 RenderDoc hot-replace 输出 `nDotL` 或 TBN-normal，并至少比较相反 tangent 方向的河段。
+- 如果 no-flip 仍在部分河段变暗，查 `RiverMeshService` / `RiverMapService` 的 segment 方向语义，而不是再加 shader fallback 或常量补偿。
+
+### ✅ Pattern 33: surface 变黑时先拆 base/distorted refraction，再判断水色和反射
+**What to do:**
+- 对 `RiverSurface` 的黑岸/暗岸问题，先用 packed replacement 输出：
+- `waterFade / depthFactor / foam`
+- `baseRefraction.rgb`
+- `distortedRefraction.rgb`
+- `useDistorted`
+- `refractionShoreMask`
+
+**Why it works:**
+- `debug2.rdc` 证明代表像素的 `waterFade=0`，因此 `WaterColorShallow/Deep`、fresnel 和 cubemap reflection 都没有实际贡献；最终颜色几乎完全来自 `CalcRefraction/SampleRefractionSeeThrough`。
+- 同一像素 base refraction 约 `[0.28,0.25,0.20]`，distorted refraction 约 `[0.02,0.02,0.02]`，且 `useDistorted=1`，这才是暗岸直接原因。
+- CK3 `jomini_water_default.fxh` 在 distorted sample 前会用 base refraction depth 计算 `_WaterRefractionShoreMaskDepth/_Sharpness`，浅岸 mask 为 `0` 时 offset 应被清零。
+
+**Correct approach:**
+- `RiverSurface` 应暴露并绑定 `_WaterRefractionScale`、`_WaterRefractionShoreMaskDepth`、`_WaterRefractionShoreMaskSharpness`、`_WaterRefractionFade`。
+- 先用 undistorted base refraction payload 得到 `refractionShoreDepth = min(worldDepth, baseRefractionDepth)`，再计算 `ComputeRefractionShoreMask(refractionShoreDepth)`。
+- distorted offset 必须使用 CK3 的 view-space normal + 1080p 归一化 basis，再乘 `_WaterRefractionScale * refractionShoreMask * _WaterRefractionFade`；不要只把 shore mask 接到旧的 river-local offset 常量公式上。
+- `RiverRenderFeature` 必须给 surface 绑定 `_ViewMatrix`，否则 shader 无法等价 CK3 的 `ViewMatrix` offset 语义。
+- 只有证明 base/distorted/refraction shore-mask 都正确后，才继续查 water diffuse、water-color map 或 cubemap reflection。
+
+### ❌ Mistake 31: 看到 surface 黑就先调 `WaterColorShallow/Deep` 或 cubemap
+**What to avoid:**
+- 发现 `RiverSurface` 最终很黑时，先把 `WaterColorShallow/Deep` 改成 CK3 cbuffer 值，或把 cubemap reflection intensity 改成 0。
+- 只看 cbuffer 里水色差异很大，就推断水色是主因。
+
+**Why it's bad:**
+- 如果 `waterFade=0`，surface diffuse 和 fresnel/reflection 都被清掉，调水色或 cubemap 不会改变这些像素。
+- 当前问题里 `reflection=0` 与 `CK3 water colors + reflection=0` 的 hot-replace 对代表像素完全不变；真正有效的是 CK3 refraction shore mask。
+
+**Correct approach:**
+- 先用 RenderDoc 证明 `waterFade` 是否为 0，以及 final 是否等于 processed refraction。
+- 若 final 跟 refraction 相等，继续拆 base/distorted/refraction world depth；不要继续调水色常量。
+
+### ❌ Mistake 32: 只补 CK3 shore mask 但保留旧 refraction offset basis
+**What to avoid:**
+- 把 `_WaterRefractionShoreMask*` 接进 shader 后，继续使用 `normalOffset * (0.0025 + depthFactor * 0.0035)` 和 `_WaterRefractionScale / 500`。
+- 用 `flowNormal.xz` 代替 CK3 传入 `CalcRefraction` 的最终 water normal。
+
+**Why it's bad:**
+- CK3 offset 是 `mul(ViewMatrix, float4(Normal.x, 0, Normal.z, 0)).xy * float2(-1/1920, 1/1080) * _WaterRefractionScale * RefractionShoreMask * _WaterRefractionFade`。
+- 旧公式的方向、尺度、resolution normalization 都不是 CK3 语义；浅岸 mask 只能阻止一部分黑 texel，不能让整体 refraction 行为对齐。
+
+**Correct approach:**
+- Surface shader 显式声明并绑定 `_ViewMatrix`。
+- 用最终 `waterNormal` 计算 view-space offset，直接乘 CK3 scale / shore mask / fade。
+- 文本测试必须反向禁止旧 `0.0025 + depthFactor * 0.0035` 与 `/500` normalized scale 公式。
+
+### ✅ Pattern 34: bottom/refraction 已接近后，用 direct-refraction hot-replace 重新归因 surface
+**When to use:**
+- `RiverBottom` 已经对齐到 CK3 的 world-UV/non-advanced branch，且 raw refraction 代表像素接近 CK3 量级，但最终水面仍明显偏色。
+- 旧日志坐标不再稳定命中当前 capture 的 surface draw，需要先从导出的 RT 或 pixel history 重新选实际河心点。
+
+**Technique:**
+- 在 RenderDoc 中把 current surface PS 热替换成只输出 `RefractionTexture.Sample(RefractionSampler, SV_Position.xy / ViewSize).rgb`。
+- 对同一组 surface 命中点比较原始 `shaderOut` 与替换后 `shaderOut`，同时查 half-res bottom/refraction 对应点。
+- 再用 CK3 `466/464` 的 pixel history 对比 CK3 surface 如何从同类底层颜色生成最终水色。
+
+**Observed 2026-06-18 result:**
+- current `debug1.rdc` surface `305` 的河心点原始输出约 `[0.26..0.29,0.50..0.53,0.63..0.66]`。
+- direct-refraction hot-replace 后同点回到 `[0.27..0.30,0.19..0.22,0.12..0.14]`，与 CK3 bottom/refraction 代表点 `[0.271,0.185,0.100]` 同量级。
+- CK3 surface `466` 代表点 `(110,738)` 输出 `[0.0223,0.0280,0.0305]`，`464` 代表点 `(930,810)` 输出 `[0.00874,0.01793,0.02160]`，说明 CK3 surface 是完整 `CalcWater` lighting/foam/refraction composition 后的低能量水色，不是 current 的高饱和蓝色叠加。
+
+**Correct follow-up:**
+- 不要只改 `WaterColorShallow/Deep`；那只能降低饱和度，不能补齐 CK3 `pdx_hlsl_cb11` 的 `_WaterSpecular/_WaterGloss*/_WaterWave*/_WaterFoam*/_WaterFlowNormalFlatten/_WaterReflectionNormalFlatten` 等语义。
+- hot-replace gate 通过后，`RiverSurface.sdsl` 应按 `CalcRiverAdvanced -> CalcWater` 结构改，而不是继续在 `PSMain` 里手写组合。
+- 端口后仍要重新截帧，因为 SDSL 可编译实现可能只能用 out-param 表达目标结构，且 FlowMap/FoW/cloud/fog 这类 scene-dependent 输入可能还未完全接入。
+
+### ❌ Mistake 35: surface replacement shader 透传 refraction alpha
+**What to avoid:**
+- 在 RenderDoc hot-replace 里直接 `return RefractionTexture.Sample(...);`，把 refraction RT 的 alpha 原样传给 surface blend state。
+- 看到 replacement 结果黑屏后，误判为 RGB 采样、water color 或 target 常量无效。
+
+**Why it's bad:**
+- 当前 refraction alpha 是 camera-relative distance payload，不是普通透明度。
+- Surface blend path 会把这个 payload 当作输出 alpha 消费，导致 replacement 控制实验本身污染最终颜色。
+
+**Correct approach:**
+- replacement shader 验证 RGB 时显式输出 `float4(sample.rgb, 1.0f)`。
+- 如果要检查 distance payload，单独打包到 RGB debug 通道或导出原 RT，不要把它作为最终 surface alpha 透传。
+
+### ✅ Pattern 35: 河流 pass 分支必须以目标截帧的实际 draw/disasm 为准
+**What to do:**
+- 对 CK3 这类同一 shader 源同时包含 advanced/non-advanced 路径的 pass，先从目标 `.rdc` 的实际 draw、cbuffer 和 disasm 判断命中的函数，再端口 SDSL。
+- bottom 和 surface 可以命中不同分支：本轮目标截帧中 bottom 使用 `CalcRiverBottom` non-advanced，surface 使用 `CalcRiverAdvanced -> CalcWater`。
+
+**Why it works:**
+- 只看源码文件名或相邻函数很容易把未使用路径误当目标路径，后续会引入额外参数、补偿项或错误采样链。
+- `debug-river-target-after.rdc` 证明正确端口后的 surface 只有单次 flow normal 采样、三层 `_WaterWave*` ambient normal、CK3 `CalcRefraction/WaterFade` 路径；bottom 则是 hard power=2 depth profile、fixed 2/10 layer parallax、water-surface shadow exclusion。
+
+**Correct approach:**
+- 先在 RenderDoc 里记录 event、shader hash、关键 cbuffer 值和 disasm 特征。
+- 再写文本测试锁住“应该出现”的目标模式和“不得出现”的旧模式，例如 `flowUv1`、`SampleRefractionSeeThrough`、`safeDenom`、`effectiveDepth`。
+- 修改 SDSL 后必须跑 shader key 生成、`StrideCleanAsset`、`StrideCompileAsset`，再重新截帧确认 GPU 里实际运行的是新 shader。
+
+### ❌ Mistake 36: 用临时 depth/fade adapter 代替目标 shader 语义
+**What to avoid:**
+- 热替换发现某个 depth floor、visual depth adapter 或 brightness multiplier 能把当前截图推近目标后，就直接把它当成最终实现。
+- 在用户要求完全参考 CK3 时，继续保留 `ComputeRiverWaterFade(physicalDepth, depthFactor)`、全局 `* 3.0f`、旧 refraction offset scale、`safeDenom` parallax 等本地补偿。
+
+**Why it's bad:**
+- 这些 adapter 可能只修复当前帧的能量或岸边症状，但会破坏目标 shader 的数据流，导致下一帧、另一条河段或另一个 pass 继续偏离。
+- 本轮 CK3 surface 的 `WaterFade` 和 `CalcRefraction` 是两条独立 base-refraction 路径；把它们合并成 capped/effective depth 会让 see-through、shore mask 和 final fade 的语义都不等价。
+
+**Correct approach:**
+- 热替换只能作为归因和风险门禁；落地代码必须回到目标 disasm 和 cbuffer 已证明的公式。
+- 如果必须保留非目标 adapter，必须在文档和测试里明确标成当前项目限制；本轮已选择删除这些 adapter，直接对齐 CK3 语义。
+
+### ✅ Pattern 36: bottom pass 热替换必须同时控制 dual-source blend 权重
+**What to do:**
+- 对 `RiverBottom` 做 RenderDoc shader replacement 时，输出不仅要包含 `SV_Target0` 的 RGB/alpha，还要给 `SV_Target1` 写入合理 alpha。
+- 如果目标是验证 bottom RGB 能量，优先把 secondary alpha 固定为 `1.0`，让 shader output 直接进入 RT0，避免被 seed color 反向混合。
+
+**Why it works:**
+- 当前 bottom pass 使用 dual-source blending，RT0 RGB 的 source blend 依赖 secondary source alpha。
+- 本轮第一次 hot-replace 只把 bottom direct diffuse 算亮，但 secondary alpha 误落到 camera-distance payload 附近，post-blend 变成负值；第二次把 `SV_Target1.a=1` 后，bottom `(500,250)` post-blend 从 `[0.0157,0.0179,0.0198]` 变为 `[0.1599,0.1021,0.0397]`，surface 对应点从 `[0.0095,0.0180,0.0208]` 变为 `[0.1463,0.0953,0.0396]`。
+
+**Correct approach:**
+- 先用 `pixel_history` 同时看 `shaderOut` 和 `postMod`，不要只看 shader debug output。
+- replacement shader 需要输出双 target；如果只验证颜色，`SV_Target0.a` 继续保持 distance payload，`SV_Target1.a` 控制 coverage。
+- 热替换结果必须在 bottom RT 和 surface RT 两级都复核，才能证明暗色传播链。
+
+### ✅ Pattern 37: half-res / full-res river 链必须先做差分交点，再锁同一颗像素
+**What to do:**
+- 当 capture 链路同时包含 half-res seed/bottom 和 full-res surface 时，不要一上来直接 pick pixel。
+- 先分别导出：
+- half-res：例如 `248 -> 276`
+- full-res：例如 `223 -> 305`
+- 对两组 RT 做整图差分。
+- 先在 half-res 图上找最强变化点，再按 `x2` 映射到 full-res，对照 full-res 差分确认落在同一条 river 变化带内。
+- 然后再对这两组坐标执行 `pick-pixel` / `debug pixel`。
+
+**Why it works:**
+- 这类 pass 最容易出现的假阴性不是 shader 没生效，而是像素点到了河外、coverage 边界，或者 half-res / full-res 根本没对上同一逻辑位置。
+- 先用差分锁住“确实被 river 改写过”的点，能直接把 `scene seed -> bottom -> surface` 串成同一颗代表像素证据链。
+
+**Correct approach:**
+- 顺序固定为：
+- `export RT -> image diff -> half-res strongest point -> x2 map to full-res -> pick/debug`
+- 如果 full-res 对应点没有变化，不要急着下 shader 结论；先回去检查是不是映射位置偏了，或者 half-res 点本身就落在 bank coverage 边缘。
+
+### ✅ Pattern 38: bank-edge 要同时比较 `248 -> 276` 的 RGB 和 alpha，先判断 payload 是否存活
+**What to do:**
+- 当 bank 最终颜色明显接近 bottom，但又没有像 CK3 那样继续压暗时，不要只比较 `276 -> 305` 的 RGB。
+- 先固定一颗 bank-edge 点和一颗 river interior 点，同时比较：
+- `248` seed/pre-bottom
+- `276` bottom
+- `305` surface
+- 尤其要看 `248 -> 276` 的 alpha 有没有像 interior 一样继续变化。
+
+**Why it works:**
+- 如果 bank 上 `248 -> 276` 只是 RGB 变成了 bottom 颜色，而 alpha 基本不变，就说明 surface 最终仍在吃 surviving seed/pre-bottom payload。
+- 这种情况下继续调 `WaterFade`、water color 或 reflection 常量，通常都不会把 bank 拉回 CK3。
+
+**Correct approach:**
+- 先问两个问题：
+- bank `305` 输出 alpha 是否已经接近 `1`？
+- bank `248 -> 276` 的 alpha 是否几乎没变，而 interior `248 -> 276` 的 alpha 明显变了？
+- 如果两个答案都是“是”，优先回头处理 bank payload/source，而不是先怀疑 surface fade。
+
+### ❌ Mistake 37: 把 Stride cascade shadow helper 当成目标 bottom shadow
+**What to avoid:**
+- 因为 shader 已绑定 `SceneShadowMapTexture`、cascade matrix 和 shadow atlas，就认为 `EvaluateSceneShadow()` 与目标 bottom shadow 等价。
+- 在没有验证 target disasm 的情况下，把 Stride 的 cascade 5x5 PCF helper 乘进 bottom direct light。
+
+**Why it's bad:**
+- 目标 bottom disasm 在 shadow 段使用 `ShadowMapTextureMatrix` 投影、水面交点和 bottom position 取 `min(depth)`、`ShadowScreenSpaceScale` 随机旋转 kernel、`KernelScale`、`NumSamples`、`Bias`、边界 fade 后再乘 `SunDiffuse * SunIntensity`。
+- 当前 helper 是 Stride cascade selector + 5x5 filter，参数、投影边界和 fade 语义都不同；在 `debug-river-after-surface-alpha_frame798.rdc` 中它让 bottom RT 对应像素写成近黑，surface 只是继续采样这个近黑输入。
+
+**Correct approach:**
+- 如果 target shadow 投影还没有移植，bottom direct light 不应乘入这个非等价 helper；保持 scene sun / material BRDF / IBL 路径，再把 target shadow projection 作为独立缺口处理。
+- 正式移植时需要补齐 `ShadowMapTextureMatrix` 等价输入、kernel sample 表、`Bias`、`KernelScale`、`NumSamples`、`ShadowScreenSpaceScale` 和 fade 逻辑，不能只复用 Stride cascade matrix 名义上替代。
+- 代码变更前先用 RenderDoc replacement 证明 shadow term 改动会修复 bottom RT，再落地 SDSL 并跑 Stride asset rebuild。
+
+### ❌ Mistake 38: 用本地 shadow/cloud helper 代替目标 water cbuffer 参数
+**What to avoid:**
+- 在 surface `CalcWater` 中保留本地 `cloudShadowMask -> GetWaterGlossScale/GetWaterSpecularFactor/GetWaterCubemapIntensity` 包装。
+- 用 `sunIntensityMask = smoothstep(..., glossMap)` 按 water-color alpha 门控 direct sun，然后误以为 surface 已经和目标 `jomini_water_default.fxh` 等价。
+
+**Why it's bad:**
+- `ck3-river.rdc` EID 460 的 surface cbuffer 明确给出 `_WaterZoomedInZoomedOutFactor=0`、`_WaterGlossScale=1`、`_WaterSpecularFactor=0.01`、`_WaterCubemapIntensity=0`、`_WaterToSunDir=[-0.5439,0.5934,0.5934]`。
+- 目标 `CalcWater` 直接使用这些参数：`Glossiness = lerp(_WaterGlossBase, GlossMap, _WaterZoomedInZoomedOutFactor)`，`NonLinearGlossiness *= _WaterGlossScale`，direct sun 使用 `_WaterToSunDir` 与 `SunDiffuse * SunIntensity`，没有 glossMap sun gate。
+- cbuffer 数值一致不代表最终公式一致；本地 helper 会让 RenderDoc 看到参数对上了，但 shader energy path 仍偏离目标。
+
+**Correct approach:**
+- 对照 CK3 water shader 时，优先保留目标 cbuffer 参数的直接消费关系。
+- 如果画面仍偏暗，先用 RenderDoc 确认 bottom/refraction 是否正常，再查 surface composition 是否还残留本地 helper 或额外门控。
+
+### ❌ Mistake 39: 在 river shader 里直接继承 terrain height 参数 mixin
+**What to avoid:**
+- 为了复用 Editor terrain height sampling，直接让 `RiverSurface` 继承 `EditorTerrainHeightParameters`。
+
+**Why it's bad:**
+- `EditorTerrainHeightParameters` 继承 `Texturing`，会注入默认 `TexCoord` streams。
+- `RiverVertexStreams` 已经使用 TEXCOORD0/2/3/4/5 承载 river transparency、tangent、normal、width、distance-to-main；两者同 semantic 不同类型会触发 Stride front-end `E2215`。
+
+**Correct approach:**
+- River shader 可以复用项目地形 GPU 数据，但不要继承会注入 vertex streams 的 terrain mixin。
+- 在 river shader 内声明所需 height slice 资源、bounds、height scale 和采样函数；C# 侧从 `EditorTerrainRenderObject` 绑定真实 height slices。
+- Runtime streaming terrain 需要独立 provider，不能把 Editor 8-slice 参数混到 runtime 路径里。
+
+### ❌ Mistake 39.5: 把 Editor `HeightmapSlice0..7` 后段近似当成 CK3 surface 语义等价
+**What to avoid:**
+- 看到本地 `RiverSurface` 已经有 `ApplyTerrainShadowTintWithClouds`、`ApplyMapDistanceFogWithoutFoW`，就认为 current surface 和 CK3 `river_surface.shader` 的完整 PS 已经等价。
+
+**Why it's bad:**
+- CK3 `ck3-river.rdc` surface 事件的实际绑定明确依赖 `HeightLookupTexture`、`PackedHeightTexture`、`FogOfWarAlpha_Texture`、`ShadowMap_Texture`。
+- 当前项目的 surface 后段实际绑定是 Editor terrain `HeightmapSlice0..7`、`SliceCount`、`HeightScale`、本地 `_WorldSpaceToTerrain0To1` 和 debug4-style procedural cloud 所需的 `_InverseWorldSize`；这些仍不是 CK3 原始 `HeightLookupTexture` / `PackedHeightTexture` / `FogOfWarAlpha_Texture` provider。
+- wrapper 函数名相同，不代表资源语义相同；如果忽略这一层，就会在 `WaterColor/Fresnel` 常量上反复打转，而主差距根本不在那里。
+
+**Correct approach:**
+- 先同时对照 loose shader source、capture bindings 和本地 C#/SDSL 绑定点，再判断“后段是否等价”。
+- 如果 CK3 目标 capture 依赖的 terrain/shadow/FoW 资源集合与本地不同，就把它视为输入 provider 问题，而不是先调 `CalcWater` 常量。
+
 ---
+
+### ❌ Mistake 40: 把 `renderdoc-cli shader-replace` 当成跨命令持久热修会话
+**What to avoid:**
+- 在没有可用 MCP 或 GUI 持久会话时，先用 `renderdoc-cli shader-replace` 替换 shader，再指望下一条独立 CLI 命令继续读取替换后的像素、RT 或 pipeline 状态。
+
+**Why it's bad:**
+- 当前 `renderdoc-cli.exe` 是单命令单进程接口，替换状态不会自动跨下一条命令保留。
+- 这条路径适合做 `shader-build`、pipeline/disasm/cbuffer 检查和资源导出，不适合做“替换后继续读回”的持续热修验证。
+
+**Correct approach:**
+- 把 CLI 当成 compile/inspection 工具，而不是持久热修会话。
+- 需要验证 replacement 生效后的像素、RT 或 surface 传播链时，优先恢复 `renderdoc-mcp` 或使用 RenderDoc GUI。
+- 在 CLI-only 条件下，最多把 replacement 用作“能否编译成目标 shader”与“理论公式是否成立”的门禁，不要把它当最终 GPU 回读证据。
+
+### ❌ Mistake 41: 跨 `open_capture` 复用 `shader_build` 产出的 `shaderId`
+**What to avoid:**
+- 在一个 capture 里调用 `shader_build` 得到 replacement `shaderId` 后，切到另一个 capture，或重新 `open_capture` 当前 capture，再拿这个旧 `shaderId` 直接做 `shader_replace`。
+
+**Why it's bad:**
+- 当前 RenderDoc MCP 的 replacement 句柄只对生成它的 capture 会话有效，不能跨 capture 复用。
+- 已确认这种误用会把 `renderdoc-mcp` 子进程直接打崩，Codex 侧通常只会看到 `Transport closed`。
+- 代理日志 `C:\Users\Redwa\.codex\vendor_imports\renderdoc-mcp-protofix-20250618\bin\renderdoc-mcp-proxy.log` 可以直接确认根因；当前已复核到的崩溃退出码是 `3221225477`。
+
+**Correct approach:**
+- 始终在同一个 capture 里现编现替：`open_capture -> shader_build -> shader_replace -> pick/debug/pixel_history`。
+- 只要切过 capture，或重新 `open_capture`，就重新 `shader_build`，不要复用旧 replacement `shaderId`。
+- 如果 Codex 内置 MCP transport 已坏，但仍需继续做同样的 hot-edit 验证，可以直接启动底层 `renderdoc-mcp.exe`（同目录 `bin` 下）并走 stdio MCP 协议，不必退回只读的 CLI 检查流。
+
+### ✅ Pattern 42: 用 replacement 直接 dump shader 输入和 cbuffer，避免从 disasm 反推错尺度
+**When to use:**
+- 需要确认 `RiverWidth`、`MapExtent`、camera position、view size 或其他 cbuffer 值是否与参考截帧同量级。
+- 之前的结论来自手算、日志转述或未验证的寄存器映射。
+
+**Technique:**
+- 在目标 draw 上做最小 PS replacement，把待验证值直接输出到 `SV_Target0`。
+- replacement 的输入签名必须先用 `get_shader(..., reflect)` 对齐；如果原 shader 的 `POSITION_WS` 占了整个 `reg0`，replacement 也要用 `float4 PositionWS` 占满，避免 HLSL 编译器把后续 semantic 重新打包。
+- 输出后用 `pixel_history` 读 `shaderOut`，不要只看 post-blend，因为 blend state 可能改写诊断色。
+
+**Observed 2026-06-19 result:**
+- current bank 的真实 `MapExtent=9215.5`、`RiverWidth=8.283e-05`、`worldWidth=1.5267`。
+- 这推翻了上一轮 `worldWidth≈0.339` 的错误推断；current 与 CK3 bank width 实际同量级。
+
+**Correct follow-up:**
+- 如果 replacement 输出和预期不符，先检查 replacement reflection 的 input register packing，再解释数值。
+
+### ❌ Mistake 42: 在 surface texture probe 里猜 view size 或只信 `debug_pixel`
+**What to avoid:**
+- 在 surface replacement 中用 `800x600`、窗口尺寸或旧日志尺寸去采 `RefractionTexture`。
+- 在多 primitive 覆盖同一像素时，只看 `debug_pixel` summary，不与 `pixel_history` 的实际 passing fragment 对照。
+
+**Why it's bad:**
+- current `debug.rdc` 的 surface RT `ResourceId::4059` 实际尺寸是 `1672x996`；错误 view size 会采到完全不同的 refraction payload。
+- CK3 `event 466` 的 `debug_pixel` 曾返回与 pixel history 不一致的 raw output；pixel history 才显示该像素实际通过的 `shaderOut/post` 为 `[0.0223,0.0280,0.0305]`。
+
+**Correct approach:**
+- 先用 `get_resource_info` 或 pipeline state 确认 render target 尺寸，再计算 screen UV。
+- 以 `pixel_history` 的 passing event/primitive/shaderOut/postMod 作为最终像素证据；`debug_pixel` 只作为辅助 trace。
+
+### ✅ Pattern 43: 把 `CalcWater` 输出和完整 surface wrapper 分开热修改
+**When to use:**
+- `CalcRiverAdvanced -> CalcWater` 主体已经接近目标，但 CK3 最终 surface 仍比本地暗很多。
+- 用户怀疑 `HeightLookup/PackedHeight/FoW` 这类 wrapper 输入不应影响水面主色。
+
+**Technique:**
+- 在 CK3 surface draw 上用 replacement 复现 base refraction/see-through，直接输出 `CalcWater` 中 `WaterFade=0` 时应返回的 refraction 分量。
+- 另行采样 `FogOfWarAlpha`，确认 FOW 是否真的参与压暗。
+- 在 current surface 上用最小 replacement 输出 CK3 shadow-tint 目标色，验证 wrapper 暗化量级是否足以解释最终差距。
+
+**Observed 2026-06-19 result:**
+- CK3 `event 466` bank 像素 `(110,738)` 的 base see-through 约为 `[0.098,0.095,0.072]`，完整 surface 输出为 `[0.022,0.028,0.030]`。
+- 同点 `FogOfWarAlpha` 采样为 `[1,1,0,1]`，不是压暗来源。
+- current `event 305` 同类像素 `(30,768)` 的 see-through 直出约 `[0.292,0.212,0.143]`；强制输出 CK3 shadow-tint 目标色 `[0.023,0.023,0.033]` 后落入 CK3 能量范围。
+
+**Correct follow-up:**
+- 允许 terrain shadow tint、cloud tint 和 map distance fog 参与 surface RGB 后处理。
+- 继续禁止 strategy-layer `FogOfWarAlphaTexture` 作为本项目河流水体依赖；FOW 与 wrapper shadow/cloud 不是同一个问题。
+
+### ❌ Mistake 43: 把 CK3 surface wrapper 当成可忽略的水色无关后段
+**What to avoid:**
+- 只对齐 `jomini_water_default.fxh` / `jomini_river_surface.fxh`，然后删除或禁用 `river_surface.shader` wrapper 的 RGB 修改。
+- 因为 FOW 在本项目不需要，就顺带认为 terrain shadow tint、cloud tint、distance fog 都不应影响最终河流颜色。
+
+**Why it's bad:**
+- CK3 截帧里 `CalcWater` 的 refraction/see-through 与完整 surface final 可以差 4 倍以上。
+- FOW 可以为 1 且不压暗，但 shadow/cloud tint 仍会把水色推向 `shadow_color.dds` 的低能量暗色。
+
+**Correct approach:**
+- 按完整 PS 边界比较：`CalcWater` 主体、shadow/cloud wrapper、FOW、distance fog 分别热修改或输出中间量。
+- 移除 FOW 依赖时，只删除 FOW 资源和颜色调整，不要误删已验证会影响目标观感的 shadow/cloud/fog wrapper。
+
+### ❌ Mistake 39: 把显隐切换后的河流变黑直接归因于 terrain 资源变化
+
+**症状：**
+- 多次切换地形显示后，两个 capture 的河流颜色不同。
+- river surface 的输入、资源绑定、shader 和基础 `CalcRefraction` 输出都一致，但最终 RGB 一个很暗、一个较亮。
+
+**实际原因：**
+- 两帧之间 `_GlobalTime` 前进，`GetCloudShadowMask(worldPosition.xz)` 的 procedural cloud 相位不同。
+- `debug3.rdc` 中多个河流点的 wrapper 探针为 `(shadowTintMask=0, cloudMask=1, terrainShadowTerm=1)`。
+- `debug4.rdc` 同点 cloud mask 为 `0`。
+- `ApplySurfacePostProcessing` 的 cloud tint：
+
+```hlsl
+color.rgb = lerp(color.rgb, float3(0.0f, 0.01f, 0.02f), cloudMask * 0.8f);
+```
+
+会把 `[0.146, 0.248, 0.235]` 级别的 refraction 色压到约 `[0.029, 0.058, 0.063]`。
+
+**正确排查方式：**
+- 先热替换输出 `_GlobalTime`、`cloudMask`、`shadowTintMask`、`terrainShadowTerm`。
+- 再比较 `CalcWater` / `CalcRefraction` 主体和 wrapper 后段。
+- 做地形显隐 A/B capture 时，冻结或记录 `_GlobalTime`；否则 time-driven cloud/fog 会伪装成显隐导致的资源差异。
+
+**2026-06-20 处理结果：**
+- 曾短暂删除 entire `ApplySurfacePostProcessing` wrapper 做隔离，但 `debug5.rdc` 证明直出 `CalcRiverAdvanced` 会让水面更黑；不要把删除 wrapper 当作修复。
+- 曾短暂把 procedural cloud 固定为 `cloudMask=0` 以获得确定性 A/B 对比，但用户要求“完全恢复到 `debug4.rdc`”后，当前源码已恢复完整 debug4-style wrapper，包括 `GetCloudShadowMask`、`_HasCloudShadowEnabled`、`_InverseWorldSize`、`_GlobalTime * 0.01f`、`cloudMask * 0.8f` cloud tint、`_MapSadowTint*`、`_TerrainSunnySunDir`、`ApplyOvercastContrast`、`_FogBegin2/_FogEnd2/_FogMax`、relative fog color/height/noise 链。
+- 复查 `debug4.rdc` 后确认不能用简化 normal-y tint / fixed smoothstep fog 代替旧 wrapper。
+- `_GlobalTime` 现在再次影响 surface wrapper 的 cloud tint；做地形显隐 A/B capture 时必须冻结或记录 time phase，否则会再次把 cloud 相位差误判为 terrain 资源差异。
+
+### ❌ Mistake 44: 用 wrap sampler 采 foam ramp 的黑色边缘
+**What to avoid:**
+- 直接用 `FoamRampTexture.Sample(WaterTextureSampler, float2(foamFactor * FlowFoamMask, 0.5f))`，其中 `WaterTextureSampler` 是 wrap。
+- 看到 `flowFoamMask=0` 后就认为 foam 必然为 0，而不验证 ramp lookup 实际颜色。
+
+**Why it's bad:**
+- CK3 `foam_ramp.dds` 文件内容本身正确，左端应接近黑；但 wrap + linear 在 `u=0` 会把左端和右端亮色边缘混合。
+- 2026-06-19 RenderDoc 热修改确认：current `FoamRampTexture(t4)` 在 `u=0,y=0.5` 采样为 `[0.323,0.325,0.290]`，CK3 同一点为 `[0,0.0003,0]`。
+- 这会导致 `FlowFoamMask=0` 时仍产生强 foam，表现为 surface 内大块白斑；问题不是 DDS 哈希、RootAsset 或 foam map UV。
+
+**Correct approach:**
+- foam ramp 应使用 lod0，并把 lookup U clamp 到半 texel 内，例如 `[0.5/256, 1 - 0.5/256]`，或绑定等价的 clamp sampler。
+- 热修改时先分别输出 `FoamRampTexture(u=0)`、完整 `CalcFoamFactor` 和目标 CK3 ramp 采样，再落地 SDSL。
+- 同时确认 `CalcFoamFactor` 的 `WorldSpacePosXZ` 参数使用 CK3 的 world-space XZ，而不是 map-unit XZ。
+
+### ❌ Mistake 45: 把 bottom bank-fade alpha 复用到 surface pass
+**What to avoid:**
+- 在 `RiverSurface` 最终输出 alpha 里使用 `_BankFade` 的 `edgeFade1 * edgeFade2`。
+- 看到 surface RGB 很暗后只继续调 `WaterFade`、refraction 或 FOW，而不检查 surface alpha 是否让浅岸完全不透明。
+
+**Why it's bad:**
+- CK3 bottom 和 surface 的 alpha 语义不同：bottom advanced alpha 可以使用 diffuse alpha / bank fade；surface alpha 使用 `saturate(Depth * 2.0 / _Depth) * Transparency * connectionFade`。
+- 2026-06-19 更新后的 `debug.rdc` 中，岸边 `(1000,620)` 的 current alpha 是 `1.0`，目标 depth alpha 约 `0.303`。同一 refraction RGB 改用目标 alpha 后，RenderDoc pixel history 的 post-blend 从暗水覆盖结果变为由亮场景底色托起的结果。
+- 如果 surface alpha 错为 `1.0`，低 `WaterFade` 的浅岸 see-through 会完全盖住 terrain/scene，表现为“surface 发黑”，但根因不是 bottom RGB 黑。
+
+**Correct approach:**
+- 对 surface pass 按 CK3 `jomini_river_surface.fxh`：先 `Depth = CalcDepth(Input.UV)`，再设置 `Color.a = saturate(Depth * 2.0 / _Depth) * Transparency * saturate((DistanceToMain - 0.1) * 5.0)`。
+- 用 RenderDoc replacement 分别输出 `ck3Alpha/currentAlpha/riverUv.y`，再用 `rawRefractionRGB + ck3Alpha` 验证 blend 是否真的改善岸边覆盖。
+- 不要把 bottom alpha 的 `_BankFade` 经验迁移到 surface，除非目标 capture 的 disasm 也证明该 pass 使用同一公式。
+
+### ❌ Mistake 46: 把无地形视角发黑继续归因到 alpha/FoW/height
+**What to avoid:**
+- 在 terrain 不绘制的 capture 中，看到 river surface 随视角发黑后继续优先怀疑 surface alpha、FogOfWarAlpha 或 terrain height wrapper。
+- 只看最终 surface RGB，不拆 `CalcRefraction -> CalcTerrainUnderwaterSeeThrough` 的 attenuation 和 `WaterColorTexture` 采样值。
+
+**Why it's bad:**
+- 2026-06-19 更新后的无地形 `debug.rdc` 已确认 surface shader 包含 CK3 depth-based alpha 修正，旧 `_BankFade` alpha 只剩 bottom pass。
+- 热替换直接输出 raw `RefractionTexture` 后河面明显变亮，说明 bottom/refraction 输入不是黑源。
+- 代表暗像素的 see-through attenuation 只有约 `0.21-0.26`，即 70% 以上颜色会被替换为 `WaterColorTexture` 的水色图；同点 `WaterColorTexture` 采样只有约 `0.002-0.015`，足以解释发黑。
+
+**Correct approach:**
+- 先热替换输出 `RefractionTexture.rgb + CK3 alpha`，确认黑色是否来自输入 RT。
+- 再输出 `R=seeThrough attenuation, G=refractionDepth, B=toCameraDir.y`，验证视角相关性是否来自水下透视距离。
+- 最后分别输出 surface-world 和 refraction-world 的 `WaterColorTexture` 采样；若二者均近黑，问题是当前绑定水色图/无地形 fallback，而不是 alpha、FOW 或 height slices。
+
+### ❌ Mistake 47: 把 CK3 最终 swapchain 颜色当作 river surface 输出
+**What to avoid:**
+- 看到 CK3 在 event/draw `1146` 从暗变成深蓝后，直接把 `1146` 的屏幕颜色拿来要求当前 `RiverSurface` 输出。
+- 把 current surface/main-scene RT 的暗色与 CK3 final swapchain 色直接比较。
+- 只加曝光或 tonemap，期待 brown-biased surface 输入自然变成 CK3 深蓝。
+
+**Why it's bad:**
+- `ck3-river.rdc` 中 event `1146` 是 `numIndices=3` 的 fullscreen final composite，输出 swapchain，并绑定 `MainScene_Texture`、`RestoreBloom_Texture`、`FogBlurTexture_Texture`、`TonyMcMapfaceLUT_Texture`、`ColorCube_Texture`。
+- 同一 CK3 像素在 river/main-scene 阶段可以只有约 `[0.022, 0.028, 0.030]`，到 final pass 后才变成约 `[0.192, 0.235, 0.251]`；中间 buffer 很暗是预期。
+- 当前 `debug.rdc` 的 final pass 是 Stride tonemap，只采样一个 `Texture0`，没有 CK3 mapface LUT / ColorCube 链。RenderDoc 热替换为简化 CK3-like 曝光/对比后，代表像素从 `[0.122,0.106,0.071]` 变为 `[0.647,0.631,0.588]`，只是变亮成米棕色，没有变蓝，说明 hue 已在 surface/main-scene 输入阶段偏离。
+- 如果只隔离 `WaterColorTexture`，暗值本身不是错误：CK3 代表像素直出约 `[0.0117,0.0504,0.0564]`，经过 event `1146` 变为 `[0.0706,0.3333,0.3529]`；current 代表像素直出约 `[0.0032,0.0136,0.0150]`，经过 current 原始 final 几乎仍是黑，但经过简化 CK3-like lift 变为 `[0.0000,0.3412,0.3765]`。
+
+**Correct approach:**
+- 分两层比较：先把 CK3 river surface/main-scene buffer 对 current surface/main-scene buffer，再把 CK3 final swapchain 对 current final swapchain。
+- 判断 surface shader 等价时，使用 CK3 对应 river draw 的中间 RT，不使用 event `1146`。
+- 判断最终观感时，单独检查 current 是否实现了 CK3 的 final composite：exposure、contrast、fog blur、bloom、Tony mapface LUT、ColorCube。
+- 如果 current 中间输出已经 `R > G > B` 偏棕，曝光只能变亮，不能证明 WaterColorTexture / refraction source / post wrapper 已经等价。
+- 如果隔离后的 `WaterColorTexture` 是低线性蓝青值，优先检查 final postprocess 是否缺 CK3 lift/color-grade；不要直接改 DDS 或把采样值永久调亮，否则一旦补上 final pass 会过曝。
+- 2026-06-20 `debug5.rdc` 热替换 `WaterColorTexture.rgb * 8` 把代表像素从约 `[0.059,0.080,0.070]` 拉到 `[0.089,0.414,0.439]`，证明删除 wrapper 后 raw water body 偏黑；但恢复 `ApplySurfacePostProcessing` 后不要保留 `_WaterColorSurfaceLift` 或 `visibleWaterColor` floor，否则会把诊断增益叠加到正式路径。
+
+### ❌ Mistake 48: 把有地形时的自动曝光压暗误判为 river bottom/surface 变黑
+**What to avoid:**
+- 只看最终 swapchain 上“有地形时河流更黑”，就去调 river bottom diffuse、surface water color、alpha 或 lighting gain。
+- 忽略 Stride ToneMap 的 `LuminanceAverageGlobal` / `AutoExposure`，直接比较有地形和无地形的最终颜色。
+
+**Why it's bad:**
+- `debug.rdc`（无地形）与 `debug1.rdc`（有地形）显示，同一河心点在 river bottom draw 的 shader output 约为 `[0.162,0.123,0.080]`，surface output 约为 `[0.152,0.238,0.224]`，两份捕获基本一致。
+- 分叉发生在后续 fullscreen ToneMap：有地形时 terrain HDR 把平均亮度从约 `0.344` 提到 `1.447`，自动曝光从约 `0.263` 降到 `0.133`，最终河心从约 `[0.196,0.282,0.271]` 被压到 `[0.106,0.165,0.153]`。
+
+**Correct approach:**
+- 先用 pixel history 比较 river draw 的 shader output，再比较 final ToneMap 的 `avgLuminance` / exposure。
+- Editor 视口需要 CK3 scene light intensity `20` 给 river bottom 读 scene light，但不应让 Stride 自动曝光随 terrain 可见性漂移；当前 editor compositor 固定 `ToneMap.Exposure=-2.0 EV` 并关闭 `AutoExposure/AutoKeyValue/TemporalAdaptation`。
 
 ## Code Examples
 
@@ -684,4 +1201,4 @@ if (inputAttribute.SemanticName == "POSITION_WS")
 
 ---
 
-*Learning Document Version: 2.0*
+*Learning Document Version: 2.1*

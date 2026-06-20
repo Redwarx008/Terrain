@@ -65,7 +65,7 @@ water_color.dds
 
 - `bottom_diffuse.dds`：sRGB 加载。
 - `shadow_color.dds`：sRGB 加载。
-- `water_color.dds`：线性/UNORM 加载，继续由 `RiverSurface.sdsl` 对 RGB 手动 sRGB decode，alpha/spec 保持原值。
+- `water_color.dds`：sRGB 加载，保留 BC7 DDS 数据并通过 GPU sRGB texture view 自动 decode；`RiverSurface.sdsl` 不再手动 decode，避免 double decode。
 - 其余 normal、properties、depth、foam、noise、map 类资源：线性加载。
 
 ## 错误处理
@@ -83,7 +83,7 @@ water_color.dds
 - 验证 loader 对 Bottom/Water 不再使用 `River/Bottom/*`、`River/Water/*` 内容 URL。
 - 验证 `Terrain.Editor.sdpkg` 不再包含 `River/Bottom/*` 或 `River/Water/*` RootAssets。
 - 保留 `River/Environment/reflection-specular` 是 cubemap 且仍在 Stride 内容包中的测试。
-- 保留 water-color 手动 decode 的 shader 文本约束。
+- 验证 water-color 使用 `loadAsSrgb:true`，并禁止 `RiverSurface` 重新引入手动 `DecodeWaterColorSrgb`。
 
 ## 文档更新
 
@@ -94,4 +94,3 @@ water_color.dds
 - 本次会话日志 `docs/log/2026/06/20/...`
 
 如本次迁移暴露出可复用模式，例如“渲染私有贴图改为 game 普通文件资源”，再补充到 `docs/log/learnings/`。
-
