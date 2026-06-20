@@ -642,18 +642,19 @@ shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, Rive
 - mesh/build 阶段同时保存 `MapExtent` 与 `MapWorldSize`。
 - surface shader 的 `ComputeMapWorldUv()` 用 `MapWorldSize`；`ComputeWorldWidth()` 仍然用 `MapExtent`。
 
-### ❌ Mistake 27: 让 refraction payload alpha 和 bottom coverage 共用同一条 blend 语义
+### ❌ Mistake 27: 为了规避本地 payload 问题而改偏 CK3 bottom blend state
 **What to avoid:**
-- bottom pass 用 dual-source blending 写颜色时，把 RT0 alpha 也继续按 `SecondarySourceAlpha` 和 seed alpha 混合。
-- surface 侧再无条件把 `RefractionTexture.a` 当成有效的 `CompressWorldSpace` payload 去解压。
+- 看到 current seed alpha / edge payload 被混脏后，把 bottom RT0 alpha 改成 `One/Zero` direct write，并把它当作 CK3 parity。
+- 只比较 RGB blend factors，忽略 CK3 bottom 对 alpha 也声明了 `SourceAlpha = src1_alpha` / `DestAlpha = inv_src1_alpha`。
 
 **Why it's bad:**
-- 边缘/连接区域一旦只有部分 coverage，RT0 alpha 就会被混成“compressed distance * coverage + seed alpha”。
-- 如果 seed alpha 是 `0`，surface 会把这些像素错误地解压到 camera space，随后把 refraction depth、world UV 和 see-through tint 一起带偏。
+- CK3 `jomini_river_bottom.fxh` 的 bottom blend state 明确让 RT0 color 和 alpha 都使用 dual-source coverage。
+- 如果本地 seed/refraction payload writer 不等价，改 bottom blend 只能掩盖 writer 问题，并会让 RenderDoc state 与 CK3 不一致。
 
 **Correct approach:**
-- RT0 alpha 直接写 payload，不参与 coverage 混合；coverage 只留在 RT1 alpha 控制颜色混合。
-- surface decode 时把 `a <= epsilon` 视为“没有有效 payload”，回退到当前水面 world position，而不是强行 `DecompressWorldSpace(...)`。
+- bottom blend state 按 CK3：`src1_alpha / inv_src1_alpha` 同时作用于 RT0 RGB 和 alpha，`SV_Target1.a` 继续作为 coverage。
+- 如果 alpha payload 在边缘出错，先比较 CK3 pre-bottom/JominiRefraction writer 与 current `RiverSceneSeed -> BottomColor` 的 RGB/alpha payload，而不是再改 bottom blend。
+- surface decode 仍可保留无效 payload guard，但不能依赖它来合理化 bottom state 偏离 CK3。
 
 ### ✅ Pattern 30: map-space water-color 要有独立 sampler，但不要把“独立语义”误解成“必须 Clamp”
 **What to do:**

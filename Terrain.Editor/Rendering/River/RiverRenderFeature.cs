@@ -622,8 +622,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         blendState.RenderTargets[0].BlendEnable = true;
         blendState.RenderTargets[0].ColorSourceBlend = Blend.SecondarySourceAlpha;
         blendState.RenderTargets[0].ColorDestinationBlend = Blend.InverseSecondarySourceAlpha;
-        blendState.RenderTargets[0].AlphaSourceBlend = Blend.One;
-        blendState.RenderTargets[0].AlphaDestinationBlend = Blend.Zero;
+        blendState.RenderTargets[0].AlphaSourceBlend = Blend.SecondarySourceAlpha;
+        blendState.RenderTargets[0].AlphaDestinationBlend = Blend.InverseSecondarySourceAlpha;
         return blendState;
     }
 
@@ -633,8 +633,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         blendState.RenderTargets[0].BlendEnable = true;
         blendState.RenderTargets[0].ColorSourceBlend = Blend.SourceAlpha;
         blendState.RenderTargets[0].ColorDestinationBlend = Blend.InverseSourceAlpha;
-        blendState.RenderTargets[0].AlphaSourceBlend = Blend.SourceAlpha;
-        blendState.RenderTargets[0].AlphaDestinationBlend = Blend.InverseSourceAlpha;
+        blendState.RenderTargets[0].AlphaSourceBlend = Blend.One;
+        blendState.RenderTargets[0].AlphaDestinationBlend = Blend.Zero;
         blendState.RenderTargets[0].ColorWriteChannels = ColorWriteChannels.Red | ColorWriteChannels.Green | ColorWriteChannels.Blue;
         return blendState;
     }

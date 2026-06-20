@@ -507,8 +507,8 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "seedEffect.SetOutput(seedTarget);", "RiverRenderFeature should seed scene color into SceneSeedColor first");
         AssertContains(feature, "commandList.CopyRegion(renderResources.SceneSeedColor, 0, null, renderResources.BottomColor, 0);", "RiverRenderFeature should copy the scene seed into the working bottom/refraction buffer before the bottom pass");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);", "RiverRenderFeature should sample refraction with the target linear clamp sampler");
-        AssertContains(feature, "blendState.RenderTargets[0].AlphaSourceBlend = Blend.One;", "RiverRenderFeature should write refraction payload alpha directly instead of blending it by bottom coverage");
-        AssertContains(feature, "blendState.RenderTargets[0].AlphaDestinationBlend = Blend.Zero;", "RiverRenderFeature should not preserve the scene-seed alpha under partially covered bottom pixels");
+        AssertContains(feature, "blendState.RenderTargets[0].AlphaSourceBlend = Blend.SecondarySourceAlpha;", "RiverRenderFeature should match the target bottom pass alpha source factor");
+        AssertContains(feature, "blendState.RenderTargets[0].AlphaDestinationBlend = Blend.InverseSecondarySourceAlpha;", "RiverRenderFeature should match the target bottom pass alpha destination factor");
         AssertNotContains(feature, "RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.PointClamp", "RiverRenderFeature should not keep the previous point-clamp refraction sampler binding");
     }
 

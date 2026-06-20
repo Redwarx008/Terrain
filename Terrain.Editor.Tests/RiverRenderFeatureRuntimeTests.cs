@@ -8,13 +8,13 @@ internal static class RiverRenderFeatureRuntimeTests
 {
     public static void RunAll()
     {
-        TestHarness.Run("river dual-source blend state keeps payload alpha direct-write", DualSourceBlendStateKeepsPayloadAlphaDirectWrite);
+        TestHarness.Run("river dual-source blend state matches target color and alpha factors", DualSourceBlendStateMatchesTargetColorAndAlphaFactors);
         TestHarness.Run("river surface blend state matches target non-premultiplied rgb-only pass", SurfaceBlendStateMatchesTargetNonPremultipliedRgbOnlyPass);
         TestHarness.Run("river surface rasterizer uses stronger depth bias than bottom", SurfaceRasterizerUsesStrongerDepthBiasThanBottom);
         TestHarness.Run("river depth read uses strict less compare like target water", DepthReadUsesStrictLessCompareLikeTargetWater);
     }
 
-    private static void DualSourceBlendStateKeepsPayloadAlphaDirectWrite()
+    private static void DualSourceBlendStateMatchesTargetColorAndAlphaFactors()
     {
         MethodInfo? createBlendState = typeof(RiverRenderFeature).GetMethod("CreateDualSourceBlendState", BindingFlags.NonPublic | BindingFlags.Static);
         TestHarness.Assert(createBlendState != null, "RiverRenderFeature should keep a dedicated dual-source blend-state factory");
@@ -26,8 +26,8 @@ internal static class RiverRenderFeatureRuntimeTests
         TestHarness.Assert(blendState.RenderTargets[0].BlendEnable, "Bottom RT0 should keep color blending enabled");
         TestHarness.AssertEqual(Blend.SecondarySourceAlpha, blendState.RenderTargets[0].ColorSourceBlend, "Bottom RT0 color should still blend by coverage");
         TestHarness.AssertEqual(Blend.InverseSecondarySourceAlpha, blendState.RenderTargets[0].ColorDestinationBlend, "Bottom RT0 color should still preserve scene seed outside coverage");
-        TestHarness.AssertEqual(Blend.One, blendState.RenderTargets[0].AlphaSourceBlend, "Bottom RT0 alpha should write payload directly");
-        TestHarness.AssertEqual(Blend.Zero, blendState.RenderTargets[0].AlphaDestinationBlend, "Bottom RT0 alpha should ignore scene-seed alpha");
+        TestHarness.AssertEqual(Blend.SecondarySourceAlpha, blendState.RenderTargets[0].AlphaSourceBlend, "Bottom RT0 alpha should use the same dual-source coverage factor as the target bottom pass");
+        TestHarness.AssertEqual(Blend.InverseSecondarySourceAlpha, blendState.RenderTargets[0].AlphaDestinationBlend, "Bottom RT0 alpha should preserve destination payload by inverse coverage like the target bottom pass");
     }
 
     private static void SurfaceBlendStateMatchesTargetNonPremultipliedRgbOnlyPass()
