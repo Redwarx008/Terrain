@@ -160,7 +160,8 @@ namespace Terrain.Editor
         float3 ApplyTerrainUnderwaterSeeThrough(float refractionDepth, float3 refractionWorldPosition, float3 waterColorMap, float3 bottomColor)
         {
             float3 toCameraDir = normalize(_CameraWorldPosition - refractionWorldPosition);
-            float waterDistance = refractionDepth / max(toCameraDir.y, 0.0001f);
+            float seeThroughDistance = refractionDepth * _WorldToMapUnitScale;
+            float waterDistance = seeThroughDistance / max(toCameraDir.y, 0.0001f);
             float attenuation = saturate(exp(-_WaterSeeThroughDensity * max(waterDistance, 0.0f)));
             float3 color = lerp(waterColorMap, bottomColor, attenuation);
             float shoreMask = 1.0f - saturate((_WaterSeeThroughShoreMaskDepth - refractionDepth) * _WaterSeeThroughShoreMaskSharpness);

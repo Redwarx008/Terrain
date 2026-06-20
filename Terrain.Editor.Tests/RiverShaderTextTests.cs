@@ -410,6 +410,7 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "Depth = min(Depth, refractionDepth);", "RiverSurface should use the shallower depth for the refraction shore mask");
         AssertContains(shader, "float4 offsetRefractionSample = RefractionTexture.Sample(RefractionSampler, screenUv + refractionOffset);", "RiverSurface should sample offset refraction separately");
         AssertContains(shader, "float offsetStep = step(WorldSpacePos.y, offsetRefractionWorldPosition.y);", "RiverSurface should reject offset samples above the water surface");
+        AssertContains(shader, "float seeThroughDistance = refractionDepth * _WorldToMapUnitScale;", "RiverSurface see-through attenuation should use map-unit distance so local Stride world scaling does not hide the bottom");
         AssertContains(shader, "return CalcTerrainUnderwaterSeeThrough(refractionDepth, refractionWorldPosition, refractionWaterColorMap, refractionSample.rgb);", "RiverSurface see-through should use final refraction depth, not surface depth");
         AssertContains(shader, "float waterFade = ComputeWaterFade(depth);", "RiverSurface WaterFade should use the separate base-refraction depth path");
         AssertContains(shader, "float3 refractionColor = CalcRefraction(InputWorldSpacePos, waterNormal, InputScreenSpacePos.xy, waterColorAndSpec.rgb, InputDepth);", "RiverSurface should route refraction through CalcRefraction");
