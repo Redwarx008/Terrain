@@ -1,0 +1,9 @@
+!Texture
+Id: 4d17e19f-3b7c-4996-8ede-3fcb014acc00
+SerializedVersion: {Stride: 2.0.0.0}
+Tags: []
+Source: !file jomini-environment-terrain-sunny.dds
+Type: !ColorTextureType
+    UseSRgbSampling: true
+    ColorKeyColor: {R: 255, G: 0, B: 255, A: 255}
+IsStreamable: false

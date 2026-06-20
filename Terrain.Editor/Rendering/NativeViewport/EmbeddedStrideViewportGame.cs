@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Stride.Core.Mathematics;
@@ -10,8 +11,10 @@ using Stride.Graphics;
 using Stride.Input;
 using Stride.Rendering;
 using Stride.Rendering.Compositing;
+using Stride.Rendering.Images;
 using Stride.Rendering.Lights;
 using Stride.Rendering.Skyboxes;
+using Stride.Shaders;
 using Terrain.Editor.Input;
 using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
@@ -28,6 +31,13 @@ namespace Terrain.Editor.Rendering.NativeViewport;
 public sealed class EmbeddedStrideViewportGame : Game
 {
     private const bool PresenterOnlyDiagnostic = false;
+    private const string MapSceneEnvironmentUrl = "Scene/Environment/jomini-environment-terrain-sunny";
+    private static readonly Color3 MapSunDiffuseLinear = new Color3(1.0f, 0.86783814f, 0.7548521f);
+    private static readonly Color3 MapSunDiffuseForStrideColorProvider = MapSunDiffuseLinear.ToSRgb();
+    private const float MapSunIntensity = 20.0f;
+    private static readonly Vector3 MapToSunDirection = new Vector3(-0.8181818f, 0.54545456f, -0.18181819f);
+    private const float MapEnvironmentIntensity = 20.0f;
+    private const float EditorToneMapExposureEv = -2.0f;
 
     private readonly EditorTerrainModeController _modeController = new();
     private readonly RiverWireframeModeController _riverWireframeModeController = new();
@@ -581,8 +591,11 @@ public sealed class EmbeddedStrideViewportGame : Game
             return false;
         }
 
+        ApplyMapLighting(_scene);
+
         _cameraController.Camera = _camera;
         _graphicsCompositor = compositorAsset;
+        ConfigureEditorToneMap(_graphicsCompositor);
         _graphicsCompositor.Game = new PresenterViewportSceneRenderer
         {
             Child = _graphicsCompositor.Game,
@@ -644,11 +657,9 @@ public sealed class EmbeddedStrideViewportGame : Game
             * Quaternion.RotationY(MathUtil.DegreesToRadians(35f));
         _scene.Entities.Add(keyLight);
 
-        Entity? skyboxEntity = CreateSkyboxEntity();
-        if (skyboxEntity != null)
-        {
-            _scene.Entities.Add(skyboxEntity);
-        }
+        _scene.Entities.Add(CreateSkyboxEntity());
+
+        ApplyMapLighting(_scene);
 
         _graphicsCompositor = GraphicsCompositorHelper.CreateDefault(
             enablePostEffects: true,
@@ -656,6 +667,7 @@ public sealed class EmbeddedStrideViewportGame : Game
             camera: _camera,
             clearColor: new Color4(0.40491876f, 0.41189542f, 0.43775f, 1.0f),
             graphicsProfile: GraphicsDevice.Features.CurrentProfile);
+        ConfigureEditorToneMap(_graphicsCompositor);
         _graphicsCompositor.Game = new PresenterViewportSceneRenderer
         {
             Child = _graphicsCompositor.Game,
@@ -683,12 +695,94 @@ public sealed class EmbeddedStrideViewportGame : Game
         _riverComponent = new RiverComponent();
         _riverComponent.Settings.BottomNormalStrength = 1.0f;
         _riverComponent.Settings.BottomEnvironmentIntensity = 1.0f;
-        _riverComponent.Settings.BottomSpecularIntensity = 0.35f;
         _riverEntity.Add(_riverComponent);
         _scene!.Entities.Add(_riverEntity);
 
         RiverRenderingService = new RiverRenderingService(GraphicsDevice, _scene!, _riverComponent);
         RiverMeshService = new RiverMeshService(TerrainManager);
+    }
+
+    private static void ConfigureEditorToneMap(GraphicsCompositor compositor)
+    {
+        PostProcessingEffects? postEffects = FindPostProcessingEffects(compositor.Game);
+        if (postEffects == null)
+            return;
+
+        ToneMap? toneMap = postEffects.ColorTransforms.Transforms.Get<ToneMap>();
+        if (toneMap == null)
+            return;
+
+        toneMap.AutoExposure = false;
+        toneMap.AutoKeyValue = false;
+        toneMap.TemporalAdaptation = false;
+        toneMap.Exposure = EditorToneMapExposureEv;
+    }
+
+    private static PostProcessingEffects? FindPostProcessingEffects(ISceneRenderer? renderer)
+    {
+        switch (renderer)
+        {
+            case null:
+                return null;
+            case ForwardRenderer { PostEffects: PostProcessingEffects postEffects }:
+                return postEffects;
+            case SceneCameraRenderer sceneCameraRenderer:
+                return FindPostProcessingEffects(sceneCameraRenderer.Child);
+            case PresenterViewportSceneRenderer presenterRenderer:
+                return FindPostProcessingEffects(presenterRenderer.Child);
+            case SceneRendererCollection sceneRendererCollection:
+                foreach (ISceneRenderer child in sceneRendererCollection.Children)
+                {
+                    PostProcessingEffects? childPostEffects = FindPostProcessingEffects(child);
+                    if (childPostEffects != null)
+                    {
+                        return childPostEffects;
+                    }
+                }
+
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    private void ApplyMapLighting(Scene scene)
+    {
+        Texture environmentTexture = Content.Load<Texture>(MapSceneEnvironmentUrl);
+        Skybox mapSkybox = CreateMapLightingSkybox(environmentTexture);
+        int directionalLightCount = 0;
+        int skyboxLightCount = 0;
+
+        foreach (Entity entity in scene.Entities)
+        {
+            var light = entity.Get<LightComponent>();
+            if (light?.Type is LightDirectional)
+            {
+                // LightComponent.SetColor stores gamma-space color; LightProcessor converts it to linear before multiplying intensity.
+                light.SetColor(MapSunDiffuseForStrideColorProvider);
+                light.Intensity = MapSunIntensity;
+                entity.Transform.Rotation = Quaternion.BetweenDirections(LightProcessor.DefaultDirection, -MapToSunDirection);
+                directionalLightCount++;
+            }
+            else if (light?.Type is LightSkybox lightSkybox)
+            {
+                light.Intensity = MapEnvironmentIntensity;
+                lightSkybox.Skybox = mapSkybox;
+                entity.Transform.Rotation = Quaternion.Identity;
+                skyboxLightCount++;
+            }
+        }
+
+        Debug.Assert(directionalLightCount > 0, "Editor scene must contain a directional light for map lighting.");
+        Debug.Assert(skyboxLightCount > 0, "Editor scene must contain a skybox light for map lighting.");
+    }
+
+    private static Skybox CreateMapLightingSkybox(Texture environmentTexture)
+    {
+        var skybox = new Skybox();
+        skybox.SpecularLightingParameters.Set(SkyboxKeys.Shader, new ShaderClassSource("RoughnessCubeMapEnvironmentColor"));
+        skybox.SpecularLightingParameters.Set(SkyboxKeys.CubeMap, environmentTexture);
+        return skybox;
     }
 
     private static Scene CreateEditorSceneFromAsset(Scene sourceScene)
@@ -818,14 +912,10 @@ public sealed class EmbeddedStrideViewportGame : Game
         }
     }
 
-    private Entity? CreateSkyboxEntity()
+    private Entity CreateSkyboxEntity()
     {
         Texture? skyboxTexture = TryLoadTextureAsset("Skybox texture");
         Skybox? skybox = TryLoadSkyboxAsset("Skybox");
-        if (skyboxTexture == null && skybox == null)
-        {
-            return null;
-        }
 
         var skyboxEntity = new Entity("Skybox");
         if (skyboxTexture != null)
@@ -836,16 +926,13 @@ public sealed class EmbeddedStrideViewportGame : Game
             });
         }
 
-        if (skybox != null)
+        skyboxEntity.Add(new LightComponent
         {
-            skyboxEntity.Add(new LightComponent
+            Type = new LightSkybox
             {
-                Type = new LightSkybox
-                {
-                    Skybox = skybox,
-                },
-            });
-        }
+                Skybox = skybox ?? new Skybox(),
+            },
+        });
 
         return skyboxEntity;
     }

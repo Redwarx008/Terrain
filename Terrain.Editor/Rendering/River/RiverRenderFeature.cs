@@ -46,7 +46,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
     private ContentManager? contentManager;
     private ForwardLightingRenderFeature? forwardLightingFeature;
     private IShadowMapRenderer? bottomShadowMapRenderer;
-    private bool loggedMissingSurfaceTerrain;
 
     public RiverRenderDebugMode DebugMode { get; set; }
 
@@ -156,10 +155,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionTexture, renderResources.BottomColor);
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);
-        if (!BindSurfaceRequiredInputs())
-        {
-            return;
-        }
+        TryBindEditorTerrainInputs();
         DrawPass(context, renderView, renderViewStage, startIndex, endIndex, surfaceEffect, surfacePipelineState, renderResources.BottomColor);
     }
 
@@ -486,6 +482,9 @@ public sealed class RiverRenderFeature : RootRenderFeature
         effect.Parameters.Set(RiverSurfaceKeys._ViewMatrix, viewMatrix);
         effect.Parameters.Set(RiverSurfaceKeys._MapExtent, riverObject.MapExtent);
         effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);
+        var mapWorldSize = new Vector2(Math.Max(riverObject.MapWorldSize.X, 1.0f), Math.Max(riverObject.MapWorldSize.Y, 1.0f));
+        effect.Parameters.Set(RiverSurfaceKeys._InverseWorldSize, new Vector2(1.0f / mapWorldSize.X, 1.0f / mapWorldSize.Y));
+        effect.Parameters.Set(RiverSurfaceKeys._HasCloudShadowEnabled, 1.0f);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, riverObject.FlowNormalUvScale);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalSpeed, riverObject.FlowNormalSpeed);
         effect.Parameters.Set(RiverSurfaceKeys._RiverFoamFactor, riverObject.RiverFoamFactor);
@@ -605,30 +604,11 @@ public sealed class RiverRenderFeature : RootRenderFeature
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.TerrainHeightSampler, graphicsDevice.SamplerStates.LinearClamp);
     }
 
-    private bool BindSurfaceRequiredInputs()
-    {
-        Debug.Assert(surfaceEffect != null);
-
-        bool terrainBound = TryBindEditorTerrainInputs();
-        if (!terrainBound)
-        {
-            if (!loggedMissingSurfaceTerrain)
-            {
-                Log.Warning("River surface map-lighting skipped because editor terrain height slices are not available.");
-                loggedMissingSurfaceTerrain = true;
-            }
-
-            return false;
-        }
-
-        return true;
-    }
-
-    private bool TryBindEditorTerrainInputs()
+    private void TryBindEditorTerrainInputs()
     {
         if (surfaceEffect == null)
         {
-            return false;
+            return;
         }
 
         var terrain = Context.VisibilityGroup.RenderObjects
@@ -637,7 +617,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         var entity = terrain?.TerrainEntity;
         if (terrain == null || entity == null || entity.Slices.Count == 0)
         {
-            return false;
+            surfaceEffect.Parameters.Set(RiverSurfaceKeys.SliceCount, 0);
+            return;
         }
 
         var parameters = surfaceEffect.Parameters;
@@ -649,10 +630,9 @@ public sealed class RiverRenderFeature : RootRenderFeature
         parameters.Set(RiverSurfaceKeys._TerrainWorldOffsetXZ, new Vector2(entity.WorldOffset.X, entity.WorldOffset.Z));
         parameters.Set(RiverSurfaceKeys._TerrainNormalStepSize, Vector2.One);
         var terrainWorldSize = new Vector2(Math.Max(entity.HeightmapWidth - 1, 1), Math.Max(entity.HeightmapHeight - 1, 1));
-        var worldSpaceToTerrain = new Vector2(1.0f / terrainWorldSize.X, 1.0f / terrainWorldSize.Y);
-        parameters.Set(RiverSurfaceKeys._WorldSpaceToTerrain0To1, worldSpaceToTerrain);
-        parameters.Set(RiverSurfaceKeys._InverseWorldSize, worldSpaceToTerrain);
-        return true;
+        var inverseTerrainWorldSize = new Vector2(1.0f / terrainWorldSize.X, 1.0f / terrainWorldSize.Y);
+        parameters.Set(RiverSurfaceKeys._WorldSpaceToTerrain0To1, inverseTerrainWorldSize);
+        parameters.Set(RiverSurfaceKeys._InverseWorldSize, inverseTerrainWorldSize);
     }
 
     private static void SetEditorTerrainSliceTextures(ParameterCollection parameters, EditorTerrainEntity entity, EditorTerrainRenderObject renderObject)

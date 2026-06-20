@@ -18,21 +18,22 @@ namespace Terrain.Editor
 {
     public static partial class RiverBottomKeys
     {
-        public static readonly ValueParameterKey<float> _BankFade = ParameterKeys.NewValue<float>(0.15f);
+        public static readonly ValueParameterKey<float> _BankFade = ParameterKeys.NewValue<float>(0.025f);
         public static readonly ValueParameterKey<float> _Depth = ParameterKeys.NewValue<float>(0.15f);
         public static readonly ValueParameterKey<float> _DepthWidthPower = ParameterKeys.NewValue<float>(2.0f);
         public static readonly ValueParameterKey<float> _MapExtent = ParameterKeys.NewValue<float>(4096.0f);
+        public static readonly ValueParameterKey<float> _WorldToMapUnitScale = ParameterKeys.NewValue<float>(0.5f);
         public static readonly ValueParameterKey<Vector3> _CameraWorldPosition = ParameterKeys.NewValue<Vector3>(new Vector3(0.0f,0.0f,0.0f));
         public static readonly ValueParameterKey<float> _DepthFakeFactor = ParameterKeys.NewValue<float>(2.0f);
         public static readonly ValueParameterKey<float> _TextureUvScale = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _OceanFadeRate = ParameterKeys.NewValue<float>(0.8f);
         public static readonly ValueParameterKey<float> _BankAmount = ParameterKeys.NewValue<float>(0.0f);
+        public static readonly ValueParameterKey<float> _WaterHeight = ParameterKeys.NewValue<float>(3.0f);
         public static readonly ValueParameterKey<float> _BottomUvScale = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _ParallaxStrength = ParameterKeys.NewValue<float>(0.04f);
         public static readonly ValueParameterKey<int> _ParallaxIterations = ParameterKeys.NewValue<int>(10);
         public static readonly ValueParameterKey<float> _BottomNormalStrength = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _BottomEnvironmentIntensity = ParameterKeys.NewValue<float>(1.0f);
-        public static readonly ValueParameterKey<float> _BottomSpecularIntensity = ParameterKeys.NewValue<float>(0.35f);
         public static readonly ValueParameterKey<Matrix> _EnvironmentSkyMatrix = ParameterKeys.NewValue<Matrix>(new Vector4x4(1.0f,0.0f,0.0f,0.0f,0.0f,1.0f,0.0f,0.0f,0.0f,0.0f,1.0f,0.0f,0.0f,0.0f,0.0f,1.0f));
         public static readonly ValueParameterKey<float> _EnvironmentIntensity = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _EnvironmentMipCount = ParameterKeys.NewValue<float>(1.0f);
@@ -52,11 +53,11 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<Vector3> _SceneSunColor = ParameterKeys.NewValue<Vector3>(new Vector3(0.0f,0.0f,0.0f));
         public static readonly ValueParameterKey<int> _SceneShadowCascadeCount = ParameterKeys.NewValue<int>(0);
         public static readonly ValueParameterKey<float> _SceneShadowBlendCascades = ParameterKeys.NewValue<float>(0.0f);
-        public static readonly ValueParameterKey<float> _SceneShadowDepthBias = ParameterKeys.NewValue<float>(0.0f);
-        public static readonly ValueParameterKey<float> _SceneShadowOffsetScale = ParameterKeys.NewValue<float>(0.0f);
+        public static readonly ValueParameterKey<float> _SceneShadowFadeFactor = ParameterKeys.NewValue<float>(1.0f);
+        public static readonly ValueParameterKey<float> _SceneShadowDepthBias = ParameterKeys.NewValue<float>(0.01f);
+        public static readonly ValueParameterKey<float> _SceneShadowKernelScale = ParameterKeys.NewValue<float>(0.0009765625f);
+        public static readonly ValueParameterKey<float> _SceneShadowScreenSpaceScale = ParameterKeys.NewValue<float>(16384.0f);
         public static readonly ValueParameterKey<float> _SceneShadowCascadeSplits = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<Matrix> _SceneWorldToShadowCascadeUV = ParameterKeys.NewValue<Matrix>();
-        public static readonly ValueParameterKey<Vector2> _SceneShadowMapTextureSize = ParameterKeys.NewValue<Vector2>(new Vector2(1.0f,1.0f));
-        public static readonly ValueParameterKey<Vector2> _SceneShadowMapTextureTexelSize = ParameterKeys.NewValue<Vector2>(new Vector2(1.0f,1.0f));
     }
 }

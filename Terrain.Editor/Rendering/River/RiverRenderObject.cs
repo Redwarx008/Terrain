@@ -28,20 +28,20 @@ public sealed class RiverRenderObject : RenderObject, IDisposable
     public float FlattenMultiplier { get; private set; } = 1.0f;
     public float OceanFadeRate { get; private set; } = 0.8f;
     public float BankAmount { get; private set; } = 0.0f;
-    public float BankFade { get; private set; } = 0.15f;
+    public float BankFade { get; private set; } = 0.025f;
     public float Depth { get; private set; } = 0.15f;
     public float DepthWidthPower { get; private set; } = 2.0f;
     public float DepthFakeFactor { get; private set; } = 2.0f;
     public int ParallaxIterations { get; private set; } = 10;
     public float BottomNormalStrength { get; private set; } = 1.0f;
     public float BottomEnvironmentIntensity { get; private set; } = 1.0f;
-    public float BottomSpecularIntensity { get; private set; } = 0.35f;
     public float FlatMapLerp { get; private set; } = 0.0f;
-    public float ZoomBlendOut { get; private set; } = 1.0f;
-    public float ShadowTermFallback { get; private set; } = 1.0f;
-    public float CloudMaskFallback { get; private set; } = 0.0f;
-    public Vector4 WaterColorShallow { get; private set; } = new(0.0f, 0.3f, 0.5f, 0.7f);
-    public Vector4 WaterColorDeep { get; private set; } = new(0.0f, 0.05f, 0.15f, 0.85f);
+    public float WaterRefractionScale { get; private set; } = 500.0f;
+    public float WaterRefractionShoreMaskDepth { get; private set; } = 3.0f;
+    public float WaterRefractionShoreMaskSharpness { get; private set; } = 1.0f;
+    public float WaterRefractionFade { get; private set; } = 1.0f;
+    public Vector4 WaterColorShallow { get; private set; } = new(0.0055146287f, 0.0078107193f, 0.0120865023f, 1.0f);
+    public Vector4 WaterColorDeep { get; private set; } = new(0.0001385075f, 0.0001974951f, 0.0002262951f, 1.0f);
     public Matrix World { get; set; } = Matrix.Identity;
 
     public RiverRenderObject()
@@ -69,11 +69,11 @@ public sealed class RiverRenderObject : RenderObject, IDisposable
         ParallaxIterations = settings.ParallaxIterations;
         BottomNormalStrength = settings.BottomNormalStrength;
         BottomEnvironmentIntensity = settings.BottomEnvironmentIntensity;
-        BottomSpecularIntensity = settings.BottomSpecularIntensity;
         FlatMapLerp = settings.FlatMapLerp;
-        ZoomBlendOut = settings.ZoomBlendOut;
-        ShadowTermFallback = settings.ShadowTermFallback;
-        CloudMaskFallback = settings.CloudMaskFallback;
+        WaterRefractionScale = settings.WaterRefractionScale;
+        WaterRefractionShoreMaskDepth = settings.WaterRefractionShoreMaskDepth;
+        WaterRefractionShoreMaskSharpness = settings.WaterRefractionShoreMaskSharpness;
+        WaterRefractionFade = settings.WaterRefractionFade;
         WaterColorShallow = settings.WaterColorShallow;
         WaterColorDeep = settings.WaterColorDeep;
     }

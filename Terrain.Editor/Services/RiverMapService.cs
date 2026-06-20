@@ -227,22 +227,42 @@ public sealed class RiverMapService
                 break;
             }
 
-            // Find next River pixel (excluding the one we came from)
+            // Prefer stepping into an adjacent semantic node before considering side continuations.
+            // Real rivers.png layouts can place a confluence/bifurcation marker next to the branch
+            // while another River pixel also touches the last branch cell.
             int nextX = -1, nextY = -1;
-            int neighborCount = 0;
+            int specialNeighborCount = 0;
+            int filledNeighborCount = 0;
             for (int d = 0; d < 4; d++)
             {
                 int nx = cx + dx[d], ny = cy + dy[d];
                 if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
                 if (nx == px && ny == py) continue;
-                if (cells[nx, ny].IsFilled)
+
+                RiverPixelType neighborType = cells[nx, ny].Type;
+                if (neighborType is RiverPixelType.Source or RiverPixelType.Confluence or RiverPixelType.Bifurcation)
                 {
                     nextX = nx; nextY = ny;
-                    neighborCount++;
+                    specialNeighborCount++;
+                }
+                else if (cells[nx, ny].IsFilled)
+                {
+                    if (specialNeighborCount == 0)
+                    {
+                        nextX = nx; nextY = ny;
+                    }
+                    filledNeighborCount++;
                 }
             }
 
-            if (neighborCount != 1) break;
+            if (specialNeighborCount == 1)
+            {
+                px = cx; py = cy;
+                cx = nextX; cy = nextY;
+                continue;
+            }
+
+            if (specialNeighborCount > 1 || filledNeighborCount != 1) break;
 
             px = cx; py = cy;
             cx = nextX; cy = nextY;
@@ -253,13 +273,22 @@ public sealed class RiverMapService
 
     private static void NormalizeDirection(RiverSegment seg)
     {
-        if (seg.StartKind == SegmentEndKind.Confluence && seg.EndKind == SegmentEndKind.Source)
+        if (GetDirectionRank(seg.StartKind) > GetDirectionRank(seg.EndKind))
         {
             seg.Cells.Reverse();
             (seg.StartKind, seg.EndKind) = (seg.EndKind, seg.StartKind);
             (seg.StartNodeKey, seg.EndNodeKey) = (seg.EndNodeKey, seg.StartNodeKey);
         }
     }
+
+    private static int GetDirectionRank(SegmentEndKind kind) => kind switch
+    {
+        SegmentEndKind.Source => 0,
+        SegmentEndKind.None => 1,
+        SegmentEndKind.Confluence => 2,
+        SegmentEndKind.Bifurcation => 2,
+        _ => 1,
+    };
 
     private static float ComputeAvgWidth(RiverSegment seg, RiverCell[,] cells)
     {

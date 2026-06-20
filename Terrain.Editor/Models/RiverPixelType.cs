@@ -19,17 +19,17 @@ public readonly record struct RiverCell(RiverPixelType Type, byte Width = 0)
 {
     private static readonly (Rgba32 Color, float HalfWidth)[] WidthPalette =
     [
-        (new(0x00, 0xe1, 0xff), 0.625f),   // narrowest — CK3 #00e1ff
-        (new(0x00, 0xc8, 0xff), 0.700f),   //            CK3 #00c8ff
-        (new(0x00, 0x96, 0xff), 0.775f),   //            CK3 #0096ff
-        (new(0x00, 0x64, 0xff), 0.850f),   //            CK3 #0064ff
-        (new(0x00, 0x00, 0xff), 0.925f),   //            CK3 #0000ff
-        (new(0x00, 0x00, 0xe1), 1.000f),   //            CK3 #0000e1
-        (new(0x00, 0x00, 0xc8), 1.075f),   //            CK3 #0000c8
-        (new(0x00, 0x00, 0x96), 1.150f),   //            CK3 #000096
-        (new(0x00, 0x00, 0x64), 1.225f),   //            CK3 #000064
-        (new(0x00, 0x7d, 0x00), 1.300f),   //            CK3 #007d00
-        (new(0x18, 0xce, 0x00), 1.375f),   // widest     CK3 #18ce00
+        (new(0x00, 0xe1, 0xff), 0.500f),   // width index 0, full width 1.00
+        (new(0x00, 0xc8, 0xff), 0.625f),   // width index 1, full width 1.25
+        (new(0x00, 0x96, 0xff), 0.750f),   // width index 2, full width 1.50
+        (new(0x00, 0x64, 0xff), 0.875f),   // width index 3, full width 1.75
+        (new(0x00, 0x00, 0xff), 1.000f),   // width index 4, full width 2.00
+        (new(0x00, 0x00, 0xe1), 1.125f),   // width index 5, full width 2.25
+        (new(0x00, 0x00, 0xc8), 1.250f),   // width index 6, full width 2.50
+        (new(0x00, 0x00, 0x96), 1.375f),   // width index 7, full width 2.75
+        (new(0x00, 0x00, 0x64), 1.500f),   // width index 8, full width 3.00
+        (new(0x00, 0x7d, 0x00), 1.625f),   // width index 9, full width 3.25
+        (new(0x18, 0xce, 0x00), 1.750f),   // width index 10, full width 3.50
     ];
 
     public static float GetHalfWidth(int paletteIndex) =>

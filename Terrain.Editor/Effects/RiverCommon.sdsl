@@ -32,14 +32,29 @@ namespace Terrain.Editor
             return normalize(packedNormal.xyz * 2.0f - 1.0f);
         }
 
+        float3 RiverClampRefractionCameraPosition(float3 worldPosition, float3 cameraPosition, float3 toCameraDir)
+        {
+            const float maxHeight = 50.0f;
+            if (cameraPosition.y > maxHeight)
+            {
+                float above = cameraPosition.y - maxHeight;
+                cameraPosition = cameraPosition - toCameraDir * (above / toCameraDir.y);
+            }
+
+            return cameraPosition;
+        }
+
         float RiverCompressWorldSpace(float3 worldPosition, float3 cameraPosition)
         {
+            float3 toCameraDir = normalize(cameraPosition - worldPosition);
+            cameraPosition = RiverClampRefractionCameraPosition(worldPosition, cameraPosition, toCameraDir);
             return length(cameraPosition - worldPosition);
         }
 
         float3 RiverDecompressWorldSpace(float3 surfaceWorldPosition, float compressedDistance, float3 cameraPosition)
         {
             float3 toCameraDir = normalize(cameraPosition - surfaceWorldPosition);
+            cameraPosition = RiverClampRefractionCameraPosition(surfaceWorldPosition, cameraPosition, toCameraDir);
             return cameraPosition - toCameraDir * max(compressedDistance, 0.0f);
         }
 

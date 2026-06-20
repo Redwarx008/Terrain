@@ -18,6 +18,8 @@ public sealed class RiverMeshService
     private const float SurfaceOffset = 0.02f;
     private const float MinVisibleHalfWidth = 0.05f;
     private const float MinGeometricTaperScale = 0.75f;
+    private const float RiverUvScale = 0.8f;
+    private const float TerrainWorldToRiverMapUnits = 0.5f;
 
     private readonly TerrainManager? terrainManager;
 
@@ -54,7 +56,7 @@ public sealed class RiverMeshService
 
             // Catmull-Rom interpolation
             seg.Centerline = CatmullRomInterpolate(smoothedPoints, CurveSampleSpacing);
-            seg.WorldLength = ComputePolylineLength(seg.Centerline);
+            seg.WorldLength = ComputeMapUnitPolylineLength(seg.Centerline);
         }
     }
 
@@ -239,7 +241,8 @@ public sealed class RiverMeshService
         if (centerline == null || centerline.Count < 2)
             return new RiverMeshData { SegmentId = segment.SystemId };
 
-        float totalLength = segment.WorldLength > 0.001f ? segment.WorldLength : ComputePolylineLength(centerline);
+        var mapUnitDistances = ComputeMapUnitDistances(centerline);
+        float totalLength = mapUnitDistances.Length > 0 ? mapUnitDistances[^1] : 0.0f;
         float baseHalfWidth = Math.Max(MinVisibleHalfWidth, segment.AvgHalfWidth * widthScale);
         Vector2 mapWorldSize = GetMapWorldSize();
         float mapExtent = GetMapExtent(mapWorldSize);
@@ -248,27 +251,28 @@ public sealed class RiverMeshService
         var vertices = new List<RiverVertex>(n * 2 + 2);
         var indices = new List<int>();
 
-        var distances = ComputeDistances(centerline);
         var boundsMin = new Vector3(float.MaxValue);
         var boundsMax = new Vector3(float.MinValue);
 
         for (int i = 0; i < n; i++)
         {
             Vector3 center = centerline[i];
-            float u = totalLength > 0.001f ? distances[i] / totalLength : 0;
-            float taperScale = ComputeTaperScale(u, totalLength, segment.TaperStart, segment.TaperEnd);
+            float mapUnitDistance = mapUnitDistances[i];
+            float normalizedProgress = totalLength > 0.001f ? mapUnitDistance / totalLength : 0;
+            float longitudinalUv = mapUnitDistance * RiverUvScale;
+            float taperScale = ComputeTaperScale(normalizedProgress, totalLength, segment.TaperStart, segment.TaperEnd);
             float halfWidth = baseHalfWidth * taperScale;
             float normalizedWidth = NormalizeRiverWidth(halfWidth, mapExtent);
             Vector3 offset = ComputeMiterOffset(centerline, i, halfWidth);
             Vector3 tangent = EstimateCenterlineTangent(centerline, i);
-            Vector3 normal = SampleTerrainNormal(center.X, center.Z);
-            float distanceToMain = ComputeDistanceToMain(u, segment.TaperStart, segment.TaperEnd);
+            Vector3 normal = ComputeRibbonNormal(tangent, offset);
+            float distanceToMain = ComputeDistanceToMain(normalizedProgress, segment.TaperStart, segment.TaperEnd);
 
             Vector3 leftPos = center - offset;
             Vector3 rightPos = center + offset;
 
-            vertices.Add(new RiverVertex(leftPos, 1.0f, new Vector2(u, 0), tangent, normal, normalizedWidth, distanceToMain));
-            vertices.Add(new RiverVertex(rightPos, 1.0f, new Vector2(u, 1), tangent, normal, normalizedWidth, distanceToMain));
+            vertices.Add(new RiverVertex(leftPos, 1.0f, new Vector2(longitudinalUv, 0), tangent, normal, normalizedWidth, distanceToMain));
+            vertices.Add(new RiverVertex(rightPos, 1.0f, new Vector2(longitudinalUv, 1), tangent, normal, normalizedWidth, distanceToMain));
 
             boundsMin = Vector3.Min(boundsMin, leftPos);
             boundsMin = Vector3.Min(boundsMin, rightPos);
@@ -276,7 +280,7 @@ public sealed class RiverMeshService
             boundsMax = Vector3.Max(boundsMax, rightPos);
         }
 
-        // Reference draw data uses interleaved left/right boundary vertices along the river.
+        // The draw data uses interleaved left/right boundary vertices along the river.
         // Emit the same organization as a triangle list with Stride-visible winding.
         for (int i = 0; i < n - 1; i++)
         {
@@ -303,21 +307,42 @@ public sealed class RiverMeshService
         };
     }
 
-    private static float[] ComputeDistances(List<Vector3> points)
+    private static float[] ComputeMapUnitDistances(List<Vector3> points)
     {
         var distances = new float[points.Count];
         for (int i = 1; i < points.Count; i++)
-            distances[i] = distances[i - 1] + Vector3.Distance(points[i - 1], points[i]);
+        {
+            Vector2 previous = ToRiverMapUnits(points[i - 1]);
+            Vector2 current = ToRiverMapUnits(points[i]);
+            distances[i] = distances[i - 1] + Vector2.Distance(previous, current);
+        }
         return distances;
     }
+
+    private static float ComputeMapUnitPolylineLength(List<Vector3> points)
+    {
+        if (points.Count < 2)
+            return 0.0f;
+
+        float length = 0.0f;
+        for (int i = 1; i < points.Count; i++)
+        {
+            length += Vector2.Distance(ToRiverMapUnits(points[i - 1]), ToRiverMapUnits(points[i]));
+        }
+
+        return length;
+    }
+
+    private static Vector2 ToRiverMapUnits(Vector3 point) =>
+        new(point.X * TerrainWorldToRiverMapUnits, point.Z * TerrainWorldToRiverMapUnits);
 
     private Vector2 GetMapWorldSize()
     {
         if (terrainManager != null && terrainManager.HeightCacheWidth > 0 && terrainManager.HeightCacheHeight > 0)
         {
             return new Vector2(
-                Math.Max(terrainManager.HeightCacheWidth - 1, 0),
-                Math.Max(terrainManager.HeightCacheHeight - 1, 0));
+                Math.Max(terrainManager.HeightCacheWidth - 1, 0) * TerrainWorldToRiverMapUnits,
+                Math.Max(terrainManager.HeightCacheHeight - 1, 0) * TerrainWorldToRiverMapUnits);
         }
 
         return new Vector2(4096.0f, 4096.0f);
@@ -340,8 +365,31 @@ public sealed class RiverMeshService
         int previous = Math.Max(0, index - 1);
         int next = Math.Min(centerline.Count - 1, index + 1);
         Vector3 tangent = centerline[next] - centerline[previous];
-        tangent.Y = 0;
         return tangent.LengthSquared() > 0.000001f ? Vector3.Normalize(tangent) : Vector3.UnitX;
+    }
+
+    private static Vector3 ComputeRibbonNormal(Vector3 tangent, Vector3 offset)
+    {
+        Vector3 side;
+        if (offset.LengthSquared() > 0.000001f)
+        {
+            side = Vector3.Normalize(offset);
+        }
+        else
+        {
+            Vector3 horizontalTangent = HorizontalDirection(tangent);
+            if (horizontalTangent.LengthSquared() <= 0.000001f)
+                return Vector3.UnitY;
+
+            side = Side(horizontalTangent);
+        }
+        Vector3 normal = Vector3.Cross(side, tangent);
+
+        if (normal.LengthSquared() <= 0.000001f)
+            return Vector3.UnitY;
+
+        normal = Vector3.Normalize(normal);
+        return normal.Y >= 0.0f ? normal : -normal;
     }
 
     private static float ComputeDistanceToMain(float u, bool taperStart, bool taperEnd)
@@ -400,13 +448,4 @@ public sealed class RiverMeshService
 
     private static float SmoothStep(float t) => t * t * (3.0f - 2.0f * t);
 
-    private Vector3 SampleTerrainNormal(float wx, float wz)
-    {
-        float h = 0.5f;
-        float cx = SampleTerrainHeight(wx, wz);
-        float dx = SampleTerrainHeight(wx + h, wz);
-        float dz = SampleTerrainHeight(wx, wz + h);
-        var n = Vector3.Normalize(new Vector3(cx - dx, h, cx - dz));
-        return n.LengthSquared() > 0 ? n : new Vector3(0, 1, 0);
-    }
 }

@@ -65,6 +65,11 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
+    <Compile Update="Effects\RiverSceneSeed.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
     <Compile Update="Effects\RiverVertexStreams.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
@@ -94,6 +99,9 @@
     </None>
     <None Update="Effects\RiverBottom.sdsl">
       <LastGenOutput>RiverBottom.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\RiverSceneSeed.sdsl">
+      <LastGenOutput>RiverSceneSeed.sdsl.cs</LastGenOutput>
     </None>
     <None Update="Effects\RiverVertexStreams.sdsl">
       <LastGenOutput>RiverVertexStreams.sdsl.cs</LastGenOutput>
