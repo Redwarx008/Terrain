@@ -339,7 +339,7 @@ public sealed class RiverMeshService
 
         var mapUnitDistances = ComputeMapUnitDistances(centerline);
         float totalLength = mapUnitDistances.Length > 0 ? mapUnitDistances[^1] : 0.0f;
-        float baseHalfWidth = Math.Max(MinVisibleHalfWidth, segment.AvgHalfWidth * widthScale);
+        IReadOnlyList<float> halfWidths = GetCenterlineHalfWidths(segment, centerline.Count);
         Vector2 mapWorldSize = GetMapWorldSize();
         float mapExtent = GetMapExtent(mapWorldSize);
 
@@ -357,6 +357,7 @@ public sealed class RiverMeshService
             float normalizedProgress = totalLength > 0.001f ? mapUnitDistance / totalLength : 0;
             float longitudinalUv = mapUnitDistance * RiverUvScale;
             float taperScale = ComputeTaperScale(normalizedProgress, totalLength, segment.TaperStart, segment.TaperEnd);
+            float baseHalfWidth = Math.Max(MinVisibleHalfWidth, halfWidths[i] * widthScale);
             float halfWidth = baseHalfWidth * taperScale;
             float normalizedWidth = NormalizeRiverWidth(halfWidth, mapExtent);
             Vector3 offset = ComputeMiterOffset(centerline, i, halfWidth);
@@ -402,6 +403,17 @@ public sealed class RiverMeshService
             MapWorldSize = mapWorldSize,
             RefractionMaxCameraHeight = MathF.Max(50.0f, terrainManager?.HeightScale ?? 50.0f),
         };
+    }
+
+    private static IReadOnlyList<float> GetCenterlineHalfWidths(RiverSegment segment, int count)
+    {
+        if (segment.CenterlineHalfWidths.Count == count)
+            return segment.CenterlineHalfWidths;
+
+        var fallback = new float[count];
+        float width = Math.Max(MinVisibleHalfWidth, segment.AvgHalfWidth);
+        Array.Fill(fallback, width);
+        return fallback;
     }
 
     private static float[] ComputeMapUnitDistances(List<Vector3> points)

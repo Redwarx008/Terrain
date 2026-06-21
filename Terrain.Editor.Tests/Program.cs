@@ -25,6 +25,7 @@ Run("centerline smoothing limits repeated river bend angles", CenterlineSmoothin
 Run("centerline smoothing stays near original river corridor", CenterlineSmoothingStaysNearOriginalRiverCorridor);
 Run("ribbon indices preserve boundary strip organization with stride-visible winding", RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding);
 Run("mitered corner preserves river half width", MiteredCornerPreservesRiverHalfWidth);
+Run("river mesh preserves local width gradient", RiverMeshPreservesLocalWidthGradient);
 Run("river mesh boundaries stay smooth across repeated bends", RiverMeshBoundariesStaySmoothAcrossRepeatedBends);
 Run("tapered river endpoints keep visible cap width", TaperedRiverEndpointsKeepVisibleCapWidth);
 Run("river vertex layout exposes target semantics", RiverVertexLayoutExposesTargetSemantics);
@@ -407,6 +408,33 @@ void MiteredCornerPreservesRiverHalfWidth()
     AssertNearlyEqual(0.5f, MathF.Abs(rightCorner.Z), 0.0001f, "right miter should preserve width against incoming segment");
     AssertNearlyEqual(0.5f, MathF.Abs(leftCorner.X - 1), 0.0001f, "left miter should preserve width against outgoing segment");
     AssertNearlyEqual(0.5f, MathF.Abs(rightCorner.X - 1), 0.0001f, "right miter should preserve width against outgoing segment");
+}
+
+void RiverMeshPreservesLocalWidthGradient()
+{
+    var segment = new RiverSegment
+    {
+        Centerline =
+        [
+            new Vector3(0, 0, 0),
+            new Vector3(2, 0, 0),
+            new Vector3(4, 0, 0),
+        ],
+        CenterlineHalfWidths = [0.5f, 1.0f, 2.0f],
+        WorldLength = 2,
+        AvgHalfWidth = 1.0f,
+    };
+
+    var mesh = new RiverMeshService(null!).BuildRiverMesh(segment, 1.0f);
+
+    float mapExtent = mesh.MapExtent;
+    float firstHalfWidth = mesh.Vertices[0].Width * mapExtent;
+    float middleHalfWidth = mesh.Vertices[2].Width * mapExtent;
+    float lastHalfWidth = mesh.Vertices[^1].Width * mapExtent;
+
+    AssertNearlyEqual(0.5f, firstHalfWidth, 0.0001f, "first mesh sample should use local narrow half-width");
+    AssertNearlyEqual(1.0f, middleHalfWidth, 0.0001f, "middle mesh sample should use local intermediate half-width");
+    AssertNearlyEqual(2.0f, lastHalfWidth, 0.0001f, "last mesh sample should use local wide half-width");
 }
 
 void RiverMeshBoundariesStaySmoothAcrossRepeatedBends()
