@@ -102,9 +102,6 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal TerrainQuadTree? QuadTree;
 
     [DataMemberIgnore]
-    internal TerrainHeightSampler? HeightSampler;
-
-    [DataMemberIgnore]
     internal RuntimeMaterialManager? MaterialManager;
 
     [DataMemberIgnore]
@@ -115,7 +112,7 @@ public sealed class TerrainComponent : ActivableEntityComponent
 
     public float GetHeight(int sampleX, int sampleZ)
     {
-        return HeightSampler?.GetHeight(sampleX, sampleZ, HeightScale) ?? 0.0f;
+        return QuadTree?.GetHeight(sampleX, sampleZ, HeightScale) ?? 0.0f;
     }
 }
 

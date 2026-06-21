@@ -525,12 +525,14 @@ internal sealed class GpuVirtualTextureArray : IDisposable
     private readonly LinkedList<int> lruSlices = new();
     private readonly LinkedListNode<int>?[] lruNodes;
     private readonly SlotState[] slots;
+    private Action<TerrainPageKey>? pageEvicted;
 
-    public GpuVirtualTextureArray(Texture textureArray, int tileSize, int padding, int maxResidentChunks)
+    public GpuVirtualTextureArray(Texture textureArray, int tileSize, int padding, int maxResidentChunks, Action<TerrainPageKey>? pageEvicted = null)
     {
         TileSize = tileSize;
         Padding = padding;
         TextureArray = textureArray;
+        this.pageEvicted = pageEvicted;
 
         slots = new SlotState[maxResidentChunks];
         lruNodes = new LinkedListNode<int>?[maxResidentChunks];
@@ -547,6 +549,12 @@ internal sealed class GpuVirtualTextureArray : IDisposable
     public int Padding { get; }
 
     public int Capacity => slots.Length;
+
+    public event Action<TerrainPageKey> PageEvicted
+    {
+        add => pageEvicted += value;
+        remove => pageEvicted -= value;
+    }
 
     public bool IsPageResident(TerrainPageKey key)
         => pageToSlice.ContainsKey(key);
@@ -653,9 +661,11 @@ internal sealed class GpuVirtualTextureArray : IDisposable
             return;
         }
 
+        TerrainPageKey evictedKey = slot.Key;
         pageToSlice.Remove(slot.Key);
         RemoveFromLru(sliceIndex);
         slot = default;
+        pageEvicted?.Invoke(evictedKey);
         if (enqueueFreeSlice)
         {
             freeSlices.Enqueue(sliceIndex);
@@ -712,7 +722,7 @@ internal sealed class TerrainStreamingManager : IDisposable
     private readonly GpuVirtualTextureArray gpuHeightArray;
     private readonly GpuVirtualTextureArray? gpuDetailIndexArray;
     private readonly Texture? detailWeightArray;
-    private readonly RuntimeDetailMapData? generatedDetailMaps;
+    private RuntimeDetailMapData? generatedDetailMaps;
     private readonly BlockingCollection<StreamingRequest> pendingRequests = new();
     private readonly ConcurrentQueue<StreamingRequest> completedRequests = new();
     private readonly ConcurrentDictionary<(TerrainPageKey Key, bool IsDetailMap), byte> queuedKeys = new();
@@ -724,7 +734,14 @@ internal sealed class TerrainStreamingManager : IDisposable
     private readonly int splatMapLodOffset;
     private readonly PageBufferAllocator heightmapBufferPool;
     private readonly PageBufferAllocator? splatMapBufferPool;
-    private readonly TerrainHeightSampler heightSampler;
+    private readonly Dictionary<TerrainPageKey, CachedHeightPage> cachedHeightPages = new();
+    private readonly LinkedList<TerrainPageKey> cachedHeightPageLru = new();
+    private readonly object heightCacheGate = new();
+    private readonly int maxCachedHeightPages;
+    private readonly int heightmapPaddedTileSize;
+    private readonly int heightmapPageByteSize;
+    private readonly int heightPageSpan;
+    private readonly VirtualTextureMipLayoutInfo heightMip0Layout;
     private bool hasLoggedBufferPoolExhaustion;
 
     public TerrainStreamingManager(
@@ -732,21 +749,25 @@ internal sealed class TerrainStreamingManager : IDisposable
         GpuVirtualTextureArray gpuHeightArray,
         GpuVirtualTextureArray? gpuDetailIndexArray,
         Texture? detailWeightArray,
-        RuntimeDetailMapData? generatedDetailMaps,
-        TerrainHeightSampler heightSampler,
         int baseChunkSize)
     {
         this.fileReader = fileReader;
         this.gpuHeightArray = gpuHeightArray;
         this.gpuDetailIndexArray = gpuDetailIndexArray;
         this.detailWeightArray = detailWeightArray;
-        this.generatedDetailMaps = generatedDetailMaps;
-        this.heightSampler = heightSampler;
         this.baseChunkSize = baseChunkSize;
+        gpuHeightArray.PageEvicted += RemoveCachedHeightPage;
         effectivePageSpanInSamples = Math.Max(1, fileReader.HeightmapHeader.TileSize - 1);
+        maxCachedHeightPages = Math.Max(1, gpuHeightArray.Capacity);
+        heightmapPaddedTileSize = gpuHeightArray.TileSize + gpuHeightArray.Padding * 2;
+        heightmapPageByteSize = heightmapPaddedTileSize * heightmapPaddedTileSize * fileReader.HeightmapHeader.BytesPerPixel;
+        heightPageSpan = Math.Max(1, fileReader.HeightmapHeader.TileSize - 1);
+        heightMip0Layout = VirtualTextureLayout.GetMipLayout(
+            fileReader.HeightmapHeader.Width,
+            fileReader.HeightmapHeader.Height,
+            fileReader.HeightmapHeader.TileSize,
+            mipLevel: 0);
 
-        int heightmapPaddedTileSize = gpuHeightArray.TileSize + gpuHeightArray.Padding * 2;
-        int heightmapPageByteSize = heightmapPaddedTileSize * heightmapPaddedTileSize * fileReader.HeightmapHeader.BytesPerPixel;
         heightmapBufferPool = new PageBufferAllocator(heightmapPageByteSize, Math.Max(64, gpuHeightArray.Capacity * 2));
 
         if (gpuDetailIndexArray != null)
@@ -785,9 +806,27 @@ internal sealed class TerrainStreamingManager : IDisposable
 
     public int Padding => gpuHeightArray.Padding;
 
+    public void SetGeneratedDetailMaps(RuntimeDetailMapData detailMaps)
+    {
+        generatedDetailMaps = detailMaps;
+    }
+
     public float GetHeight(int sampleX, int sampleZ, float heightScale)
     {
-        return heightSampler.GetHeight(sampleX, sampleZ, heightScale);
+        sampleX = Math.Clamp(sampleX, 0, fileReader.HeightmapHeader.Width - 1);
+        sampleZ = Math.Clamp(sampleZ, 0, fileReader.HeightmapHeader.Height - 1);
+
+        int pageX = Math.Min(sampleX / heightPageSpan, heightMip0Layout.TilesX - 1);
+        int pageY = Math.Min(sampleZ / heightPageSpan, heightMip0Layout.TilesY - 1);
+        int localX = sampleX - pageX * heightPageSpan;
+        int localY = sampleZ - pageY * heightPageSpan;
+        var key = new TerrainPageKey(0, pageX, pageY);
+
+        CachedHeightPage page = GetOrLoadHeightPage(key);
+        int paddedX = localX + fileReader.HeightmapHeader.Padding;
+        int paddedY = localY + fileReader.HeightmapHeader.Padding;
+        ushort encodedHeight = page.Data[paddedY * heightmapPaddedTileSize + paddedX];
+        return encodedHeight * TerrainComponent.HeightSampleNormalization * heightScale;
     }
 
     /// <summary>
@@ -897,6 +936,7 @@ internal sealed class TerrainStreamingManager : IDisposable
                     }
 
                     fileReader.ReadHeightPage(pageKey, heightmapPageData.Memory.Span);
+                    CacheHeightPage(pageKey, heightmapPageData.Memory.Span);
                     gpuHeightArray.UploadPage(commandList, pageKey, heightmapPageData.Memory.Span, pinned: false);
 
                     if (splatMapPageData != null && gpuDetailIndexArray != null && detailWeightArray != null && generatedDetailMaps != null)
@@ -939,6 +979,11 @@ internal sealed class TerrainStreamingManager : IDisposable
                     break;
                 }
 
+                if (!request.IsDetailMap)
+                {
+                    CacheHeightPage(request.Key, request.Data.Memory.Span);
+                }
+
                 if (request.IsDetailMap && request.WeightData != null && detailWeightArray != null && targetArray.TryGetResidentSlice(request.Key, out int sliceIndex))
                 {
                     detailWeightArray.SetData(commandList, request.WeightData.Memory.Span, sliceIndex, 0, null);
@@ -971,6 +1016,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         cancellation.Dispose();
         heightmapBufferPool.Dispose();
         splatMapBufferPool?.Dispose();
+        gpuHeightArray.PageEvicted -= RemoveCachedHeightPage;
         gpuHeightArray.Dispose();
         gpuDetailIndexArray?.Dispose();
         fileReader.Dispose();
@@ -1016,6 +1062,72 @@ internal sealed class TerrainStreamingManager : IDisposable
         catch (OperationCanceledException)
         {
             Log.Info("Terrain streaming thread exited.");
+        }
+    }
+
+    private CachedHeightPage GetOrLoadHeightPage(TerrainPageKey key)
+    {
+        lock (heightCacheGate)
+        {
+            if (cachedHeightPages.TryGetValue(key, out CachedHeightPage? cachedPage))
+            {
+                TouchHeightPage(cachedPage);
+                return cachedPage;
+            }
+        }
+
+        var bytes = new byte[heightmapPageByteSize];
+        fileReader.ReadHeightPage(key, bytes);
+        return CacheHeightPage(key, bytes);
+    }
+
+    private CachedHeightPage CacheHeightPage(TerrainPageKey key, Span<byte> bytes)
+    {
+        lock (heightCacheGate)
+        {
+            if (cachedHeightPages.TryGetValue(key, out CachedHeightPage? cachedPage))
+            {
+                TouchHeightPage(cachedPage);
+                return cachedPage;
+            }
+
+            var data = new ushort[heightmapPaddedTileSize * heightmapPaddedTileSize];
+            MemoryMarshal.Cast<byte, ushort>(bytes[..heightmapPageByteSize]).CopyTo(data);
+            cachedPage = new CachedHeightPage(key, data);
+            cachedPage.Node = cachedHeightPageLru.AddLast(key);
+            cachedHeightPages.Add(key, cachedPage);
+            EvictCpuHeightPagesIfNeeded();
+            return cachedPage;
+        }
+    }
+
+    private void RemoveCachedHeightPage(TerrainPageKey key)
+    {
+        lock (heightCacheGate)
+        {
+            if (!cachedHeightPages.Remove(key, out CachedHeightPage? cachedPage))
+                return;
+
+            if (cachedPage.Node != null)
+                cachedHeightPageLru.Remove(cachedPage.Node);
+        }
+    }
+
+    private void TouchHeightPage(CachedHeightPage cachedPage)
+    {
+        if (cachedPage.Node == null || ReferenceEquals(cachedPage.Node, cachedHeightPageLru.Last))
+            return;
+
+        cachedHeightPageLru.Remove(cachedPage.Node);
+        cachedHeightPageLru.AddLast(cachedPage.Node);
+    }
+
+    private void EvictCpuHeightPagesIfNeeded()
+    {
+        while (cachedHeightPages.Count > maxCachedHeightPages && cachedHeightPageLru.First is { } oldest)
+        {
+            cachedHeightPageLru.RemoveFirst();
+            cachedHeightPages.Remove(oldest.Value);
         }
     }
 
@@ -1205,5 +1317,18 @@ internal sealed class TerrainStreamingManager : IDisposable
         public IMemoryOwner<byte>? WeightData { get; set; }
         public bool IsPinned { get; }
         public bool IsDetailMap { get; }
+    }
+
+    private sealed class CachedHeightPage
+    {
+        public CachedHeightPage(TerrainPageKey key, ushort[] data)
+        {
+            Key = key;
+            Data = data;
+        }
+
+        public TerrainPageKey Key { get; }
+        public ushort[] Data { get; }
+        public LinkedListNode<TerrainPageKey>? Node { get; set; }
     }
 }
