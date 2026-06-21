@@ -94,7 +94,7 @@ internal static class RiverWorkspaceDiagnosticsTests
         var meshService = new RiverMeshService(terrainManager);
         var generator = new RiverMeshGenerator(renderingService, meshService);
 
-        RiverGenerationResult? result = generator.Generate(mapService.Cells!, 1.0f);
+        RiverGenerationResult? result = generator.Generate(mapService.Cells!, 1.0f, 1.0f, 4.0f);
         RiverGenerationResult generated = result ?? throw new InvalidOperationException("Generator should return a non-null result for temporary river map");
 
         int meshCount = component.Meshes.Count;
@@ -155,7 +155,7 @@ internal static class RiverWorkspaceDiagnosticsTests
         var meshService = new RiverMeshService(terrainManager);
         var generator = new RiverMeshGenerator(renderingService, meshService);
 
-        RiverGenerationResult? result = generator.Generate(cells, 1.0f);
+        RiverGenerationResult? result = generator.Generate(cells, 1.0f, 1.0f, 4.0f);
 
         TestHarness.Assert(result != null, "Curved river map should generate a mesh");
         TestHarness.AssertEqual(1, component.Meshes.Count, "Curved river map should publish one segment mesh");

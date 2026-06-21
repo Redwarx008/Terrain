@@ -28,9 +28,9 @@ public sealed class RiverMapService
 
     public RiverMapService(float riverMinWidth, float riverMaxWidth)
     {
-        if (riverMinWidth <= 0.0f)
+        if (!float.IsFinite(riverMinWidth) || riverMinWidth <= 0.0f)
             throw new ArgumentOutOfRangeException(nameof(riverMinWidth), "River min width must be greater than 0.");
-        if (riverMaxWidth < riverMinWidth)
+        if (!float.IsFinite(riverMaxWidth) || riverMaxWidth < riverMinWidth)
             throw new ArgumentOutOfRangeException(nameof(riverMaxWidth), "River max width must be greater than or equal to min width.");
 
         this.riverMinWidth = riverMinWidth;

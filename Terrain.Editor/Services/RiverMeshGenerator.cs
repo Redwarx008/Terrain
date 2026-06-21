@@ -17,7 +17,7 @@ internal sealed class RiverMeshGenerator : IRiverMeshGenerator
         this.meshService = meshService ?? throw new ArgumentNullException(nameof(meshService));
     }
 
-    public RiverGenerationResult? Generate(RiverCell[,] cells, float widthScale, float riverMinWidth = 1.0f, float riverMaxWidth = 4.0f)
+    public RiverGenerationResult? Generate(RiverCell[,] cells, float widthScale, float riverMinWidth, float riverMaxWidth)
     {
         ArgumentNullException.ThrowIfNull(cells);
 

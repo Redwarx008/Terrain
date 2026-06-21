@@ -226,6 +226,12 @@ void RiverMapServiceValidatesConfiguredWidthRange()
     AssertThrows<ArgumentOutOfRangeException>(
         () => new RiverMapService(5.0f, 4.0f),
         "river max width must be greater than or equal to min width");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => new RiverMapService(float.NaN, 4.0f),
+        "river min width must be finite");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => new RiverMapService(1.0f, float.PositiveInfinity),
+        "river max width must be finite");
 }
 
 void SpecialEndpointsRequireAdjacentRiverPixels()

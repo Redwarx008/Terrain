@@ -6,7 +6,7 @@ namespace Terrain.Editor.Services;
 
 internal interface IRiverMeshGenerator
 {
-    RiverGenerationResult? Generate(RiverCell[,] cells, float widthScale, float riverMinWidth = 1.0f, float riverMaxWidth = 4.0f);
+    RiverGenerationResult? Generate(RiverCell[,] cells, float widthScale, float riverMinWidth, float riverMaxWidth);
 
     void Clear();
 }
