@@ -28,6 +28,7 @@ internal static class RiverShaderTextTests
         TestHarness.Run("river surface shader samples water texture assets", SurfaceShaderSamplesWaterTextureAssets);
         TestHarness.Run("river surface shader uses target water normals and flow", SurfaceShaderUsesTargetWaterNormalsAndFlow);
         TestHarness.Run("river surface shader follows target refraction and fade semantics", SurfaceShaderFollowsTargetRefractionAndFadeSemantics);
+        TestHarness.Run("river surface shader uses target advanced alpha branch", SurfaceShaderUsesTargetAdvancedAlphaBranch);
         TestHarness.Run("river surface shader does not apply removed post wrapper", SurfaceShaderDoesNotApplyRemovedPostWrapper);
         TestHarness.Run("river render feature separates scene seed from working refraction buffer", RenderFeatureSeparatesSceneSeedFromWorkingBuffer);
         TestHarness.Run("river scene seed writes depth payload instead of clearing alpha", RenderFeatureSceneSeedWritesDepthPayload);
@@ -260,7 +261,8 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "bias *= saturate(50.0f * specularColor.y);", "Stride DFG polynomial should dampen bias by the specular color");
         AssertContains(shader, "sqrt(alphaRoughness) * _EnvironmentMipCount", "Stride roughness cubemap sampling should use sqrt(alpha roughness) times mip count");
         AssertContains(shader, "sampleDirection = mul(sampleDirection, (float3x3)_EnvironmentSkyMatrix);", "Skybox rotation should match Stride LightSkyboxShader's vector-matrix order");
-        AssertContains(shader, "return float3(0.0f, 0.0f, 0.0f);", "River diffuse IBL should stay zero when the scene only provides a specular skybox environment");
+        AssertContains(shader, "float diffuseMip = max(_EnvironmentMipCount - 1.0f, 0.0f);", "River diffuse IBL should sample the skybox's lowest-frequency mip");
+        AssertContains(shader, "return diffuseRadiance * diffuseColor * _EnvironmentIntensity * environmentIntensityScale;", "River diffuse IBL should keep shadowed river beds visible under scene environment light");
         AssertContains(shader, "sampleDirection = float3(sampleDirection.xy, -sampleDirection.z);", "Skybox sampling should match Stride LightSkyboxShader's cubemap Z flip");
     }
 
@@ -386,6 +388,8 @@ internal static class RiverShaderTextTests
     private static void RenderObjectCarriesRiverSettingsToShaderBinding()
     {
         string renderObject = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderObject.cs");
+        string meshData = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverMeshData.cs");
+        string meshService = ReadRepositoryText("Terrain.Editor/Services/RiverMeshService.cs");
         string settings = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderSettings.cs");
         string processor = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverProcessor.cs");
         string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
@@ -396,6 +400,11 @@ internal static class RiverShaderTextTests
         AssertContains(renderObject, "public float FlattenMultiplier { get; private set; } = 1.0f;", "RiverRenderObject should cache water normal flattening");
         AssertContains(renderObject, "FlattenMultiplier = settings.FlattenMultiplier;", "RiverRenderObject should copy water normal flattening from RiverRenderSettings");
         AssertContains(renderObject, "public Vector2 MapWorldSize { get; private set; } = new(4096.0f, 4096.0f);", "RiverRenderObject should cache per-axis map world size for rectangular map UV normalization");
+        AssertContains(meshData, "public float RefractionMaxCameraHeight { get; init; } = 50.0f;", "River mesh data should carry the height-scale-aware refraction clamp plane");
+        AssertContains(meshData, "RefractionMaxCameraHeight = RefractionMaxCameraHeight,", "River mesh snapshots should preserve the refraction clamp plane");
+        AssertContains(meshService, "RefractionMaxCameraHeight = MathF.Max(50.0f, terrainManager?.HeightScale ?? 50.0f),", "River mesh generation should raise the refraction clamp plane for large height scales");
+        AssertContains(renderObject, "public float RefractionMaxCameraHeight { get; private set; } = 50.0f;", "RiverRenderObject should cache the refraction clamp plane");
+        AssertContains(renderObject, "RefractionMaxCameraHeight = mesh.RefractionMaxCameraHeight;", "RiverRenderObject should keep the refraction clamp plane from mesh data");
         AssertContains(renderObject, "public int ParallaxIterations { get; private set; } = 10;", "RiverRenderObject should cache parallax iteration count for advanced paths");
         AssertContains(renderObject, "MapWorldSize = mesh.MapWorldSize;", "RiverRenderObject should keep the per-axis map world size from the generated river mesh");
         AssertContains(processor, "renderObject.ApplySettings(component.Settings);", "RiverProcessor should push component settings into each render object");
@@ -403,11 +412,14 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._TextureUvScale, riverObject.TextureUvScale);", "RiverRenderFeature should continue binding texture UV scale for available shader variants");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, riverObject.OceanFadeRate);", "RiverRenderFeature should bind bottom ocean fade rate from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._WorldToMapUnitScale, 0.5f);", "RiverRenderFeature should bind the local world-to-map-unit conversion for world-UV bottom sampling");
+        AssertContains(feature, "effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, riverObject.RefractionMaxCameraHeight);", "RiverRenderFeature should bind the height-scale-aware refraction clamp plane into bottom");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomNormalStrength, riverObject.BottomNormalStrength);", "RiverRenderFeature should bind bottom normal strength from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._ViewMatrix, viewMatrix);", "RiverRenderFeature should bind the view matrix required by view-space refraction offset");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._GlobalTime, globalTime);", "RiverRenderFeature should bind animated water time");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._FlattenMult, riverObject.FlattenMultiplier);", "RiverRenderFeature should bind water normal flattening");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);", "RiverRenderFeature should bind per-axis map world size into the surface shader");
+        AssertContains(feature, "effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, riverObject.RefractionMaxCameraHeight);", "RiverRenderFeature should bind the height-scale-aware refraction clamp plane into surface");
+        AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._BankFade, riverObject.BankFade);", "RiverRenderFeature should bind the target river bank fade into the surface shader");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionScale, riverObject.WaterRefractionScale);", "RiverRenderFeature should bind refraction scale from the render object");
         AssertNotContains(feature, "_BottomSpecularIntensity", "RiverRenderFeature should not bind river-local bottom specular intensity");
     }
@@ -475,20 +487,44 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "return _Depth * (1.0f - pow(cos(riverUv.y * 2.0f * 3.14159265f) * 0.5f + 0.5f, 2.0f));", "RiverSurface should use the target cosine depth profile");
         AssertContains(shader, "float3 CalcRefraction(float3 WorldSpacePos, float3 Normal, float2 ScreenPos, float3 WaterColor, float Depth)", "RiverSurface should keep refraction as a dedicated water function");
         AssertContains(shader, "float4 refractionSample = RefractionTexture.Sample(RefractionSampler, screenUv);", "RiverSurface should first sample the undistorted refraction buffer");
+        AssertContains(shader, "stage float2 _RefractionTextureSize = float2(1.0f, 1.0f);", "RiverSurface should know the refraction texture size for unfiltered payload reads");
+        AssertContains(shader, "float SampleRefractionPayload(float2 screenUv)", "RiverSurface should separate refraction color filtering from depth payload reads");
+        AssertContains(shader, "return RefractionTexture.Load(int3(ComputeRefractionPayloadCoord(screenUv), 0)).a;", "RiverSurface should read the distance payload without linear filtering");
+        AssertContains(shader, "float refractionPayload = SampleRefractionPayload(screenUv);", "RiverSurface should read the base refraction payload with point/Load semantics");
+        AssertContains(shader, "float3 refractionWorldPosition = DecodeRefractionWorldPosition(WorldSpacePos, refractionPayload);", "RiverSurface should decode the base refraction world position from the unfiltered payload");
         AssertContains(shader, "Depth = min(Depth, refractionDepth);", "RiverSurface should use the shallower depth for the refraction shore mask");
         AssertContains(shader, "float4 offsetRefractionSample = RefractionTexture.Sample(RefractionSampler, screenUv + refractionOffset);", "RiverSurface should sample offset refraction separately");
+        AssertContains(shader, "float offsetRefractionPayload = SampleRefractionPayload(screenUv + refractionOffset);", "RiverSurface should read the offset refraction payload with point/Load semantics");
+        AssertContains(shader, "float3 offsetRefractionWorldPosition = DecodeRefractionWorldPosition(WorldSpacePos, offsetRefractionPayload);", "RiverSurface should decode the offset refraction world position from the unfiltered payload");
         AssertContains(shader, "float offsetStep = step(WorldSpacePos.y, offsetRefractionWorldPosition.y);", "RiverSurface should reject offset samples above the water surface");
         AssertContains(shader, "float seeThroughDistance = refractionDepth * _WorldToMapUnitScale;", "RiverSurface see-through attenuation should use map-unit distance so local Stride world scaling does not hide the bottom");
-        AssertContains(shader, "return CalcTerrainUnderwaterSeeThrough(refractionDepth, refractionWorldPosition, refractionWaterColorMap, refractionSample.rgb);", "RiverSurface see-through should use final refraction depth, not surface depth");
+        AssertContains(shader, "return CalcTerrainUnderwaterSeeThrough(refractionDepth, refractionWorldPosition, refractionWaterColorMap, refractionSample.rgb);", "RiverSurface see-through should use the target RefractionDepth path");
         AssertContains(shader, "float waterFade = ComputeWaterFade(depth);", "RiverSurface WaterFade should use the separate base-refraction depth path");
         AssertContains(shader, "float3 refractionColor = CalcRefraction(InputWorldSpacePos, waterNormal, InputScreenSpacePos.xy, waterColorAndSpec.rgb, InputDepth);", "RiverSurface should route refraction through CalcRefraction");
-        AssertContains(shader, "waterColor.a = saturate(depth * 2.0f / max(_Depth, 0.0001f)) * transparency * connectionFade;", "RiverSurface final alpha should follow the target depth-based river surface fade");
-        AssertNotContains(shader, "waterColor.a = edgeFade1 * edgeFade2 * connectionFade * transparency;", "RiverSurface should not use bottom-style bank-fade alpha for the surface pass");
+        AssertContains(shader, "float worldDepth = depth * worldWidth + 0.1f;", "RiverSurface should pass world-scaled profile depth into CalcWater like the target advanced branch");
+        AssertContains(shader, "waterColor.a = ComputeAdvancedSurfaceAlpha(riverUv, transparency, connectionFade);", "RiverSurface final alpha should follow the target advanced branch");
+        AssertNotContains(shader, "saturate(depth * 2.0f / max(_Depth, 0.0001f)) * transparency * connectionFade", "RiverSurface should not use the non-advanced CalcRiverSurface alpha path");
         AssertNotContains(shader, "SampleRefractionSeeThrough", "RiverSurface should not keep the old combined refraction helper");
         AssertNotContains(shader, "ComputeRiverWaterFade", "RiverSurface should not keep the old water-fade adapter");
         AssertNotContains(shader, "_DepthFactor", "RiverSurface should not pass a cross-section depth factor into water shading");
-        AssertNotContains(shader, "effectiveDepth", "RiverSurface see-through should not cap refraction depth by surface depth");
+        AssertNotContains(shader, "seeThroughDepth", "RiverSurface should not cap see-through attenuation by river profile depth");
+        AssertNotContains(shader, "effectiveDepth", "RiverSurface should not reintroduce the old cross-section adapter naming");
         AssertNotContains(shader, "RiverDepthFromCrossSection(riverUv.y", "RiverSurface should not use the bank-width power helper for this path");
+        AssertNotContains(shader, "DecodeRefractionWorldPosition(WorldSpacePos, refractionSample.a)", "RiverSurface should not linearly filter the base refraction distance payload");
+        AssertNotContains(shader, "DecodeRefractionWorldPosition(WorldSpacePos, offsetRefractionSample.a)", "RiverSurface should not linearly filter the offset refraction distance payload");
+    }
+
+    private static void SurfaceShaderUsesTargetAdvancedAlphaBranch()
+    {
+        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
+
+        AssertContains(shader, "float ComputeAdvancedSurfaceAlpha(float2 riverUv, float transparency, float connectionFade)", "RiverSurface should centralize the target advanced alpha branch");
+        AssertContains(shader, "float edgeFade1 = smoothstep(0.0f, max(_BankFade, 0.0001f), riverUv.y);", "RiverSurface advanced alpha should use the shared river bank fade on the first edge");
+        AssertContains(shader, "float edgeFade2 = smoothstep(0.0f, max(_BankFade, 0.0001f), 1.0f - riverUv.y);", "RiverSurface advanced alpha should use the shared river bank fade on the second edge");
+        AssertContains(shader, "return transparency * connectionFade * edgeFade1 * edgeFade2;", "RiverSurface advanced alpha should match CalcRiverAdvanced after JOMINI_REFRACTION_ENABLED");
+        AssertContains(shader, "waterColor.a = ComputeAdvancedSurfaceAlpha(riverUv, transparency, connectionFade);", "RiverSurface should write the target advanced alpha branch");
+        AssertNotContains(shader, "_SurfaceBankFade", "RiverSurface should not keep the previous local bank-fade workaround");
+        AssertNotContains(shader, "ComputeSurfaceAlpha", "RiverSurface should not keep the previous depth-alpha workaround");
     }
 
     private static void SurfaceShaderDoesNotApplyRemovedPostWrapper()
@@ -554,6 +590,8 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "seedEffect.SetOutput(seedTarget);", "RiverRenderFeature should seed scene color into SceneSeedColor first");
         AssertContains(feature, "commandList.CopyRegion(renderResources.SceneSeedColor, 0, null, renderResources.BottomColor, 0);", "RiverRenderFeature should copy the scene seed into the working bottom/refraction buffer before the bottom pass");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);", "RiverRenderFeature should sample refraction with the target linear clamp sampler");
+        AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys._RefractionTextureSize, new Vector2(renderResources.Width, renderResources.Height));", "RiverRenderFeature should bind the working refraction size for unfiltered payload reads");
+        AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._RefractionTextureSize, new Vector2(refractionTexture.Width, refractionTexture.Height));", "RiverRenderFeature should refresh refraction size when binding the surface pass texture per object");
         AssertContains(feature, "blendState.RenderTargets[0].AlphaSourceBlend = Blend.SecondarySourceAlpha;", "RiverRenderFeature should match the target bottom pass alpha source factor");
         AssertContains(feature, "blendState.RenderTargets[0].AlphaDestinationBlend = Blend.InverseSecondarySourceAlpha;", "RiverRenderFeature should match the target bottom pass alpha destination factor");
         AssertNotContains(feature, "RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.PointClamp", "RiverRenderFeature should not keep the previous point-clamp refraction sampler binding");
@@ -576,7 +614,9 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "seedEffect.Parameters.Set(TransformationKeys.ViewInverse", "RiverRenderFeature should bind view inverse so RiverSceneSeed can reconstruct world position");
         AssertContains(feature, "seedEffect.Parameters.Set(TransformationKeys.Eye", "RiverRenderFeature should bind camera position so RiverSceneSeed writes camera-distance alpha");
         AssertContains(shader, "float ComputeSceneDistanceFromUV(float2 uv)", "RiverSceneSeed should compute camera-distance payload rather than raw view-space depth");
-        AssertContains(shader, "length(positionWS.xyz - Eye.xyz)", "RiverSceneSeed alpha should match RiverCompressWorldSpace camera-distance semantics");
+        AssertContains(shader, "shader RiverSceneSeed : ImageEffectShader, DepthBase, Transformation, RiverCommon", "RiverSceneSeed should share the refraction distance packing helper");
+        AssertContains(shader, "RiverCompressWorldSpace(positionWS.xyz, Eye.xyz)", "RiverSceneSeed alpha should match the height-scale-aware refraction distance semantics");
+        AssertContains(feature, "seedEffect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, refractionMaxCameraHeight);", "RiverRenderFeature should bind the same refraction clamp plane into RiverSceneSeed");
         AssertContains(shader, "return float4(seedColor, sceneDistance)", "RiverSceneSeed should preserve RGB and write scene distance payload alpha");
         AssertContains(project, "<Compile Update=\"Effects\\RiverSceneSeed.sdsl.cs\">", "Terrain.Editor.csproj should compile the generated RiverSceneSeed shader key file");
         AssertNotContains(feature, "refractionSeedScaler.Color = new Color4(1.0f, 1.0f, 1.0f, 0.0f);", "River scene seed should not clear alpha to zero because the seed carries scene distance payload");
@@ -591,7 +631,9 @@ internal static class RiverShaderTextTests
 
         AssertContains(common, "float RiverCompressWorldSpace(float3 worldPosition, float3 cameraPosition)", "RiverCommon should pack camera-relative distance");
         AssertContains(common, "float3 RiverDecompressWorldSpace(float3 surfaceWorldPosition, float compressedDistance, float3 cameraPosition)", "RiverCommon should provide the matching surface-side decompression");
-        AssertContains(common, "const float maxHeight = 50.0f;", "RiverCommon should clamp refraction distance packing to CK3's maximum camera height");
+        AssertContains(common, "stage float _RefractionMaxCameraHeight = 50.0f;", "RiverCommon should default to the target refraction clamp plane");
+        AssertContains(common, "float maxHeight = max(_RefractionMaxCameraHeight, 50.0f);", "RiverCommon should allow large terrain height scales to raise the refraction clamp plane");
+        AssertNotContains(common, "const float maxHeight = 50.0f;", "RiverCommon should not hard-code the low-height refraction clamp plane");
         AssertContains(common, "cameraPosition = cameraPosition - toCameraDir * (above / toCameraDir.y);", "RiverCommon should project the camera down to CK3's refraction clamp plane before packing or unpacking");
         AssertContains(bottom, "stage float3 _CameraWorldPosition = float3(0.0f, 0.0f, 0.0f);", "RiverBottom should declare an explicit camera position parameter");
         AssertContains(surface, "stage float3 _CameraWorldPosition = float3(0.0f, 0.0f, 0.0f);", "RiverSurface should declare an explicit camera position parameter");
