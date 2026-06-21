@@ -12,4 +12,8 @@ internal interface IRiverMapSource
     RiverCell[,]? RiverMap { get; }
 
     string? CurrentRiverMapPath { get; }
+
+    float RiverMinWidth { get; }
+
+    float RiverMaxWidth { get; }
 }

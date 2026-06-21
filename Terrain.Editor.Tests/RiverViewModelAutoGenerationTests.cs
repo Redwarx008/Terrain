@@ -13,6 +13,7 @@ internal static class RiverViewModelAutoGenerationTests
         TestHarness.Run("river view model generates when river map changes after generator is ready", GeneratesWhenRiverMapChangesAfterGeneratorIsReady);
         TestHarness.Run("river view model regenerates when width scale changes", RegeneratesWhenWidthScaleChanges);
         TestHarness.Run("river view model clears generated meshes when river map is cleared", ClearsGeneratedMeshesWhenRiverMapIsCleared);
+        TestHarness.Run("river view model passes map width range to generator", PassesMapWidthRangeToGenerator);
     }
 
     private static void GeneratesWhenGeneratorAttachesAfterRiverMapLoad()
@@ -71,6 +72,22 @@ internal static class RiverViewModelAutoGenerationTests
         TestHarness.AssertEqual(false, viewModel.HasRiverMap, "view model should report that no river map is loaded");
     }
 
+    private static void PassesMapWidthRangeToGenerator()
+    {
+        var source = new FakeRiverMapSource(new RiverCell[2, 2], "map/rivers.png")
+        {
+            RiverMinWidth = 2.0f,
+            RiverMaxWidth = 6.0f,
+        };
+        using var viewModel = new RiverViewModel(source);
+        var generator = new FakeRiverMeshGenerator(new RiverGenerationResult(1, 1, 4));
+
+        viewModel.SetGenerator(generator);
+
+        TestHarness.AssertEqual(2.0f, generator.LastRiverMinWidth, "generator min full width");
+        TestHarness.AssertEqual(6.0f, generator.LastRiverMaxWidth, "generator max full width");
+    }
+
     private sealed class FakeRiverMapSource : IRiverMapSource
     {
         public FakeRiverMapSource(RiverCell[,]? riverMap = null, string? riverMapPath = null)
@@ -84,6 +101,10 @@ internal static class RiverViewModelAutoGenerationTests
         public RiverCell[,]? RiverMap { get; private set; }
 
         public string? CurrentRiverMapPath { get; private set; }
+
+        public float RiverMinWidth { get; set; } = 1.0f;
+
+        public float RiverMaxWidth { get; set; } = 4.0f;
 
         public void SetRiverMap(RiverCell[,] riverMap, string path)
         {
@@ -112,12 +133,18 @@ internal static class RiverViewModelAutoGenerationTests
 
         public float LastWidthScale { get; private set; }
 
-        public RiverGenerationResult? Generate(RiverCell[,] cells, float widthScale)
+        public float LastRiverMinWidth { get; private set; }
+
+        public float LastRiverMaxWidth { get; private set; }
+
+        public RiverGenerationResult? Generate(RiverCell[,] cells, float widthScale, float riverMinWidth, float riverMaxWidth)
         {
             GenerateCalls++;
             LastWidth = cells.GetLength(0);
             LastHeight = cells.GetLength(1);
             LastWidthScale = widthScale;
+            LastRiverMinWidth = riverMinWidth;
+            LastRiverMaxWidth = riverMaxWidth;
             return result;
         }
 

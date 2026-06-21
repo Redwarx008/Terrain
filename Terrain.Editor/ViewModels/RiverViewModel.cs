@@ -78,7 +78,11 @@ public sealed partial class RiverViewModel : ObservableObject, IDisposable
         if (generator == null)
             return false;
 
-        RiverGenerationResult? result = generator.Generate(cells, (float)WidthScale);
+        RiverGenerationResult? result = generator.Generate(
+            cells,
+            (float)WidthScale,
+            riverMapSource.RiverMinWidth,
+            riverMapSource.RiverMaxWidth);
         if (result == null)
         {
             StatusText = "Error: No river segments found";

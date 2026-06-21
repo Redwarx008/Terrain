@@ -64,6 +64,8 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
     /// 世界高度 = raw * (1/65535) * HeightScale。
     /// </summary>
     public float HeightScale { get; private set; } = 100.0f;
+    public float RiverMinWidth { get; private set; } = 1.0f;
+    public float RiverMaxWidth { get; private set; } = 4.0f;
     public bool TerrainVisible { get; private set; } = true;
 
     public string? PendingProjectNotification => pendingProjectNotification;
@@ -274,6 +276,8 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
 
         if (session.HeightScale > 0.0f)
             HeightScale = session.HeightScale;
+        RiverMinWidth = session.MapDefinitionModel.RiverMinWidth;
+        RiverMaxWidth = session.MapDefinitionModel.RiverMaxWidth;
 
         var materialDescriptor = RuntimeMaterialDescriptorReader.ReadFrom(session.MaterialDescriptor.ResolvedPath);
         MaterialSlotManager.Instance.ApplyDescriptor(materialDescriptor, session.MaterialDescriptor.ResolvedPath);
