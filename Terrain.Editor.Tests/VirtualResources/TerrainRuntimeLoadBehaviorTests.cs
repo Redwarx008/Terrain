@@ -123,8 +123,9 @@ internal static class TerrainRuntimeLoadBehaviorTests
 
         TestHarness.Assert(terrainStreamingSource.Contains("maxCachedHeightPages = Math.Max(1, gpuHeightArray.Capacity)", StringComparison.Ordinal), "CPU height cache capacity should follow GPU resident page capacity");
         TestHarness.Assert(terrainStreamingSource.Contains("gpuHeightArray.PageEvicted += RemoveCachedHeightPage", StringComparison.Ordinal), "CPU height cache should release pages when GPU height pages are evicted");
-        TestHarness.Assert(terrainStreamingSource.Contains("CacheHeightPage(request.Key, request.Data.Memory.Span)", StringComparison.Ordinal), "uploaded height pages should stay cached on CPU after GPU upload");
+        TestHarness.Assert(terrainStreamingSource.Contains("CacheHeightPage(request.Key, request.Data.Memory.Span, isGpuResident: true)", StringComparison.Ordinal), "uploaded height pages should stay cached on CPU after GPU upload");
         TestHarness.Assert(!terrainStreamingSource.Contains("MaxCachedPages = 4", StringComparison.Ordinal), "CPU height cache should not be a fixed four-page sampler cache");
+        TestHarness.Assert(!terrainStreamingSource.Contains("heightCacheGate", StringComparison.Ordinal), "CPU height cache should not block runtime generation behind a global lock");
     }
 
     private static void RuntimeDetailMapBuildsAfterTerrainStreamingIsAttached()

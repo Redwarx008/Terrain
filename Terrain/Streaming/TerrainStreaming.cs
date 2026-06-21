@@ -734,9 +734,8 @@ internal sealed class TerrainStreamingManager : IDisposable
     private readonly int splatMapLodOffset;
     private readonly PageBufferAllocator heightmapBufferPool;
     private readonly PageBufferAllocator? splatMapBufferPool;
-    private readonly Dictionary<TerrainPageKey, CachedHeightPage> cachedHeightPages = new();
-    private readonly LinkedList<TerrainPageKey> cachedHeightPageLru = new();
-    private readonly object heightCacheGate = new();
+    private readonly ConcurrentDictionary<TerrainPageKey, CachedHeightPage> cachedHeightPages = new();
+    private readonly ConcurrentQueue<TerrainPageKey> cachedHeightPageOrder = new();
     private readonly int maxCachedHeightPages;
     private readonly int heightmapPaddedTileSize;
     private readonly int heightmapPageByteSize;
@@ -936,7 +935,7 @@ internal sealed class TerrainStreamingManager : IDisposable
                     }
 
                     fileReader.ReadHeightPage(pageKey, heightmapPageData.Memory.Span);
-                    CacheHeightPage(pageKey, heightmapPageData.Memory.Span);
+                    CacheHeightPage(pageKey, heightmapPageData.Memory.Span, isGpuResident: true);
                     gpuHeightArray.UploadPage(commandList, pageKey, heightmapPageData.Memory.Span, pinned: false);
 
                     if (splatMapPageData != null && gpuDetailIndexArray != null && detailWeightArray != null && generatedDetailMaps != null)
@@ -981,7 +980,7 @@ internal sealed class TerrainStreamingManager : IDisposable
 
                 if (!request.IsDetailMap)
                 {
-                    CacheHeightPage(request.Key, request.Data.Memory.Span);
+                    CacheHeightPage(request.Key, request.Data.Memory.Span, isGpuResident: true);
                 }
 
                 if (request.IsDetailMap && request.WeightData != null && detailWeightArray != null && targetArray.TryGetResidentSlice(request.Key, out int sliceIndex))
@@ -1067,67 +1066,65 @@ internal sealed class TerrainStreamingManager : IDisposable
 
     private CachedHeightPage GetOrLoadHeightPage(TerrainPageKey key)
     {
-        lock (heightCacheGate)
-        {
-            if (cachedHeightPages.TryGetValue(key, out CachedHeightPage? cachedPage))
-            {
-                TouchHeightPage(cachedPage);
-                return cachedPage;
-            }
-        }
+        if (cachedHeightPages.TryGetValue(key, out CachedHeightPage? cachedPage))
+            return cachedPage;
 
         var bytes = new byte[heightmapPageByteSize];
         fileReader.ReadHeightPage(key, bytes);
-        return CacheHeightPage(key, bytes);
+        return CacheHeightPage(key, bytes, isGpuResident: false);
     }
 
-    private CachedHeightPage CacheHeightPage(TerrainPageKey key, Span<byte> bytes)
+    private CachedHeightPage CacheHeightPage(TerrainPageKey key, Span<byte> bytes, bool isGpuResident)
     {
-        lock (heightCacheGate)
+        if (cachedHeightPages.TryGetValue(key, out CachedHeightPage? existingPage))
         {
-            if (cachedHeightPages.TryGetValue(key, out CachedHeightPage? cachedPage))
-            {
-                TouchHeightPage(cachedPage);
-                return cachedPage;
-            }
-
-            var data = new ushort[heightmapPaddedTileSize * heightmapPaddedTileSize];
-            MemoryMarshal.Cast<byte, ushort>(bytes[..heightmapPageByteSize]).CopyTo(data);
-            cachedPage = new CachedHeightPage(key, data);
-            cachedPage.Node = cachedHeightPageLru.AddLast(key);
-            cachedHeightPages.Add(key, cachedPage);
-            EvictCpuHeightPagesIfNeeded();
-            return cachedPage;
+            if (isGpuResident)
+                existingPage.IsGpuResident = true;
+            return existingPage;
         }
+
+        var data = new ushort[heightmapPaddedTileSize * heightmapPaddedTileSize];
+        MemoryMarshal.Cast<byte, ushort>(bytes[..heightmapPageByteSize]).CopyTo(data);
+        var cachedPage = new CachedHeightPage(key, data)
+        {
+            IsGpuResident = isGpuResident,
+        };
+
+        if (!cachedHeightPages.TryAdd(key, cachedPage))
+        {
+            cachedHeightPages.TryGetValue(key, out CachedHeightPage? racedPage);
+            if (racedPage != null && isGpuResident)
+                racedPage.IsGpuResident = true;
+            return racedPage ?? cachedPage;
+        }
+
+        cachedHeightPageOrder.Enqueue(key);
+        TrimNonResidentHeightPagesIfNeeded();
+        return cachedPage;
     }
 
     private void RemoveCachedHeightPage(TerrainPageKey key)
     {
-        lock (heightCacheGate)
-        {
-            if (!cachedHeightPages.Remove(key, out CachedHeightPage? cachedPage))
-                return;
-
-            if (cachedPage.Node != null)
-                cachedHeightPageLru.Remove(cachedPage.Node);
-        }
+        cachedHeightPages.TryRemove(key, out _);
     }
 
-    private void TouchHeightPage(CachedHeightPage cachedPage)
+    private void TrimNonResidentHeightPagesIfNeeded()
     {
-        if (cachedPage.Node == null || ReferenceEquals(cachedPage.Node, cachedHeightPageLru.Last))
-            return;
-
-        cachedHeightPageLru.Remove(cachedPage.Node);
-        cachedHeightPageLru.AddLast(cachedPage.Node);
-    }
-
-    private void EvictCpuHeightPagesIfNeeded()
-    {
-        while (cachedHeightPages.Count > maxCachedHeightPages && cachedHeightPageLru.First is { } oldest)
+        int attempts = cachedHeightPageOrder.Count;
+        while (cachedHeightPages.Count > maxCachedHeightPages
+            && attempts-- > 0
+            && cachedHeightPageOrder.TryDequeue(out TerrainPageKey oldestKey))
         {
-            cachedHeightPageLru.RemoveFirst();
-            cachedHeightPages.Remove(oldest.Value);
+            if (!cachedHeightPages.TryGetValue(oldestKey, out CachedHeightPage? oldestPage))
+                continue;
+
+            if (oldestPage.IsGpuResident)
+            {
+                cachedHeightPageOrder.Enqueue(oldestKey);
+                continue;
+            }
+
+            cachedHeightPages.TryRemove(oldestKey, out _);
         }
     }
 
@@ -1329,6 +1326,6 @@ internal sealed class TerrainStreamingManager : IDisposable
 
         public TerrainPageKey Key { get; }
         public ushort[] Data { get; }
-        public LinkedListNode<TerrainPageKey>? Node { get; set; }
+        public bool IsGpuResident { get; set; }
     }
 }

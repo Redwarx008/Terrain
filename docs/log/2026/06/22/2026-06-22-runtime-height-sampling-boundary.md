@@ -46,3 +46,9 @@ Follow-up after removing standalone `TerrainHeightSampler`:
 - `dotnet build Terrain.Editor.Tests/Terrain.Editor.Tests.csproj --no-restore` passed with existing warnings.
 - `git diff --check` passed.
 - `dotnet build Terrain.sln --no-restore` was attempted but blocked by an external file lock: `Terrain.Windows (33208)` / Visual Studio held `Bin/Windows/Debug/win-x64/Terrain.dll`.
+
+Follow-up after runtime hang at `lock (heightCacheGate)`:
+
+- Root cause: the CPU height page cache used a single monitor shared by runtime height sampling, GPU upload caching, and GPU eviction callbacks. During large Runtime DetailMap generation this serialized unrelated work and could appear as the program stuck on the cache lock.
+- Fix: replaced the monitor-protected `Dictionary` + linked-list LRU with `ConcurrentDictionary` + queue-based trimming. Uploaded height pages are marked GPU-resident and are not trimmed by the non-resident cache cap; they are released by `GpuVirtualTextureArray.PageEvicted` when the corresponding GPU page is evicted.
+- Verification: `dotnet run --project Terrain.Editor.Tests/Terrain.Editor.Tests.csproj --no-restore`, `dotnet build Terrain/Terrain.csproj --no-restore`, `dotnet build Terrain.Editor.Tests/Terrain.Editor.Tests.csproj --no-restore`, and `git diff --check` passed with existing warnings.
