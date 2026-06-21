@@ -121,7 +121,10 @@ namespace Terrain.Editor
 
         float3 RiverStrideComputeEnvironmentDiffuse(float3 diffuseColor, float3 normal, float environmentIntensityScale)
         {
-            return float3(0.0f, 0.0f, 0.0f);
+            float3 sampleDirection = RiverStrideRotateEnvironmentSampleDirection(normalize(normal));
+            float diffuseMip = max(_EnvironmentMipCount - 1.0f, 0.0f);
+            float3 diffuseRadiance = EnvironmentMapTexture.SampleLevel(EnvironmentMapSampler, sampleDirection, diffuseMip).rgb;
+            return diffuseRadiance * diffuseColor * _EnvironmentIntensity * environmentIntensityScale;
         }
 
         float3 RiverStrideComputeEnvironmentSpecular(float3 specularColor, float glossiness, float3 normal, float3 viewDir, float environmentIntensityScale)
