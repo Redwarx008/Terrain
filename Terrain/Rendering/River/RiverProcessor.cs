@@ -1,6 +1,10 @@
 #nullable enable
 
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Stride.Core.Diagnostics;
 using Stride.Core.Annotations;
 using Stride.Core.Mathematics;
 using Stride.Engine;
@@ -8,11 +12,15 @@ using Stride.Engine.Processors;
 using Stride.Games;
 using Stride.Graphics;
 using Stride.Rendering;
+using Terrain.Resources;
+using Terrain.Rivers;
 
 namespace Terrain.Rendering.River;
 
 public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProcessor.RenderData>, IEntityComponentRenderProcessor
 {
+    private static readonly Logger Log = GlobalLogger.GetLogger("Terrain");
+
     public VisibilityGroup VisibilityGroup { get; set; } = null!;
 
     protected override RenderData GenerateComponentData([NotNull] Entity entity, [NotNull] RiverComponent component)
@@ -44,6 +52,8 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
 
     private void UpdateRenderObjects(Entity entity, RiverComponent component, RenderData data, GraphicsDevice graphicsDevice)
     {
+        TryEnsureRuntimeMeshes(component);
+
         if (data.SynchronizedVersion != component.Version)
         {
             RebuildRenderObjects(component, data, graphicsDevice);
@@ -93,6 +103,123 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
 
         data.RenderObjects.Clear();
         data.SynchronizedVersion = -1;
+    }
+
+    private void TryEnsureRuntimeMeshes(RiverComponent component)
+    {
+        if (component.Meshes.Count > 0
+            || component.RuntimeLoadState is RiverRuntimeLoadState.Loaded or RiverRuntimeLoadState.NoRiverResource)
+        {
+            return;
+        }
+
+        TerrainComponent? terrainComponent = FindInitializedTerrainComponent();
+        if (terrainComponent == null
+            || !terrainComponent.TryCreateRiverHeightSource(out IRiverTerrainHeightSource heightSource)
+            || !heightSource.HasHeightData)
+        {
+            return;
+        }
+
+        var unresolvedConfig = new RiverRuntimeLoadConfig(
+            null,
+            1.0f,
+            4.0f,
+            terrainComponent.HeightScale,
+            heightSource.HeightmapWidth,
+            heightSource.HeightmapHeight);
+        if (!component.ShouldAttemptRuntimeLoad(unresolvedConfig))
+        {
+            return;
+        }
+
+        TerrainRuntimeResourceBundle bundle;
+        try
+        {
+            var resolver = GameResourceResolverBootstrap.CreateForTerrainAssemblyDirectory();
+            bundle = new GameRuntimeResourceBootstrap(resolver).Load();
+        }
+        catch (Exception exception)
+        {
+            component.MarkRuntimeLoadFailure(unresolvedConfig);
+            Log.Error($"River runtime resources could not be read: {exception.Message}");
+            return;
+        }
+
+        var config = new RiverRuntimeLoadConfig(
+            bundle.RiversPath,
+            bundle.RiverMinWidth,
+            bundle.RiverMaxWidth,
+            bundle.HeightScale,
+            heightSource.HeightmapWidth,
+            heightSource.HeightmapHeight);
+
+        if (!component.ShouldAttemptRuntimeLoad(config))
+        {
+            return;
+        }
+
+        foreach (string diagnostic in bundle.Diagnostics)
+        {
+            Log.Warning(diagnostic);
+        }
+
+        if (bundle.RiversPath == null)
+        {
+            component.MarkRuntimeNoRiverResource();
+            Log.Warning("River runtime resource is not available; river rendering is disabled.");
+            return;
+        }
+
+        try
+        {
+            var mapService = new RiverMapService(bundle.RiverMinWidth, bundle.RiverMaxWidth);
+            if (!mapService.Load(bundle.RiversPath) || mapService.Cells == null)
+                throw new InvalidDataException($"River map load failed: {string.Join("; ", mapService.Errors)}");
+
+            foreach (string error in mapService.Errors)
+            {
+                Log.Warning(error);
+            }
+
+            var segments = mapService.ExtractSegments();
+            foreach (var segment in segments)
+            {
+                segment.TaperStart = segment.StartKind is SegmentEndKind.Source or SegmentEndKind.None;
+                segment.TaperEnd = segment.EndKind is SegmentEndKind.Confluence or SegmentEndKind.Bifurcation;
+            }
+
+            var meshService = new RiverMeshService(heightSource);
+            meshService.BuildCenterlines(segments, mapService.Width, mapService.Height);
+            RiverMeshData[] meshes = segments
+                .Select(segment => meshService.BuildRiverMesh(segment, 1.0f))
+                .Where(mesh => mesh.Vertices.Length > 0 && mesh.Indices.Length > 0)
+                .ToArray();
+
+            component.SetMeshes(meshes);
+            component.MarkRuntimeLoadSuccess();
+        }
+        catch (Exception exception)
+        {
+            component.MarkRuntimeLoadFailure(config);
+            Log.Error($"River runtime meshes could not be generated: {exception.Message}");
+        }
+    }
+
+    private TerrainComponent? FindInitializedTerrainComponent()
+    {
+        if (VisibilityGroup == null)
+        {
+            return null;
+        }
+
+        foreach (RenderObject renderObject in VisibilityGroup.RenderObjects)
+        {
+            if (renderObject is TerrainRenderObject { Source: TerrainComponent { IsInitialized: true } terrainComponent })
+                return terrainComponent;
+        }
+
+        return null;
     }
 
     public sealed class RenderData

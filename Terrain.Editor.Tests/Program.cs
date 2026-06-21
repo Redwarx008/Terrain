@@ -38,6 +38,7 @@ Run("river vertex mesh preserves sloped ribbon basis", RiverVertexMeshPreservesS
 Run("river render resources compute half resolution", RiverRenderResourcesComputeHalfResolution);
 Run("river component uses river processor", RiverComponentUsesRiverProcessor);
 Run("river component versioning", TestRiverComponentVersioning);
+Run("river component records runtime load failure config", RiverComponentRecordsRuntimeLoadFailureConfig);
 Run("river component exposes mesh snapshots", RiverComponentExposesMeshSnapshots);
 Run("river rendering service updates component visibility", RiverRenderingServiceUpdatesComponentVisibility);
 Run("river rendering service updates and clears component meshes", RiverRenderingServiceUpdatesAndClearsComponentMeshes);
@@ -686,6 +687,20 @@ void TestRiverComponentVersioning()
 
     Assert(component.Version == initial + 2, "RiverComponent.Clear increments Version");
     Assert(component.Meshes.Count == 0, "RiverComponent.Clear removes meshes");
+}
+
+void RiverComponentRecordsRuntimeLoadFailureConfig()
+{
+    var component = new Terrain.Rendering.River.RiverComponent();
+    var config = new Terrain.Rendering.River.RiverRuntimeLoadConfig("map/rivers.png", 1.0f, 4.0f, 200.0f, 4096, 2048);
+
+    component.MarkRuntimeLoadFailure(config);
+
+    AssertEqual(Terrain.Rendering.River.RiverRuntimeLoadState.Failed, component.RuntimeLoadState, "runtime river state");
+    Assert(!component.ShouldAttemptRuntimeLoad(config), "same failed config should not retry");
+
+    var changed = new Terrain.Rendering.River.RiverRuntimeLoadConfig("map/rivers.png", 2.0f, 4.0f, 200.0f, 4096, 2048);
+    Assert(component.ShouldAttemptRuntimeLoad(changed), "changed failed config should retry");
 }
 
 void RiverComponentExposesMeshSnapshots()

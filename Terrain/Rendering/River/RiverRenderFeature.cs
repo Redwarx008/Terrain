@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using Stride.Core;
+using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
 using Stride.Core.Serialization.Contents;
 using Stride.Graphics;
@@ -35,6 +36,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
     private const float SurfaceDepthBiasNearClipScaleExponent = 0.5f;
     private const float SurfaceSlopeScaleDepthBias = 0.0f;
 
+    private static readonly Logger Log = GlobalLogger.GetLogger("Terrain");
     private static readonly InputElementDescription[] RiverInputElements = RiverVertex.Layout.CreateInputElements();
     private static readonly FieldInfo? RenderViewDatasField = typeof(ForwardLightingRenderFeature).GetField("renderViewDatas", BindingFlags.Instance | BindingFlags.NonPublic);
     private DynamicEffectInstance? bottomEffect;
@@ -70,7 +72,15 @@ public sealed class RiverRenderFeature : RootRenderFeature
         sceneSeedEffect.Initialize(Context);
 
         contentManager = Context.Services.GetSafeServiceAs<ContentManager>();
-        riverResources.Load(Context.GraphicsDevice, contentManager);
+        try
+        {
+            riverResources.Load(Context.GraphicsDevice, contentManager);
+        }
+        catch (Exception exception)
+        {
+            Log.Error($"River render resources could not be loaded: {exception.Message}");
+            riverResources.Dispose();
+        }
         var meshRenderFeature = RenderSystem?.RenderFeatures.OfType<MeshRenderFeature>().FirstOrDefault();
         forwardLightingFeature = meshRenderFeature?.RenderFeatures.OfType<ForwardLightingRenderFeature>().FirstOrDefault();
         bottomShadowMapRenderer = forwardLightingFeature?.ShadowMapRenderer;

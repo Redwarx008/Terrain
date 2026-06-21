@@ -30,6 +30,8 @@ public sealed class RiverComponent : ActivableEntityComponent
 
     public RiverRenderSettings Settings { get; } = new();
     public int Version { get; private set; }
+    public RiverRuntimeLoadState RuntimeLoadState { get; private set; } = RiverRuntimeLoadState.NotAttempted;
+    public RiverRuntimeLoadConfig FailedRuntimeLoadConfig { get; private set; }
 
     public void SetMeshes(IReadOnlyList<RiverMeshData> newMeshes)
     {
@@ -49,5 +51,30 @@ public sealed class RiverComponent : ActivableEntityComponent
     {
         meshes = Array.Empty<RiverMeshData>();
         Version++;
+    }
+
+    public bool ShouldAttemptRuntimeLoad(RiverRuntimeLoadConfig config)
+    {
+        return RuntimeLoadState != RiverRuntimeLoadState.Failed || FailedRuntimeLoadConfig != config;
+    }
+
+    public void MarkRuntimeLoadSuccess()
+    {
+        RuntimeLoadState = RiverRuntimeLoadState.Loaded;
+        FailedRuntimeLoadConfig = default;
+    }
+
+    public void MarkRuntimeNoRiverResource()
+    {
+        Clear();
+        RuntimeLoadState = RiverRuntimeLoadState.NoRiverResource;
+        FailedRuntimeLoadConfig = default;
+    }
+
+    public void MarkRuntimeLoadFailure(RiverRuntimeLoadConfig config)
+    {
+        Clear();
+        RuntimeLoadState = RiverRuntimeLoadState.Failed;
+        FailedRuntimeLoadConfig = config;
     }
 }
