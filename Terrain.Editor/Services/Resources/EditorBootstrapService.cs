@@ -18,8 +18,9 @@ public sealed class EditorBootstrapService
 
     public EditorResourceSession LoadCurrentSession(string? appDirectory = null)
     {
-        string effectiveAppDirectory = appDirectory ?? AppContext.BaseDirectory;
-        GameResourceResolver resolver = GameResourceResolverBootstrap.CreateForAppDirectory(effectiveAppDirectory);
+        GameResourceResolver resolver = appDirectory == null
+            ? GameResourceResolverBootstrap.CreateForTerrainAssemblyDirectory()
+            : GameResourceResolverBootstrap.CreateForAppDirectory(appDirectory);
 
         new EditorMapDataScaffoldService().EnsureScaffold(resolver);
 

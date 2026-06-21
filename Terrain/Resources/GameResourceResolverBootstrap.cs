@@ -6,9 +6,20 @@ namespace Terrain.Resources;
 
 public static class GameResourceResolverBootstrap
 {
+    public static GameResourceResolver CreateForTerrainAssemblyDirectory()
+    {
+        string gameRoot = NormalizeDirectoryPath(GameResourceRootLocator.FindFromTerrainAssembly());
+        string appDirectory = GameResourceRootLocator.TerrainResourceAppDirectory;
+        return CreateForAppDirectory(appDirectory, gameRoot);
+    }
+
     public static GameResourceResolver CreateForAppDirectory(string appDirectory)
     {
-        string gameRoot = NormalizeDirectoryPath(GameResourceRootLocator.FindFrom(appDirectory));
+        return CreateForAppDirectory(appDirectory, NormalizeDirectoryPath(GameResourceRootLocator.FindFrom(appDirectory)));
+    }
+
+    private static GameResourceResolver CreateForAppDirectory(string appDirectory, string gameRoot)
+    {
         LaunchSettings launchSettings = LaunchSettingsService.LoadOrCreateForAppDirectory(appDirectory);
         IReadOnlyList<LaunchSettingsMod> enabledMods = LaunchSettingsService.GetEnabledMods(launchSettings);
 

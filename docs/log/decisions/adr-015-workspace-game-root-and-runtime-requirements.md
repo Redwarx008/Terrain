@@ -3,13 +3,16 @@
 **Date**: 2026-06-14
 **Status**: ✅ Accepted
 **Decision ID**: ADR-015
+**Amended**: 2026-06-22 - 生产路径改为优先使用编译进 `Terrain.dll` 的 `TerrainWorkspaceRoot` 元数据，避免 Stride Game Studio 宿主目录或 byte-loaded assembly 的不可靠 location 污染资源根扫描
 
 ---
 
 ## Context
 
 - Terrain 的作者态资源位于工作区 `game/`，而 Editor/Runtime 二进制位于 `Bin/...`
-- 仅按“最近的 `map_data/` 或最近的 `game/` 目录”定位资源根，会让路径上更近但不完整的目录干扰真实资源根选择
+- Stride Game Studio 加载项目时，`AppContext.BaseDirectory` 可能指向引擎源码输出目录，例如 `E:\WorkSpace\stride\sources\editor\Stride.GameStudio\bin\...`，不能作为项目资源根定位起点
+- Stride 源码确认 Game Studio 通过 `AssemblyContainer` 对项目程序集走 `File.ReadAllBytes(...)` + `Assembly.Load(byte[])` 路径；这会让 `Assembly.Location` 不可靠，因此单靠程序集实际加载目录仍不够稳定
+- 仅按“最近的 `map/` 或最近的 `game/` 目录”定位资源根，会让路径上更近但不完整的目录干扰真实资源根选择
 - Editor 需要在尚未导出 `.terrain`、尚未生成 `biome_mask.png` 时仍可启动并继续作者态工作
 - Runtime 直接消费 `.terrain` 与 `biome_mask.png`，缺失这两个文件时不能静默降级
 
@@ -17,12 +20,14 @@
 
 ## Decision
 
-- 资源根继续由 `GameResourceRootLocator` 从 `AppContext.BaseDirectory` 向上查找工作区同级 `game/`
-- 如果起点本身已经位于目录名为 `game` 且包含 `map_data/` 的合法根，locator 也会直接接受该根
-- `game/` 的合法性只要求目录名为 `game` 且包含 `map_data/`
-- `LaunchSetting.json` 固定放在 `AppContext.BaseDirectory`，缺失时自动生成默认配置
+- 生产资源入口由 `GameResourceRootLocator` 优先读取 `Terrain.dll` 的 `TerrainWorkspaceRoot` 编译元数据，再从该工作区根查找同级 `game/`
+- `TerrainWorkspaceRoot` 元数据不可用时，才回退从 `Terrain` 程序集所在目录向上查找工作区同级 `game/`
+- 如果起点本身已经位于目录名为 `game` 且包含 `map/` 的合法根，locator 也会直接接受该根
+- `game/` 的合法性只要求目录名为 `game` 且包含 `map/`
+- `LaunchSetting.json` 固定放在生产入口解析出的有效 app 目录旁，缺失时自动生成默认配置
 - `LaunchSetting.json` 只描述 mod 层；base 层永远由扫描得到的 `gameRoot` 隐式注入
 - 启用 mod 的 `root` 必须是存在的绝对路径
+- `CreateForAppDirectory(appRoot)` 保留给测试和显式工具入口；生产代码使用 `CreateForTerrainAssemblyDirectory()` / `FindFromTerrainAssembly()`
 - Editor 启动时：
   - 必须加载 `default.toml`、`heightmap`、`biome_settings.toml`、`materials/descriptor.toml`
   - 不要求 `.terrain` 已存在
@@ -47,6 +52,7 @@
 
 **Cons:**
 - 会把 `Bin/...` 当成资源根
+- 在 Stride Game Studio 宿主里会把引擎编辑器输出目录当作定位起点
 - 与作者态 `game/` 目录分离
 - 不符合当前项目资源布局
 
@@ -63,14 +69,16 @@
 - 无法表达“工作区 `game/` 应优先”
 - 仍然会让 Editor/Runtime 命中错误层
 
-### Option 3: 工作区 `game/` 优先，并区分 Editor / Runtime 必需资源
+### Option 3: `TerrainWorkspaceRoot` 元数据优先的工作区 `game/` 定位，并区分 Editor / Runtime 必需资源
 **Description:**
-- 上探工作区根并优先绑定其 `game/`
+- 从 `Terrain.dll` 编译元数据中的工作区根优先绑定其 `game/`
+- 元数据不可用时回退从 `Terrain` 程序集目录上探工作区根
 - 同时允许直接命中的合法 `game/` 根继续工作
 - 统一解析链，但按消费端区分资源必需性
 
 **Pros:**
 - 对当前工作区结构最稳定
+- 不受 Stride Game Studio 宿主进程目录或 byte-loaded assembly location 影响
 - 不会被路径上更近但不完整的目录干扰
 - Editor 作者态工作流与 Runtime 消费边界清晰
 - 与 SVN 管理的工作区 `game/` 和当前资源布局对齐
@@ -124,7 +132,11 @@
 
 - `Terrain/Resources/GameResourceRootLocator.cs`
   - 优先命中工作区根下的 `game/`
-  - 也接受起点本身已处于目录名为 `game` 且包含 `map_data/` 的合法根
+  - 也接受起点本身已处于目录名为 `game` 且包含 `map/` 的合法根
+  - `FindFromTerrainAssembly()` 优先读取 `TerrainWorkspaceRoot` 元数据，元数据不可用时回退 `Terrain` 程序集目录
+- `Terrain/Resources/GameResourceResolverBootstrap.cs`
+  - `CreateForTerrainAssemblyDirectory()` 是生产入口
+  - `CreateForAppDirectory(appRoot)` 保留给测试和显式工具入口
 - `Terrain/Core/TerrainProcessor.cs`
   - Runtime bootstrap 失败时使用错误日志，并阻止同配置下的逐帧重复重试
 - `Terrain.Editor/Services/Resources/EditorBootstrapService.cs`
@@ -145,6 +157,7 @@
 
 - [Editor / Runtime 共用虚拟资源系统设计](../../superpowers/specs/2026-06-13-editor-virtual-resource-system-design.md)
 - [2026-06-14 会话日志](../2026/06/14/runtime-game-root-and-required-resource-alignment.md)
+- [2026-06-22 会话日志](../2026/06/22/2026-06-22-terrain-assembly-resource-root.md)
 
 ---
 

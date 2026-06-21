@@ -19,6 +19,7 @@ internal static class RuntimeMigrationTextTests
         TestHarness.Run("runtime migration removes old project toml persistence", RemovesOldProjectTomlPersistence);
         TestHarness.Run("runtime bootstrap failures are logged as errors", RuntimeBootstrapFailuresAreLoggedAsErrors);
         TestHarness.Run("runtime resource bootstrap uses the game-scoped name", RuntimeResourceBootstrapUsesGameScopedName);
+        TestHarness.Run("resource bootstrap production paths use Terrain assembly directory", ResourceBootstrapProductionPathsUseTerrainAssemblyDirectory);
     }
 
     private static void RemovesTerrainSharedUsages()
@@ -153,6 +154,37 @@ internal static class RuntimeMigrationTextTests
         string processor = File.ReadAllText(processorPath);
         TestHarness.Assert(processor.Contains("new GameRuntimeResourceBootstrap(", StringComparison.Ordinal), "TerrainProcessor should use GameRuntimeResourceBootstrap");
         TestHarness.Assert(!processor.Contains("new TerrainRuntimeBootstrap(", StringComparison.Ordinal), "TerrainProcessor should not use TerrainRuntimeBootstrap");
+    }
+
+    private static void ResourceBootstrapProductionPathsUseTerrainAssemblyDirectory()
+    {
+        AssertContains("Terrain/Core/TerrainProcessor.cs", "CreateForTerrainAssemblyDirectory()");
+        AssertContains("Terrain/Resources/GameResourceResolverBootstrap.cs", "FindFromTerrainAssembly()");
+        AssertContains("Terrain.Editor/Services/TerrainManager.cs", "CreateForTerrainAssemblyDirectory()");
+        AssertContains("Terrain.Editor/Services/Resources/EditorBootstrapService.cs", "CreateForTerrainAssemblyDirectory()");
+        AssertContains("Terrain/Rendering/River/RiverResourceLoader.cs", "FindFromTerrainAssembly()");
+
+        string hostBootstrapCall = "CreateForAppDirectory(" + "AppContext.BaseDirectory)";
+        string hostRootLocatorCall = "FindFrom(" + "AppContext.BaseDirectory)";
+        foreach (string filePath in EnumerateTextFiles("*.cs"))
+        {
+            string text = File.ReadAllText(filePath);
+            TestHarness.Assert(
+                !text.Contains(hostBootstrapCall, StringComparison.Ordinal),
+                $"{Relative(filePath)} should not bootstrap resources from the host AppContext.BaseDirectory");
+            TestHarness.Assert(
+                !text.Contains(hostRootLocatorCall, StringComparison.Ordinal),
+                $"{Relative(filePath)} should not locate game resources from the host AppContext.BaseDirectory");
+        }
+    }
+
+    private static void AssertContains(string relativePath, string expected)
+    {
+        string filePath = Path.Combine(RepositoryRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        string text = File.ReadAllText(filePath);
+        TestHarness.Assert(
+            text.Contains(expected, StringComparison.Ordinal),
+            $"{relativePath} should contain {expected}");
     }
 
     private static IEnumerable<string> EnumerateTextFiles(string pattern)

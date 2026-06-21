@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 
 namespace Terrain.Resources;
 
@@ -7,6 +8,53 @@ public static class GameResourceRootLocator
 {
     private const string GameDirectoryName = "game";
     private const string MapDataDirectoryName = "map";
+    private const string TerrainWorkspaceRootMetadataKey = "TerrainWorkspaceRoot";
+
+    public static string TerrainAssemblyDirectory
+    {
+        get
+        {
+            string assemblyLocation = typeof(GameResourceRootLocator).Assembly.Location;
+            if (string.IsNullOrWhiteSpace(assemblyLocation))
+                return AppContext.BaseDirectory;
+
+            return Path.GetDirectoryName(assemblyLocation)
+                ?? AppContext.BaseDirectory;
+        }
+    }
+
+    public static string FindFromTerrainAssembly()
+    {
+        return FindFromTerrainAssemblyContext(TerrainAssemblyDirectory, TerrainBuildWorkspaceRoot);
+    }
+
+    public static string TerrainResourceAppDirectory
+    {
+        get
+        {
+            return ResolveTerrainAssemblyAppDirectory(TerrainAssemblyDirectory, TerrainBuildWorkspaceRoot);
+        }
+    }
+
+    internal static string FindFromTerrainAssemblyContext(string assemblyDirectory, string buildWorkspaceRoot)
+    {
+        return FindFrom(ResolveTerrainAssemblyAppDirectory(assemblyDirectory, buildWorkspaceRoot));
+    }
+
+    internal static string ResolveTerrainAssemblyAppDirectory(string assemblyDirectory, string buildWorkspaceRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(buildWorkspaceRoot))
+        {
+            string normalizedBuildWorkspaceRoot = Path.GetFullPath(buildWorkspaceRoot);
+            if (LooksLikeWorkspaceRoot(normalizedBuildWorkspaceRoot))
+                return normalizedBuildWorkspaceRoot;
+
+            if (IsDirectGameRoot(normalizedBuildWorkspaceRoot))
+                return normalizedBuildWorkspaceRoot;
+        }
+
+        return assemblyDirectory;
+    }
 
     public static string FindFrom(string startPath)
     {
@@ -57,5 +105,19 @@ public static class GameResourceRootLocator
                 ?? throw new DirectoryNotFoundException($"File path has no containing directory: {path}");
 
         return fullPath;
+    }
+
+    private static string TerrainBuildWorkspaceRoot
+    {
+        get
+        {
+            foreach (AssemblyMetadataAttribute attribute in typeof(GameResourceRootLocator).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>())
+            {
+                if (string.Equals(attribute.Key, TerrainWorkspaceRootMetadataKey, StringComparison.Ordinal))
+                    return attribute.Value ?? string.Empty;
+            }
+
+            return string.Empty;
+        }
     }
 }
