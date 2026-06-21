@@ -16,6 +16,7 @@ Run("confluence to none segment is reversed to flow into confluence", Confluence
 Run("bifurcation to none segment is reversed to flow into bifurcation", BifurcationToNoneSegmentIsReversedToFlowIntoBifurcation);
 Run("semantic endpoints do not shrink average river width", SemanticEndpointsDoNotShrinkAverageRiverWidth);
 Run("river palette maps to configured local width samples", RiverPaletteMapsToConfiguredLocalWidthSamples);
+Run("river palette width mapping rejects invalid configured width range", RiverPaletteWidthMappingRejectsInvalidConfiguredWidthRange);
 Run("river map service validates configured width range", RiverMapServiceValidatesConfiguredWidthRange);
 Run("special endpoints require adjacent river pixels", SpecialEndpointsRequireAdjacentRiverPixels);
 Run("centerline simplification removes pixel stair steps", CenterlineSimplificationRemovesPixelStairSteps);
@@ -244,6 +245,16 @@ void RiverPaletteMapsToConfiguredLocalWidthSamples()
     AssertNearlyEqual(1.1f, samples[2], 0.0001f, "middle blue should interpolate configured half-width");
     AssertNearlyEqual(2.0f, samples[3], 0.0001f, "green should map to max half-width");
     AssertNearlyEqual(2.0f, samples[4], 0.0001f, "confluence endpoint should inherit previous river width");
+}
+
+void RiverPaletteWidthMappingRejectsInvalidConfiguredWidthRange()
+{
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => RiverCell.GetHalfWidth(0, 0.0f, 4.0f),
+        "palette width mapping should reject non-positive min full width");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => RiverCell.GetHalfWidth(0, 5.0f, 4.0f),
+        "palette width mapping should reject max full width below min full width");
 }
 
 void RiverMapServiceValidatesConfiguredWidthRange()

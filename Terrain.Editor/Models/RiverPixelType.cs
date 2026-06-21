@@ -45,9 +45,12 @@ public readonly record struct RiverCell(RiverPixelType Type, byte Width = 0)
 
     public static float GetHalfWidth(int paletteIndex, float minFullWidth, float maxFullWidth)
     {
-        float min = MathF.Max(minFullWidth, 0.0001f);
-        float max = MathF.Max(maxFullWidth, min);
-        float fullWidth = min + (max - min) * GetWidthFactor(paletteIndex);
+        if (!float.IsFinite(minFullWidth) || minFullWidth <= 0.0f)
+            throw new ArgumentOutOfRangeException(nameof(minFullWidth), "River min width must be greater than 0.");
+        if (!float.IsFinite(maxFullWidth) || maxFullWidth < minFullWidth)
+            throw new ArgumentOutOfRangeException(nameof(maxFullWidth), "River max width must be greater than or equal to min width.");
+
+        float fullWidth = minFullWidth + (maxFullWidth - minFullWidth) * GetWidthFactor(paletteIndex);
         return fullWidth * 0.5f;
     }
 
