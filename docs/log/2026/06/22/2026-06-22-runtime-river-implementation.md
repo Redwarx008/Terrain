@@ -21,7 +21,7 @@
 
 ### 2. Runtime Resource Bundle
 
-- `TerrainRuntimeResourceBundle` 暴露 `RiverMapPath`、`RiverMinWidth`、`RiverMaxWidth`。
+- `TerrainRuntimeResourceBundle` 暴露 `RiversPath`、`RiverMinWidth`、`RiverMaxWidth`。
 - `GameRuntimeResourceBootstrap` 从 `game/map/default.toml` 的 `[settings]` 读取河流宽度配置。
 - 缺少 `rivers.png` 作为可选资源处理，不阻断 terrain runtime bootstrap。
 
