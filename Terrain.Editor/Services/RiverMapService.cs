@@ -12,11 +12,30 @@ namespace Terrain.Editor.Services;
 public sealed class RiverMapService
 {
     private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
+    private readonly float riverMinWidth;
+    private readonly float riverMaxWidth;
+
     public RiverCell[,]? Cells { get; private set; }
     public int Width { get; private set; }
     public int Height { get; private set; }
     public List<string> Errors { get; } = new();
     public int SystemCount { get; private set; }
+
+    public RiverMapService()
+        : this(1.0f, 4.0f)
+    {
+    }
+
+    public RiverMapService(float riverMinWidth, float riverMaxWidth)
+    {
+        if (riverMinWidth <= 0.0f)
+            throw new ArgumentOutOfRangeException(nameof(riverMinWidth), "River min width must be greater than 0.");
+        if (riverMaxWidth < riverMinWidth)
+            throw new ArgumentOutOfRangeException(nameof(riverMaxWidth), "River max width must be greater than or equal to min width.");
+
+        this.riverMinWidth = riverMinWidth;
+        this.riverMaxWidth = riverMaxWidth;
+    }
 
     public bool Load(string pngPath)
     {

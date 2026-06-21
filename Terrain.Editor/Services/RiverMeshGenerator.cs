@@ -21,7 +21,7 @@ internal sealed class RiverMeshGenerator : IRiverMeshGenerator
     {
         ArgumentNullException.ThrowIfNull(cells);
 
-        var mapService = new RiverMapService();
+        var mapService = new RiverMapService(riverMinWidth, riverMaxWidth);
         mapService.Load(cells);
 
         var segments = mapService.ExtractSegments();

@@ -15,6 +15,7 @@ Run("branch honors adjacent confluence marker before side continuation", BranchH
 Run("confluence to none segment is reversed to flow into confluence", ConfluenceToNoneSegmentIsReversedToFlowIntoConfluence);
 Run("bifurcation to none segment is reversed to flow into bifurcation", BifurcationToNoneSegmentIsReversedToFlowIntoBifurcation);
 Run("semantic endpoints do not shrink average river width", SemanticEndpointsDoNotShrinkAverageRiverWidth);
+Run("river map service validates configured width range", RiverMapServiceValidatesConfiguredWidthRange);
 Run("special endpoints require adjacent river pixels", SpecialEndpointsRequireAdjacentRiverPixels);
 Run("centerline simplification removes pixel stair steps", CenterlineSimplificationRemovesPixelStairSteps);
 Run("centerline smoothing cuts hard corners", CenterlineSmoothingCutsHardCorners);
@@ -215,6 +216,16 @@ void SemanticEndpointsDoNotShrinkAverageRiverWidth()
 
     AssertEqual(1, segments.Count, "segment count");
     AssertNearlyEqual(1.75f, segments[0].AvgHalfWidth, 0.0001f, "average width should only use river palette pixels");
+}
+
+void RiverMapServiceValidatesConfiguredWidthRange()
+{
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => new RiverMapService(0.0f, 4.0f),
+        "river min width must be positive");
+    AssertThrows<ArgumentOutOfRangeException>(
+        () => new RiverMapService(5.0f, 4.0f),
+        "river max width must be greater than or equal to min width");
 }
 
 void SpecialEndpointsRequireAdjacentRiverPixels()
@@ -711,6 +722,25 @@ static float MaxRiverBoundaryTurnAngle(IReadOnlyList<Terrain.Editor.Rendering.Ri
 static void Assert(bool condition, string message)
 {
     if (!condition) throw new InvalidOperationException(message);
+}
+
+static TException AssertThrows<TException>(Action action, string message)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException exception)
+    {
+        return exception;
+    }
+    catch (Exception ex)
+    {
+        throw new InvalidOperationException($"{message}: expected {typeof(TException).Name}, got {ex.GetType().Name}");
+    }
+
+    throw new InvalidOperationException($"{message}: expected {typeof(TException).Name}");
 }
 
 static void AssertEqual<T>(T expected, T actual, string message)
