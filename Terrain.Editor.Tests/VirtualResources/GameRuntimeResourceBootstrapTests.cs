@@ -37,6 +37,8 @@ internal static class GameRuntimeResourceBootstrapTests
         TestHarness.AssertEqual(FullPath(root, "map", "materials", "grass_a.png"), bundle.MaterialTextureSlots[0].AlbedoPath, "resolved albedo path");
         TestHarness.AssertEqual(FullPath(root, "map", "rivers.png"), bundle.RiversPath, "rivers path");
         TestHarness.AssertEqual(250.0f, bundle.HeightScale, "height scale");
+        TestHarness.AssertEqual(2.0f, bundle.RiverMinWidth, "river min width");
+        TestHarness.AssertEqual(6.0f, bundle.RiverMaxWidth, "river max width");
         TestHarness.AssertEqual(1, bundle.MaterialDescriptor.Materials.Count, "material count");
         TestHarness.AssertEqual(1, bundle.BiomeSettings.Layers.Count, "biome layer count");
     }
@@ -305,6 +307,8 @@ terrain_data = "terrain.terrain"
 
 [settings]
 height_scale = {{heightScale}}
+river_min_width = 2
+river_max_width = 6
 """;
     }
 

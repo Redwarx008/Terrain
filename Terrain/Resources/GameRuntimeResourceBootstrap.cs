@@ -68,6 +68,8 @@ public sealed class GameRuntimeResourceBootstrap
             RiversPath = riversPath,
             HasDeclaredProvinces = hasDeclaredProvinces,
             HeightScale = mapDefinition.HeightScale,
+            RiverMinWidth = mapDefinition.RiverMinWidth,
+            RiverMaxWidth = mapDefinition.RiverMaxWidth,
             MaterialDescriptor = materialDescriptor,
             MaterialTextureSlots = materialTextureSlots,
             BiomeSettings = biomeSettings,
