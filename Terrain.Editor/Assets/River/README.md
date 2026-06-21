@@ -1,6 +1,6 @@
 # River Rendering Resources
 
-`Environment/` remains a Stride content asset directory. River bottom and water DDS files live under `game/map/water` and are loaded directly from the file system by `RiverResourceLoader`.
+Runtime/editor shared river environment assets now live under `Terrain/Assets/River/Environment/` and are referenced through the neutral Stride content URL `River/Environment/*`. River bottom and water DDS files live under `game/map/water` and are loaded directly from the file system by `RiverResourceLoader`.
 
 ## Bottom And Water
 
@@ -23,6 +23,6 @@
 
 | Project file | Source path | Usage |
 |---|---|---|
-| `Environment/reflection-specular.dds` | `game/gfx/map/environment/qwantani_8k_nosun_cube_specular.dds` | Specular reflection fallback. |
+| `Terrain/Assets/River/Environment/reflection-specular.dds` | `game/gfx/map/environment/qwantani_8k_nosun_cube_specular.dds` | Specular reflection fallback. |
 
 Runtime code should refer to `game/map/water` for Bottom/Water textures and to the neutral Stride content URL `River/Environment/reflection-specular` for the environment cubemap.

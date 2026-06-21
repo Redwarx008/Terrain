@@ -1,6 +1,6 @@
 # 当前功能清单
 
-**最后更新：** 2026-06-21
+**最后更新：** 2026-06-22
 **状态图例：** ✅ 完成 | 🚧 进行中 | 📋 规划中 | ❌ 未开始
 
 > **注意：** 2026-04-15 至 2026-05-14 期间有大量开发但无会话日志记录。以下功能状态基于当前代码库实际验证。
@@ -82,6 +82,7 @@
 | 虚拟资源 Bootstrap | ✅ | `Terrain/Resources/` | `gameRoot` 扫描或 direct-hit 合法 `game/` 根 + `exe/LaunchSetting.json` + `GameResourceResolverBootstrap` + resolver/bootstrap |
 | Editor 作者态写回器 | ✅ | `Terrain.Editor/Services/Resources/*Writer.cs` | 写回当前命中的 `default.toml` / heightmap / biome_mask / biome_settings / materials descriptor；rivers 当前仅可选读取，不写回 |
 | Runtime DetailMap 构建 | ✅ | `Terrain/Materials/RuntimeDetailMapBuilder.cs` | 高度来源于 `.terrain` 内数据，而不是 `heightmap.png` |
+| Runtime 河流渲染 | ✅ | `Terrain/Rendering/River/`, `Terrain/Rivers/`, `Terrain/Assets/MainScene.sdscene`, `Terrain/Assets/GraphicsCompositor.sdgfxcomp` | Runtime scene asset 持有 `RiverSystem` / `RiverComponent`，GraphicsCompositor asset 持有 `RiverRenderFeature`；`RiverProcessor` 在地形高度数据初始化后加载可选 `rivers.png`，按 `river_min_width` / `river_max_width` 生成 mesh。缺少 `rivers.png` 时只禁用河流，不阻断地形加载。 |
 | 半分辨率 SplatMap | ✅ | Editor + Runtime 均支持 | - |
 
 ## 规划中 (Planned)
