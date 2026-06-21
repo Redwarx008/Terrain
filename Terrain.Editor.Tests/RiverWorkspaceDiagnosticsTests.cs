@@ -207,13 +207,13 @@ internal static class RiverWorkspaceDiagnosticsTests
         float maxError = 0.0f;
         foreach (Vector3 point in segment.Centerline)
         {
-            float expected = SampleEncodedTerrainHeight(point.X, point.Z, 24, 16, HeightAtSample, heightScale) + 0.02f;
+            float expected = SampleBilinearEncodedTerrainHeight(point.X, point.Z, 24, 16, HeightAtSample, heightScale) + 0.02f;
             maxError = MathF.Max(maxError, MathF.Abs(point.Y - expected));
         }
 
         TestHarness.Assert(
             maxError <= 0.03f,
-            $"Curved river centerline should resample terrain height at smoothed XZ positions. Max height error: {maxError:0.000}");
+            $"Curved river centerline should bilinearly resample terrain height at smoothed XZ positions. Max height error: {maxError:0.000}");
 
         static float HeightAtSample(int x, int y) => (x * x + y * y) * 0.5f;
     }
@@ -252,7 +252,7 @@ internal static class RiverWorkspaceDiagnosticsTests
         return terrainManager;
     }
 
-    private static float SampleEncodedTerrainHeight(
+    private static float SampleBilinearEncodedTerrainHeight(
         float wx,
         float wz,
         int width,
@@ -260,12 +260,36 @@ internal static class RiverWorkspaceDiagnosticsTests
         Func<int, int, float> heightAtSample,
         float heightScale)
     {
-        int ix = Math.Clamp((int)Math.Round(wx), 0, width - 1);
-        int iy = Math.Clamp((int)Math.Round(wz), 0, height - 1);
-        float normalizedHeight = Math.Clamp(heightAtSample(ix, iy) / heightScale, 0.0f, 1.0f);
+        float x = Math.Clamp(wx, 0.0f, width - 1);
+        float y = Math.Clamp(wz, 0.0f, height - 1);
+        int x0 = (int)MathF.Floor(x);
+        int y0 = (int)MathF.Floor(y);
+        int x1 = Math.Min(x0 + 1, width - 1);
+        int y1 = Math.Min(y0 + 1, height - 1);
+        float tx = x - x0;
+        float ty = y - y0;
+
+        float h00 = SampleEncodedTerrainHeight(x0, y0, heightAtSample, heightScale);
+        float h10 = SampleEncodedTerrainHeight(x1, y0, heightAtSample, heightScale);
+        float h01 = SampleEncodedTerrainHeight(x0, y1, heightAtSample, heightScale);
+        float h11 = SampleEncodedTerrainHeight(x1, y1, heightAtSample, heightScale);
+        float hx0 = Lerp(h00, h10, tx);
+        float hx1 = Lerp(h01, h11, tx);
+        return Lerp(hx0, hx1, ty);
+    }
+
+    private static float SampleEncodedTerrainHeight(
+        int x,
+        int y,
+        Func<int, int, float> heightAtSample,
+        float heightScale)
+    {
+        float normalizedHeight = Math.Clamp(heightAtSample(x, y) / heightScale, 0.0f, 1.0f);
         ushort encoded = (ushort)MathF.Round(normalizedHeight * ushort.MaxValue);
         return encoded * (1.0f / ushort.MaxValue) * heightScale;
     }
+
+    private static float Lerp(float a, float b, float t) => a + (b - a) * t;
 
     private static void RiverMeshMapExtentUsesWorldCoordinateSpan()
     {

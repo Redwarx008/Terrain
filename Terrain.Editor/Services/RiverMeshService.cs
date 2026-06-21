@@ -289,10 +289,23 @@ public sealed class RiverMeshService
         int w = terrainManager.HeightCacheWidth;
         int h = terrainManager.HeightCacheHeight;
 
-        // World coordinates are 1:1 with heightmap pixels (0 ~ w-1)
-        int ix = Math.Clamp((int)Math.Round(wx), 0, w - 1);
-        int iy = Math.Clamp((int)Math.Round(wz), 0, h - 1);
-        return data[iy * w + ix] * (1.0f / ushort.MaxValue) * scale;
+        // World coordinates are 1:1 with heightmap pixels (0 ~ w-1).
+        float x = Math.Clamp(wx, 0.0f, w - 1);
+        float y = Math.Clamp(wz, 0.0f, h - 1);
+        int x0 = (int)MathF.Floor(x);
+        int y0 = (int)MathF.Floor(y);
+        int x1 = Math.Min(x0 + 1, w - 1);
+        int y1 = Math.Min(y0 + 1, h - 1);
+        float tx = x - x0;
+        float ty = y - y0;
+
+        float h00 = data[y0 * w + x0] * (1.0f / ushort.MaxValue) * scale;
+        float h10 = data[y0 * w + x1] * (1.0f / ushort.MaxValue) * scale;
+        float h01 = data[y1 * w + x0] * (1.0f / ushort.MaxValue) * scale;
+        float h11 = data[y1 * w + x1] * (1.0f / ushort.MaxValue) * scale;
+        float hx0 = h00 + (h10 - h00) * tx;
+        float hx1 = h01 + (h11 - h01) * tx;
+        return hx0 + (hx1 - hx0) * ty;
     }
 
     // Task 5 methods below
