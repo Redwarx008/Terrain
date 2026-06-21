@@ -34,6 +34,8 @@ public sealed class EditorMapDataScaffoldService
                 HeightmapPath = "heightmap.png",
                 TerrainDataPath = "terrain.terrain",
                 HeightScale = 100.0f,
+                RiverMinWidth = 1.0f,
+                RiverMaxWidth = 4.0f,
             });
     }
 

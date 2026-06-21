@@ -68,6 +68,9 @@ internal static class EditorResourceWriterTests
         TestHarness.Run("heightmap writer fails on read-only target without touching fallback", HeightmapWriterFailsOnReadOnlyTargetWithoutTouchingFallback);
         TestHarness.Run("map definition writer preserves map data entries and height scale", MapDefinitionWriterPreservesMapDataEntriesAndHeightScale);
         TestHarness.Run("map definition writer rewrites existing header with fixed template", MapDefinitionWriterRewritesExistingHeaderWithFixedTemplate);
+        TestHarness.Run("map definition reader defaults river width range", MapDefinitionReaderDefaultsRiverWidthRange);
+        TestHarness.Run("map definition reader reads explicit river width range", MapDefinitionReaderReadsExplicitRiverWidthRange);
+        TestHarness.Run("map definition reader rejects invalid river width range", MapDefinitionReaderRejectsInvalidRiverWidthRange);
         TestHarness.Run("material descriptor writer preserves short relative texture paths", MaterialDescriptorWriterPreservesRelativeTexturePaths);
         TestHarness.Run("material descriptor writer rewrites existing header with fixed template", MaterialDescriptorWriterRewritesExistingHeaderWithFixedTemplate);
         TestHarness.Run("material descriptor writer fails on read-only target without touching fallback", MaterialDescriptorWriterFailsOnReadOnlyTargetWithoutTouchingFallback);
@@ -206,6 +209,8 @@ internal static class EditorResourceWriterTests
             RiversPath = "rivers.png",
             ProvincesPath = "provinces.png",
             HeightScale = 250.0f,
+            RiverMinWidth = 2.0f,
+            RiverMaxWidth = 6.0f,
         });
 
         string text = File.ReadAllText(output);
@@ -218,6 +223,8 @@ internal static class EditorResourceWriterTests
         TestHarness.AssertEqual("rivers.png", map.RiversPath, "rivers path");
         TestHarness.AssertEqual("provinces.png", map.ProvincesPath, "provinces path");
         TestHarness.AssertEqual(250.0f, map.HeightScale, "height scale");
+        TestHarness.AssertEqual(2.0f, map.RiverMinWidth, "river min full width");
+        TestHarness.AssertEqual(6.0f, map.RiverMaxWidth, "river max full width");
     }
 
     private static void MapDefinitionWriterRewritesExistingHeaderWithFixedTemplate()
@@ -244,6 +251,72 @@ internal static class EditorResourceWriterTests
         TestHarness.AssertEqual("heightmap.png", map.HeightmapPath, "rewritten map definition heightmap path");
         TestHarness.AssertEqual("terrain.terrain", map.TerrainDataPath, "rewritten map definition terrain path");
         TestHarness.AssertEqual(250.0f, map.HeightScale, "rewritten map definition height scale");
+    }
+
+    private static void MapDefinitionReaderDefaultsRiverWidthRange()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+""");
+
+        RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(output);
+
+        TestHarness.AssertEqual(1.0f, map.RiverMinWidth, "default river min full width");
+        TestHarness.AssertEqual(4.0f, map.RiverMaxWidth, "default river max full width");
+    }
+
+    private static void MapDefinitionReaderReadsExplicitRiverWidthRange()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+river_min_width = 2
+river_max_width = 6
+""");
+
+        RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(output);
+
+        TestHarness.AssertEqual(2.0f, map.RiverMinWidth, "explicit river min full width");
+        TestHarness.AssertEqual(6.0f, map.RiverMaxWidth, "explicit river max full width");
+    }
+
+    private static void MapDefinitionReaderRejectsInvalidRiverWidthRange()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+river_min_width = 5
+river_max_width = 4
+""");
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => RuntimeMapDefinitionReader.ReadFrom(output),
+            "river_max_width below river_min_width should be rejected");
     }
 
     private static void BiomeSettingsWriterPersistsMaterialIdReferences()

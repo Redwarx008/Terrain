@@ -36,6 +36,10 @@ public sealed class MapDefinitionWriter
             throw new ArgumentException("Output path must not be null or empty.", nameof(outputPath));
         if (mapDefinition.HeightScale <= 0.0f)
             throw new InvalidDataException("Map definition height_scale must be greater than 0.");
+        if (mapDefinition.RiverMinWidth <= 0.0f)
+            throw new InvalidDataException("Map definition river_min_width must be greater than 0.");
+        if (mapDefinition.RiverMaxWidth < mapDefinition.RiverMinWidth)
+            throw new InvalidDataException("Map definition river_max_width must be greater than or equal to river_min_width.");
 
         var terrain = new TomlTable
         {
@@ -53,6 +57,8 @@ public sealed class MapDefinitionWriter
             ["settings"] = new TomlTable
             {
                 ["height_scale"] = mapDefinition.HeightScale,
+                ["river_min_width"] = mapDefinition.RiverMinWidth,
+                ["river_max_width"] = mapDefinition.RiverMaxWidth,
             },
         };
 

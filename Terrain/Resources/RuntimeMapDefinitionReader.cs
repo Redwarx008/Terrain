@@ -19,7 +19,7 @@ public static class RuntimeMapDefinitionReader
         TomlNode terrain = RequireTable(root, "terrain", filePath);
         TomlNode settings = RequireTable(root, "settings", filePath);
         ValidateTableKeys(terrain, filePath, "terrain", "heightmap", "terrain_data", "rivers", "provinces");
-        ValidateTableKeys(settings, filePath, "settings", "height_scale");
+        ValidateTableKeys(settings, filePath, "settings", "height_scale", "river_min_width", "river_max_width");
 
         string heightmap = requireHeightmap
             ? RequireRelativePath(terrain, "heightmap", filePath)
@@ -28,6 +28,12 @@ public static class RuntimeMapDefinitionReader
         float heightScale = RequireFloat(settings, "height_scale", filePath);
         if (heightScale <= 0.0f)
             throw new InvalidDataException($"height_scale must be greater than 0: {filePath}");
+        float riverMinWidth = ReadOptionalFloat(settings, "river_min_width", filePath, 1.0f);
+        float riverMaxWidth = ReadOptionalFloat(settings, "river_max_width", filePath, 4.0f);
+        if (riverMinWidth <= 0.0f)
+            throw new InvalidDataException($"river_min_width must be greater than 0: {filePath}");
+        if (riverMaxWidth < riverMinWidth)
+            throw new InvalidDataException($"river_max_width must be greater than or equal to river_min_width: {filePath}");
 
         return new RuntimeMapDefinition
         {
@@ -36,6 +42,8 @@ public static class RuntimeMapDefinitionReader
             RiversPath = ReadOptionalRelativePath(terrain, "rivers", filePath),
             ProvincesPath = ReadOptionalRelativePath(terrain, "provinces", filePath),
             HeightScale = heightScale,
+            RiverMinWidth = riverMinWidth,
+            RiverMaxWidth = riverMaxWidth,
         };
     }
 
@@ -135,6 +143,20 @@ public static class RuntimeMapDefinitionReader
     {
         if (!node.HasKey(key))
             throw new InvalidDataException($"Missing required TOML number '{key}': {filePath}");
+
+        TomlNode value = node[key];
+        if (value.IsFloat)
+            return (float)value.AsFloat.Value;
+        if (value.IsInteger)
+            return (float)value.AsInteger.Value;
+
+        throw new InvalidDataException($"TOML value '{key}' must be numeric: {filePath}");
+    }
+
+    private static float ReadOptionalFloat(TomlNode node, string key, string filePath, float fallback)
+    {
+        if (!node.HasKey(key))
+            return fallback;
 
         TomlNode value = node[key];
         if (value.IsFloat)

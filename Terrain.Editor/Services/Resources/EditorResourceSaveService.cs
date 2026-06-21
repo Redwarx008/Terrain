@@ -62,6 +62,8 @@ public static class EditorResourceSaveService
             RiversPath = session.MapDefinitionModel.RiversPath,
             ProvincesPath = session.MapDefinitionModel.ProvincesPath,
             HeightScale = heightScale,
+            RiverMinWidth = session.MapDefinitionModel.RiverMinWidth,
+            RiverMaxWidth = session.MapDefinitionModel.RiverMaxWidth,
         };
 
         var mapDefinitionWriter = new MapDefinitionWriter();
