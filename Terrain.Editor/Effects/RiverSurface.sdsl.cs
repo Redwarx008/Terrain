@@ -26,11 +26,13 @@ namespace Terrain.Editor
         public static readonly ValueParameterKey<float> _FlattenMult = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _Depth = ParameterKeys.NewValue<float>(0.15f);
         public static readonly ValueParameterKey<float> _DepthWidthPower = ParameterKeys.NewValue<float>(2.0f);
+        public static readonly ValueParameterKey<float> _BankFade = ParameterKeys.NewValue<float>(0.025f);
         public static readonly ValueParameterKey<float> _MapExtent = ParameterKeys.NewValue<float>(4096.0f);
         public static readonly ValueParameterKey<Vector2> _MapWorldSize = ParameterKeys.NewValue<Vector2>(new Vector2(4096.0f,4096.0f));
         public static readonly ValueParameterKey<float> _WorldToMapUnitScale = ParameterKeys.NewValue<float>(0.5f);
         public static readonly ValueParameterKey<Vector3> _CameraWorldPosition = ParameterKeys.NewValue<Vector3>(new Vector3(0.0f,0.0f,0.0f));
         public static readonly ValueParameterKey<Vector2> _ViewSize = ParameterKeys.NewValue<Vector2>(new Vector2(1.0f,1.0f));
+        public static readonly ValueParameterKey<Vector2> _RefractionTextureSize = ParameterKeys.NewValue<Vector2>(new Vector2(1.0f,1.0f));
         public static readonly ValueParameterKey<Matrix> _ViewMatrix = ParameterKeys.NewValue<Matrix>();
         public static readonly ValueParameterKey<float> _GlobalTime = ParameterKeys.NewValue<float>();
         public static readonly ValueParameterKey<float> _FlatMapLerp = ParameterKeys.NewValue<float>(0.0f);

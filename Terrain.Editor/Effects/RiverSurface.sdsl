@@ -10,11 +10,13 @@ namespace Terrain.Editor
         stage float _FlattenMult = 1.0f;
         stage float _Depth = 0.15f;
         stage float _DepthWidthPower = 2.0f;
+        stage float _BankFade = 0.025f;
         stage float _MapExtent = 4096.0f;
         stage float2 _MapWorldSize = float2(4096.0f, 4096.0f);
         stage float _WorldToMapUnitScale = 0.5f;
         stage float3 _CameraWorldPosition = float3(0.0f, 0.0f, 0.0f);
         stage float2 _ViewSize = float2(1.0f, 1.0f);
+        stage float2 _RefractionTextureSize = float2(1.0f, 1.0f);
         stage float4x4 _ViewMatrix;
         stage float _GlobalTime;
         stage float _FlatMapLerp = 0.0f;
@@ -104,6 +106,18 @@ namespace Terrain.Editor
             return saturate(screenUv);
         }
 
+        int2 ComputeRefractionPayloadCoord(float2 screenUv)
+        {
+            float2 textureSize = max(_RefractionTextureSize, float2(1.0f, 1.0f));
+            float2 coord = clamp(floor(saturate(screenUv) * textureSize), float2(0.0f, 0.0f), textureSize - float2(1.0f, 1.0f));
+            return int2(coord);
+        }
+
+        float SampleRefractionPayload(float2 screenUv)
+        {
+            return RefractionTexture.Load(int3(ComputeRefractionPayloadCoord(screenUv), 0)).a;
+        }
+
         float ComputeWorldWidth()
         {
             return max(streams.RiverWidth * max(_MapExtent, 1.0f) * 2.0f, 0.001f);
@@ -117,6 +131,13 @@ namespace Terrain.Editor
         float CalcRiverProfileDepth(float2 riverUv)
         {
             return _Depth * (1.0f - pow(cos(riverUv.y * 2.0f * 3.14159265f) * 0.5f + 0.5f, 2.0f));
+        }
+
+        float ComputeAdvancedSurfaceAlpha(float2 riverUv, float transparency, float connectionFade)
+        {
+            float edgeFade1 = smoothstep(0.0f, max(_BankFade, 0.0001f), riverUv.y);
+            float edgeFade2 = smoothstep(0.0f, max(_BankFade, 0.0001f), 1.0f - riverUv.y);
+            return transparency * connectionFade * edgeFade1 * edgeFade2;
         }
 
         float ComputeWaterFade(float depth)
@@ -175,14 +196,16 @@ namespace Terrain.Editor
             float3 waterColorMap = lerp(WaterColor, _WaterColorMapTint, _WaterColorMapTintFactor);
             float2 screenUv = ComputeScreenUv(float4(ScreenPos, 0.0f, 1.0f));
             float4 refractionSample = RefractionTexture.Sample(RefractionSampler, screenUv);
-            float3 refractionWorldPosition = DecodeRefractionWorldPosition(WorldSpacePos, refractionSample.a);
+            float refractionPayload = SampleRefractionPayload(screenUv);
+            float3 refractionWorldPosition = DecodeRefractionWorldPosition(WorldSpacePos, refractionPayload);
             float refractionDepth = WorldSpacePos.y - refractionWorldPosition.y;
             Depth = min(Depth, refractionDepth);
             float refractionShoreMask = ComputeRefractionShoreMask(Depth);
             float2 refractionOffset = ComputeRefractionOffset(Normal, refractionShoreMask);
 
             float4 offsetRefractionSample = RefractionTexture.Sample(RefractionSampler, screenUv + refractionOffset);
-            float3 offsetRefractionWorldPosition = DecodeRefractionWorldPosition(WorldSpacePos, offsetRefractionSample.a);
+            float offsetRefractionPayload = SampleRefractionPayload(screenUv + refractionOffset);
+            float3 offsetRefractionWorldPosition = DecodeRefractionWorldPosition(WorldSpacePos, offsetRefractionPayload);
             float offsetStep = step(WorldSpacePos.y, offsetRefractionWorldPosition.y);
             refractionSample = lerp(offsetRefractionSample, refractionSample, offsetStep);
             refractionWorldPosition = lerp(offsetRefractionWorldPosition, refractionWorldPosition, offsetStep);
@@ -300,7 +323,8 @@ namespace Terrain.Editor
             float depth = InputDepth;
             float2 screenUv = ComputeScreenUv(InputScreenSpacePos);
             float4 refractionSample = RefractionTexture.Sample(RefractionSampler, screenUv);
-            float3 refractionWorldPosition = DecodeRefractionWorldPosition(InputWorldSpacePos, refractionSample.a);
+            float refractionPayload = SampleRefractionPayload(screenUv);
+            float3 refractionWorldPosition = DecodeRefractionWorldPosition(InputWorldSpacePos, refractionPayload);
             float refractionDepth = InputWorldSpacePos.y - refractionWorldPosition.y;
             depth = min(depth, refractionDepth);
 
@@ -353,7 +377,7 @@ namespace Terrain.Editor
                 outputDepth,
                 outputNormal,
                 outputReflectionAmount);
-            waterColor.a = saturate(depth * 2.0f / max(_Depth, 0.0001f)) * transparency * connectionFade;
+            waterColor.a = ComputeAdvancedSurfaceAlpha(riverUv, transparency, connectionFade);
         }
 
         stage override void PSMain()

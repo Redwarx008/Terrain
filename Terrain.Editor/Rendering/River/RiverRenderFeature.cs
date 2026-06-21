@@ -170,6 +170,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionTexture, renderResources.BottomColor);
         surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);
+        surfaceEffect.Parameters.Set(RiverSurfaceKeys._RefractionTextureSize, new Vector2(renderResources.Width, renderResources.Height));
         DrawPass(context, renderView, renderViewStage, startIndex, endIndex, surfaceEffect, surfacePipelineState, renderResources.BottomColor);
     }
 
@@ -536,6 +537,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         effect.Parameters.Set(RiverSurfaceKeys._FlattenMult, riverObject.FlattenMultiplier);
         effect.Parameters.Set(RiverSurfaceKeys._Depth, riverObject.Depth);
         effect.Parameters.Set(RiverSurfaceKeys._DepthWidthPower, riverObject.DepthWidthPower);
+        effect.Parameters.Set(RiverSurfaceKeys._BankFade, riverObject.BankFade);
         effect.Parameters.Set(RiverSurfaceKeys._GlobalTime, globalTime);
         effect.Parameters.Set(RiverSurfaceKeys._FlatMapLerp, riverObject.FlatMapLerp);
         effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionScale, riverObject.WaterRefractionScale);
@@ -602,6 +604,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
             {
                 effect.Parameters.Set(RiverSurfaceKeys.RefractionTexture, refractionTexture);
                 effect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);
+                effect.Parameters.Set(RiverSurfaceKeys._RefractionTextureSize, new Vector2(refractionTexture.Width, refractionTexture.Height));
             }
 
             effect.Apply(graphicsContext);
