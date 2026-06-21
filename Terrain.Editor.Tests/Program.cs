@@ -45,6 +45,7 @@ EditorTerrainShadowCasterTests.RunAll();
 RiverViewModelAutoGenerationTests.RunAll();
 RiverWorkspaceDiagnosticsTests.RunAll();
 RiverRenderFeatureRuntimeTests.RunAll();
+RuntimeRiverAssetTests.RunAll();
 RiverShaderTextTests.RunAll();
 RiverShaderCompileTests.RunAll();
 LaunchSettingsResolverTests.RunAll();
