@@ -24,6 +24,7 @@ Run("centerline smoothing cuts hard corners", CenterlineSmoothingCutsHardCorners
 Run("centerline smoothing limits repeated river bend angles", CenterlineSmoothingLimitsRepeatedRiverBendAngles);
 Run("centerline smoothing stays near original river corridor", CenterlineSmoothingStaysNearOriginalRiverCorridor);
 Run("river centerline generation preserves palette width gradient", RiverCenterlineGenerationPreservesPaletteWidthGradient);
+Run("river centerline width interpolation stays within palette range", RiverCenterlineWidthInterpolationStaysWithinPaletteRange);
 Run("ribbon indices preserve boundary strip organization with stride-visible winding", RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding);
 Run("mitered corner preserves river half width", MiteredCornerPreservesRiverHalfWidth);
 Run("river mesh preserves local width gradient", RiverMeshPreservesLocalWidthGradient);
@@ -380,6 +381,27 @@ void RiverCenterlineGenerationPreservesPaletteWidthGradient()
     Assert(segment.Centerline.Count > 2, "centerline generation should produce samples");
     AssertEqual(segment.Centerline.Count, segment.CenterlineHalfWidths.Count, "centerline widths should align with centerline samples");
     Assert(segment.CenterlineHalfWidths[0] < segment.CenterlineHalfWidths[^1], "width gradient should remain increasing after resampling");
+}
+
+void RiverCenterlineWidthInterpolationStaysWithinPaletteRange()
+{
+    var controlPoints = new List<Vector3>
+    {
+        new(0, 0, 0),
+        new(10, 0, 0),
+        new(20, 0, 0),
+        new(30, 0, 0),
+    };
+    var controlWidths = new List<float> { 0.5f, 2.0f, 2.0f, 0.5f };
+
+    var method = typeof(RiverMeshService).GetMethod(
+        "CatmullRomInterpolateWithWidths",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    Assert(method != null, "width interpolation helper should exist");
+    var result = ((List<Vector3> Points, List<float> Widths))method!.Invoke(null, [controlPoints, controlWidths])!;
+
+    float maxWidth = result.Widths.Max();
+    Assert(maxWidth <= 2.0001f, $"interpolated centerline widths should not overshoot palette maximum, actual {maxWidth:0.0000}");
 }
 
 void RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding()

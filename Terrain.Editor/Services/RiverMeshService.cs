@@ -272,7 +272,8 @@ public sealed class RiverMeshService
             {
                 float t = s / (float)steps;
                 Vector3 point = CatmullRom(p0, p1, p2, p3, t);
-                float width = Math.Max(MinVisibleHalfWidth, CatmullRomScalar(w0, w1, w2, w3, t));
+                float interpolatedWidth = CatmullRomScalar(w0, w1, w2, w3, t);
+                float width = Math.Max(MinVisibleHalfWidth, Math.Clamp(interpolatedWidth, Math.Min(w1, w2), Math.Max(w1, w2)));
                 float dist = HorizontalDistance(resultPoints[^1], point);
                 accumulated += dist;
                 if (accumulated >= spacing)
