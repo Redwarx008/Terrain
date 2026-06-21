@@ -26,10 +26,25 @@ public sealed class RiverMeshService
     private const float TerrainWorldToRiverMapUnits = 0.5f;
 
     private readonly IRiverTerrainHeightSource? heightSource;
+    private readonly Func<int, int, float>? sampleHeight;
+    private readonly int heightmapWidth;
+    private readonly int heightmapHeight;
+    private readonly float heightScale;
 
     public RiverMeshService(IRiverTerrainHeightSource? heightSource)
     {
         this.heightSource = heightSource;
+        heightmapWidth = heightSource?.HeightmapWidth ?? 0;
+        heightmapHeight = heightSource?.HeightmapHeight ?? 0;
+        heightScale = heightSource?.HeightScale ?? 0.0f;
+    }
+
+    public RiverMeshService(Func<int, int, float> sampleHeight, int heightmapWidth, int heightmapHeight, float heightScale)
+    {
+        this.sampleHeight = sampleHeight ?? throw new ArgumentNullException(nameof(sampleHeight));
+        this.heightmapWidth = heightmapWidth;
+        this.heightmapHeight = heightmapHeight;
+        this.heightScale = heightScale;
     }
 
     public void BuildCenterlines(List<RiverSegment> segments, int mapWidth, int mapHeight)
@@ -421,8 +436,31 @@ public sealed class RiverMeshService
 
     private float SampleTerrainHeight(float wx, float wz)
     {
+        if (sampleHeight != null && heightmapWidth > 0 && heightmapHeight > 0)
+            return SampleDiscreteHeightBilinear(wx, wz);
+
         if (heightSource == null || !heightSource.HasHeightData) return 0.0f;
         return heightSource.SampleHeight(wx, wz);
+    }
+
+    private float SampleDiscreteHeightBilinear(float wx, float wz)
+    {
+        float x = Math.Clamp(wx, 0.0f, heightmapWidth - 1);
+        float z = Math.Clamp(wz, 0.0f, heightmapHeight - 1);
+        int x0 = (int)MathF.Floor(x);
+        int z0 = (int)MathF.Floor(z);
+        int x1 = Math.Min(x0 + 1, heightmapWidth - 1);
+        int z1 = Math.Min(z0 + 1, heightmapHeight - 1);
+        float tx = x - x0;
+        float tz = z - z0;
+
+        float h00 = sampleHeight!(x0, z0);
+        float h10 = sampleHeight(x1, z0);
+        float h01 = sampleHeight(x0, z1);
+        float h11 = sampleHeight(x1, z1);
+        float hx0 = h00 + (h10 - h00) * tx;
+        float hx1 = h01 + (h11 - h01) * tx;
+        return hx0 + (hx1 - hx0) * tz;
     }
 
     // Task 5 methods below
@@ -515,7 +553,7 @@ public sealed class RiverMeshService
             AvgHalfWidth = segment.AvgHalfWidth,
             MapExtent = mapExtent,
             MapWorldSize = mapWorldSize,
-            RefractionMaxCameraHeight = MathF.Max(50.0f, heightSource?.HeightScale ?? 50.0f),
+            RefractionMaxCameraHeight = MathF.Max(50.0f, heightScale > 0.0f ? heightScale : heightSource?.HeightScale ?? 50.0f),
         };
     }
 
@@ -561,11 +599,13 @@ public sealed class RiverMeshService
 
     private Vector2 GetMapWorldSize()
     {
-        if (heightSource != null && heightSource.HeightmapWidth > 0 && heightSource.HeightmapHeight > 0)
+        int width = heightmapWidth > 0 ? heightmapWidth : heightSource?.HeightmapWidth ?? 0;
+        int height = heightmapHeight > 0 ? heightmapHeight : heightSource?.HeightmapHeight ?? 0;
+        if (width > 0 && height > 0)
         {
             return new Vector2(
-                Math.Max(heightSource.HeightmapWidth - 1, 0) * TerrainWorldToRiverMapUnits,
-                Math.Max(heightSource.HeightmapHeight - 1, 0) * TerrainWorldToRiverMapUnits);
+                Math.Max(width - 1, 0) * TerrainWorldToRiverMapUnits,
+                Math.Max(height - 1, 0) * TerrainWorldToRiverMapUnits);
         }
 
         return new Vector2(4096.0f, 4096.0f);

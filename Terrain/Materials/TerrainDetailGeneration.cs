@@ -85,16 +85,15 @@ internal sealed class TerrainBiomeRuleLayer
 internal sealed class TerrainDetailGenerationContext
 {
     public TerrainDetailGenerationContext(
-        ushort[] heightData,
+        Func<int, int, float> getHeight,
         int heightWidth,
         int heightHeight,
-        float heightScale,
         byte[] biomeMaskData,
         int biomeMaskWidth,
         int biomeMaskHeight,
         int biomeMaskToHeightRatio)
     {
-        ArgumentNullException.ThrowIfNull(heightData);
+        ArgumentNullException.ThrowIfNull(getHeight);
         ArgumentNullException.ThrowIfNull(biomeMaskData);
 
         if (heightWidth <= 0)
@@ -107,28 +106,23 @@ internal sealed class TerrainDetailGenerationContext
             throw new ArgumentOutOfRangeException(nameof(biomeMaskHeight));
         if (biomeMaskToHeightRatio <= 0)
             throw new ArgumentOutOfRangeException(nameof(biomeMaskToHeightRatio));
-        if (heightData.Length != heightWidth * heightHeight)
-            throw new ArgumentException("Height data length does not match dimensions.", nameof(heightData));
         if (biomeMaskData.Length != biomeMaskWidth * biomeMaskHeight)
             throw new ArgumentException("Biome mask length does not match dimensions.", nameof(biomeMaskData));
 
-        HeightData = heightData;
+        GetHeight = getHeight;
         HeightWidth = heightWidth;
         HeightHeight = heightHeight;
-        HeightScale = heightScale;
         BiomeMaskData = biomeMaskData;
         BiomeMaskWidth = biomeMaskWidth;
         BiomeMaskHeight = biomeMaskHeight;
         BiomeMaskToHeightRatio = biomeMaskToHeightRatio;
     }
 
-    public ushort[] HeightData { get; }
+    public Func<int, int, float> GetHeight { get; }
 
     public int HeightWidth { get; }
 
     public int HeightHeight { get; }
-
-    public float HeightScale { get; }
 
     public byte[] BiomeMaskData { get; }
 
@@ -149,8 +143,6 @@ internal sealed class TerrainDetailGenerationContext
 
 internal static class TerrainDetailMapGenerator
 {
-    private const float HeightSampleNormalization = 1.0f / ushort.MaxValue;
-
     public static TerrainDetailControlPixel EvaluatePixel(
         TerrainDetailGenerationContext context,
         IReadOnlyList<TerrainBiomeRuleLayer> layers,
@@ -317,16 +309,11 @@ internal static class TerrainDetailMapGenerator
         return MathF.Atan2(down - up, right - left) * (180.0f / MathF.PI);
     }
 
-    private static float SampleHeightNormalized(TerrainDetailGenerationContext context, int x, int y)
+    private static float SampleHeightWorld(TerrainDetailGenerationContext context, int x, int y)
     {
         int clampedX = Math.Clamp(x, 0, context.HeightWidth - 1);
         int clampedY = Math.Clamp(y, 0, context.HeightHeight - 1);
-        return context.HeightData[clampedY * context.HeightWidth + clampedX] * HeightSampleNormalization;
-    }
-
-    private static float SampleHeightWorld(TerrainDetailGenerationContext context, int x, int y)
-    {
-        return SampleHeightNormalized(context, x, y) * context.HeightScale;
+        return context.GetHeight(clampedX, clampedY);
     }
 
     private static void ResolveMaskTexelToHeightCoord(TerrainDetailGenerationContext context, int maskX, int maskY, out int heightX, out int heightY)

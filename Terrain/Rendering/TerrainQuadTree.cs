@@ -103,6 +103,11 @@ internal sealed class TerrainQuadTree : IDisposable
         streamingManager.ProcessPendingUploads(commandList, maxUploadsPerFrame);
     }
 
+    public float GetHeight(int sampleX, int sampleZ, float heightScale)
+    {
+        return streamingManager.GetHeight(sampleX, sampleZ, heightScale);
+    }
+
     public void Dispose()
     {
         streamingManager.Dispose();

@@ -10,7 +10,6 @@ using Stride.Engine;
 using Stride.Engine.Design;
 using Stride.Graphics;
 using Stride.Rendering;
-using Terrain.Rivers;
 
 namespace Terrain;
 
@@ -103,6 +102,9 @@ public sealed class TerrainComponent : ActivableEntityComponent
     internal TerrainQuadTree? QuadTree;
 
     [DataMemberIgnore]
+    internal TerrainHeightSampler? HeightSampler;
+
+    [DataMemberIgnore]
     internal RuntimeMaterialManager? MaterialManager;
 
     [DataMemberIgnore]
@@ -111,25 +113,9 @@ public sealed class TerrainComponent : ActivableEntityComponent
     [DataMemberIgnore]
     internal TerrainConfig FailedRuntimeLoadConfig;
 
-    [DataMemberIgnore]
-    internal ushort[]? RuntimeHeightData;
-
-    [DataMemberIgnore]
-    internal int RuntimeHeightDataWidth;
-
-    [DataMemberIgnore]
-    internal int RuntimeHeightDataHeight;
-
-    public bool TryCreateRiverHeightSource(out IRiverTerrainHeightSource heightSource)
+    public float GetHeight(int sampleX, int sampleZ)
     {
-        if (RuntimeHeightData == null || RuntimeHeightDataWidth <= 0 || RuntimeHeightDataHeight <= 0)
-        {
-            heightSource = NullRiverTerrainHeightSource.Instance;
-            return false;
-        }
-
-        heightSource = new TerrainComponentRiverHeightSource(this);
-        return true;
+        return HeightSampler?.GetHeight(sampleX, sampleZ, HeightScale) ?? 0.0f;
     }
 }
 

@@ -12,7 +12,10 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Run("terrain runtime load disposes reader when detail map build fails", TerrainRuntimeLoadDisposesReaderWhenDetailMapBuildFails);
         TestHarness.Run("runtime load failure marks component when terrain data is missing", RuntimeLoadFailureMarksComponentWhenTerrainDataIsMissing);
         TestHarness.Run("runtime load failure marks component when biome mask is missing", RuntimeLoadFailureMarksComponentWhenBiomeMaskIsMissing);
-        TestHarness.Run("runtime terrain component exposes river height source after load", RuntimeTerrainComponentExposesRiverHeightSourceAfterLoad);
+        TestHarness.Run("terrain height sampler reads requested height tile on demand", TerrainHeightSamplerReadsRequestedHeightTileOnDemand);
+        TestHarness.Run("terrain height sampler caches at most four tiles", TerrainHeightSamplerCachesAtMostFourTiles);
+        TestHarness.Run("terrain component does not retain full runtime height data", TerrainComponentDoesNotRetainFullRuntimeHeightData);
+        TestHarness.Run("runtime detail map uses terrain component height interface", RuntimeDetailMapUsesTerrainComponentHeightInterface);
     }
 
     private static void RuntimeLoadGateBlocksRepeatedRetriesUntilConfigChanges()
@@ -100,7 +103,65 @@ internal static class TerrainRuntimeLoadBehaviorTests
             "runtime load error should mention the missing biome mask");
     }
 
-    private static void RuntimeTerrainComponentExposesRiverHeightSourceAfterLoad()
+    private static void TerrainHeightSamplerReadsRequestedHeightTileOnDemand()
+    {
+        var reader = new FakeTerrainFileReader(
+            width: 4,
+            height: 4,
+            heightData:
+            [
+                0, 1000, 2000, 3000,
+                4000, 5000, 6000, 7000,
+                8000, 9000, 10000, 11000,
+                12000, 13000, 14000, 15000,
+            ]);
+
+        var sampler = new TerrainHeightSampler(reader);
+
+        float sample = sampler.GetHeight(1, 1, 123.0f);
+
+        TestHarness.AssertEqual(5000.0f * (1.0f / ushort.MaxValue) * 123.0f, sample, "height sampler should return the requested discrete sample height");
+        TestHarness.AssertEqual(1, reader.HeightPageReadCount, "height sampler should read the requested tile on demand");
+
+        _ = sampler.GetHeight(1, 1, 123.0f);
+
+        TestHarness.AssertEqual(1, reader.HeightPageReadCount, "height sampler should reuse cached height tiles");
+    }
+
+    private static void TerrainHeightSamplerCachesAtMostFourTiles()
+    {
+        var reader = new FakeTerrainFileReader(width: 11, height: 3, tileSize: 3);
+        var sampler = new TerrainHeightSampler(reader);
+
+        _ = sampler.GetHeight(0, 0, 123.0f);
+        _ = sampler.GetHeight(2, 0, 123.0f);
+        _ = sampler.GetHeight(4, 0, 123.0f);
+        _ = sampler.GetHeight(6, 0, 123.0f);
+        _ = sampler.GetHeight(8, 0, 123.0f);
+        _ = sampler.GetHeight(0, 0, 123.0f);
+
+        TestHarness.AssertEqual(6, reader.HeightPageReadCount, "height sampler should evict the least recently used page after four cached tiles");
+    }
+
+    private static void TerrainComponentDoesNotRetainFullRuntimeHeightData()
+    {
+        var component = new TerrainComponent();
+        var reader = new FakeTerrainFileReader();
+
+        bool loaded = TerrainProcessor.TryLoadRuntimeData(
+            component,
+            CreateResourceBundle,
+            out _,
+            _ => reader,
+            static (_, _, _) => new RuntimeDetailMapData(new byte[4], new byte[4], 2, 2));
+
+        TestHarness.Assert(loaded, "runtime terrain data should load");
+        TestHarness.AssertEqual(0, reader.ReadAllHeightDataCount, "runtime load should not read the full heightmap into CPU memory");
+        string componentSource = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Terrain", "Core", "TerrainComponent.cs"));
+        TestHarness.Assert(!componentSource.Contains("RuntimeHeightData", StringComparison.Ordinal), "TerrainComponent should not retain full runtime height data");
+    }
+
+    private static void RuntimeDetailMapUsesTerrainComponentHeightInterface()
     {
         var component = new TerrainComponent();
         var reader = new FakeTerrainFileReader(
@@ -119,15 +180,30 @@ internal static class TerrainRuntimeLoadBehaviorTests
             CreateResourceBundle,
             out _,
             _ => reader,
-            static (_, _, _) => new RuntimeDetailMapData(new byte[4], new byte[4], 2, 2));
+            static (terrain, _, _) =>
+            {
+                float sample = terrain.GetHeight(1, 1);
+                TestHarness.AssertEqual(5000.0f * (1.0f / ushort.MaxValue) * 123.0f, sample, "runtime detail map builder should sample through TerrainComponent.GetHeight");
+                return new RuntimeDetailMapData(new byte[4], new byte[4], 2, 2);
+            });
 
         TestHarness.Assert(loaded, "runtime terrain data should load");
-        TestHarness.Assert(component.TryCreateRiverHeightSource(out IRiverTerrainHeightSource heightSource), "loaded runtime terrain should expose a river height source");
-        TestHarness.Assert(heightSource.HasHeightData, "river height source should have height data");
-        TestHarness.AssertEqual(4, heightSource.HeightmapWidth, "river height source width");
-        TestHarness.AssertEqual(4, heightSource.HeightmapHeight, "river height source height");
-        TestHarness.AssertEqual(123.0f, heightSource.HeightScale, "river height source height scale");
-        TestHarness.AssertEqual(5000.0f * (1.0f / ushort.MaxValue) * 123.0f, heightSource.SampleHeight(1.0f, 1.0f), "river height source sample");
+        TestHarness.AssertEqual(1, reader.HeightPageReadCount, "runtime detail map builder should trigger only requested height tile load");
+        TestHarness.AssertEqual(0, reader.ReadAllHeightDataCount, "runtime detail map builder should not read the full heightmap");
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        string? current = AppContext.BaseDirectory;
+        while (current != null)
+        {
+            if (File.Exists(Path.Combine(current, "Terrain.sln")))
+                return current;
+
+            current = Directory.GetParent(current)?.FullName;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate repository root from AppContext.BaseDirectory.");
     }
 
     private static TerrainRuntimeResourceBundle CreateResourceBundle()

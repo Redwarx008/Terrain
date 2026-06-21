@@ -27,9 +27,9 @@
 
 ### 3. Terrain Height Source
 
-- `TerrainProcessor` 读取 `.terrain` 时保留 runtime height data。
-- `TerrainComponent.TryCreateRiverHeightSource()` 暴露河流 mesh 生成需要的采样接口。
-- Runtime detail map 与河流 mesh 共用 `.terrain` 内高度数据，不依赖 `heightmap.png`。
+- `TerrainProcessor` 不再为 Runtime DetailMap 读取完整 height data，也不再把整张 `ushort[]` 挂到 `TerrainComponent` 上。
+- `TerrainComponent.GetHeight(int sampleX, int sampleZ)` 暴露离散高度 sample 查询；缺 tile 时通过 `.terrain` height page 读取和固定 4-tile CPU cache 补齐。Runtime DetailMap 与 River 都复用这个组件接口。
+- River mesh 生成需要连续高度时自己对 4 个离散 sample 做双线性插值，不让 Terrain 承担 river-specific 采样策略。
 
 ### 4. RiverProcessor Runtime Load
 
@@ -87,5 +87,5 @@ All verification commands completed successfully. Build output still includes ex
 - Runtime entity: `Terrain/Assets/MainScene.sdscene` (`RiverSystem`)
 - Runtime render feature: `Terrain/Assets/GraphicsCompositor.sdgfxcomp`
 - Runtime mesh load: `Terrain/Rendering/River/RiverProcessor.cs`
-- Runtime height source: `Terrain/Rivers/TerrainComponentRiverHeightSource.cs`
+- Runtime discrete height sampling: `Terrain/Streaming/TerrainHeightSampler.cs`
 - Width config: `Terrain/Resources/TerrainRuntimeResourceBundle.cs`

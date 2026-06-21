@@ -81,8 +81,8 @@
 | RuntimeMaterialManager | ✅ | `Terrain/Materials/RuntimeMaterialManager.cs` | descriptor 驱动 |
 | 虚拟资源 Bootstrap | ✅ | `Terrain/Resources/` | `TerrainWorkspaceRoot` 元数据优先、`Terrain` 程序集目录回退的 `gameRoot` 扫描或 direct-hit 合法 `game/` 根 + 有效 app 目录旁 `LaunchSetting.json` + `GameResourceResolverBootstrap` + resolver/bootstrap；显式 `CreateForAppDirectory(appRoot)` 仅用于测试和工具入口 |
 | Editor 作者态写回器 | ✅ | `Terrain.Editor/Services/Resources/*Writer.cs` | 写回当前命中的 `default.toml` / heightmap / biome_mask / biome_settings / materials descriptor；rivers 当前仅可选读取，不写回 |
-| Runtime DetailMap 构建 | ✅ | `Terrain/Materials/RuntimeDetailMapBuilder.cs` | 高度来源于 `.terrain` 内数据，而不是 `heightmap.png` |
-| Runtime 河流渲染 | ✅ | `Terrain/Rendering/River/`, `Terrain/Rivers/`, `Terrain/Assets/MainScene.sdscene`, `Terrain/Assets/GraphicsCompositor.sdgfxcomp` | Runtime scene asset 持有 `RiverSystem` / `RiverComponent`，GraphicsCompositor asset 持有 `RiverRenderFeature`；`RiverProcessor` 在地形高度数据初始化后加载可选 `rivers.png`，按 `river_min_width` / `river_max_width` 生成 mesh。缺少 `rivers.png` 时只禁用河流，不阻断地形加载。 |
+| Runtime DetailMap 构建 | ✅ | `Terrain/Materials/RuntimeDetailMapBuilder.cs` | 高度通过 `TerrainComponent.GetHeight(int,int)` 从 `.terrain` 按需读取 height page，不读取或常驻完整 `ushort[]` heightmap |
+| Runtime 河流渲染 | ✅ | `Terrain/Rendering/River/`, `Terrain/Rivers/`, `Terrain/Assets/MainScene.sdscene`, `Terrain/Assets/GraphicsCompositor.sdgfxcomp` | Runtime scene asset 持有 `RiverSystem` / `RiverComponent`，GraphicsCompositor asset 持有 `RiverRenderFeature`；`RiverProcessor` 在地形初始化后加载可选 `rivers.png`，按 `river_min_width` / `river_max_width` 生成 mesh。`TerrainComponent` 只暴露离散 `GetHeight(int,int)`，缺 tile 时按需读取 `.terrain` height page，并只保留 4 个 CPU height tile 缓存；River 自己对离散 sample 做双线性插值，不让 Runtime 常驻完整 heightmap。缺少 `rivers.png` 时只禁用河流，不阻断地形加载。 |
 | 半分辨率 SplatMap | ✅ | Editor + Runtime 均支持 | - |
 
 ## 规划中 (Planned)

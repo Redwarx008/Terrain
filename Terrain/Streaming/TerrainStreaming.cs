@@ -724,6 +724,7 @@ internal sealed class TerrainStreamingManager : IDisposable
     private readonly int splatMapLodOffset;
     private readonly PageBufferAllocator heightmapBufferPool;
     private readonly PageBufferAllocator? splatMapBufferPool;
+    private readonly TerrainHeightSampler heightSampler;
     private bool hasLoggedBufferPoolExhaustion;
 
     public TerrainStreamingManager(
@@ -732,6 +733,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         GpuVirtualTextureArray? gpuDetailIndexArray,
         Texture? detailWeightArray,
         RuntimeDetailMapData? generatedDetailMaps,
+        TerrainHeightSampler heightSampler,
         int baseChunkSize)
     {
         this.fileReader = fileReader;
@@ -739,6 +741,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         this.gpuDetailIndexArray = gpuDetailIndexArray;
         this.detailWeightArray = detailWeightArray;
         this.generatedDetailMaps = generatedDetailMaps;
+        this.heightSampler = heightSampler;
         this.baseChunkSize = baseChunkSize;
         effectivePageSpanInSamples = Math.Max(1, fileReader.HeightmapHeader.TileSize - 1);
 
@@ -781,6 +784,11 @@ internal sealed class TerrainStreamingManager : IDisposable
     public int TileSize => gpuHeightArray.TileSize;
 
     public int Padding => gpuHeightArray.Padding;
+
+    public float GetHeight(int sampleX, int sampleZ, float heightScale)
+    {
+        return heightSampler.GetHeight(sampleX, sampleZ, heightScale);
+    }
 
     /// <summary>
     /// 直接从 chunk key 计算 splatmap page key。

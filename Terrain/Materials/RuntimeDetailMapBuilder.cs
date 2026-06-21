@@ -17,7 +17,7 @@ internal static class RuntimeDetailMapBuilder
     private const int BytesPerPixel = 4;
 
     public static RuntimeDetailMapData Generate(
-        ushort[] heightData,
+        Func<int, int, float> getHeight,
         int heightWidth,
         int heightHeight,
         byte[] biomeMaskData,
@@ -25,7 +25,6 @@ internal static class RuntimeDetailMapBuilder
         int biomeMaskHeight,
         RuntimeBiomeSettings biomeSettings,
         RuntimeMaterialDescriptor materialDescriptor,
-        float heightScale,
         int biomeMaskResolutionRatio)
     {
         var indexData = new byte[(long)biomeMaskWidth * biomeMaskHeight * BytesPerPixel];
@@ -39,10 +38,9 @@ internal static class RuntimeDetailMapBuilder
         }
 
         var generationContext = new TerrainDetailGenerationContext(
-            heightData,
+            getHeight,
             heightWidth,
             heightHeight,
-            heightScale,
             biomeMaskData,
             biomeMaskWidth,
             biomeMaskHeight,

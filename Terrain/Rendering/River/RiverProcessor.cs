@@ -115,8 +115,8 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
 
         TerrainComponent? terrainComponent = FindInitializedTerrainComponent();
         if (terrainComponent == null
-            || !terrainComponent.TryCreateRiverHeightSource(out IRiverTerrainHeightSource heightSource)
-            || !heightSource.HasHeightData)
+            || terrainComponent.HeightmapWidth <= 0
+            || terrainComponent.HeightmapHeight <= 0)
         {
             return;
         }
@@ -126,8 +126,8 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
             1.0f,
             4.0f,
             terrainComponent.HeightScale,
-            heightSource.HeightmapWidth,
-            heightSource.HeightmapHeight);
+            terrainComponent.HeightmapWidth,
+            terrainComponent.HeightmapHeight);
         if (!component.ShouldAttemptRuntimeLoad(unresolvedConfig))
         {
             return;
@@ -151,8 +151,8 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
             bundle.RiverMinWidth,
             bundle.RiverMaxWidth,
             bundle.HeightScale,
-            heightSource.HeightmapWidth,
-            heightSource.HeightmapHeight);
+            terrainComponent.HeightmapWidth,
+            terrainComponent.HeightmapHeight);
 
         if (!component.ShouldAttemptRuntimeLoad(config))
         {
@@ -189,7 +189,11 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
                 segment.TaperEnd = segment.EndKind is SegmentEndKind.Confluence or SegmentEndKind.Bifurcation;
             }
 
-            var meshService = new RiverMeshService(heightSource);
+            var meshService = new RiverMeshService(
+                terrainComponent.GetHeight,
+                terrainComponent.HeightmapWidth,
+                terrainComponent.HeightmapHeight,
+                terrainComponent.HeightScale);
             meshService.BuildCenterlines(segments, mapService.Width, mapService.Height);
             RiverMeshData[] meshes = segments
                 .Select(segment => meshService.BuildRiverMesh(segment, 1.0f))
