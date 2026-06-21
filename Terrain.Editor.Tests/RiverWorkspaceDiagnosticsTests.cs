@@ -15,6 +15,8 @@ internal static class RiverWorkspaceDiagnosticsTests
         TestHarness.Run("temporary river map parses into river segments", TemporaryRiverMapParsesIntoRiverSegments);
         TestHarness.Run("temporary river map publishes river meshes through generator", TemporaryRiverMapPublishesRiverMeshesThroughGenerator);
         TestHarness.Run("curved river map publishes smooth mesh boundaries", CurvedRiverMapPublishesSmoothMeshBoundaries);
+        TestHarness.Run("long straight river keeps coarse centerline sample budget", LongStraightRiverKeepsCoarseCenterlineSampleBudget);
+        TestHarness.Run("curved river centerline resamples terrain height after smoothing", CurvedRiverCenterlineResamplesTerrainHeightAfterSmoothing);
         TestHarness.Run("river mesh map extent uses world coordinate span", RiverMeshMapExtentUsesWorldCoordinateSpan);
     }
 
@@ -159,6 +161,63 @@ internal static class RiverWorkspaceDiagnosticsTests
         TestHarness.Assert(maxBoundaryAngle <= 12.0f, $"Curved river map mesh boundaries should stay smooth, actual max angle {maxBoundaryAngle:0.00}");
     }
 
+    private static void LongStraightRiverKeepsCoarseCenterlineSampleBudget()
+    {
+        var segment = new RiverSegment();
+        for (int x = 0; x <= 40; x++)
+            segment.Cells.Add((x, 2));
+
+        var meshService = new RiverMeshService(CreateFlatTerrainManagerStub(84, 8));
+
+        meshService.BuildCenterlines([segment], 41, 5);
+
+        TestHarness.Assert(
+            segment.Centerline.Count <= 100,
+            $"Long straight river should not use bend-level sampling density everywhere. Actual samples: {segment.Centerline.Count}");
+    }
+
+    private static void CurvedRiverCenterlineResamplesTerrainHeightAfterSmoothing()
+    {
+        var segment = new RiverSegment
+        {
+            Cells =
+            [
+                (0, 2),
+                (1, 2),
+                (2, 2),
+                (3, 2),
+                (3, 3),
+                (3, 4),
+                (4, 4),
+                (5, 4),
+                (6, 4),
+                (6, 3),
+                (6, 2),
+                (7, 2),
+                (8, 2),
+                (9, 2),
+            ],
+        };
+        const float heightScale = 1000.0f;
+        var terrainManager = CreateTerrainManagerStub(24, 16, HeightAtSample, heightScale);
+        var meshService = new RiverMeshService(terrainManager);
+
+        meshService.BuildCenterlines([segment], 10, 7);
+
+        float maxError = 0.0f;
+        foreach (Vector3 point in segment.Centerline)
+        {
+            float expected = SampleEncodedTerrainHeight(point.X, point.Z, 24, 16, HeightAtSample, heightScale) + 0.02f;
+            maxError = MathF.Max(maxError, MathF.Abs(point.Y - expected));
+        }
+
+        TestHarness.Assert(
+            maxError <= 0.03f,
+            $"Curved river centerline should resample terrain height at smoothed XZ positions. Max height error: {maxError:0.000}");
+
+        static float HeightAtSample(int x, int y) => (x * x + y * y) * 0.5f;
+    }
+
     private static void SetRiver(RiverCell[,] cells, int x, int y, RiverPixelType type = RiverPixelType.River)
     {
         cells[x, y] = new RiverCell(type, 1);
@@ -168,16 +227,44 @@ internal static class RiverWorkspaceDiagnosticsTests
         => CreateFlatTerrainManagerStub(1, 1);
 
     private static TerrainManager CreateFlatTerrainManagerStub(int width, int height)
+        => CreateTerrainManagerStub(width, height, static (_, _) => 0.0f, 200.0f);
+
+    private static TerrainManager CreateTerrainManagerStub(int width, int height, Func<int, int, float> heightAtSample, float heightScale)
     {
 #pragma warning disable SYSLIB0050
         var terrainManager = (TerrainManager)FormatterServices.GetUninitializedObject(typeof(TerrainManager));
 #pragma warning restore SYSLIB0050
 
-        SetInstanceField(terrainManager, "heightDataCache", new ushort[width * height]);
+        var heightData = new ushort[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                float normalizedHeight = Math.Clamp(heightAtSample(x, y) / heightScale, 0.0f, 1.0f);
+                heightData[y * width + x] = (ushort)MathF.Round(normalizedHeight * ushort.MaxValue);
+            }
+        }
+
+        SetInstanceField(terrainManager, "heightDataCache", heightData);
         SetInstanceField(terrainManager, "heightDataWidth", width);
         SetInstanceField(terrainManager, "heightDataHeight", height);
-        SetInstanceField(terrainManager, "<HeightScale>k__BackingField", 200.0f);
+        SetInstanceField(terrainManager, "<HeightScale>k__BackingField", heightScale);
         return terrainManager;
+    }
+
+    private static float SampleEncodedTerrainHeight(
+        float wx,
+        float wz,
+        int width,
+        int height,
+        Func<int, int, float> heightAtSample,
+        float heightScale)
+    {
+        int ix = Math.Clamp((int)Math.Round(wx), 0, width - 1);
+        int iy = Math.Clamp((int)Math.Round(wz), 0, height - 1);
+        float normalizedHeight = Math.Clamp(heightAtSample(ix, iy) / heightScale, 0.0f, 1.0f);
+        ushort encoded = (ushort)MathF.Round(normalizedHeight * ushort.MaxValue);
+        return encoded * (1.0f / ushort.MaxValue) * heightScale;
     }
 
     private static void RiverMeshMapExtentUsesWorldCoordinateSpan()

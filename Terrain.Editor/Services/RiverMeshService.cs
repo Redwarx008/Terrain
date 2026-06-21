@@ -11,7 +11,11 @@ namespace Terrain.Editor.Services;
 
 public sealed class RiverMeshService
 {
-    private const float CurveSampleSpacing = 0.25f;
+    private const float StraightSampleSpacing = 1.0f;
+    private const float ModerateCurveSampleSpacing = 0.5f;
+    private const float TightCurveSampleSpacing = 0.25f;
+    private const float ModerateCurveAngleDegrees = 2.0f;
+    private const float TightCurveAngleDegrees = 6.0f;
     private const float CenterlineSimplificationTolerance = 1.5f;
     private const int CenterlineSmoothingIterations = 2;
     private const float BendRelaxationWeight = 0.4f;
@@ -55,8 +59,8 @@ public sealed class RiverMeshService
             var simplifiedPoints = SimplifyCenterline(rawPoints, CenterlineSimplificationTolerance);
             var smoothedPoints = SmoothCenterline(simplifiedPoints, CenterlineSmoothingIterations);
 
-            // Catmull-Rom interpolation
-            seg.Centerline = CatmullRomInterpolate(smoothedPoints, CurveSampleSpacing);
+            var interpolatedPoints = CatmullRomInterpolate(smoothedPoints);
+            seg.Centerline = ResampleTerrainHeights(interpolatedPoints);
             seg.WorldLength = ComputeMapUnitPolylineLength(seg.Centerline);
         }
     }
@@ -173,12 +177,12 @@ public sealed class RiverMeshService
         return distance.LengthSquared();
     }
 
-    private static List<Vector3> CatmullRomInterpolate(List<Vector3> controlPoints, float spacing)
+    private static List<Vector3> CatmullRomInterpolate(List<Vector3> controlPoints)
     {
         if (controlPoints.Count < 2) return new List<Vector3>(controlPoints);
 
         var result = new List<Vector3> { controlPoints[0] };
-        float accumulated = 0;
+        float accumulated = 0.0f;
 
         for (int i = 0; i < controlPoints.Count - 1; i++)
         {
@@ -187,7 +191,8 @@ public sealed class RiverMeshService
             Vector3 p2 = controlPoints[i + 1];
             Vector3 p3 = controlPoints[Math.Min(controlPoints.Count - 1, i + 2)];
 
-            float segmentLength = Vector3.Distance(p1, p2);
+            float spacing = ComputeAdaptiveSampleSpacing(p0, p1, p2, p3);
+            float segmentLength = HorizontalDistance(p1, p2);
             if (segmentLength < 0.001f) continue;
 
             int steps = Math.Max(1, (int)(segmentLength / spacing));
@@ -195,7 +200,7 @@ public sealed class RiverMeshService
             {
                 float t = s / (float)steps;
                 Vector3 point = CatmullRom(p0, p1, p2, p3, t);
-                float dist = Vector3.Distance(result[^1], point);
+                float dist = HorizontalDistance(result[^1], point);
                 accumulated += dist;
                 if (accumulated >= spacing)
                 {
@@ -209,6 +214,53 @@ public sealed class RiverMeshService
             result.Add(controlPoints[^1]);
 
         return result;
+    }
+
+    private List<Vector3> ResampleTerrainHeights(List<Vector3> points)
+    {
+        var result = new List<Vector3>(points.Count);
+        foreach (Vector3 point in points)
+            result.Add(new Vector3(point.X, SampleTerrainHeight(point.X, point.Z) + SurfaceOffset, point.Z));
+
+        return result;
+    }
+
+    private static float ComputeAdaptiveSampleSpacing(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3)
+    {
+        float maxTurnAngle = MathF.Max(
+            ComputeTurnAngleDegrees(p0, p1, p2),
+            ComputeTurnAngleDegrees(p1, p2, p3));
+
+        if (maxTurnAngle >= TightCurveAngleDegrees)
+            return TightCurveSampleSpacing;
+
+        if (maxTurnAngle >= ModerateCurveAngleDegrees)
+            return ModerateCurveSampleSpacing;
+
+        return StraightSampleSpacing;
+    }
+
+    private static float ComputeTurnAngleDegrees(Vector3 previous, Vector3 current, Vector3 next)
+    {
+        Vector3 incoming = current - previous;
+        Vector3 outgoing = next - current;
+        incoming.Y = 0.0f;
+        outgoing.Y = 0.0f;
+
+        if (incoming.LengthSquared() <= 0.000001f || outgoing.LengthSquared() <= 0.000001f)
+            return 0.0f;
+
+        incoming.Normalize();
+        outgoing.Normalize();
+        float dot = Math.Clamp(Vector3.Dot(incoming, outgoing), -1.0f, 1.0f);
+        return MathF.Acos(dot) * 180.0f / MathF.PI;
+    }
+
+    private static float HorizontalDistance(Vector3 a, Vector3 b)
+    {
+        float dx = a.X - b.X;
+        float dz = a.Z - b.Z;
+        return MathF.Sqrt(dx * dx + dz * dz);
     }
 
     private static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)

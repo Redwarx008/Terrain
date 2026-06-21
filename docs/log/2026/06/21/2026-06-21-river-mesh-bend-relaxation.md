@@ -68,11 +68,11 @@ Related docs:
 - The test uses a repeated low-resolution bend pattern and asserts the smoothed centerline stays at or below `30°` max horizontal internal turn.
 - Verified red: current implementation failed with `actual max angle 33.69`.
 
-**Implementation:**
-- Added `BendRelaxationWeight = 0.25f`.
-- `SmoothCenterline` still performs its existing Chaikin pass and preserves the old one-iteration behavior.
-- For `iterations >= 2`, it now runs `RelaxRepeatedBends` for `iterations + 1` passes.
-- `RelaxRepeatedBends` preserves endpoints and applies a simple neighbor-weighted relaxation to internal points.
+**Initial Implementation:**
+- First tried `BendRelaxationWeight = 0.25f`.
+- `SmoothCenterline` still performed its existing Chaikin pass and preserved the old one-iteration behavior.
+- For `iterations >= 2`, the initial version ran `RelaxRepeatedBends` for `iterations + 1` passes.
+- `RelaxRepeatedBends` preserved endpoints and applied a simple neighbor-weighted relaxation to internal points.
 
 **Rationale:**
 - This addresses the centerline shape before ribbon generation, so both bottom and surface pass geometry improve together.
@@ -129,7 +129,7 @@ This shows the remaining hard corner was not the miter join alone, and not just 
 
 - River mesh generation now has an additional post-Chaikin bend relaxation step.
 - Follow-up visual feedback tightened the regression target from `30°` to `15°`.
-- Full generation-chain testing tightened the final mesh boundary target to `12°` and reduced Catmull-Rom sampling spacing to `0.25`.
+- Full generation-chain testing tightened the final mesh boundary target to `12°`; the initial follow-up used fixed Catmull-Rom spacing `0.25`, later refined in a follow-up session to adaptive spacing with `0.25` only around tight bends.
 - `docs/ARCHITECTURE_OVERVIEW.md` and `docs/CURRENT_FEATURES.md` were updated.
 - No new ADR was created because this is a scoped implementation refinement, not a new architecture decision.
 - No new learning note was created; the RenderDoc mesh-export workflow is already covered by existing river debugging learnings.
@@ -163,7 +163,7 @@ Result:
 **What Changed Since Last Doc Read:**
 - `RiverMeshService.SmoothCenterline` now applies endpoint-preserving bend relaxation when called with two or more iterations.
 - A regression test locks repeated bends to `<= 15°` after smoothing.
-- `RiverMeshService` now uses `CurveSampleSpacing=0.25` so final generated ribbon boundaries stay below `12°` on a curved river-map fixture.
+- `RiverMeshService` initially used fixed `CurveSampleSpacing=0.25` so final generated ribbon boundaries stayed below `12°` on a curved river-map fixture; follow-up review refined this to adaptive sampling.
 
 **Gotchas:**
 - Do not diagnose this class of hard river bend as bottom/surface shader lighting first; export mesh and inspect centerline angles.
