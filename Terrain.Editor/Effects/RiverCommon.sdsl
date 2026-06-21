@@ -2,6 +2,8 @@ namespace Terrain.Editor
 {
     shader RiverCommon
     {
+        stage float _RefractionMaxCameraHeight = 50.0f;
+
         float RiverSaturate(float value)
         {
             return saturate(value);
@@ -34,7 +36,7 @@ namespace Terrain.Editor
 
         float3 RiverClampRefractionCameraPosition(float3 worldPosition, float3 cameraPosition, float3 toCameraDir)
         {
-            const float maxHeight = 50.0f;
+            float maxHeight = max(_RefractionMaxCameraHeight, 50.0f);
             if (cameraPosition.y > maxHeight)
             {
                 float above = cameraPosition.y - maxHeight;

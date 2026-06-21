@@ -6,4 +6,18 @@
 // and re-save the associated .sdfx.
 // </auto-generated>
 
-// Nothing to generate
+using System;
+using Stride.Core;
+using Stride.Rendering;
+using Stride.Graphics;
+using Stride.Shaders;
+using Stride.Core.Mathematics;
+using Buffer = Stride.Graphics.Buffer;
+
+namespace Terrain.Editor
+{
+    public static partial class RiverCommonKeys
+    {
+        public static readonly ValueParameterKey<float> _RefractionMaxCameraHeight = ParameterKeys.NewValue<float>(50.0f);
+    }
+}

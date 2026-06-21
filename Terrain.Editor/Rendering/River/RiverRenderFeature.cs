@@ -155,7 +155,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         {
             using (context.PushRenderTargetsAndRestore())
             {
-                SeedSceneColorFromScene(context, renderView, sceneColor);
+                float refractionMaxCameraHeight = ResolveRefractionMaxCameraHeight(renderViewStage, startIndex, endIndex);
+                SeedSceneColorFromScene(context, renderView, sceneColor, refractionMaxCameraHeight);
                 CopySceneSeedToBottomColor(commandList);
                 commandList.SetRenderTargetAndViewport(renderResources.BottomDepth, renderResources.BottomColor);
                 commandList.Clear(renderResources.BottomDepth, DepthStencilClearOptions.DepthBuffer);
@@ -174,7 +175,23 @@ public sealed class RiverRenderFeature : RootRenderFeature
         DrawPass(context, renderView, renderViewStage, startIndex, endIndex, surfaceEffect, surfacePipelineState, renderResources.BottomColor);
     }
 
-    private void SeedSceneColorFromScene(RenderDrawContext context, RenderView renderView, Texture? sceneColor)
+    private float ResolveRefractionMaxCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)
+    {
+        float maxHeight = 50.0f;
+        for (int index = startIndex; index < endIndex; index++)
+        {
+            var renderNodeReference = renderViewStage.SortedRenderNodes[index].RenderNode;
+            var renderNode = GetRenderNode(renderNodeReference);
+            if (renderNode.RenderObject is RiverRenderObject riverObject && riverObject.Enabled)
+            {
+                maxHeight = MathF.Max(maxHeight, riverObject.RefractionMaxCameraHeight);
+            }
+        }
+
+        return maxHeight;
+    }
+
+    private void SeedSceneColorFromScene(RenderDrawContext context, RenderView renderView, Texture? sceneColor, float refractionMaxCameraHeight)
     {
         Debug.Assert(renderResources.SceneSeedColor != null, "River scene seed color target has not been allocated.");
         Debug.Assert(sceneColor != null, "River scene seed requires a scene color render target.");
@@ -201,6 +218,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
             var viewInverse = Matrix.Invert(renderView.View);
             seedEffect.Parameters.Set(TransformationKeys.ViewInverse, ref viewInverse);
             seedEffect.Parameters.Set(TransformationKeys.Eye, new Vector4(viewInverse.TranslationVector, 1.0f));
+            seedEffect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, refractionMaxCameraHeight);
             Matrix.Invert(ref renderView.Projection, out var projectionInverse);
             seedEffect.Parameters.Set(TransformationKeys.ProjectionInverse, ref projectionInverse);
             seedEffect.Parameters.Set(TexturingKeys.Sampler, context.GraphicsDevice.SamplerStates.LinearClamp);
@@ -517,6 +535,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         effect.Parameters.Set(RiverBottomKeys._Depth, riverObject.Depth);
         effect.Parameters.Set(RiverBottomKeys._DepthWidthPower, riverObject.DepthWidthPower);
         effect.Parameters.Set(RiverBottomKeys._WorldToMapUnitScale, 0.5f);
+        effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, riverObject.RefractionMaxCameraHeight);
         effect.Parameters.Set(RiverBottomKeys._DepthFakeFactor, riverObject.DepthFakeFactor);
         effect.Parameters.Set(RiverBottomKeys._ParallaxIterations, riverObject.ParallaxIterations);
         effect.Parameters.Set(RiverBottomKeys._BottomNormalStrength, riverObject.BottomNormalStrength);
@@ -529,6 +548,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         effect.Parameters.Set(RiverSurfaceKeys._ViewMatrix, viewMatrix);
         effect.Parameters.Set(RiverSurfaceKeys._MapExtent, riverObject.MapExtent);
         effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);
+        effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, riverObject.RefractionMaxCameraHeight);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, riverObject.FlowNormalUvScale);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalSpeed, riverObject.FlowNormalSpeed);
         effect.Parameters.Set(RiverSurfaceKeys._RiverFoamFactor, riverObject.RiverFoamFactor);

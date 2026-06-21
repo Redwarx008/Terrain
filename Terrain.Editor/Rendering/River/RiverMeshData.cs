@@ -16,6 +16,7 @@ public sealed class RiverMeshData
     public float AvgHalfWidth { get; init; }
     public float MapExtent { get; init; } = 4096.0f;
     public Vector2 MapWorldSize { get; init; } = new(4096.0f, 4096.0f);
+    public float RefractionMaxCameraHeight { get; init; } = 50.0f;
 
     public RiverMeshData CloneSnapshot()
     {
@@ -30,6 +31,7 @@ public sealed class RiverMeshData
             AvgHalfWidth = AvgHalfWidth,
             MapExtent = MapExtent,
             MapWorldSize = MapWorldSize,
+            RefractionMaxCameraHeight = RefractionMaxCameraHeight,
         };
     }
 }

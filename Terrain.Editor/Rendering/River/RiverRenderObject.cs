@@ -19,6 +19,7 @@ public sealed class RiverRenderObject : RenderObject, IDisposable
     public BoundingSphere BoundingSphere { get; private set; } = BoundingSphere.Empty;
     public float MapExtent { get; private set; } = 4096.0f;
     public Vector2 MapWorldSize { get; private set; } = new(4096.0f, 4096.0f);
+    public float RefractionMaxCameraHeight { get; private set; } = 50.0f;
     public float TextureUvScale { get; private set; } = 1.0f;
     public float FlowNormalUvScale { get; private set; } = 0.4f;
     public float FlowNormalSpeed { get; private set; } = 0.075f;
@@ -92,6 +93,7 @@ public sealed class RiverRenderObject : RenderObject, IDisposable
         BoundingSphere = mesh.BoundingSphere;
         MapExtent = mesh.MapExtent;
         MapWorldSize = mesh.MapWorldSize;
+        RefractionMaxCameraHeight = mesh.RefractionMaxCameraHeight;
 
         if (mesh.Vertices.Length == 0 || mesh.Indices.Length == 0)
         {

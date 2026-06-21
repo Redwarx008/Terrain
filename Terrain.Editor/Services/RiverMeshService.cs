@@ -400,6 +400,7 @@ public sealed class RiverMeshService
             AvgHalfWidth = segment.AvgHalfWidth,
             MapExtent = mapExtent,
             MapWorldSize = mapWorldSize,
+            RefractionMaxCameraHeight = MathF.Max(50.0f, terrainManager?.HeightScale ?? 50.0f),
         };
     }
 
