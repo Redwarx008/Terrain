@@ -1,6 +1,7 @@
 using Terrain.Editor.Models;
 using Terrain.Editor.Rendering.River;
 using Terrain.Editor.Services;
+using Stride.Core.Mathematics;
 using System.Reflection;
 using System.Runtime.Serialization;
 using SixLabors.ImageSharp.Formats.Png;
@@ -13,6 +14,7 @@ internal static class RiverWorkspaceDiagnosticsTests
     {
         TestHarness.Run("temporary river map parses into river segments", TemporaryRiverMapParsesIntoRiverSegments);
         TestHarness.Run("temporary river map publishes river meshes through generator", TemporaryRiverMapPublishesRiverMeshesThroughGenerator);
+        TestHarness.Run("curved river map publishes smooth mesh boundaries", CurvedRiverMapPublishesSmoothMeshBoundaries);
         TestHarness.Run("river mesh map extent uses world coordinate span", RiverMeshMapExtentUsesWorldCoordinateSpan);
     }
 
@@ -124,6 +126,44 @@ internal static class RiverWorkspaceDiagnosticsTests
         return path;
     }
 
+    private static void CurvedRiverMapPublishesSmoothMeshBoundaries()
+    {
+        var cells = new RiverCell[10, 7];
+        SetRiver(cells, 0, 2, RiverPixelType.Source);
+        SetRiver(cells, 1, 2);
+        SetRiver(cells, 2, 2);
+        SetRiver(cells, 3, 2);
+        SetRiver(cells, 3, 3);
+        SetRiver(cells, 3, 4);
+        SetRiver(cells, 4, 4);
+        SetRiver(cells, 5, 4);
+        SetRiver(cells, 6, 4);
+        SetRiver(cells, 6, 3);
+        SetRiver(cells, 6, 2);
+        SetRiver(cells, 7, 2);
+        SetRiver(cells, 8, 2);
+        SetRiver(cells, 9, 2, RiverPixelType.Confluence);
+
+        var component = new RiverComponent();
+        var renderingService = new RiverRenderingService(component);
+        var terrainManager = CreateFlatTerrainManagerStub(20, 14);
+        var meshService = new RiverMeshService(terrainManager);
+        var generator = new RiverMeshGenerator(renderingService, meshService);
+
+        RiverGenerationResult? result = generator.Generate(cells, 1.0f);
+
+        TestHarness.Assert(result != null, "Curved river map should generate a mesh");
+        TestHarness.AssertEqual(1, component.Meshes.Count, "Curved river map should publish one segment mesh");
+        float maxBoundaryAngle = MaxRiverBoundaryTurnAngle(component.Meshes[0].Vertices);
+
+        TestHarness.Assert(maxBoundaryAngle <= 12.0f, $"Curved river map mesh boundaries should stay smooth, actual max angle {maxBoundaryAngle:0.00}");
+    }
+
+    private static void SetRiver(RiverCell[,] cells, int x, int y, RiverPixelType type = RiverPixelType.River)
+    {
+        cells[x, y] = new RiverCell(type, 1);
+    }
+
     private static TerrainManager CreateFlatTerrainManagerStub()
         => CreateFlatTerrainManagerStub(1, 1);
 
@@ -172,5 +212,40 @@ internal static class RiverWorkspaceDiagnosticsTests
             throw new InvalidOperationException($"Could not find field '{fieldName}' on {typeof(TTarget).FullName}.");
 
         field.SetValue(target, value);
+    }
+
+    private static float MaxRiverBoundaryTurnAngle(IReadOnlyList<RiverVertex> vertices)
+    {
+        var left = new List<Vector3>();
+        var right = new List<Vector3>();
+        for (int i = 0; i < vertices.Count - 1; i += 2)
+        {
+            left.Add(vertices[i].Position.XYZ());
+            right.Add(vertices[i + 1].Position.XYZ());
+        }
+
+        return MathF.Max(MaxHorizontalTurnAngle(left), MaxHorizontalTurnAngle(right));
+    }
+
+    private static float MaxHorizontalTurnAngle(IReadOnlyList<Vector3> points)
+    {
+        float maxAngle = 0.0f;
+        for (int i = 1; i < points.Count - 1; i++)
+        {
+            Vector3 incoming = points[i] - points[i - 1];
+            Vector3 outgoing = points[i + 1] - points[i];
+            incoming.Y = 0.0f;
+            outgoing.Y = 0.0f;
+
+            if (incoming.LengthSquared() <= 0.000001f || outgoing.LengthSquared() <= 0.000001f)
+                continue;
+
+            incoming.Normalize();
+            outgoing.Normalize();
+            float dot = Math.Clamp(Vector3.Dot(incoming, outgoing), -1.0f, 1.0f);
+            maxAngle = MathF.Max(maxAngle, MathF.Acos(dot) * 180.0f / MathF.PI);
+        }
+
+        return maxAngle;
     }
 }

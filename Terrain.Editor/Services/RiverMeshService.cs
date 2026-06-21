@@ -11,9 +11,10 @@ namespace Terrain.Editor.Services;
 
 public sealed class RiverMeshService
 {
-    private const float CurveSampleSpacing = 1.0f;
+    private const float CurveSampleSpacing = 0.25f;
     private const float CenterlineSimplificationTolerance = 1.5f;
     private const int CenterlineSmoothingIterations = 2;
+    private const float BendRelaxationWeight = 0.4f;
     private const float ConnectionTaperDistance = 6.0f;
     private const float SurfaceOffset = 0.02f;
     private const float MinVisibleHalfWidth = 0.05f;
@@ -99,6 +100,33 @@ public sealed class RiverMeshService
             next.Add(current[^1]);
             current = next;
         }
+
+        if (iterations >= 2)
+            current = RelaxRepeatedBends(current, iterations + 3);
+
+        return current;
+    }
+
+    private static List<Vector3> RelaxRepeatedBends(List<Vector3> points, int passes)
+    {
+        if (points.Count <= 2 || passes <= 0)
+            return points;
+
+        var current = new List<Vector3>(points);
+        for (int pass = 0; pass < passes; pass++)
+        {
+            var next = new List<Vector3>(current.Count) { current[0] };
+            for (int i = 1; i < current.Count - 1; i++)
+            {
+                Vector3 relaxed = current[i] * (1.0f - BendRelaxationWeight * 2.0f)
+                    + (current[i - 1] + current[i + 1]) * BendRelaxationWeight;
+                next.Add(relaxed);
+            }
+
+            next.Add(current[^1]);
+            current = next;
+        }
+
         return current;
     }
 

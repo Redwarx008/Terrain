@@ -18,8 +18,10 @@ Run("semantic endpoints do not shrink average river width", SemanticEndpointsDoN
 Run("special endpoints require adjacent river pixels", SpecialEndpointsRequireAdjacentRiverPixels);
 Run("centerline simplification removes pixel stair steps", CenterlineSimplificationRemovesPixelStairSteps);
 Run("centerline smoothing cuts hard corners", CenterlineSmoothingCutsHardCorners);
+Run("centerline smoothing limits repeated river bend angles", CenterlineSmoothingLimitsRepeatedRiverBendAngles);
 Run("ribbon indices preserve boundary strip organization with stride-visible winding", RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding);
 Run("mitered corner preserves river half width", MiteredCornerPreservesRiverHalfWidth);
+Run("river mesh boundaries stay smooth across repeated bends", RiverMeshBoundariesStaySmoothAcrossRepeatedBends);
 Run("tapered river endpoints keep visible cap width", TaperedRiverEndpointsKeepVisibleCapWidth);
 Run("river vertex layout exposes target semantics", RiverVertexLayoutExposesTargetSemantics);
 Run("river vertex position uses homogeneous coordinates", RiverVertexPositionUsesHomogeneousCoordinates);
@@ -269,6 +271,24 @@ void CenterlineSmoothingCutsHardCorners()
     Assert(smoothed.Any(point => Math.Abs(point.X - 1.0f) < 0.0001f && Math.Abs(point.Z - 0.25f) < 0.0001f), "smoothing should create a point after the corner");
 }
 
+void CenterlineSmoothingLimitsRepeatedRiverBendAngles()
+{
+    var points = new List<Vector3>
+    {
+        new(0, 0, 0),
+        new(3, 0, 0),
+        new(4, 0, 2),
+        new(7, 0, 0),
+        new(8, 0, 2),
+        new(11, 0, 0),
+    };
+
+    var smoothed = RiverMeshService.SmoothCenterline(points, 2);
+    float maxAngle = MaxHorizontalTurnAngle(smoothed);
+
+    Assert(maxAngle <= 15.0f, $"smoothed repeated river bends should stay CK3-style gradual, actual max angle {maxAngle:0.00}");
+}
+
 void RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding()
 {
     var segment = new RiverSegment
@@ -312,6 +332,30 @@ void MiteredCornerPreservesRiverHalfWidth()
     AssertNearlyEqual(0.5f, MathF.Abs(rightCorner.Z), 0.0001f, "right miter should preserve width against incoming segment");
     AssertNearlyEqual(0.5f, MathF.Abs(leftCorner.X - 1), 0.0001f, "left miter should preserve width against outgoing segment");
     AssertNearlyEqual(0.5f, MathF.Abs(rightCorner.X - 1), 0.0001f, "right miter should preserve width against outgoing segment");
+}
+
+void RiverMeshBoundariesStaySmoothAcrossRepeatedBends()
+{
+    var smoothed = RiverMeshService.SmoothCenterline(
+    [
+        new Vector3(0, 0, 0),
+        new Vector3(3, 0, 0),
+        new Vector3(4, 0, 2),
+        new Vector3(7, 0, 0),
+        new Vector3(8, 0, 2),
+        new Vector3(11, 0, 0),
+    ], 2);
+    var segment = new RiverSegment
+    {
+        Centerline = smoothed,
+        WorldLength = 11,
+        AvgHalfWidth = 0.5f,
+    };
+
+    var mesh = new RiverMeshService(null!).BuildRiverMesh(segment, 1.0f);
+    float maxBoundaryAngle = MaxRiverBoundaryTurnAngle(mesh.Vertices);
+
+    Assert(maxBoundaryAngle <= 15.0f, $"river mesh boundaries should not reintroduce hard corners, actual max angle {maxBoundaryAngle:0.00}");
 }
 
 void TaperedRiverEndpointsKeepVisibleCapWidth()
@@ -579,6 +623,41 @@ static (Stride.Graphics.VertexPositionNormalTexture[] Vertices, int[] Indices) B
 {
     var meshService = new RiverMeshService(null!);
     return meshService.BuildRibbonMesh(segment, 1.0f);
+}
+
+static float MaxHorizontalTurnAngle(IReadOnlyList<Vector3> points)
+{
+    float maxAngle = 0.0f;
+    for (int i = 1; i < points.Count - 1; i++)
+    {
+        Vector3 incoming = points[i] - points[i - 1];
+        Vector3 outgoing = points[i + 1] - points[i];
+        incoming.Y = 0.0f;
+        outgoing.Y = 0.0f;
+
+        if (incoming.LengthSquared() <= 0.000001f || outgoing.LengthSquared() <= 0.000001f)
+            continue;
+
+        incoming.Normalize();
+        outgoing.Normalize();
+        float dot = Math.Clamp(Vector3.Dot(incoming, outgoing), -1.0f, 1.0f);
+        maxAngle = MathF.Max(maxAngle, MathF.Acos(dot) * 180.0f / MathF.PI);
+    }
+
+    return maxAngle;
+}
+
+static float MaxRiverBoundaryTurnAngle(IReadOnlyList<Terrain.Editor.Rendering.River.RiverVertex> vertices)
+{
+    var left = new List<Vector3>();
+    var right = new List<Vector3>();
+    for (int i = 0; i < vertices.Count - 1; i += 2)
+    {
+        left.Add(vertices[i].Position.XYZ());
+        right.Add(vertices[i + 1].Position.XYZ());
+    }
+
+    return MathF.Max(MaxHorizontalTurnAngle(left), MaxHorizontalTurnAngle(right));
 }
 
 static void Assert(bool condition, string message)
