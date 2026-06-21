@@ -1096,20 +1096,20 @@ color.rgb = lerp(color.rgb, float3(0.0f, 0.01f, 0.02f), cloudMask * 0.8f);
 - 热修改时先分别输出 `FoamRampTexture(u=0)`、完整 `CalcFoamFactor` 和目标 CK3 ramp 采样，再落地 SDSL。
 - 同时确认 `CalcFoamFactor` 的 `WorldSpacePosXZ` 参数使用 CK3 的 world-space XZ，而不是 map-unit XZ。
 
-### ❌ Mistake 45: 把 bottom bank-fade alpha 复用到 surface pass
+### ❌ Mistake 45: 没确认 river surface 入口就套用同文件另一条 alpha 分支
 **What to avoid:**
-- 在 `RiverSurface` 最终输出 alpha 里使用 `_BankFade` 的 `edgeFade1 * edgeFade2`。
-- 看到 surface RGB 很暗后只继续调 `WaterFade`、refraction 或 FOW，而不检查 surface alpha 是否让浅岸完全不透明。
+- 只看 `jomini_river_surface.fxh` 中的 `CalcRiverSurface`，就把 `saturate(Depth * 2.0 / _Depth) * Transparency * connectionFade` 当作当前 `river_surface.shader` 的最终 alpha。
+- 在没核对 `.shader` 入口和 defines 前，把 RenderDoc 现象直接修成新的 shader tuning 参数，例如 surface-only `_SurfaceBankFade`。
 
 **Why it's bad:**
-- CK3 bottom 和 surface 的 alpha 语义不同：bottom advanced alpha 可以使用 diffuse alpha / bank fade；surface alpha 使用 `saturate(Depth * 2.0 / _Depth) * Transparency * connectionFade`。
-- 2026-06-19 更新后的 `debug.rdc` 中，岸边 `(1000,620)` 的 current alpha 是 `1.0`，目标 depth alpha 约 `0.303`。同一 refraction RGB 改用目标 alpha 后，RenderDoc pixel history 的 post-blend 从暗水覆盖结果变为由亮场景底色托起的结果。
-- 如果 surface alpha 错为 `1.0`，低 `WaterFade` 的浅岸 see-through 会完全盖住 terrain/scene，表现为“surface 发黑”，但根因不是 bottom RGB 黑。
+- CK3 `river_surface.shader` 的实际入口是 `CalcRiverAdvanced(Input)._Color`，defines 里有 `"RIVER"`；`CalcRiverSurface` 的 depth-alpha 分支不是当前 surface effect 的最终路径。
+- `Depth = CalcDepth(Input.UV)` 仍然重要，但它用于 `Params._Depth = Depth * Input.Width + 0.1f`，随后进入 `CalcWater` / `WaterFade` / refraction；advanced final alpha 在 refraction 分支下是 `Transparency * saturate((DistanceToMain - 0.1f) * 5.0f) * smoothstep(0, _BankFade, UV.y) * smoothstep(0, _BankFade, 1 - UV.y)`。
+- 2026-06-21 对 `C:\Users\Redwa\Desktop\debug.rdc` surface draw `309` 的 hot-replace 证明，左侧坏点 `(500,204..219)` 的 advanced alpha 仍为 `1.0`；代表点 `(500,204)` 的 `RiverUV.y=0.1321603` 已远超 `_BankFade=0.025`。所以这类坏点不是靠套 depth alpha 或加大 surface alpha fade 就能按 CK3 修好。
 
 **Correct approach:**
-- 对 surface pass 按 CK3 `jomini_river_surface.fxh`：先 `Depth = CalcDepth(Input.UV)`，再设置 `Color.a = saturate(Depth * 2.0 / _Depth) * Transparency * saturate((DistanceToMain - 0.1) * 5.0)`。
-- 用 RenderDoc replacement 分别输出 `ck3Alpha/currentAlpha/riverUv.y`，再用 `rawRefractionRGB + ck3Alpha` 验证 blend 是否真的改善岸边覆盖。
-- 不要把 bottom alpha 的 `_BankFade` 经验迁移到 surface，除非目标 capture 的 disasm 也证明该 pass 使用同一公式。
+- 先从 `.shader` 文件确认 entry point、defines 和实际调用链，再回到 `.fxh` 查 helper。
+- 对 surface pass 按当前 CK3 advanced 链路：`CalcDepth(UV) -> Params._Depth = Depth * Width + 0.1 -> CalcWater`，最终 alpha 使用 `_BankFade` edge fade 和 connection fade。
+- 用 RenderDoc replacement 分别输出 `advancedAlpha`、`riverUv.y`、`DistanceToMain`、`Transparency`，确认 alpha 是否真是坏点主因；如果 advanced alpha 已经是 `1.0`，下一步应查 `RiverUV` / mesh 覆盖、surface/refraction RGB 或 refraction source payload。
 
 ### ❌ Mistake 46: 把无地形视角发黑继续归因到 alpha/FoW/height
 **What to avoid:**
@@ -1117,7 +1117,7 @@ color.rgb = lerp(color.rgb, float3(0.0f, 0.01f, 0.02f), cloudMask * 0.8f);
 - 只看最终 surface RGB，不拆 `CalcRefraction -> CalcTerrainUnderwaterSeeThrough` 的 attenuation 和 `WaterColorTexture` 采样值。
 
 **Why it's bad:**
-- 2026-06-19 更新后的无地形 `debug.rdc` 已确认 surface shader 包含 CK3 depth-based alpha 修正，旧 `_BankFade` alpha 只剩 bottom pass。
+- 2026-06-21 复查 CK3 `river_surface.shader` 后确认，surface 的 active advanced path 不是 depth-based final alpha；`CalcDepth(UV)` 只喂 `CalcWater` depth/refraction，最终 alpha 使用 connection fade 和 `_BankFade` 双边 edge fade。
 - 热替换直接输出 raw `RefractionTexture` 后河面明显变亮，说明 bottom/refraction 输入不是黑源。
 - 代表暗像素的 see-through attenuation 只有约 `0.21-0.26`，即 70% 以上颜色会被替换为 `WaterColorTexture` 的水色图；同点 `WaterColorTexture` 采样只有约 `0.002-0.015`，足以解释发黑。
 
@@ -1158,6 +1158,89 @@ color.rgb = lerp(color.rgb, float3(0.0f, 0.01f, 0.02f), cloudMask * 0.8f);
 **Correct approach:**
 - 先用 pixel history 比较 river draw 的 shader output，再比较 final ToneMap 的 `avgLuminance` / exposure。
 - Editor 视口需要 CK3 scene light intensity `20` 给 river bottom 读 scene light，但不应让 Stride 自动曝光随 terrain 可见性漂移；当前 editor compositor 固定 `ToneMap.Exposure=-2.0 EV` 并关闭 `AutoExposure/AutoKeyValue/TemporalAdaptation`。
+
+### ❌ Mistake 49: 用 river profile depth 强行 cap CK3 see-through depth
+**What to avoid:**
+- 看到 `CalcTerrainUnderwaterSeeThrough` 把 bottom 压到 water-color map 后，把传入深度从 `RefractionDepth` 改成 `min(refractionDepth, Depth)`。
+- 因为局部 bank 像素变得更露底，就把这个 hot-replace 当成 CK3 parity 修复。
+
+**Why it's bad:**
+- CK3 `CalcRefraction` 明确调用 `CalcTerrainUnderwaterSeeThrough( RefractionDepth, RefractionWorldSpacePos, RefractionWaterColorMap, RefractionSample.rgb )`。
+- `Depth = min(Depth, RefractionDepth)` 在 CK3 里用于 `RefractionShoreMask` 和后续 `WaterFade`，不是用于 see-through attenuation。
+- 2026-06-21 本地热替换中，cap depth 会让 `(500,204)` 从 `[0.0925,0.2705,0.2664]` 回到 `[0.582,0.395,0.210]`，但用户复核发现整片水面颜色消失；这是因为全局过度保留 raw bottom/refraction，绕开了 CK3 的水色控制。
+
+**Correct approach:**
+- 先拆 raw refraction、`CalcTerrainUnderwaterSeeThrough`、`attenuation/refractionDepth/shoreMask`，确认问题发生层级。
+- 保持 see-through 使用 `RefractionDepth`，再查 CK3 控制项：`_WaterSeeThroughDensity`、`WaterColorTexture` / `_WaterColorMapTintFactor`、`WaterFade = 1 - saturate((_WaterFadeShoreMaskDepth - min(InputDepth, RefractionDepth)) * sharpness)`、Fresnel/reflection 和后段 post wrapper。
+- 如果只是一侧 bank 不露底，不要用全局 depth cap；继续查该侧的 refraction payload、water-color sample、post wrapper 或 mesh/UV 覆盖。
+- 2026-06-21 后续热替换确认：在 `debug.rdc` surface draw `309`，目标像素 attenuation 只有约 `0.011~0.029`、`RefractionDepth≈6~8`。只调 `_WaterSeeThroughDensity` 时，`0.6` 变化太小，`0.4` 能更明显露出 bottom 且仍保留水色，`0.2` 已开始偏 bottom-heavy；因此后续若要源码落地，应显式参数化 density 或 map-unit 距离尺度，而不是改变 CK3 的 `RefractionDepth` 调用结构。
+
+### ❌ Mistake 50: 把 pointed bank convergence 当成 alpha 或全局 density 问题
+**What to avoid:**
+- 看到 bottom bank 从可见到不可见形成尖端收束，就继续调 `_BankFade`、surface alpha、`_WaterSeeThroughDensity` 或 water-color gain。
+- 只看最终颜色，不画出 `RiverUV.y`、near-bank mask 和 `RefractionDepth`。
+
+**Why it's bad:**
+- `debug1.rdc` 的 surface draw `337` 热替换显示，尖端与输入场本身重合：
+  - `(700,870)`：`RiverUV.y≈0.357`、attenuation `0.0618`、`RefractionDepth≈6.71`，bottom 基本被水色替换。
+  - `(980,730)`：`RiverUV.y≈0.111`、attenuation `0.9487`、`RefractionDepth≈0.13`，bottom/bank 明显保留。
+- 近岸 mask 热替换图也在同一位置收束，说明它是共享 mesh/UV/refraction-depth 覆盖问题，不是单个颜色常量问题。
+
+**Correct approach:**
+- 先热替换输出 `R=RiverUV.y`、`G=see-through attenuation`、`B=RefractionDepth/10`。
+- 再用 pixel history 确认该点是否由 surface draw 写入，以及命中的 primitiveId。
+- 如果尖端跟 UV/depth 场一致，下一步查 CK3 surface/refraction 控制语义和覆盖控制；不要继续堆颜色参数，也不要把 `RefractionDepth` 当成根公式去改。
+- 2026-06-21 五个横截面 lane 和 acute miter clamp 是错误方向，已撤回；不要把诊断信号同步收束直接推成 `RiverMeshService` 源码缺陷。
+
+### ❌ Mistake 51: 对 refraction alpha distance payload 使用线性过滤
+**What to avoid:**
+- 用 `RefractionTexture.Sample(LinearClamp, uv).a` 直接作为 `DecompressWorldSpace` 的距离输入。
+- 因为 RGB 需要线性过滤，就默认 RT0 alpha 也可以线性过滤。
+
+**Why it's bad:**
+- refraction RT 的 alpha 是 camera-relative distance payload，不是颜色。
+- 半分辨率 RT 的相邻 texel 可能一个来自 bottom pass、一个来自 scene seed 或不同深度的 payload；线性插值会制造一个不存在的距离。
+- 2026-06-21 `debug2.rdc` surface draw `377` 热替换证明，坏点 `(1100,540)` 的线性 alpha 解码 depth 已经饱和到 `>=12`，同一位置 point/Load alpha 解码 depth 只有约 `3.33`，alpha 差异约 `15.3`。这种合成深度会让 see-through attenuation 突然塌到水色，形成尖端式 bottom bank 消失。
+
+**Correct approach:**
+- refraction RGB 继续用目标的 `LinearClamp` 采样。
+- 用 `_RefractionTextureSize` 把 screen UV 转成 texel 坐标，并通过 `Texture2D.Load` 读取 alpha payload。
+- base refraction、offset refraction 和 `WaterFade` 的 refraction-depth 重采样都要用未过滤 payload；否则同一条 synthetic depth 还会从别的分支回来。
+- 热替换验证时输出 `linearDepth / pointDepth / alphaDelta`，先证明问题是 payload filtering，再落源码。
+
+### ❌ Mistake 52: 在有地形阴影时让 river diffuse IBL 为零
+**What to avoid:**
+- 看到高低地形交界处的高侧 river bottom 近黑后，继续优先怀疑 mesh、surface alpha、depth test 或 `RefractionDepth`。
+- 因为 scene skybox 主要以 specular cubemap 形式进入 Stride，就让 river material 的 diffuse IBL 直接返回 `float3(0,0,0)`。
+
+**Why it's bad:**
+- CK3 `river_bottom.shader` 调用的 `CalcRiverBottom` 仍走 `CalculateSunLighting`，该 lighting 路径包含 `DiffuseIBL + SpecularIBL + DiffuseLight + SpecularLight`。
+- `debug2.rdc` 中坏点 `(1180,500)` 对应 bottom draw `304` 已经写出近黑 `[0.0012,0.0016,0.0021]`；surface 只是读取了这个近黑 refraction，不是后续把已有 bottom 压没。
+- raw `BottomDiffuse` 在好点和坏点都只有约 `0.025~0.030` 亮度，差异来自 lighting。高地侧更容易落入 terrain shadow；若 diffuse IBL 为零，shadowed bottom 只剩很弱的 specular IBL，自然变黑。
+
+**Correct approach:**
+- 一旦发现问题和高/低地形边界相关，先在 bottom pass 层拆 direct light、shadow、diffuse IBL、specular IBL，不要回头改 mesh。
+- river shared lighting 必须保留低频 diffuse environment：用 normal 方向采 scene cubemap 的最低频 mip，再乘 `diffuseColor * _EnvironmentIntensity * environmentIntensityScale`。
+- shadow 可以继续保持 CK3 bottom shadow 语义；修复目标是给阴影区正确 ambient/diffuse IBL，而不是直接禁用 shadow。
+
+### ❌ Mistake 53: 把 CK3 `MaxHeight=50` refraction clamp 当成不可变地形高度限制
+**What to avoid:**
+- 在 `height_scale=200` 的本地项目里，仍把 CK3 `CompressWorldSpace` 的 `MaxHeight=50` camera clamp 固定写死。
+- 看到高低地形交界处 bottom bank 消失后，只继续改 `RefractionDepth`、mesh 或 surface alpha，而不检查 camera-distance payload 是否被固定 clamp 截断。
+- 为了让 CK3 固定 clamp 看起来正常，直接把全局 `height_scale` 降到 `50`；这会掩盖问题，并改变本项目想保留的高地形起伏。
+
+**Why it's bad:**
+- CK3 `ck3 river2.rdc` 的 terrain draw cbuffer 显示 `HeightScale=50.0`、`OriginalHeightmapToWorldSpace≈0.5`、`WorldExtents=9215x4607`、`MapSize=9216x4608`。
+- 本地 `debug2.rdc` terrain draw cbuffer 显示 `HeightScale=200.0`，同一高度图 raw 值会把 `WorldSpacePos.y`、相机相对高度、terrain slope/normal 和 shadow/see-through 距离全部放大 4 倍。
+- CK3 的 `MaxHeight=50` 是 refraction distance payload 的相机高度 clamp，不等价于本项目必须使用的 terrain `HeightScale`。
+- 在高地形高度下继续用固定 50 clamp，会让 scene seed / bottom / surface 的 camera-relative distance payload 在高处被压扁；surface 解码后会把 bottom bank 当成过深/过远，出现尖端式收束或高处整段不可见。
+
+**Correct approach:**
+- 保留项目需要的 `height_scale`，把 CK3 clamp 参数化为 `_RefractionMaxCameraHeight=max(50, terrain HeightScale)`。
+- `RiverSceneSeed`、bottom 和 surface 必须使用同一个 `RiverCompressWorldSpace` / `RiverDecompressWorldSpace` clamp 参数；seed 不能继续写 raw distance。
+- `RiverMeshService -> RiverMeshData -> RiverRenderObject -> RiverRenderFeature` 要把当前 terrain `HeightScale` 带到 shader cbuffer，并用 RenderDoc 验证 GPU 上 seed/bottom/surface 的 `_RefractionMaxCameraHeight` 一致。
+- 纯 RenderDoc shader hot-replace 不能完整验证这个问题，因为旧 capture 的 terrain depth、river mesh 顶点和相机矩阵已经按旧高度生成；必须改 descriptor 后重新运行/抓帧。
+- 后续继续查 bank 可见性时，先确认 `_RefractionMaxCameraHeight`、terrain `HeightScale`、bottom `PositionWS.y`、surface `RefractionDepth` 处于同一尺度，再拆 bottom lighting、refraction payload 和 surface see-through，不要回到 mesh 方向。
 
 ## Code Examples
 
