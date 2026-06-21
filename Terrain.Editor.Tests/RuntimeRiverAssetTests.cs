@@ -20,7 +20,8 @@ internal static class RuntimeRiverAssetTests
         string project = Read("Terrain.Windows", "Terrain.Windows.csproj");
         var document = XDocument.Parse(project);
         var projectReferences = document
-            .Descendants("ProjectReference")
+            .Descendants()
+            .Where(element => element.Name.LocalName == "ProjectReference")
             .Select(element => element.Attribute("Include")?.Value)
             .Where(include => !string.IsNullOrWhiteSpace(include));
 
@@ -38,8 +39,7 @@ internal static class RuntimeRiverAssetTests
             riverSystem != null,
             "MainScene.sdscene should define a RiverSystem entity.");
         TestHarness.Assert(
-            riverSystem!.Contains("!Terrain.Rendering.River.RiverComponent,Terrain", StringComparison.Ordinal) ||
-            riverSystem.Contains("!RiverComponent", StringComparison.Ordinal),
+            riverSystem!.Contains("!Terrain.Rendering.River.RiverComponent,Terrain", StringComparison.Ordinal),
             "RiverSystem should contain Terrain.Rendering.River.RiverComponent.");
     }
 
@@ -97,9 +97,11 @@ internal static class RuntimeRiverAssetTests
     private static void TerrainPackageRootsRiverReflectionCubemap()
     {
         string package = Read("Terrain", "Terrain.sdpkg");
+        string? rootAssets = FindBlockStartingWith(package, "RootAssets:");
 
         TestHarness.Assert(
-            package.Contains("River/Environment/reflection-specular", StringComparison.Ordinal),
+            rootAssets != null &&
+            rootAssets.Contains("River/Environment/reflection-specular", StringComparison.Ordinal),
             "Terrain.sdpkg should root River/Environment/reflection-specular for runtime content loading.");
     }
 
@@ -135,6 +137,16 @@ internal static class RuntimeRiverAssetTests
         }
 
         return null;
+    }
+
+    private static string? FindBlockStartingWith(string text, string marker)
+    {
+        string[] lines = NormalizeLineEndings(text).Split('\n');
+        int start = FindLine(lines, 0, lines.Length, line => line.TrimStart().StartsWith(marker, StringComparison.Ordinal));
+        if (start < 0)
+            return null;
+
+        return JoinLines(lines, start, FindBlockEnd(lines, start, IndentOf(lines[start])));
     }
 
     private static bool IsBlockStart(string line, string marker)
