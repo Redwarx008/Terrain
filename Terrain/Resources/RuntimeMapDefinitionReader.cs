@@ -26,14 +26,11 @@ public static class RuntimeMapDefinitionReader
             : string.Empty;
         string terrainData = RequireRelativePath(terrain, "terrain_data", filePath);
         float heightScale = RequireFloat(settings, "height_scale", filePath);
-        if (heightScale <= 0.0f)
+        if (!float.IsFinite(heightScale) || heightScale <= 0.0f)
             throw new InvalidDataException($"height_scale must be greater than 0: {filePath}");
         float riverMinWidth = ReadOptionalFloat(settings, "river_min_width", filePath, 1.0f);
         float riverMaxWidth = ReadOptionalFloat(settings, "river_max_width", filePath, 4.0f);
-        if (riverMinWidth <= 0.0f)
-            throw new InvalidDataException($"river_min_width must be greater than 0: {filePath}");
-        if (riverMaxWidth < riverMinWidth)
-            throw new InvalidDataException($"river_max_width must be greater than or equal to river_min_width: {filePath}");
+        ValidateRiverWidthRange(riverMinWidth, riverMaxWidth, filePath);
 
         return new RuntimeMapDefinition
         {
@@ -165,5 +162,17 @@ public static class RuntimeMapDefinitionReader
             return (float)value.AsInteger.Value;
 
         throw new InvalidDataException($"TOML value '{key}' must be numeric: {filePath}");
+    }
+
+    private static void ValidateRiverWidthRange(float riverMinWidth, float riverMaxWidth, string filePath)
+    {
+        if (!float.IsFinite(riverMinWidth))
+            throw new InvalidDataException($"river_min_width must be finite: {filePath}");
+        if (!float.IsFinite(riverMaxWidth))
+            throw new InvalidDataException($"river_max_width must be finite: {filePath}");
+        if (riverMinWidth <= 0.0f)
+            throw new InvalidDataException($"river_min_width must be greater than 0: {filePath}");
+        if (riverMaxWidth < riverMinWidth)
+            throw new InvalidDataException($"river_max_width must be greater than or equal to river_min_width: {filePath}");
     }
 }

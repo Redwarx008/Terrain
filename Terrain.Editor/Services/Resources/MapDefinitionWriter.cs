@@ -34,12 +34,9 @@ public sealed class MapDefinitionWriter
             throw new ArgumentNullException(nameof(mapDefinition));
         if (string.IsNullOrWhiteSpace(outputPath))
             throw new ArgumentException("Output path must not be null or empty.", nameof(outputPath));
-        if (mapDefinition.HeightScale <= 0.0f)
+        if (!float.IsFinite(mapDefinition.HeightScale) || mapDefinition.HeightScale <= 0.0f)
             throw new InvalidDataException("Map definition height_scale must be greater than 0.");
-        if (mapDefinition.RiverMinWidth <= 0.0f)
-            throw new InvalidDataException("Map definition river_min_width must be greater than 0.");
-        if (mapDefinition.RiverMaxWidth < mapDefinition.RiverMinWidth)
-            throw new InvalidDataException("Map definition river_max_width must be greater than or equal to river_min_width.");
+        ValidateRiverWidthRange(mapDefinition);
 
         var terrain = new TomlTable
         {
@@ -63,6 +60,18 @@ public sealed class MapDefinitionWriter
         };
 
         WriteTomlWithTemplate(outputPath, root, TopCommentTemplateLines);
+    }
+
+    private static void ValidateRiverWidthRange(RuntimeMapDefinition mapDefinition)
+    {
+        if (!float.IsFinite(mapDefinition.RiverMinWidth))
+            throw new InvalidDataException("Map definition river_min_width must be finite.");
+        if (!float.IsFinite(mapDefinition.RiverMaxWidth))
+            throw new InvalidDataException("Map definition river_max_width must be finite.");
+        if (mapDefinition.RiverMinWidth <= 0.0f)
+            throw new InvalidDataException("Map definition river_min_width must be greater than 0.");
+        if (mapDefinition.RiverMaxWidth < mapDefinition.RiverMinWidth)
+            throw new InvalidDataException("Map definition river_max_width must be greater than or equal to river_min_width.");
     }
 
     private static void AddOptionalPath(TomlTable table, string key, string? path)

@@ -71,6 +71,8 @@ internal static class EditorResourceWriterTests
         TestHarness.Run("map definition reader defaults river width range", MapDefinitionReaderDefaultsRiverWidthRange);
         TestHarness.Run("map definition reader reads explicit river width range", MapDefinitionReaderReadsExplicitRiverWidthRange);
         TestHarness.Run("map definition reader rejects invalid river width range", MapDefinitionReaderRejectsInvalidRiverWidthRange);
+        TestHarness.Run("map definition reader rejects non-finite river width range", MapDefinitionReaderRejectsNonFiniteRiverWidthRange);
+        TestHarness.Run("map definition writer rejects non-finite river width range", MapDefinitionWriterRejectsNonFiniteRiverWidthRange);
         TestHarness.Run("material descriptor writer preserves short relative texture paths", MaterialDescriptorWriterPreservesRelativeTexturePaths);
         TestHarness.Run("material descriptor writer rewrites existing header with fixed template", MaterialDescriptorWriterRewritesExistingHeaderWithFixedTemplate);
         TestHarness.Run("material descriptor writer fails on read-only target without touching fallback", MaterialDescriptorWriterFailsOnReadOnlyTargetWithoutTouchingFallback);
@@ -317,6 +319,75 @@ river_max_width = 4
         TestHarness.AssertThrows<InvalidDataException>(
             () => RuntimeMapDefinitionReader.ReadFrom(output),
             "river_max_width below river_min_width should be rejected");
+    }
+
+    private static void MapDefinitionReaderRejectsNonFiniteRiverWidthRange()
+    {
+        string root = CreateWorkspace();
+        string minOutput = Path.Combine(root, "mod", "map", "default-min-nan.toml");
+        WriteExistingFile(minOutput, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+river_min_width = nan
+river_max_width = 4
+""");
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => RuntimeMapDefinitionReader.ReadFrom(minOutput),
+            "nan river_min_width should be rejected");
+
+        string maxOutput = Path.Combine(root, "mod", "map", "default-max-inf.toml");
+        WriteExistingFile(maxOutput, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+river_min_width = 1
+river_max_width = inf
+""");
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => RuntimeMapDefinitionReader.ReadFrom(maxOutput),
+            "infinite river_max_width should be rejected");
+    }
+
+    private static void MapDefinitionWriterRejectsNonFiniteRiverWidthRange()
+    {
+        string root = CreateWorkspace();
+        var session = CreateSession(root);
+        var writer = new MapDefinitionWriter();
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => writer.Write(session, new RuntimeMapDefinition
+            {
+                HeightmapPath = "heightmap.png",
+                TerrainDataPath = "terrain.terrain",
+                HeightScale = 200.0f,
+                RiverMinWidth = float.NaN,
+                RiverMaxWidth = 4.0f,
+            }),
+            "nan river_min_width should be rejected by writer");
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => writer.Write(session, new RuntimeMapDefinition
+            {
+                HeightmapPath = "heightmap.png",
+                TerrainDataPath = "terrain.terrain",
+                HeightScale = 200.0f,
+                RiverMinWidth = 1.0f,
+                RiverMaxWidth = float.PositiveInfinity,
+            }),
+            "infinite river_max_width should be rejected by writer");
     }
 
     private static void BiomeSettingsWriterPersistsMaterialIdReferences()
