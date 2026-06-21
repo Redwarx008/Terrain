@@ -305,7 +305,7 @@ void CenterlineSmoothingStaysNearOriginalRiverCorridor()
     var smoothed = RiverMeshService.SmoothCenterline(points, 2);
     float maxOffset = MaxHorizontalDistanceToPolyline(smoothed, points);
 
-    Assert(maxOffset <= 0.75f, $"smoothed centerline should stay inside the original river corridor, actual max offset {maxOffset:0.00}");
+    Assert(maxOffset <= 0.625f, $"smoothed centerline should stay inside the default river half-width corridor, actual max offset {maxOffset:0.00}");
 }
 
 void RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding()

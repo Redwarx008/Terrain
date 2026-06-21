@@ -19,6 +19,7 @@ internal static class RiverWorkspaceDiagnosticsTests
         TestHarness.Run("long curved river keeps adaptive centerline sample budget", LongCurvedRiverKeepsAdaptiveCenterlineSampleBudget);
         TestHarness.Run("curved river centerline resamples terrain height after smoothing", CurvedRiverCenterlineResamplesTerrainHeightAfterSmoothing);
         TestHarness.Run("river centerline handles invalid height cache dimensions", RiverCenterlineHandlesInvalidHeightCacheDimensions);
+        TestHarness.Run("river centerline handles overflowing height cache dimensions", RiverCenterlineHandlesOverflowingHeightCacheDimensions);
         TestHarness.Run("river mesh map extent uses world coordinate span", RiverMeshMapExtentUsesWorldCoordinateSpan);
     }
 
@@ -208,6 +209,12 @@ internal static class RiverWorkspaceDiagnosticsTests
         TestHarness.Assert(
             segment.Centerline.Count <= 180,
             $"Long curved river should stay within adaptive sampling budget. Cells: {segment.Cells.Count}, samples: {segment.Centerline.Count}");
+
+        var mesh = meshService.BuildRiverMesh(segment, 1.0f);
+        float maxBoundaryAngle = MaxRiverBoundaryTurnAngle(mesh.Vertices);
+        TestHarness.Assert(
+            maxBoundaryAngle <= 12.0f,
+            $"Long curved river should keep smooth mesh boundaries while staying within budget. Actual max angle {maxBoundaryAngle:0.00}");
     }
 
     private static void CurvedRiverCenterlineResamplesTerrainHeightAfterSmoothing()
@@ -274,6 +281,28 @@ internal static class RiverWorkspaceDiagnosticsTests
             "Invalid height cache dimensions should fall back to zero terrain height plus surface offset");
     }
 
+    private static void RiverCenterlineHandlesOverflowingHeightCacheDimensions()
+    {
+        var terrainManager = CreateInvalidTerrainManagerStub(int.MaxValue, 2);
+        var meshService = new RiverMeshService(terrainManager);
+        var segment = new RiverSegment
+        {
+            Cells =
+            [
+                (0, 0),
+                (1, 0),
+                (2, 0),
+            ],
+        };
+
+        meshService.BuildCenterlines([segment], 3, 1);
+
+        TestHarness.Assert(segment.Centerline.Count > 0, "Overflowing height cache dimensions should not prevent centerline generation");
+        TestHarness.Assert(
+            segment.Centerline.All(static point => MathF.Abs(point.Y - 0.02f) <= 0.0001f),
+            "Overflowing height cache dimensions should fall back to zero terrain height plus surface offset");
+    }
+
     private static void SetRiver(RiverCell[,] cells, int x, int y, RiverPixelType type = RiverPixelType.River)
     {
         cells[x, y] = new RiverCell(type, 1);
@@ -309,14 +338,17 @@ internal static class RiverWorkspaceDiagnosticsTests
     }
 
     private static TerrainManager CreateInvalidTerrainManagerStub()
+        => CreateInvalidTerrainManagerStub(0, 0);
+
+    private static TerrainManager CreateInvalidTerrainManagerStub(int width, int height)
     {
 #pragma warning disable SYSLIB0050
         var terrainManager = (TerrainManager)FormatterServices.GetUninitializedObject(typeof(TerrainManager));
 #pragma warning restore SYSLIB0050
 
         SetInstanceField(terrainManager, "heightDataCache", new ushort[1]);
-        SetInstanceField(terrainManager, "heightDataWidth", 0);
-        SetInstanceField(terrainManager, "heightDataHeight", 0);
+        SetInstanceField(terrainManager, "heightDataWidth", width);
+        SetInstanceField(terrainManager, "heightDataHeight", height);
         SetInstanceField(terrainManager, "<HeightScale>k__BackingField", 200.0f);
         return terrainManager;
     }

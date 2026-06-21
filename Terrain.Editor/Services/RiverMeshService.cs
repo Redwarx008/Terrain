@@ -288,7 +288,8 @@ public sealed class RiverMeshService
         if (data == null) return 0;
         int w = terrainManager.HeightCacheWidth;
         int h = terrainManager.HeightCacheHeight;
-        if (w <= 0 || h <= 0 || data.Length < w * h)
+        long expectedLength = (long)w * h;
+        if (w <= 0 || h <= 0 || data.LongLength < expectedLength)
             return 0.0f;
 
         // World coordinates are 1:1 with heightmap pixels (0 ~ w-1).
