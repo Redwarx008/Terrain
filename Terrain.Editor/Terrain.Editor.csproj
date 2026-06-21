@@ -41,10 +41,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="Effects\RiverEffect.sdfx.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
     <Compile Update="Effects\EditorTerrainBuildSplatMap.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>

@@ -10,7 +10,7 @@ namespace Terrain.Rivers;
 
 public sealed class RiverMapService
 {
-    private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
+    private static readonly Logger Log = GlobalLogger.GetLogger("Terrain");
     private readonly float riverMinWidth;
     private readonly float riverMaxWidth;
 

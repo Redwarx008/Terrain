@@ -11,7 +11,7 @@ namespace Terrain.Rendering.River;
 
 public sealed class RiverResourceLoader : IDisposable
 {
-    private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
+    private static readonly Logger Log = GlobalLogger.GetLogger("Terrain");
 
     private const string BottomDiffuseFileName = "bottom_diffuse.dds";
     private const string BottomNormalFileName = "bottom_normal.dds";
