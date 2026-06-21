@@ -673,6 +673,7 @@ void TestRiverComponentVersioning()
     component.SetMeshes(meshes);
 
     Assert(component.Version == initial + 1, "RiverComponent.SetMeshes increments Version");
+    Assert(component.MeshCount == 1, "RiverComponent exposes mesh count without snapshot access");
     Assert(component.Meshes.Count == 1, "RiverComponent stores meshes");
 
     meshes.Clear();
@@ -686,6 +687,7 @@ void TestRiverComponentVersioning()
     component.Clear();
 
     Assert(component.Version == initial + 2, "RiverComponent.Clear increments Version");
+    Assert(component.MeshCount == 0, "RiverComponent.Clear updates mesh count");
     Assert(component.Meshes.Count == 0, "RiverComponent.Clear removes meshes");
 }
 

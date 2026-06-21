@@ -29,6 +29,7 @@ public sealed class RiverComponent : ActivableEntityComponent
     }
 
     public RiverRenderSettings Settings { get; } = new();
+    public int MeshCount => meshes.Count;
     public int Version { get; private set; }
     public RiverRuntimeLoadState RuntimeLoadState { get; private set; } = RiverRuntimeLoadState.NotAttempted;
     public RiverRuntimeLoadConfig FailedRuntimeLoadConfig { get; private set; }

@@ -107,8 +107,8 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
 
     private void TryEnsureRuntimeMeshes(RiverComponent component)
     {
-        if (component.Meshes.Count > 0
-            || component.RuntimeLoadState is RiverRuntimeLoadState.Loaded or RiverRuntimeLoadState.NoRiverResource)
+        if (component.RuntimeLoadState is RiverRuntimeLoadState.Loaded or RiverRuntimeLoadState.NoRiverResource
+            || component.MeshCount > 0)
         {
             return;
         }
