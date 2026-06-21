@@ -1,9 +1,7 @@
-using Terrain.Editor.Models;
-using Terrain.Editor.Rendering.River;
+using Terrain.Rivers;
+using Terrain.Rendering.River;
 using Terrain.Editor.Services;
 using Stride.Core.Mathematics;
-using System.Reflection;
-using System.Runtime.Serialization;
 using SixLabors.ImageSharp.Formats.Png;
 
 namespace Terrain.Editor.Tests;
@@ -308,18 +306,14 @@ internal static class RiverWorkspaceDiagnosticsTests
         cells[x, y] = new RiverCell(type, 1);
     }
 
-    private static TerrainManager CreateFlatTerrainManagerStub()
+    private static IRiverTerrainHeightSource CreateFlatTerrainManagerStub()
         => CreateFlatTerrainManagerStub(1, 1);
 
-    private static TerrainManager CreateFlatTerrainManagerStub(int width, int height)
+    private static IRiverTerrainHeightSource CreateFlatTerrainManagerStub(int width, int height)
         => CreateTerrainManagerStub(width, height, static (_, _) => 0.0f, 200.0f);
 
-    private static TerrainManager CreateTerrainManagerStub(int width, int height, Func<int, int, float> heightAtSample, float heightScale)
+    private static IRiverTerrainHeightSource CreateTerrainManagerStub(int width, int height, Func<int, int, float> heightAtSample, float heightScale)
     {
-#pragma warning disable SYSLIB0050
-        var terrainManager = (TerrainManager)FormatterServices.GetUninitializedObject(typeof(TerrainManager));
-#pragma warning restore SYSLIB0050
-
         var heightData = new ushort[width * height];
         for (int y = 0; y < height; y++)
         {
@@ -330,28 +324,14 @@ internal static class RiverWorkspaceDiagnosticsTests
             }
         }
 
-        SetInstanceField(terrainManager, "heightDataCache", heightData);
-        SetInstanceField(terrainManager, "heightDataWidth", width);
-        SetInstanceField(terrainManager, "heightDataHeight", height);
-        SetInstanceField(terrainManager, "<HeightScale>k__BackingField", heightScale);
-        return terrainManager;
+        return new StubRiverTerrainHeightSource(heightData, width, height, heightScale);
     }
 
-    private static TerrainManager CreateInvalidTerrainManagerStub()
+    private static IRiverTerrainHeightSource CreateInvalidTerrainManagerStub()
         => CreateInvalidTerrainManagerStub(0, 0);
 
-    private static TerrainManager CreateInvalidTerrainManagerStub(int width, int height)
-    {
-#pragma warning disable SYSLIB0050
-        var terrainManager = (TerrainManager)FormatterServices.GetUninitializedObject(typeof(TerrainManager));
-#pragma warning restore SYSLIB0050
-
-        SetInstanceField(terrainManager, "heightDataCache", new ushort[1]);
-        SetInstanceField(terrainManager, "heightDataWidth", width);
-        SetInstanceField(terrainManager, "heightDataHeight", height);
-        SetInstanceField(terrainManager, "<HeightScale>k__BackingField", 200.0f);
-        return terrainManager;
-    }
+    private static IRiverTerrainHeightSource CreateInvalidTerrainManagerStub(int width, int height)
+        => new StubRiverTerrainHeightSource(new ushort[1], width, height, 200.0f);
 
     private static float SampleBilinearEncodedTerrainHeight(
         float wx,
@@ -416,16 +396,6 @@ internal static class RiverWorkspaceDiagnosticsTests
         TestHarness.Assert(MathF.Abs(mesh.Vertices[0].Width - 0.5f) <= 0.0001f, "River vertex width should be normalized by map-unit extent, not heightmap sample count");
     }
 
-    private static void SetInstanceField<TTarget, TValue>(TTarget target, string fieldName, TValue value)
-        where TTarget : class
-    {
-        FieldInfo? field = typeof(TTarget).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field == null)
-            throw new InvalidOperationException($"Could not find field '{fieldName}' on {typeof(TTarget).FullName}.");
-
-        field.SetValue(target, value);
-    }
-
     private static float MaxRiverBoundaryTurnAngle(IReadOnlyList<RiverVertex> vertices)
     {
         var left = new List<Vector3>();
@@ -459,5 +429,49 @@ internal static class RiverWorkspaceDiagnosticsTests
         }
 
         return maxAngle;
+    }
+
+    private sealed class StubRiverTerrainHeightSource : IRiverTerrainHeightSource
+    {
+        private readonly ushort[] heightData;
+
+        public StubRiverTerrainHeightSource(ushort[] heightData, int width, int height, float heightScale)
+        {
+            this.heightData = heightData;
+            HeightmapWidth = width;
+            HeightmapHeight = height;
+            HeightScale = heightScale;
+        }
+
+        public bool HasHeightData => true;
+        public int HeightmapWidth { get; }
+        public int HeightmapHeight { get; }
+        public float HeightScale { get; }
+
+        public float SampleHeight(float worldX, float worldZ)
+        {
+            int width = HeightmapWidth;
+            int height = HeightmapHeight;
+            long expectedLength = (long)width * height;
+            if (width <= 0 || height <= 0 || heightData.LongLength < expectedLength)
+                return 0.0f;
+
+            float x = Math.Clamp(worldX, 0.0f, width - 1);
+            float y = Math.Clamp(worldZ, 0.0f, height - 1);
+            int x0 = (int)MathF.Floor(x);
+            int y0 = (int)MathF.Floor(y);
+            int x1 = Math.Min(x0 + 1, width - 1);
+            int y1 = Math.Min(y0 + 1, height - 1);
+            float tx = x - x0;
+            float ty = y - y0;
+
+            float h00 = heightData[y0 * width + x0] * (1.0f / ushort.MaxValue) * HeightScale;
+            float h10 = heightData[y0 * width + x1] * (1.0f / ushort.MaxValue) * HeightScale;
+            float h01 = heightData[y1 * width + x0] * (1.0f / ushort.MaxValue) * HeightScale;
+            float h11 = heightData[y1 * width + x1] * (1.0f / ushort.MaxValue) * HeightScale;
+            float hx0 = Lerp(h00, h10, tx);
+            float hx1 = Lerp(h01, h11, tx);
+            return Lerp(hx0, hx1, ty);
+        }
     }
 }

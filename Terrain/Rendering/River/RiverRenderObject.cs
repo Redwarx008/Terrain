@@ -6,7 +6,7 @@ using Stride.Graphics;
 using Stride.Rendering;
 using Buffer = Stride.Graphics.Buffer;
 
-namespace Terrain.Editor.Rendering.River;
+namespace Terrain.Rendering.River;
 
 public sealed class RiverRenderObject : RenderObject, IDisposable
 {

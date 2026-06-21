@@ -19,10 +19,11 @@ using Terrain.Editor.Input;
 using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Rendering.Decal;
-using Terrain.Editor.Rendering.River;
+using Terrain.Rendering.River;
 using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
 using Terrain.Editor.ViewModels;
+using Terrain.Rivers;
 using NumericsVector2 = System.Numerics.Vector2;
 using System.Collections.Generic;
 
@@ -856,7 +857,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         riverRenderFeature.RenderStageSelectors.Add(new SimpleGroupToRenderStageSelector
         {
             EffectName = "RiverSurface",
-            RenderGroup = RiverRenderingService.RiverRenderGroupMask,
+            RenderGroup = RiverRenderGroups.RiverRenderGroupMask,
             RenderStage = transparentStage,
         });
         graphicsCompositor.RenderFeatures.Add(riverRenderFeature);

@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using Stride.Core.Mathematics;
 using Stride.Graphics;
 
-namespace Terrain.Editor.Rendering.River;
+namespace Terrain.Rendering.River;
 
 [StructLayout(LayoutKind.Sequential)]
 public struct RiverVertex

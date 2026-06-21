@@ -15,4 +15,5 @@ OutputGroupDirectories: {}
 ExplicitFolders: []
 Bundles: []
 TemplateFolders: []
-RootAssets: []
+RootAssets:
+    - 2b74f12e-decc-423c-a6fe-90b68f91ee16:River/Environment/reflection-specular

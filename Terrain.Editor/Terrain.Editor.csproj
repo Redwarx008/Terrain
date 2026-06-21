@@ -55,41 +55,6 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
-    <Compile Update="Effects\RiverSurface.sdsl.cs">
-      <DesignTime>True</DesignTime>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-      <AutoGen>True</AutoGen>
-    </Compile>
-    <Compile Update="Effects\RiverBottom.sdsl.cs">
-      <DesignTime>True</DesignTime>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-      <AutoGen>True</AutoGen>
-    </Compile>
-    <Compile Update="Effects\RiverSceneSeed.sdsl.cs">
-      <DesignTime>True</DesignTime>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-      <AutoGen>True</AutoGen>
-    </Compile>
-    <Compile Update="Effects\RiverVertexStreams.sdsl.cs">
-      <DesignTime>True</DesignTime>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-      <AutoGen>True</AutoGen>
-    </Compile>
-    <Compile Update="Effects\RiverCommon.sdsl.cs">
-      <DesignTime>True</DesignTime>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-      <AutoGen>True</AutoGen>
-    </Compile>
-    <Compile Update="Effects\RiverWaterCommon.sdsl.cs">
-      <DesignTime>True</DesignTime>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-      <AutoGen>True</AutoGen>
-    </Compile>
-    <Compile Update="Effects\RiverStrideLighting.sdsl.cs">
-      <DesignTime>True</DesignTime>
-      <DesignTimeSharedInput>True</DesignTimeSharedInput>
-      <AutoGen>True</AutoGen>
-    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -98,27 +63,6 @@
     </None>
     <None Update="Effects\BrushDecalShader.sdsl">
       <LastGenOutput>BrushDecalShader.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\RiverSurface.sdsl">
-      <LastGenOutput>RiverSurface.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\RiverBottom.sdsl">
-      <LastGenOutput>RiverBottom.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\RiverSceneSeed.sdsl">
-      <LastGenOutput>RiverSceneSeed.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\RiverVertexStreams.sdsl">
-      <LastGenOutput>RiverVertexStreams.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\RiverCommon.sdsl">
-      <LastGenOutput>RiverCommon.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\RiverWaterCommon.sdsl">
-      <LastGenOutput>RiverWaterCommon.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\RiverStrideLighting.sdsl">
-      <LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>
     </None>
   </ItemGroup>
 

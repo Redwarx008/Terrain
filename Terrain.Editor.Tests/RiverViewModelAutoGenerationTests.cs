@@ -1,4 +1,4 @@
-using Terrain.Editor.Models;
+using Terrain.Rivers;
 using Terrain.Editor.Services;
 using Terrain.Editor.ViewModels;
 using Terrain.Editor.Tests;

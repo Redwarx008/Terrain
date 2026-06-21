@@ -2,7 +2,7 @@
 
 using Stride.Core.Mathematics;
 
-namespace Terrain.Editor.Rendering.River;
+namespace Terrain.Rendering.River;
 
 public sealed class RiverRenderSettings
 {

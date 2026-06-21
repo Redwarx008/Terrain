@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using Stride.Core;
-using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
 using Stride.Core.Serialization.Contents;
 using Stride.Graphics;
@@ -16,10 +15,8 @@ using Stride.Rendering.Images;
 using Stride.Rendering.Lights;
 using Stride.Rendering.Shadows;
 using Stride.Rendering.Skyboxes;
-using Terrain.Editor.Rendering;
-using Terrain.Editor.Services;
 
-namespace Terrain.Editor.Rendering.River;
+namespace Terrain.Rendering.River;
 
 public enum RiverRenderDebugMode
 {
@@ -40,8 +37,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
     private static readonly InputElementDescription[] RiverInputElements = RiverVertex.Layout.CreateInputElements();
     private static readonly FieldInfo? RenderViewDatasField = typeof(ForwardLightingRenderFeature).GetField("renderViewDatas", BindingFlags.Instance | BindingFlags.NonPublic);
-    private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
-
     private DynamicEffectInstance? bottomEffect;
     private DynamicEffectInstance? surfaceEffect;
     private MutablePipelineState? bottomPipelineState;

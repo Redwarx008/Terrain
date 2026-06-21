@@ -3,7 +3,7 @@
 using System.Collections.Generic;
 using Stride.Core.Mathematics;
 
-namespace Terrain.Editor.Models;
+namespace Terrain.Rivers;
 
 public sealed class RiverSegment
 {

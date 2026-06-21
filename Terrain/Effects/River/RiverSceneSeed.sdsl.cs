@@ -14,7 +14,7 @@ using Stride.Shaders;
 using Stride.Core.Mathematics;
 using Buffer = Stride.Graphics.Buffer;
 
-namespace Terrain.Editor
+namespace Terrain
 {
     public static partial class RiverSceneSeedKeys
     {

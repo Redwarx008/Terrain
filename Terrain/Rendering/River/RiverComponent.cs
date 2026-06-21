@@ -6,7 +6,7 @@ using Stride.Core;
 using Stride.Engine;
 using Stride.Engine.Design;
 
-namespace Terrain.Editor.Rendering.River;
+namespace Terrain.Rendering.River;
 
 [DataContract("RiverComponent")]
 [DefaultEntityComponentRenderer(typeof(RiverProcessor))]

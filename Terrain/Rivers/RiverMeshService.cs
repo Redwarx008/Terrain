@@ -4,10 +4,9 @@ using System;
 using System.Collections.Generic;
 using Stride.Core.Mathematics;
 using Stride.Graphics;
-using Terrain.Editor.Models;
-using Terrain.Editor.Rendering.River;
+using Terrain.Rendering.River;
 
-namespace Terrain.Editor.Services;
+namespace Terrain.Rivers;
 
 public sealed class RiverMeshService
 {
@@ -26,11 +25,11 @@ public sealed class RiverMeshService
     private const float RiverUvScale = 0.8f;
     private const float TerrainWorldToRiverMapUnits = 0.5f;
 
-    private readonly TerrainManager? terrainManager;
+    private readonly IRiverTerrainHeightSource? heightSource;
 
-    public RiverMeshService(TerrainManager? terrainManager)
+    public RiverMeshService(IRiverTerrainHeightSource? heightSource)
     {
-        this.terrainManager = terrainManager;
+        this.heightSource = heightSource;
     }
 
     public void BuildCenterlines(List<RiverSegment> segments, int mapWidth, int mapHeight)
@@ -422,33 +421,8 @@ public sealed class RiverMeshService
 
     private float SampleTerrainHeight(float wx, float wz)
     {
-        if (terrainManager == null || !terrainManager.HasHeightCache) return 0;
-        float scale = terrainManager.HeightScale;
-        var data = terrainManager.HeightDataCache;
-        if (data == null) return 0;
-        int w = terrainManager.HeightCacheWidth;
-        int h = terrainManager.HeightCacheHeight;
-        long expectedLength = (long)w * h;
-        if (w <= 0 || h <= 0 || data.LongLength < expectedLength)
-            return 0.0f;
-
-        // World coordinates are 1:1 with heightmap pixels (0 ~ w-1).
-        float x = Math.Clamp(wx, 0.0f, w - 1);
-        float y = Math.Clamp(wz, 0.0f, h - 1);
-        int x0 = (int)MathF.Floor(x);
-        int y0 = (int)MathF.Floor(y);
-        int x1 = Math.Min(x0 + 1, w - 1);
-        int y1 = Math.Min(y0 + 1, h - 1);
-        float tx = x - x0;
-        float ty = y - y0;
-
-        float h00 = data[y0 * w + x0] * (1.0f / ushort.MaxValue) * scale;
-        float h10 = data[y0 * w + x1] * (1.0f / ushort.MaxValue) * scale;
-        float h01 = data[y1 * w + x0] * (1.0f / ushort.MaxValue) * scale;
-        float h11 = data[y1 * w + x1] * (1.0f / ushort.MaxValue) * scale;
-        float hx0 = h00 + (h10 - h00) * tx;
-        float hx1 = h01 + (h11 - h01) * tx;
-        return hx0 + (hx1 - hx0) * ty;
+        if (heightSource == null || !heightSource.HasHeightData) return 0.0f;
+        return heightSource.SampleHeight(wx, wz);
     }
 
     // Task 5 methods below
@@ -541,7 +515,7 @@ public sealed class RiverMeshService
             AvgHalfWidth = segment.AvgHalfWidth,
             MapExtent = mapExtent,
             MapWorldSize = mapWorldSize,
-            RefractionMaxCameraHeight = MathF.Max(50.0f, terrainManager?.HeightScale ?? 50.0f),
+            RefractionMaxCameraHeight = MathF.Max(50.0f, heightSource?.HeightScale ?? 50.0f),
         };
     }
 
@@ -587,11 +561,11 @@ public sealed class RiverMeshService
 
     private Vector2 GetMapWorldSize()
     {
-        if (terrainManager != null && terrainManager.HeightCacheWidth > 0 && terrainManager.HeightCacheHeight > 0)
+        if (heightSource != null && heightSource.HeightmapWidth > 0 && heightSource.HeightmapHeight > 0)
         {
             return new Vector2(
-                Math.Max(terrainManager.HeightCacheWidth - 1, 0) * TerrainWorldToRiverMapUnits,
-                Math.Max(terrainManager.HeightCacheHeight - 1, 0) * TerrainWorldToRiverMapUnits);
+                Math.Max(heightSource.HeightmapWidth - 1, 0) * TerrainWorldToRiverMapUnits,
+                Math.Max(heightSource.HeightmapHeight - 1, 0) * TerrainWorldToRiverMapUnits);
         }
 
         return new Vector2(4096.0f, 4096.0f);

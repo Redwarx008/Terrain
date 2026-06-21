@@ -3,7 +3,7 @@
 using System;
 using SixLabors.ImageSharp.PixelFormats;
 
-namespace Terrain.Editor.Models;
+namespace Terrain.Rivers;
 
 public enum RiverPixelType : byte
 {

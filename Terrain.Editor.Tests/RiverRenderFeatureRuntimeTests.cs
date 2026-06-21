@@ -1,6 +1,6 @@
 using System.Reflection;
 using Stride.Graphics;
-using Terrain.Editor.Rendering.River;
+using Terrain.Rendering.River;
 
 namespace Terrain.Editor.Tests;
 

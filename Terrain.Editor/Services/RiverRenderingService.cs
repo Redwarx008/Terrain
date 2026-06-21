@@ -4,17 +4,13 @@ using System;
 using System.Collections.Generic;
 using Stride.Engine;
 using Stride.Graphics;
-using Stride.Rendering;
-using Terrain.Editor.Models;
-using Terrain.Editor.Rendering.River;
+using Terrain.Rivers;
+using Terrain.Rendering.River;
 
 namespace Terrain.Editor.Services;
 
 public sealed class RiverRenderingService : IDisposable
 {
-    public const RenderGroup RiverRenderGroup = RenderGroup.Group1;
-    public const RenderGroupMask RiverRenderGroupMask = RenderGroupMask.Group1;
-
     private readonly RiverComponent riverComponent;
     private bool isVisible = true;
 

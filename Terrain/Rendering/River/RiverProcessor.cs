@@ -8,9 +8,8 @@ using Stride.Engine.Processors;
 using Stride.Games;
 using Stride.Graphics;
 using Stride.Rendering;
-using Terrain.Editor.Services;
 
-namespace Terrain.Editor.Rendering.River;
+namespace Terrain.Rendering.River;
 
 public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProcessor.RenderData>, IEntityComponentRenderProcessor
 {
@@ -56,7 +55,7 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
         {
             renderObject.ApplySettings(component.Settings);
             renderObject.Enabled = enabled;
-            renderObject.RenderGroup = RiverRenderingService.RiverRenderGroup;
+            renderObject.RenderGroup = RiverRenderGroups.RiverRenderGroup;
             renderObject.World = entity.Transform.WorldMatrix;
         }
     }
@@ -73,7 +72,7 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
             var renderObject = new RiverRenderObject
             {
                 Source = component,
-                RenderGroup = RiverRenderingService.RiverRenderGroup,
+                RenderGroup = RiverRenderGroups.RiverRenderGroup,
             };
             renderObject.Rebuild(graphicsDevice, mesh, component.Version);
             renderObject.Enabled = component.Enabled && component.Settings.Visible;

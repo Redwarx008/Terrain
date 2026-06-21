@@ -1,7 +1,7 @@
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Stride.Core.Mathematics;
-using Terrain.Editor.Models;
+using Terrain.Rivers;
 using Terrain.Editor.Services;
 using Terrain.Editor.Tests;
 using Terrain.Editor.Tests.VirtualResources;
@@ -526,7 +526,7 @@ void TaperedRiverEndpointsKeepVisibleCapWidth()
 
 void RiverVertexLayoutExposesTargetSemantics()
 {
-    var elements = Terrain.Editor.Rendering.River.RiverVertex.Layout.VertexElements;
+    var elements = Terrain.Rendering.River.RiverVertex.Layout.VertexElements;
 
     AssertEqual(7, elements.Length, "RiverVertex layout element count");
     AssertEqual("POSITION", elements[0].SemanticAsText, "RiverVertex position semantic");
@@ -540,10 +540,10 @@ void RiverVertexLayoutExposesTargetSemantics()
 
 void RiverVertexPositionUsesHomogeneousCoordinates()
 {
-    var vertex = new Terrain.Editor.Rendering.River.RiverVertex(new Vector3(1, 2, 3), 1.0f, Vector2.Zero, Vector3.UnitX, Vector3.UnitY, 0.5f, 1.0f);
+    var vertex = new Terrain.Rendering.River.RiverVertex(new Vector3(1, 2, 3), 1.0f, Vector2.Zero, Vector3.UnitX, Vector3.UnitY, 0.5f, 1.0f);
 
     AssertEqual(new Vector4(1, 2, 3, 1), vertex.Position, "RiverVertex stores POSITION as float4 with w=1");
-    AssertEqual(System.Runtime.InteropServices.Marshal.SizeOf<Terrain.Editor.Rendering.River.RiverVertex>(), Terrain.Editor.Rendering.River.RiverVertex.Layout.VertexStride, "RiverVertex layout stride matches struct size");
+    AssertEqual(System.Runtime.InteropServices.Marshal.SizeOf<Terrain.Rendering.River.RiverVertex>(), Terrain.Rendering.River.RiverVertex.Layout.VertexStride, "RiverVertex layout stride matches struct size");
 }
 
 void RiverVertexMeshExposesTargetAttributes()
@@ -633,31 +633,31 @@ void RiverVertexMeshPreservesSlopedRibbonBasis()
 
 void RiverRenderResourcesComputeHalfResolution()
 {
-    AssertEqual((960, 540), Terrain.Editor.Rendering.River.RiverRenderResources.ComputeHalfResolutionSize(1920, 1080), "RiverRenderResources halves even viewport dimensions");
-    AssertEqual((961, 541), Terrain.Editor.Rendering.River.RiverRenderResources.ComputeHalfResolutionSize(1921, 1081), "RiverRenderResources rounds odd viewport dimensions up");
-    AssertEqual((1, 1), Terrain.Editor.Rendering.River.RiverRenderResources.ComputeHalfResolutionSize(0, 0), "RiverRenderResources keeps minimum render target size");
-    AssertEqual(Stride.Graphics.PixelFormat.R16G16B16A16_Float, Terrain.Editor.Rendering.River.RiverRenderResources.RefractionFormat, "RiverRenderResources uses half-float refraction format");
+    AssertEqual((960, 540), Terrain.Rendering.River.RiverRenderResources.ComputeHalfResolutionSize(1920, 1080), "RiverRenderResources halves even viewport dimensions");
+    AssertEqual((961, 541), Terrain.Rendering.River.RiverRenderResources.ComputeHalfResolutionSize(1921, 1081), "RiverRenderResources rounds odd viewport dimensions up");
+    AssertEqual((1, 1), Terrain.Rendering.River.RiverRenderResources.ComputeHalfResolutionSize(0, 0), "RiverRenderResources keeps minimum render target size");
+    AssertEqual(Stride.Graphics.PixelFormat.R16G16B16A16_Float, Terrain.Rendering.River.RiverRenderResources.RefractionFormat, "RiverRenderResources uses half-float refraction format");
 }
 
 void RiverComponentUsesRiverProcessor()
 {
-    var attributes = typeof(Terrain.Editor.Rendering.River.RiverComponent).GetCustomAttributes(false);
+    var attributes = typeof(Terrain.Rendering.River.RiverComponent).GetCustomAttributes(false);
     var rendererAttribute = attributes.OfType<Stride.Engine.Design.DefaultEntityComponentRendererAttribute>().FirstOrDefault();
 
     Assert(rendererAttribute != null, "RiverComponent should declare a default processor");
-    AssertEqual(typeof(Terrain.Editor.Rendering.River.RiverProcessor).AssemblyQualifiedName, rendererAttribute!.TypeName, "RiverComponent should use RiverProcessor");
+    AssertEqual(typeof(Terrain.Rendering.River.RiverProcessor).AssemblyQualifiedName, rendererAttribute!.TypeName, "RiverComponent should use RiverProcessor");
 }
 
 void TestRiverComponentVersioning()
 {
-    var component = new Terrain.Editor.Rendering.River.RiverComponent();
+    var component = new Terrain.Rendering.River.RiverComponent();
     int initial = component.Version;
     var vertices = new[]
     {
-        new Terrain.Editor.Rendering.River.RiverVertex(new Vector3(1, 2, 3), 1.0f, Vector2.Zero, Vector3.UnitX, Vector3.UnitY, 0.5f, 1.0f)
+        new Terrain.Rendering.River.RiverVertex(new Vector3(1, 2, 3), 1.0f, Vector2.Zero, Vector3.UnitX, Vector3.UnitY, 0.5f, 1.0f)
     };
     var indices = new[] { 0 };
-    var meshes = new List<Terrain.Editor.Rendering.River.RiverMeshData>
+    var meshes = new List<Terrain.Rendering.River.RiverMeshData>
     {
         new()
         {
@@ -675,7 +675,7 @@ void TestRiverComponentVersioning()
     Assert(component.Meshes.Count == 1, "RiverComponent stores meshes");
 
     meshes.Clear();
-    vertices[0] = new Terrain.Editor.Rendering.River.RiverVertex(new Vector3(9, 9, 9), 0.0f, Vector2.One, Vector3.UnitZ, Vector3.UnitY, 0.0f, 0.0f);
+    vertices[0] = new Terrain.Rendering.River.RiverVertex(new Vector3(9, 9, 9), 0.0f, Vector2.One, Vector3.UnitZ, Vector3.UnitY, 0.0f, 0.0f);
     indices[0] = 99;
 
     Assert(component.Meshes.Count == 1, "RiverComponent snapshots the mesh list");
@@ -690,22 +690,22 @@ void TestRiverComponentVersioning()
 
 void RiverComponentExposesMeshSnapshots()
 {
-    var component = new Terrain.Editor.Rendering.River.RiverComponent();
+    var component = new Terrain.Rendering.River.RiverComponent();
     component.SetMeshes(
     [
-        new Terrain.Editor.Rendering.River.RiverMeshData
+        new Terrain.Rendering.River.RiverMeshData
         {
             SegmentId = 7,
             Vertices =
             [
-                new Terrain.Editor.Rendering.River.RiverVertex(new Vector3(1, 2, 3), 1.0f, Vector2.Zero, Vector3.UnitX, Vector3.UnitY, 0.5f, 1.0f)
+                new Terrain.Rendering.River.RiverVertex(new Vector3(1, 2, 3), 1.0f, Vector2.Zero, Vector3.UnitX, Vector3.UnitY, 0.5f, 1.0f)
             ],
             Indices = [0],
         }
     ]);
 
     var publishedMeshes = component.Meshes;
-    publishedMeshes[0].Vertices[0] = new Terrain.Editor.Rendering.River.RiverVertex(new Vector3(9, 9, 9), 0.0f, Vector2.One, Vector3.UnitZ, Vector3.UnitY, 0.0f, 0.0f);
+    publishedMeshes[0].Vertices[0] = new Terrain.Rendering.River.RiverVertex(new Vector3(9, 9, 9), 0.0f, Vector2.One, Vector3.UnitZ, Vector3.UnitY, 0.0f, 0.0f);
     publishedMeshes[0].Indices[0] = 99;
 
     AssertEqual(new Vector4(1, 2, 3, 1), component.Meshes[0].Vertices[0].Position, "RiverComponent.Meshes returns vertex snapshots");
@@ -714,7 +714,7 @@ void RiverComponentExposesMeshSnapshots()
 
 void RiverRenderingServiceUpdatesComponentVisibility()
 {
-    var component = new Terrain.Editor.Rendering.River.RiverComponent();
+    var component = new Terrain.Rendering.River.RiverComponent();
     var service = new RiverRenderingService(component);
 
     service.SetVisible(false);
@@ -730,7 +730,7 @@ void RiverRenderingServiceUpdatesComponentVisibility()
 
 void RiverRenderingServiceUpdatesAndClearsComponentMeshes()
 {
-    var component = new Terrain.Editor.Rendering.River.RiverComponent();
+    var component = new Terrain.Rendering.River.RiverComponent();
     var service = new RiverRenderingService(component);
     var segment = new RiverSegment
     {
@@ -819,7 +819,7 @@ static float HorizontalDistanceToSegment(Vector3 point, Vector3 start, Vector3 e
     return Vector2.Distance(p, a + segment * t);
 }
 
-static float MaxRiverBoundaryTurnAngle(IReadOnlyList<Terrain.Editor.Rendering.River.RiverVertex> vertices)
+static float MaxRiverBoundaryTurnAngle(IReadOnlyList<Terrain.Rendering.River.RiverVertex> vertices)
 {
     var left = new List<Vector3>();
     var right = new List<Vector3>();

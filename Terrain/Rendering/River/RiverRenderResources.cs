@@ -3,7 +3,7 @@
 using System;
 using Stride.Graphics;
 
-namespace Terrain.Editor.Rendering.River;
+namespace Terrain.Rendering.River;
 
 public sealed class RiverRenderResources : IDisposable
 {

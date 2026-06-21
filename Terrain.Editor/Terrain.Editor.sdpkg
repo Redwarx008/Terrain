@@ -17,4 +17,3 @@ Bundles: []
 TemplateFolders: []
 RootAssets:
     - 4d17e19f-3b7c-4996-8ede-3fcb014acc00:Scene/Environment/jomini-environment-terrain-sunny
-    - 2b74f12e-decc-423c-a6fe-90b68f91ee16:River/Environment/reflection-specular

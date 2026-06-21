@@ -45,7 +45,7 @@ internal static class RiverShaderCompileTests
 
     private static IEnumerable<string> EnumerateSourceDirectories(string repositoryRoot, string strideSourceRoot)
     {
-        yield return Path.Combine(repositoryRoot, "Terrain.Editor", "Effects");
+        yield return Path.Combine(repositoryRoot, "Terrain", "Effects", "River");
         yield return Path.Combine(strideSourceRoot, "sources", "engine", "Stride.Graphics", "Shaders");
         yield return Path.Combine(strideSourceRoot, "sources", "engine", "Stride.Rendering", "Rendering", "Shaders");
         yield return Path.Combine(strideSourceRoot, "sources", "engine", "Stride.Rendering", "Rendering", "Core");
@@ -65,7 +65,7 @@ internal static class RiverShaderCompileTests
         string? current = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
         while (!string.IsNullOrEmpty(current))
         {
-            if (Directory.Exists(Path.Combine(current, "Terrain.Editor", "Effects")))
+            if (Directory.Exists(Path.Combine(current, "Terrain", "Effects", "River")))
             {
                 return current;
             }

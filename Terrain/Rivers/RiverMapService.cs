@@ -5,9 +5,8 @@ using System.Collections.Generic;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Stride.Core.Diagnostics;
-using Terrain.Editor.Models;
 
-namespace Terrain.Editor.Services;
+namespace Terrain.Rivers;
 
 public sealed class RiverMapService
 {

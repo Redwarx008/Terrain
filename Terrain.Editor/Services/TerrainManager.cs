@@ -14,6 +14,7 @@ using Terrain.Editor.Models;
 using Terrain.Editor.Rendering;
 using Terrain.Editor.Services.Resources;
 using Terrain.Resources;
+using Terrain.Rivers;
 using StrideColor = Stride.Core.Mathematics.Color;
 using Rgba32 = SixLabors.ImageSharp.PixelFormats.Rgba32;
 using HeightmapImage = SixLabors.ImageSharp.Image;
@@ -24,7 +25,7 @@ namespace Terrain.Editor.Services;
 /// Manages the editor terrain scene object and the shared CPU height cache.
 /// Large height rasters use sliced height textures internally, but still appear as one logical terrain.
 /// </summary>
-public sealed class TerrainManager : IDisposable, IRiverMapSource
+public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrainHeightSource
 {
     private static readonly Logger Log = GlobalLogger.GetLogger("Terrain.Editor");
     private const int DefaultLeafNodeSize = 32;
@@ -77,6 +78,11 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
     public int HeightCacheHeight => heightDataHeight;
     public ushort[]? HeightDataCache => heightDataCache;
     public SplitTerrainConfig? SplitConfig => currentSplitConfig;
+    bool IRiverTerrainHeightSource.HasHeightData => HasHeightCache;
+    int IRiverTerrainHeightSource.HeightmapWidth => HeightCacheWidth;
+    int IRiverTerrainHeightSource.HeightmapHeight => HeightCacheHeight;
+    float IRiverTerrainHeightSource.HeightScale => HeightScale;
+    float IRiverTerrainHeightSource.SampleHeight(float worldX, float worldZ) => GetHeightAtPosition(worldX, worldZ) ?? 0.0f;
     public string? LastLoadError => lastLoadError;
 
     public RiverCell[,]? RiverMap => riverMap;
@@ -282,7 +288,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource
         var materialDescriptor = RuntimeMaterialDescriptorReader.ReadFrom(session.MaterialDescriptor.ResolvedPath);
         MaterialSlotManager.Instance.ApplyDescriptor(materialDescriptor, session.MaterialDescriptor.ResolvedPath);
         RuntimeBiomeSettings biomeSettings = RuntimeBiomeSettingsReader.ReadFrom(session.BiomeSettings.ResolvedPath);
-        GameResourceResolver resourceResolver = GameResourceResolverBootstrap.CreateForAppDirectory(AppContext.BaseDirectory);
+        GameResourceResolver resourceResolver = GameResourceResolverBootstrap.CreateForTerrainAssemblyDirectory();
         EditorMaterialRecoveryResult materialRecovery = new EditorMaterialRecoveryService().Recover(
             materialDescriptor,
             session.MaterialDescriptor.ResolvedPath,

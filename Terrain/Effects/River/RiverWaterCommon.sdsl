@@ -1,4 +1,4 @@
-namespace Terrain.Editor
+namespace Terrain
 {
     shader RiverWaterCommon : RiverCommon
     {

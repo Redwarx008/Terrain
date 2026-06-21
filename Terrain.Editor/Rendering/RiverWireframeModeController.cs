@@ -3,7 +3,7 @@
 using System.Linq;
 using Stride.Rendering.Compositing;
 using Terrain.Editor.Models;
-using Terrain.Editor.Rendering.River;
+using Terrain.Rendering.River;
 
 namespace Terrain.Editor.Rendering;
 

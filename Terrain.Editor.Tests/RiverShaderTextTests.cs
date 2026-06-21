@@ -63,7 +63,8 @@ internal static class RiverShaderTextTests
 
     private static void RiverBottomAndWaterTexturesAreNotBundleRoots()
     {
-        string package = ReadRepositoryText("Terrain.Editor/Terrain.Editor.sdpkg");
+        string editorPackage = ReadRepositoryText("Terrain.Editor/Terrain.Editor.sdpkg");
+        string terrainPackage = ReadRepositoryText("Terrain/Terrain.sdpkg");
 
         string[] removedUrls =
         [
@@ -83,15 +84,16 @@ internal static class RiverShaderTextTests
 
         foreach (string url in removedUrls)
         {
-            AssertNotContains(package, $":{url}", $"{url} should not be a RootAsset because river Bottom/Water textures are direct files under game/map/water");
+            AssertNotContains(editorPackage, $":{url}", $"{url} should not be a RootAsset because river Bottom/Water textures are direct files under game/map/water");
+            AssertNotContains(terrainPackage, $":{url}", $"{url} should not be a RootAsset because river Bottom/Water textures are direct files under game/map/water");
         }
 
-        AssertContains(package, ":River/Environment/reflection-specular", "River environment reflection cubemap should remain a Stride RootAsset");
+        AssertContains(terrainPackage, ":River/Environment/reflection-specular", "River environment reflection cubemap should remain a Stride RootAsset");
     }
 
     private static void ReflectionSpecularAssetRemainsCubemap()
     {
-        string assetPath = GetRepositoryPath("Terrain.Editor/Assets/River/Environment/reflection-specular.dds");
+        string assetPath = GetRepositoryPath("Terrain/Assets/River/Environment/reflection-specular.dds");
         using var stream = File.OpenRead(assetPath);
         using var reader = new BinaryReader(stream);
 
@@ -150,7 +152,7 @@ internal static class RiverShaderTextTests
     private static void EditorCameraUsesTargetNearClipForRiverDepthBias()
     {
         string viewportGame = ReadRepositoryText("Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs").Replace("\r\n", "\n");
-        string renderFeature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
+        string renderFeature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
         string mainScene = ReadRepositoryText("Terrain/Assets/MainScene.sdscene");
 
         AssertContains(viewportGame, "EditorCameraNearClip = 10.0f", "Editor camera near clip should match the target water depth-bias distribution");
@@ -170,7 +172,7 @@ internal static class RiverShaderTextTests
 
     private static void BottomShaderSamplesTextureAssets()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverBottom.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverBottom.sdsl");
 
         AssertContains(shader, "BottomDiffuseTexture", "RiverBottom should declare the bottom diffuse texture");
         AssertContains(shader, "BottomNormalTexture", "RiverBottom should declare the bottom normal texture");
@@ -182,7 +184,7 @@ internal static class RiverShaderTextTests
 
     private static void CommonShaderUsesCosineRiverDepthProfile()
     {
-        string common = ReadRepositoryText("Terrain.Editor/Effects/RiverCommon.sdsl");
+        string common = ReadRepositoryText("Terrain/Effects/River/RiverCommon.sdsl");
 
         AssertContains(common, "cos(crossSection * 2.0f * 3.14159265f) * 0.5f + 0.5f", "River depth should use the cosine-shaped cross-section profile");
         AssertNotContains(common, "abs(crossSection * 2.0f - 1.0f)", "River depth should not regress to the older parabolic ribbon profile");
@@ -190,7 +192,7 @@ internal static class RiverShaderTextTests
 
     private static void BottomShaderUsesTargetAdvancedUvAndParallaxSemantics()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverBottom.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverBottom.sdsl");
 
         AssertContains(shader, "return _Depth * (1.0f - pow(cos(tangentUv.y * 2.0f * 3.14159265f) * 0.5f + 0.5f, 2.0f));", "RiverBottom should use the target capture's geometric cosine depth path");
         AssertContains(shader, "int maxIterations = max(_ParallaxIterations, 2);", "RiverBottom parallax should use the configured iteration count");
@@ -213,7 +215,7 @@ internal static class RiverShaderTextTests
 
     private static void BottomShaderUsesTargetAdvancedAlphaSemantics()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverBottom.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverBottom.sdsl");
 
         AssertContains(shader, "stage float _WaterHeight = 3.0f;", "RiverBottom should expose water height for ocean fade");
         AssertContains(shader, "float underOceanFade = 1.0f - saturate((_WaterHeight - streams.PositionWS.y) * _OceanFadeRate);", "RiverBottom should compute underwater fade from water height and river surface height");
@@ -227,7 +229,7 @@ internal static class RiverShaderTextTests
 
     private static void BottomShaderUsesTargetBottomShadowPath()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverStrideLighting.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverStrideLighting.sdsl");
 
         AssertContains(shader, "float RiverStrideCalcRandom(float2 seed)", "RiverBottom should use the target random-disc shadow rotation helper through shared river lighting");
         AssertContains(shader, "float2 RiverStrideRotateShadowDisc(float2 disc, float2 rotate)", "RiverBottom should rotate the CK3 disc kernel per pixel through shared river lighting");
@@ -243,7 +245,7 @@ internal static class RiverShaderTextTests
 
     private static void SharedLightingShaderFollowsStrideStandardMaterialEquations()
     {
-        string shaderPath = GetRepositoryPath("Terrain.Editor/Effects/RiverStrideLighting.sdsl");
+        string shaderPath = GetRepositoryPath("Terrain/Effects/River/RiverStrideLighting.sdsl");
         TestHarness.Assert(File.Exists(shaderPath), "RiverStrideLighting.sdsl should exist before shared lighting equation checks");
         string shader = File.ReadAllText(shaderPath);
 
@@ -281,7 +283,7 @@ internal static class RiverShaderTextTests
 
     private static void BottomShaderUsesSharedStrideLighting()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverBottom.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverBottom.sdsl");
 
         AssertContains(shader, "shader RiverBottom : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon, RiverStrideLighting", "RiverBottom should mix in shared Stride lighting");
         AssertContains(shader, "float shadow = RiverStrideEvaluateSceneShadow(positionWS, waterDepth, lightDir, streams.DepthVS);", "RiverBottom should preserve water-depth-aware scene shadowing");
@@ -293,7 +295,7 @@ internal static class RiverShaderTextTests
 
     private static void SurfaceShaderUsesSharedStrideLighting()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverSurface.sdsl");
 
         AssertContains(shader, "shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon, RiverStrideLighting", "RiverSurface should mix in shared Stride lighting");
         AssertContains(shader, "float shadow = RiverStrideEvaluateSceneShadow(InputWorldSpacePos, 0.0f, lightDir, streams.DepthVS);", "RiverSurface should receive scene shadowing through the shared river shadow path");
@@ -318,8 +320,8 @@ internal static class RiverShaderTextTests
 
     private static void RiverSceneLightingInputsBindToBottomAndSurface()
     {
-        string loader = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverResourceLoader.cs");
-        string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
+        string loader = ReadRepositoryText("Terrain/Rendering/River/RiverResourceLoader.cs");
+        string feature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
         string viewportGame = ReadRepositoryText("Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs");
 
         AssertContains(feature, "PrepareRiverSceneLighting(context, renderView);", "RiverRenderFeature should prepare scene lighting for all river passes");
@@ -362,18 +364,18 @@ internal static class RiverShaderTextTests
 
     private static void SharedLightingShaderIsRegisteredForStrideKeyGeneration()
     {
-        string project = ReadRepositoryText("Terrain.Editor/Terrain.Editor.csproj");
-        string package = ReadRepositoryText("Terrain.Editor/Terrain.Editor.sdpkg");
+        string project = ReadRepositoryText("Terrain/Terrain.csproj");
+        string package = ReadRepositoryText("Terrain/Terrain.sdpkg");
 
-        AssertContains(package, "!dir Effects", "Terrain.Editor.sdpkg should include the Effects folder that contains RiverStrideLighting.sdsl");
-        AssertContains(project, "<Compile Update=\"Effects\\RiverStrideLighting.sdsl.cs\">", "Terrain.Editor.csproj should compile generated RiverStrideLighting shader keys");
-        AssertContains(project, "<None Update=\"Effects\\RiverStrideLighting.sdsl\">", "Terrain.Editor.csproj should register RiverStrideLighting for shader key generation metadata");
-        AssertContains(project, "<LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>", "Terrain.Editor.csproj should name the generated RiverStrideLighting key file");
+        AssertContains(package, "!dir Effects", "Terrain.sdpkg should include the Effects folder that contains RiverStrideLighting.sdsl");
+        AssertContains(project, "<Compile Update=\"Effects\\River\\RiverStrideLighting.sdsl.cs\">", "Terrain.csproj should compile generated RiverStrideLighting shader keys");
+        AssertContains(project, "<None Update=\"Effects\\River\\RiverStrideLighting.sdsl\">", "Terrain.csproj should register RiverStrideLighting for shader key generation metadata");
+        AssertContains(project, "<LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>", "Terrain.csproj should name the generated RiverStrideLighting key file");
     }
 
     private static void BottomShaderDoesNotApplyGlobalLightingEnergyBoost()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverBottom.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverBottom.sdsl");
 
         AssertContains(
             shader,
@@ -387,12 +389,12 @@ internal static class RiverShaderTextTests
 
     private static void RenderObjectCarriesRiverSettingsToShaderBinding()
     {
-        string renderObject = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderObject.cs");
-        string meshData = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverMeshData.cs");
-        string meshService = ReadRepositoryText("Terrain.Editor/Services/RiverMeshService.cs");
-        string settings = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderSettings.cs");
-        string processor = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverProcessor.cs");
-        string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
+        string renderObject = ReadRepositoryText("Terrain/Rendering/River/RiverRenderObject.cs");
+        string meshData = ReadRepositoryText("Terrain/Rendering/River/RiverMeshData.cs");
+        string meshService = ReadRepositoryText("Terrain/Rivers/RiverMeshService.cs");
+        string settings = ReadRepositoryText("Terrain/Rendering/River/RiverRenderSettings.cs");
+        string processor = ReadRepositoryText("Terrain/Rendering/River/RiverProcessor.cs");
+        string feature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
 
         AssertContains(settings, "public float FlattenMultiplier { get; set; } = 1.0f;", "RiverRenderSettings should expose water normal flattening");
         AssertContains(settings, "public float BottomNormalStrength { get; set; } = 1.0f;", "RiverRenderSettings should expose bottom normal strength for bottom lighting");
@@ -402,7 +404,7 @@ internal static class RiverShaderTextTests
         AssertContains(renderObject, "public Vector2 MapWorldSize { get; private set; } = new(4096.0f, 4096.0f);", "RiverRenderObject should cache per-axis map world size for rectangular map UV normalization");
         AssertContains(meshData, "public float RefractionMaxCameraHeight { get; init; } = 50.0f;", "River mesh data should carry the height-scale-aware refraction clamp plane");
         AssertContains(meshData, "RefractionMaxCameraHeight = RefractionMaxCameraHeight,", "River mesh snapshots should preserve the refraction clamp plane");
-        AssertContains(meshService, "RefractionMaxCameraHeight = MathF.Max(50.0f, terrainManager?.HeightScale ?? 50.0f),", "River mesh generation should raise the refraction clamp plane for large height scales");
+        AssertContains(meshService, "RefractionMaxCameraHeight = MathF.Max(50.0f, heightSource?.HeightScale ?? 50.0f),", "River mesh generation should raise the refraction clamp plane for large height scales");
         AssertContains(renderObject, "public float RefractionMaxCameraHeight { get; private set; } = 50.0f;", "RiverRenderObject should cache the refraction clamp plane");
         AssertContains(renderObject, "RefractionMaxCameraHeight = mesh.RefractionMaxCameraHeight;", "RiverRenderObject should keep the refraction clamp plane from mesh data");
         AssertContains(renderObject, "public int ParallaxIterations { get; private set; } = 10;", "RiverRenderObject should cache parallax iteration count for advanced paths");
@@ -426,7 +428,7 @@ internal static class RiverShaderTextTests
 
     private static void SurfaceShaderSamplesWaterTextureAssets()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverSurface.sdsl");
 
         AssertContains(shader, "AmbientNormalTexture", "RiverSurface should declare ambient normal texture");
         AssertContains(shader, "FlowNormalTexture", "RiverSurface should declare flow normal texture");
@@ -454,7 +456,7 @@ internal static class RiverShaderTextTests
 
     private static void SurfaceShaderUsesTargetWaterNormalsAndFlow()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverSurface.sdsl");
 
         AssertContains(shader, "stage float _FlattenMult = 1.0f;", "RiverSurface should expose normal flattening");
         AssertContains(shader, "stage float2 _WaterWave1Scale = float2(10.0f, 10.0f);", "RiverSurface should expose the first ambient wave scale");
@@ -478,7 +480,7 @@ internal static class RiverShaderTextTests
 
     private static void SurfaceShaderFollowsTargetRefractionAndFadeSemantics()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverSurface.sdsl");
 
         AssertContains(shader, "float2 ComputeMapWorldUv(float3 worldPosition)", "RiverSurface should centralize map-space UV conversion");
         AssertContains(shader, "GetMapUnitXZ(worldPosition) / max(_MapWorldSize, float2(1.0f, 1.0f))", "RiverSurface should normalize map-unit UVs per axis");
@@ -516,7 +518,7 @@ internal static class RiverShaderTextTests
 
     private static void SurfaceShaderUsesTargetAdvancedAlphaBranch()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverSurface.sdsl");
 
         AssertContains(shader, "float ComputeAdvancedSurfaceAlpha(float2 riverUv, float transparency, float connectionFade)", "RiverSurface should centralize the target advanced alpha branch");
         AssertContains(shader, "float edgeFade1 = smoothstep(0.0f, max(_BankFade, 0.0001f), riverUv.y);", "RiverSurface advanced alpha should use the shared river bank fade on the first edge");
@@ -529,9 +531,9 @@ internal static class RiverShaderTextTests
 
     private static void SurfaceShaderDoesNotApplyRemovedPostWrapper()
     {
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
-        string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
-        string loader = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverResourceLoader.cs");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverSurface.sdsl");
+        string feature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
+        string loader = ReadRepositoryText("Terrain/Rendering/River/RiverResourceLoader.cs");
 
         AssertContains(shader, "CalcRiverAdvanced(waterColor);", "RiverSurface PS should still compute the target water body");
         AssertContains(shader, "streams.ColorTarget = waterColor;", "RiverSurface PS should write CalcRiverAdvanced output directly");
@@ -582,8 +584,8 @@ internal static class RiverShaderTextTests
 
     private static void RenderFeatureSeparatesSceneSeedFromWorkingBuffer()
     {
-        string resources = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderResources.cs");
-        string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
+        string resources = ReadRepositoryText("Terrain/Rendering/River/RiverRenderResources.cs");
+        string feature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
 
         AssertContains(resources, "public Texture? SceneSeedColor { get; private set; }", "RiverRenderResources should allocate a dedicated scene seed buffer");
         AssertContains(feature, "renderResources.SceneSeedColor", "RiverRenderFeature should use the dedicated scene seed texture");
@@ -599,9 +601,9 @@ internal static class RiverShaderTextTests
 
     private static void RenderFeatureSceneSeedWritesDepthPayload()
     {
-        string feature = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverRenderFeature.cs");
-        string shader = ReadRepositoryText("Terrain.Editor/Effects/RiverSceneSeed.sdsl");
-        string project = ReadRepositoryText("Terrain.Editor/Terrain.Editor.csproj");
+        string feature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
+        string shader = ReadRepositoryText("Terrain/Effects/River/RiverSceneSeed.sdsl");
+        string project = ReadRepositoryText("Terrain/Terrain.csproj");
 
         AssertContains(feature, "new ImageEffectShader(\"RiverSceneSeed\", delaySetRenderTargets: true)", "RiverRenderFeature should use the dedicated river scene-seed shader");
         AssertContains(feature, "GetPresenterSceneDepthSource(context.GraphicsDevice, seedSource)", "RiverRenderFeature should use the presenter scene depth explicitly for the current windowed editor/runtime path");
@@ -618,16 +620,16 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "RiverCompressWorldSpace(positionWS.xyz, Eye.xyz)", "RiverSceneSeed alpha should match the height-scale-aware refraction distance semantics");
         AssertContains(feature, "seedEffect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, refractionMaxCameraHeight);", "RiverRenderFeature should bind the same refraction clamp plane into RiverSceneSeed");
         AssertContains(shader, "return float4(seedColor, sceneDistance)", "RiverSceneSeed should preserve RGB and write scene distance payload alpha");
-        AssertContains(project, "<Compile Update=\"Effects\\RiverSceneSeed.sdsl.cs\">", "Terrain.Editor.csproj should compile the generated RiverSceneSeed shader key file");
+        AssertContains(project, "<Compile Update=\"Effects\\River\\RiverSceneSeed.sdsl.cs\">", "Terrain.csproj should compile the generated RiverSceneSeed shader key file");
         AssertNotContains(feature, "refractionSeedScaler.Color = new Color4(1.0f, 1.0f, 1.0f, 0.0f);", "River scene seed should not clear alpha to zero because the seed carries scene distance payload");
         AssertNotContains(feature, "new ImageScaler(SamplingPattern.Linear, delaySetRenderTargets: true)", "RiverRenderFeature should not use ImageScaler for river seed once depth payload is required");
     }
 
     private static void BottomShaderPacksRefractionDistanceForSurfaceSeeThrough()
     {
-        string common = ReadRepositoryText("Terrain.Editor/Effects/RiverCommon.sdsl");
-        string bottom = ReadRepositoryText("Terrain.Editor/Effects/RiverBottom.sdsl");
-        string surface = ReadRepositoryText("Terrain.Editor/Effects/RiverSurface.sdsl");
+        string common = ReadRepositoryText("Terrain/Effects/River/RiverCommon.sdsl");
+        string bottom = ReadRepositoryText("Terrain/Effects/River/RiverBottom.sdsl");
+        string surface = ReadRepositoryText("Terrain/Effects/River/RiverSurface.sdsl");
 
         AssertContains(common, "float RiverCompressWorldSpace(float3 worldPosition, float3 cameraPosition)", "RiverCommon should pack camera-relative distance");
         AssertContains(common, "float3 RiverDecompressWorldSpace(float3 surfaceWorldPosition, float compressedDistance, float3 cameraPosition)", "RiverCommon should provide the matching surface-side decompression");
@@ -648,7 +650,7 @@ internal static class RiverShaderTextTests
 
     private static void ResourceLoaderDoesNotSilentlyIgnoreMissingTextures()
     {
-        string loader = ReadRepositoryText("Terrain.Editor/Rendering/River/RiverResourceLoader.cs");
+        string loader = ReadRepositoryText("Terrain/Rendering/River/RiverResourceLoader.cs");
 
         AssertContains(loader, "LoadRequiredLocalTexture", "RiverResourceLoader should have an explicit local file loading path for Bottom/Water textures");
         AssertContains(loader, "game/map/water", "RiverResourceLoader should report the local river texture directory when a file is missing");

@@ -7,7 +7,7 @@ using Stride.Core.Serialization.Contents;
 using Stride.Graphics;
 using Terrain.Resources;
 
-namespace Terrain.Editor.Rendering.River;
+namespace Terrain.Rendering.River;
 
 public sealed class RiverResourceLoader : IDisposable
 {
@@ -44,7 +44,7 @@ public sealed class RiverResourceLoader : IDisposable
         ArgumentNullException.ThrowIfNull(graphicsDevice);
         ArgumentNullException.ThrowIfNull(content);
 
-        string gameRoot = GameResourceRootLocator.FindFrom(AppContext.BaseDirectory);
+        string gameRoot = GameResourceRootLocator.FindFromTerrainAssembly();
         string waterDirectory = Path.Combine(gameRoot, "map", "water");
 
         BottomDiffuse = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, BottomDiffuseFileName, loadAsSrgb: true);

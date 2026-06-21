@@ -2,8 +2,8 @@
 
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Terrain.Editor.Models;
 using Terrain.Editor.Services;
+using Terrain.Rivers;
 
 namespace Terrain.Editor.ViewModels;
 

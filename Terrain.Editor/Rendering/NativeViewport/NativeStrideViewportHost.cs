@@ -11,6 +11,7 @@ using Stride.Graphics;
 using Stride.Graphics.SDL;
 using Terrain.Editor.Models;
 using Terrain.Editor.Services;
+using Terrain.Rivers;
 
 namespace Terrain.Editor.Rendering.NativeViewport;
 

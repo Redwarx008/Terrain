@@ -1,7 +1,7 @@
 #nullable enable
 
 using System;
-using Terrain.Editor.Models;
+using Terrain.Rivers;
 
 namespace Terrain.Editor.Services;
 

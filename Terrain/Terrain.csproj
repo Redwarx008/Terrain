@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>net10.0-windows</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TerrainWorkspaceRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..'))</TerrainWorkspaceRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +16,13 @@
     <PackageReference Include="Stride.Core.Assets.CompilerApp" IncludeAssets="build;buildTransitive" />
     <PackageReference Include="SixLabors.ImageSharp" />
     <PackageReference Include="Tommy" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>TerrainWorkspaceRoot</_Parameter1>
+      <_Parameter2>$(TerrainWorkspaceRoot)</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
@@ -40,11 +48,67 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
+    <Compile Update="Effects\River\RiverSurface.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\River\RiverBottom.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\River\RiverSceneSeed.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\River\RiverVertexStreams.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\River\RiverCommon.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\River\RiverWaterCommon.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\River\RiverStrideLighting.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
     <None Update="Effects\Material\MaterialTerrainDiffuse.sdsl">
       <LastGenOutput>MaterialTerrainDiffuse.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\River\RiverSurface.sdsl">
+      <LastGenOutput>RiverSurface.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\River\RiverBottom.sdsl">
+      <LastGenOutput>RiverBottom.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\River\RiverSceneSeed.sdsl">
+      <LastGenOutput>RiverSceneSeed.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\River\RiverVertexStreams.sdsl">
+      <LastGenOutput>RiverVertexStreams.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\River\RiverCommon.sdsl">
+      <LastGenOutput>RiverCommon.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\River\RiverWaterCommon.sdsl">
+      <LastGenOutput>RiverWaterCommon.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\River\RiverStrideLighting.sdsl">
+      <LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>
     </None>
   </ItemGroup>
 </Project>

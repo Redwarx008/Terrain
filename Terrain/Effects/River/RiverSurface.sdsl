@@ -1,4 +1,4 @@
-namespace Terrain.Editor
+namespace Terrain
 {
     shader RiverSurface : ShaderBase, TransformationWAndVP, RiverVertexStreams, RiverWaterCommon, RiverStrideLighting
     {
