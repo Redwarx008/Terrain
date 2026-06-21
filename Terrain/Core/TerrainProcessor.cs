@@ -47,6 +47,9 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         component.QuadTree = null;
         component.MaterialManager?.Dispose();
         component.MaterialManager = null;
+        component.RuntimeHeightData = null;
+        component.RuntimeHeightDataWidth = 0;
+        component.RuntimeHeightDataHeight = 0;
         renderObject.Dispose();
         base.OnEntityComponentRemoved(entity, component, renderObject);
     }
@@ -163,7 +166,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         Func<TerrainRuntimeResourceBundle> bundleLoader,
         out LoadedTerrainData loadedData,
         Func<string, ITerrainFileReader>? fileReaderFactory = null,
-        Func<ITerrainFileReader, TerrainRuntimeResourceBundle, RuntimeDetailMapData>? detailMapBuilder = null,
+        Func<ITerrainFileReader, TerrainRuntimeResourceBundle, ushort[], RuntimeDetailMapData>? detailMapBuilder = null,
         Action<string>? logError = null)
     {
         ArgumentNullException.ThrowIfNull(component);
@@ -175,6 +178,9 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             TerrainRuntimeResourceBundle bundle = bundleLoader();
             component.HeightScale = bundle.HeightScale;
             loadedData = CreateLoadedTerrainData(component, bundle, fileReaderFactory, detailMapBuilder);
+            component.RuntimeHeightData = loadedData.HeightData;
+            component.RuntimeHeightDataWidth = loadedData.Width;
+            component.RuntimeHeightDataHeight = loadedData.Height;
             MarkRuntimeLoadSuccess(component);
             return true;
         }
@@ -199,7 +205,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         TerrainComponent component,
         TerrainRuntimeResourceBundle bundle,
         Func<string, ITerrainFileReader>? fileReaderFactory = null,
-        Func<ITerrainFileReader, TerrainRuntimeResourceBundle, RuntimeDetailMapData>? detailMapBuilder = null)
+        Func<ITerrainFileReader, TerrainRuntimeResourceBundle, ushort[], RuntimeDetailMapData>? detailMapBuilder = null)
     {
         fileReaderFactory ??= static path => new TerrainFileReader(path);
         detailMapBuilder ??= BuildRuntimeDetailMaps;
@@ -219,12 +225,14 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             int maxLod = minMaxErrorMaps.Length - 1;
             int baseChunkSize = fileReader.Header.LeafNodeSize;
             int maxResidentChunks = Math.Max(component.MaxResidentChunks, minMaxErrorMaps[maxLod].Width * minMaxErrorMaps[maxLod].Height);
-            RuntimeDetailMapData generatedDetailMaps = detailMapBuilder(fileReader, bundle);
+            ushort[] heightData = fileReader.ReadAllHeightData();
+            RuntimeDetailMapData generatedDetailMaps = detailMapBuilder(fileReader, bundle, heightData);
 
             var loadedData = new LoadedTerrainData(
                 fileReader,
                 bundle.MaterialTextureSlots,
                 generatedDetailMaps,
+                heightData,
                 fileReader.Header.Width,
                 fileReader.Header.Height,
                 minHeight,
@@ -299,6 +307,9 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
         component.HeightmapWidth = loadedData.Width;
         component.HeightmapHeight = loadedData.Height;
+        component.RuntimeHeightData = loadedData.HeightData;
+        component.RuntimeHeightDataWidth = loadedData.Width;
+        component.RuntimeHeightDataHeight = loadedData.Height;
         component.MaxLod = loadedData.MaxLod;
         component.MinHeight = loadedData.MinHeight;
         component.MaxHeight = loadedData.MaxHeight;
@@ -500,13 +511,15 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
 
     private static TerrainRuntimeResourceBundle LoadRuntimeResourceBundle()
     {
-        var resolver = GameResourceResolverBootstrap.CreateForAppDirectory(AppContext.BaseDirectory);
+        var resolver = GameResourceResolverBootstrap.CreateForTerrainAssemblyDirectory();
         return new GameRuntimeResourceBootstrap(resolver).Load();
     }
 
-    private static RuntimeDetailMapData BuildRuntimeDetailMaps(ITerrainFileReader fileReader, TerrainRuntimeResourceBundle bundle)
+    private static RuntimeDetailMapData BuildRuntimeDetailMaps(
+        ITerrainFileReader fileReader,
+        TerrainRuntimeResourceBundle bundle,
+        ushort[] heightData)
     {
-        ushort[] heightData = fileReader.ReadAllHeightData();
         RuntimeBiomeMaskData biomeMask = RuntimeBiomeMaskReader.ReadFrom(bundle.BiomeMaskPath);
         if (biomeMask.Width != fileReader.SplatMapHeader.Width || biomeMask.Height != fileReader.SplatMapHeader.Height)
         {
@@ -531,6 +544,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         ITerrainFileReader FileReader,
         IReadOnlyList<RuntimeMaterialTextureSlot> MaterialTextureSlots,
         RuntimeDetailMapData GeneratedDetailMaps,
+        ushort[] HeightData,
         int Width,
         int Height,
         float MinHeight,

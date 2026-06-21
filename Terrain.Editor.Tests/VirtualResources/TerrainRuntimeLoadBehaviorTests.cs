@@ -1,5 +1,6 @@
 using Terrain;
 using Terrain.Resources;
+using Terrain.Rivers;
 
 namespace Terrain.Editor.Tests.VirtualResources;
 
@@ -11,6 +12,7 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Run("terrain runtime load disposes reader when detail map build fails", TerrainRuntimeLoadDisposesReaderWhenDetailMapBuildFails);
         TestHarness.Run("runtime load failure marks component when terrain data is missing", RuntimeLoadFailureMarksComponentWhenTerrainDataIsMissing);
         TestHarness.Run("runtime load failure marks component when biome mask is missing", RuntimeLoadFailureMarksComponentWhenBiomeMaskIsMissing);
+        TestHarness.Run("runtime terrain component exposes river height source after load", RuntimeTerrainComponentExposesRiverHeightSourceAfterLoad);
     }
 
     private static void RuntimeLoadGateBlocksRepeatedRetriesUntilConfigChanges()
@@ -42,7 +44,7 @@ internal static class TerrainRuntimeLoadBehaviorTests
                 component,
                 CreateResourceBundle(),
                 _ => reader,
-                static (_, _) => throw new InvalidDataException("detail map build failed")),
+                static (_, _, _) => throw new InvalidDataException("detail map build failed")),
             "detail map build failure should surface as InvalidDataException");
 
         TestHarness.Assert(reader.IsDisposed, "reader should be disposed when load fails after opening terrain data");
@@ -96,6 +98,36 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Assert(
             diagnostics.Any(message => message.Contains("biome_mask", StringComparison.OrdinalIgnoreCase)),
             "runtime load error should mention the missing biome mask");
+    }
+
+    private static void RuntimeTerrainComponentExposesRiverHeightSourceAfterLoad()
+    {
+        var component = new TerrainComponent();
+        var reader = new FakeTerrainFileReader(
+            width: 4,
+            height: 4,
+            heightData:
+            [
+                0, 1000, 2000, 3000,
+                4000, 5000, 6000, 7000,
+                8000, 9000, 10000, 11000,
+                12000, 13000, 14000, 15000,
+            ]);
+
+        bool loaded = TerrainProcessor.TryLoadRuntimeData(
+            component,
+            CreateResourceBundle,
+            out _,
+            _ => reader,
+            static (_, _, _) => new RuntimeDetailMapData(new byte[4], new byte[4], 2, 2));
+
+        TestHarness.Assert(loaded, "runtime terrain data should load");
+        TestHarness.Assert(component.TryCreateRiverHeightSource(out IRiverTerrainHeightSource heightSource), "loaded runtime terrain should expose a river height source");
+        TestHarness.Assert(heightSource.HasHeightData, "river height source should have height data");
+        TestHarness.AssertEqual(4, heightSource.HeightmapWidth, "river height source width");
+        TestHarness.AssertEqual(4, heightSource.HeightmapHeight, "river height source height");
+        TestHarness.AssertEqual(123.0f, heightSource.HeightScale, "river height source height scale");
+        TestHarness.AssertEqual(5000.0f * (1.0f / ushort.MaxValue) * 123.0f, heightSource.SampleHeight(1.0f, 1.0f), "river height source sample");
     }
 
     private static TerrainRuntimeResourceBundle CreateResourceBundle()

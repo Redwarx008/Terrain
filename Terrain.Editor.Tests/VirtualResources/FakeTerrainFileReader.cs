@@ -5,32 +5,36 @@ namespace Terrain.Editor.Tests.VirtualResources;
 internal sealed class FakeTerrainFileReader : ITerrainFileReader
 {
     private readonly TerrainMinMaxErrorMap[] minMaxErrorMaps;
+    private readonly ushort[] heightData;
 
-    public FakeTerrainFileReader()
+    public FakeTerrainFileReader(int width = 4, int height = 4, ushort[]? heightData = null)
     {
         var map = new TerrainMinMaxErrorMap(1, 1);
         map.Set(0, 0, 10.0f, 20.0f, 0.5f);
         minMaxErrorMaps = [map];
+        this.heightData = heightData ?? new ushort[width * height];
+        Header = new TerrainFileHeader
+        {
+            LeafNodeSize = 32,
+            Width = width,
+            Height = height,
+        };
+        HeightmapHeader = new TerrainVirtualTextureHeader
+        {
+            Width = width,
+            Height = height,
+            TileSize = width,
+            Padding = 1,
+            BytesPerPixel = sizeof(ushort),
+            Mipmaps = 1,
+        };
     }
 
     public bool IsDisposed { get; private set; }
 
-    public TerrainFileHeader Header { get; } = new()
-    {
-        LeafNodeSize = 32,
-        Width = 4,
-        Height = 4,
-    };
+    public TerrainFileHeader Header { get; }
 
-    public TerrainVirtualTextureHeader HeightmapHeader { get; } = new()
-    {
-        Width = 4,
-        Height = 4,
-        TileSize = 4,
-        Padding = 1,
-        BytesPerPixel = sizeof(ushort),
-        Mipmaps = 1,
-    };
+    public TerrainVirtualTextureHeader HeightmapHeader { get; }
 
     public TerrainVirtualTextureHeader SplatMapHeader { get; } = new()
     {
@@ -53,7 +57,7 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
 
     public ushort[] ReadAllHeightData()
     {
-        return [0, 1, 2, 3];
+        return heightData;
     }
 
     public void ReadHeightPage(TerrainPageKey key, Span<byte> destination)
