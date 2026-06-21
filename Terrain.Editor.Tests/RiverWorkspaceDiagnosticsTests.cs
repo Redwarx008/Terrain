@@ -16,7 +16,9 @@ internal static class RiverWorkspaceDiagnosticsTests
         TestHarness.Run("temporary river map publishes river meshes through generator", TemporaryRiverMapPublishesRiverMeshesThroughGenerator);
         TestHarness.Run("curved river map publishes smooth mesh boundaries", CurvedRiverMapPublishesSmoothMeshBoundaries);
         TestHarness.Run("long straight river keeps coarse centerline sample budget", LongStraightRiverKeepsCoarseCenterlineSampleBudget);
+        TestHarness.Run("long curved river keeps adaptive centerline sample budget", LongCurvedRiverKeepsAdaptiveCenterlineSampleBudget);
         TestHarness.Run("curved river centerline resamples terrain height after smoothing", CurvedRiverCenterlineResamplesTerrainHeightAfterSmoothing);
+        TestHarness.Run("river centerline handles invalid height cache dimensions", RiverCenterlineHandlesInvalidHeightCacheDimensions);
         TestHarness.Run("river mesh map extent uses world coordinate span", RiverMeshMapExtentUsesWorldCoordinateSpan);
     }
 
@@ -156,6 +158,9 @@ internal static class RiverWorkspaceDiagnosticsTests
 
         TestHarness.Assert(result != null, "Curved river map should generate a mesh");
         TestHarness.AssertEqual(1, component.Meshes.Count, "Curved river map should publish one segment mesh");
+        TestHarness.Assert(
+            component.Meshes[0].Vertices.Length <= 120,
+            $"Curved river map should stay within adaptive mesh budget. Actual vertices: {component.Meshes[0].Vertices.Length}");
         float maxBoundaryAngle = MaxRiverBoundaryTurnAngle(component.Meshes[0].Vertices);
 
         TestHarness.Assert(maxBoundaryAngle <= 12.0f, $"Curved river map mesh boundaries should stay smooth, actual max angle {maxBoundaryAngle:0.00}");
@@ -174,6 +179,35 @@ internal static class RiverWorkspaceDiagnosticsTests
         TestHarness.Assert(
             segment.Centerline.Count <= 100,
             $"Long straight river should not use bend-level sampling density everywhere. Actual samples: {segment.Centerline.Count}");
+    }
+
+    private static void LongCurvedRiverKeepsAdaptiveCenterlineSampleBudget()
+    {
+        var segment = new RiverSegment();
+        int x = 0;
+        int y = 6;
+        int direction = 1;
+        segment.Cells.Add((x, y));
+        for (int cycle = 0; cycle < 24; cycle++)
+        {
+            x++;
+            segment.Cells.Add((x, y));
+            y += direction;
+            segment.Cells.Add((x, y));
+            x++;
+            segment.Cells.Add((x, y));
+
+            if (y is <= 4 or >= 8)
+                direction *= -1;
+        }
+
+        var meshService = new RiverMeshService(CreateFlatTerrainManagerStub(64, 16));
+
+        meshService.BuildCenterlines([segment], 64, 16);
+
+        TestHarness.Assert(
+            segment.Centerline.Count <= 180,
+            $"Long curved river should stay within adaptive sampling budget. Cells: {segment.Cells.Count}, samples: {segment.Centerline.Count}");
     }
 
     private static void CurvedRiverCenterlineResamplesTerrainHeightAfterSmoothing()
@@ -218,6 +252,28 @@ internal static class RiverWorkspaceDiagnosticsTests
         static float HeightAtSample(int x, int y) => (x * x + y * y) * 0.5f;
     }
 
+    private static void RiverCenterlineHandlesInvalidHeightCacheDimensions()
+    {
+        var terrainManager = CreateInvalidTerrainManagerStub();
+        var meshService = new RiverMeshService(terrainManager);
+        var segment = new RiverSegment
+        {
+            Cells =
+            [
+                (0, 0),
+                (1, 0),
+                (2, 0),
+            ],
+        };
+
+        meshService.BuildCenterlines([segment], 3, 1);
+
+        TestHarness.Assert(segment.Centerline.Count > 0, "Invalid height cache dimensions should not prevent centerline generation");
+        TestHarness.Assert(
+            segment.Centerline.All(static point => MathF.Abs(point.Y - 0.02f) <= 0.0001f),
+            "Invalid height cache dimensions should fall back to zero terrain height plus surface offset");
+    }
+
     private static void SetRiver(RiverCell[,] cells, int x, int y, RiverPixelType type = RiverPixelType.River)
     {
         cells[x, y] = new RiverCell(type, 1);
@@ -249,6 +305,19 @@ internal static class RiverWorkspaceDiagnosticsTests
         SetInstanceField(terrainManager, "heightDataWidth", width);
         SetInstanceField(terrainManager, "heightDataHeight", height);
         SetInstanceField(terrainManager, "<HeightScale>k__BackingField", heightScale);
+        return terrainManager;
+    }
+
+    private static TerrainManager CreateInvalidTerrainManagerStub()
+    {
+#pragma warning disable SYSLIB0050
+        var terrainManager = (TerrainManager)FormatterServices.GetUninitializedObject(typeof(TerrainManager));
+#pragma warning restore SYSLIB0050
+
+        SetInstanceField(terrainManager, "heightDataCache", new ushort[1]);
+        SetInstanceField(terrainManager, "heightDataWidth", 0);
+        SetInstanceField(terrainManager, "heightDataHeight", 0);
+        SetInstanceField(terrainManager, "<HeightScale>k__BackingField", 200.0f);
         return terrainManager;
     }
 

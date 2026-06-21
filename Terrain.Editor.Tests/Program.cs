@@ -19,6 +19,7 @@ Run("special endpoints require adjacent river pixels", SpecialEndpointsRequireAd
 Run("centerline simplification removes pixel stair steps", CenterlineSimplificationRemovesPixelStairSteps);
 Run("centerline smoothing cuts hard corners", CenterlineSmoothingCutsHardCorners);
 Run("centerline smoothing limits repeated river bend angles", CenterlineSmoothingLimitsRepeatedRiverBendAngles);
+Run("centerline smoothing stays near original river corridor", CenterlineSmoothingStaysNearOriginalRiverCorridor);
 Run("ribbon indices preserve boundary strip organization with stride-visible winding", RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding);
 Run("mitered corner preserves river half width", MiteredCornerPreservesRiverHalfWidth);
 Run("river mesh boundaries stay smooth across repeated bends", RiverMeshBoundariesStaySmoothAcrossRepeatedBends);
@@ -287,6 +288,24 @@ void CenterlineSmoothingLimitsRepeatedRiverBendAngles()
     float maxAngle = MaxHorizontalTurnAngle(smoothed);
 
     Assert(maxAngle <= 15.0f, $"smoothed repeated river bends should stay CK3-style gradual, actual max angle {maxAngle:0.00}");
+}
+
+void CenterlineSmoothingStaysNearOriginalRiverCorridor()
+{
+    var points = new List<Vector3>
+    {
+        new(0, 0, 0),
+        new(3, 0, 0),
+        new(4, 0, 2),
+        new(7, 0, 0),
+        new(8, 0, 2),
+        new(11, 0, 0),
+    };
+
+    var smoothed = RiverMeshService.SmoothCenterline(points, 2);
+    float maxOffset = MaxHorizontalDistanceToPolyline(smoothed, points);
+
+    Assert(maxOffset <= 0.75f, $"smoothed centerline should stay inside the original river corridor, actual max offset {maxOffset:0.00}");
 }
 
 void RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding()
@@ -645,6 +664,35 @@ static float MaxHorizontalTurnAngle(IReadOnlyList<Vector3> points)
     }
 
     return maxAngle;
+}
+
+static float MaxHorizontalDistanceToPolyline(IReadOnlyList<Vector3> points, IReadOnlyList<Vector3> polyline)
+{
+    float maxDistance = 0.0f;
+    foreach (Vector3 point in points)
+    {
+        float minDistance = float.MaxValue;
+        for (int i = 0; i < polyline.Count - 1; i++)
+            minDistance = MathF.Min(minDistance, HorizontalDistanceToSegment(point, polyline[i], polyline[i + 1]));
+
+        maxDistance = MathF.Max(maxDistance, minDistance);
+    }
+
+    return maxDistance;
+}
+
+static float HorizontalDistanceToSegment(Vector3 point, Vector3 start, Vector3 end)
+{
+    Vector2 p = new(point.X, point.Z);
+    Vector2 a = new(start.X, start.Z);
+    Vector2 b = new(end.X, end.Z);
+    Vector2 segment = b - a;
+    float lengthSquared = segment.LengthSquared();
+    if (lengthSquared <= 0.000001f)
+        return Vector2.Distance(p, a);
+
+    float t = Math.Clamp(Vector2.Dot(p - a, segment) / lengthSquared, 0.0f, 1.0f);
+    return Vector2.Distance(p, a + segment * t);
 }
 
 static float MaxRiverBoundaryTurnAngle(IReadOnlyList<Terrain.Editor.Rendering.River.RiverVertex> vertices)

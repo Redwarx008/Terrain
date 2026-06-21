@@ -14,8 +14,8 @@ public sealed class RiverMeshService
     private const float StraightSampleSpacing = 1.0f;
     private const float ModerateCurveSampleSpacing = 0.5f;
     private const float TightCurveSampleSpacing = 0.25f;
-    private const float ModerateCurveAngleDegrees = 2.0f;
-    private const float TightCurveAngleDegrees = 6.0f;
+    private const float ModerateCurveAngleDegrees = 4.0f;
+    private const float TightCurveAngleDegrees = 10.0f;
     private const float CenterlineSimplificationTolerance = 1.5f;
     private const int CenterlineSmoothingIterations = 2;
     private const float BendRelaxationWeight = 0.4f;
@@ -288,6 +288,8 @@ public sealed class RiverMeshService
         if (data == null) return 0;
         int w = terrainManager.HeightCacheWidth;
         int h = terrainManager.HeightCacheHeight;
+        if (w <= 0 || h <= 0 || data.Length < w * h)
+            return 0.0f;
 
         // World coordinates are 1:1 with heightmap pixels (0 ~ w-1).
         float x = Math.Clamp(wx, 0.0f, w - 1);
