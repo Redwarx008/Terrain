@@ -96,8 +96,17 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             return false;
         }
 
-        ApplyLoadedTerrainData(graphicsDevice, commandList, component, renderObject, loadedData);
-        return true;
+        try
+        {
+            ApplyLoadedTerrainData(graphicsDevice, commandList, component, renderObject, loadedData);
+            MarkRuntimeLoadSuccess(component);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            HandleRuntimeApplyFailure(component, renderObject, exception);
+            return false;
+        }
     }
 
     private static bool IsCurrentInitializationValid(TerrainComponent component, TerrainRenderObject renderObject)
@@ -175,7 +184,6 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             TerrainRuntimeResourceBundle bundle = bundleLoader();
             component.HeightScale = bundle.HeightScale;
             loadedData = CreateLoadedTerrainData(component, bundle, fileReaderFactory, detailMapBuilder);
-            MarkRuntimeLoadSuccess(component);
             return true;
         }
         catch (Exception exception)
@@ -185,6 +193,18 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             logError?.Invoke(FormatRuntimeLoadFailure(exception));
             return false;
         }
+    }
+
+    private static void HandleRuntimeApplyFailure(TerrainComponent component, TerrainRenderObject renderObject, Exception exception)
+    {
+        MarkRuntimeLoadFailure(component);
+        component.IsInitialized = false;
+        component.QuadTree?.Dispose();
+        component.QuadTree = null;
+        component.MaterialManager?.Dispose();
+        component.MaterialManager = null;
+        renderObject.Enabled = false;
+        Log.Error($"Terrain runtime resources could not be read: {FormatRuntimeLoadFailure(exception)}");
     }
 
     private static string FormatRuntimeLoadFailure(Exception exception)
@@ -292,34 +312,45 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             gpuDetailIndexArray = new GpuVirtualTextureArray(renderObject.DetailIndexMapArray, component.SplatmapTileSize, component.SplatmapTilePadding, loadedData.MaxResidentChunks);
         }
 
-        var streamingManager = new TerrainStreamingManager(
-            loadedData.FileReader,
-            gpuHeightArray,
-            gpuDetailIndexArray,
-            renderObject.DetailWeightMapArray,
-            component.BaseChunkSize);
+        TerrainStreamingManager? streamingManager = null;
+        try
+        {
+            streamingManager = new TerrainStreamingManager(
+                loadedData.FileReader,
+                gpuHeightArray,
+                gpuDetailIndexArray,
+                renderObject.DetailWeightMapArray,
+                component.BaseChunkSize);
 
-        component.HeightmapWidth = loadedData.Width;
-        component.HeightmapHeight = loadedData.Height;
-        component.MaxLod = loadedData.MaxLod;
-        component.MinHeight = loadedData.MinHeight;
-        component.MaxHeight = loadedData.MaxHeight;
-        component.MinMaxErrorMaps = loadedData.MinMaxErrorMaps;
-        component.QuadTree = new TerrainQuadTree(
-            loadedData.MinMaxErrorMaps,
-            loadedData.BaseChunkSize,
-            loadedData.Width,
-            loadedData.Height,
-            component,
-            streamingManager);
+            component.HeightmapWidth = loadedData.Width;
+            component.HeightmapHeight = loadedData.Height;
+            component.MaxLod = loadedData.MaxLod;
+            component.MinHeight = loadedData.MinHeight;
+            component.MaxHeight = loadedData.MaxHeight;
+            component.MinMaxErrorMaps = loadedData.MinMaxErrorMaps;
+            var attachedStreamingManager = streamingManager;
+            component.QuadTree = new TerrainQuadTree(
+                loadedData.MinMaxErrorMaps,
+                loadedData.BaseChunkSize,
+                loadedData.Width,
+                loadedData.Height,
+                component,
+                attachedStreamingManager);
+            streamingManager = null;
 
-        RuntimeDetailMapData generatedDetailMaps = loadedData.DetailMapBuilder(
-            component,
-            loadedData.FileReader,
-            loadedData.Bundle,
-            loadedData.BiomeMask);
-        streamingManager.SetGeneratedDetailMaps(generatedDetailMaps);
-        streamingManager.PreloadTopLevelChunks(commandList, loadedData.MinMaxErrorMaps[loadedData.MaxLod]);
+            RuntimeDetailMapData generatedDetailMaps = loadedData.DetailMapBuilder(
+                component,
+                loadedData.FileReader,
+                loadedData.Bundle,
+                loadedData.BiomeMask);
+            attachedStreamingManager.SetGeneratedDetailMaps(generatedDetailMaps);
+            attachedStreamingManager.PreloadTopLevelChunks(commandList, loadedData.MinMaxErrorMaps[loadedData.MaxLod]);
+        }
+        catch
+        {
+            streamingManager?.Dispose();
+            throw;
+        }
 
         component.MaterialManager?.Dispose();
         component.MaterialManager = null;

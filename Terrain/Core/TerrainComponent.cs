@@ -112,7 +112,10 @@ public sealed class TerrainComponent : ActivableEntityComponent
 
     public float GetHeight(int sampleX, int sampleZ)
     {
-        return QuadTree?.GetHeight(sampleX, sampleZ, HeightScale) ?? 0.0f;
+        if (QuadTree == null)
+            throw new InvalidOperationException("Terrain height data is not available until terrain streaming is initialized.");
+
+        return QuadTree.GetHeight(sampleX, sampleZ, HeightScale);
     }
 }
 

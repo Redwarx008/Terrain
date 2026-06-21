@@ -13,6 +13,8 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Run("terrain runtime load disposes reader when biome mask load fails", TerrainRuntimeLoadDisposesReaderWhenBiomeMaskLoadFails);
         TestHarness.Run("runtime load failure marks component when terrain data is missing", RuntimeLoadFailureMarksComponentWhenTerrainDataIsMissing);
         TestHarness.Run("runtime load failure marks component when biome mask is missing", RuntimeLoadFailureMarksComponentWhenBiomeMaskIsMissing);
+        TestHarness.Run("terrain component get height fails before streaming attaches", TerrainComponentGetHeightFailsBeforeStreamingAttaches);
+        TestHarness.Run("runtime apply failure is captured by runtime load gate", RuntimeApplyFailureIsCapturedByRuntimeLoadGate);
         TestHarness.Run("runtime height sampling stays inside terrain streaming", RuntimeHeightSamplingStaysInsideTerrainStreaming);
         TestHarness.Run("runtime height CPU cache follows terrain streaming residency", RuntimeHeightCpuCacheFollowsTerrainStreamingResidency);
         TestHarness.Run("runtime detail map builds after terrain streaming is attached", RuntimeDetailMapBuildsAfterTerrainStreamingIsAttached);
@@ -106,6 +108,41 @@ internal static class TerrainRuntimeLoadBehaviorTests
             "runtime load error should mention the missing biome mask");
     }
 
+    private static void TerrainComponentGetHeightFailsBeforeStreamingAttaches()
+    {
+        var component = new TerrainComponent();
+
+        TestHarness.AssertThrows<InvalidOperationException>(
+            () => component.GetHeight(0, 0),
+            "TerrainComponent.GetHeight should fail before terrain streaming is initialized");
+    }
+
+    private static void RuntimeApplyFailureIsCapturedByRuntimeLoadGate()
+    {
+        string terrainProcessorSource = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Terrain", "Core", "TerrainProcessor.cs"));
+        int applyCallIndex = terrainProcessorSource.IndexOf("ApplyLoadedTerrainData(graphicsDevice", StringComparison.Ordinal);
+        int applyFailureHandlerIndex = terrainProcessorSource.IndexOf("HandleRuntimeApplyFailure(component, renderObject, exception)", StringComparison.Ordinal);
+        int markSuccessIndex = terrainProcessorSource.IndexOf("MarkRuntimeLoadSuccess(component);", applyCallIndex, StringComparison.Ordinal);
+        int tryLoadRuntimeDataIndex = terrainProcessorSource.IndexOf("internal static bool TryLoadRuntimeData", StringComparison.Ordinal);
+        int createLoadedTerrainDataMethodIndex = terrainProcessorSource.IndexOf("internal static LoadedTerrainData CreateLoadedTerrainData", StringComparison.Ordinal);
+        int createLoadedDataIndex = terrainProcessorSource.IndexOf("loadedData = CreateLoadedTerrainData", StringComparison.Ordinal);
+
+        TestHarness.Assert(applyCallIndex >= 0, "runtime load should apply loaded terrain data during initialization");
+        TestHarness.Assert(applyFailureHandlerIndex > applyCallIndex, "apply failures should be handled after ApplyLoadedTerrainData throws");
+        TestHarness.Assert(markSuccessIndex > applyCallIndex && markSuccessIndex < applyFailureHandlerIndex, "runtime load success should be marked only after ApplyLoadedTerrainData completes");
+        TestHarness.Assert(createLoadedDataIndex > tryLoadRuntimeDataIndex, "TryLoadRuntimeData should still create loaded runtime metadata");
+
+        string tryLoadRuntimeDataBody = terrainProcessorSource[tryLoadRuntimeDataIndex..createLoadedTerrainDataMethodIndex];
+        TestHarness.Assert(!tryLoadRuntimeDataBody.Contains("MarkRuntimeLoadSuccess(component)", StringComparison.Ordinal), "TryLoadRuntimeData should not mark success before apply-time detail map generation succeeds");
+
+        int handlerIndex = terrainProcessorSource.IndexOf("private static void HandleRuntimeApplyFailure", StringComparison.Ordinal);
+        TestHarness.Assert(handlerIndex >= 0, "runtime apply failure cleanup should be centralized");
+        string handlerBody = terrainProcessorSource[handlerIndex..Math.Min(terrainProcessorSource.Length, handlerIndex + 1200)];
+        TestHarness.Assert(handlerBody.Contains("MarkRuntimeLoadFailure(component)", StringComparison.Ordinal), "apply failure should latch the runtime load failure gate");
+        TestHarness.Assert(handlerBody.Contains("component.QuadTree?.Dispose()", StringComparison.Ordinal), "apply failure should dispose any partially attached streaming state");
+        TestHarness.Assert(handlerBody.Contains("renderObject.Enabled = false", StringComparison.Ordinal), "apply failure should disable the render object");
+    }
+
     private static void RuntimeHeightSamplingStaysInsideTerrainStreaming()
     {
         string repositoryRoot = FindRepositoryRoot();
@@ -133,8 +170,8 @@ internal static class TerrainRuntimeLoadBehaviorTests
         string terrainProcessorSource = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Terrain", "Core", "TerrainProcessor.cs"));
         int quadTreeIndex = terrainProcessorSource.IndexOf("component.QuadTree = new TerrainQuadTree", StringComparison.Ordinal);
         int detailMapIndex = terrainProcessorSource.IndexOf("RuntimeDetailMapData generatedDetailMaps = loadedData.DetailMapBuilder", StringComparison.Ordinal);
-        int injectIndex = terrainProcessorSource.IndexOf("streamingManager.SetGeneratedDetailMaps(generatedDetailMaps)", StringComparison.Ordinal);
-        int preloadIndex = terrainProcessorSource.IndexOf("streamingManager.PreloadTopLevelChunks", StringComparison.Ordinal);
+        int injectIndex = terrainProcessorSource.IndexOf("attachedStreamingManager.SetGeneratedDetailMaps(generatedDetailMaps)", StringComparison.Ordinal);
+        int preloadIndex = terrainProcessorSource.IndexOf("attachedStreamingManager.PreloadTopLevelChunks", StringComparison.Ordinal);
 
         TestHarness.Assert(quadTreeIndex >= 0, "terrain quad tree should be attached before runtime detail map generation");
         TestHarness.Assert(detailMapIndex > quadTreeIndex, "runtime detail map generation should happen after TerrainComponent.GetHeight is backed by streaming");
