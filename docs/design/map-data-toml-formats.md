@@ -39,6 +39,8 @@
   - `rivers`
   - `provinces`
   - `settings.height_scale`
+  - `settings.river_min_width`
+  - `settings.river_max_width`
 - Runtime 会忽略 `heightmap` 的消费，但字段仍保留在格式中
 
 ### 根级结构
@@ -59,6 +61,8 @@
 ### `[settings]` 允许字段
 
 - `height_scale`
+- `river_min_width`
+- `river_max_width`
 
 ### 必填字段
 
@@ -75,11 +79,17 @@
 
 - `terrain.rivers`
 - `terrain.provinces`
+- `settings.river_min_width`
+- `settings.river_max_width`
 
 ### 数值与路径约束
 
 - `version` 必须是整数，且只能为 `1`
 - `settings.height_scale` 必须是数字（整数或浮点），且必须 `> 0`
+- `settings.river_min_width` / `settings.river_max_width` 是河流 full-width（完整宽度）范围，省略时默认分别为 `1.0` / `4.0`
+- `settings.river_min_width` 必须是有限数字，且必须 `> 0`
+- `settings.river_max_width` 必须是有限数字，且必须 `>= settings.river_min_width`
+- `rivers.png` 的河流宽度 palette index 会线性映射到 `[river_min_width, river_max_width]`，mesh 内部再转为 half-width 生成 ribbon
 - 所有路径字段都必须是相对路径
 - 路径会做如下规范化：
   - `\\` 转成 `/`
@@ -100,6 +110,8 @@ provinces = "provinces.png"
 
 [settings]
 height_scale = 200.0
+river_min_width = 1.0
+river_max_width = 4.0
 ```
 
 ### 当前不再允许的旧格式
@@ -364,6 +376,8 @@ visible = true
   - 总是写 `[terrain].terrain_data`
   - `rivers` / `provinces` 仅在非空时写出
   - 总是写 `[settings].height_scale`
+  - 总是写 `[settings].river_min_width`
+  - 总是写 `[settings].river_max_width`
   - 文件顶部会写入固定的注释模板示例；scaffold 自动生成和后续作者态写回都沿用同一组模板
   - 这些顶部注释属于规范化输出，不保证保留用户自定义注释
 
@@ -427,6 +441,8 @@ visible = true
   - `heightmap = "heightmap.png"`
   - `terrain_data = "terrain.terrain"`
   - `height_scale = 100.0`
+  - `river_min_width = 1.0`
+  - `river_max_width = 4.0`
 - `map_data/materials/descriptor.toml` 缺失时自动生成 `version = 1` 和空 `materials = []`
 - `map_data/biome_settings.toml` 缺失时自动生成 `version = 1`、`biomes = []`、`layers = []`、`modifiers = []`
 - `heightmap.png` 缺失时不会自动生成；Editor 以待补资源模式启动，并阻止 `Save` / `Export .terrain`
