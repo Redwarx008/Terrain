@@ -13,7 +13,9 @@ public sealed class RiverSegment
     public int StartNodeKey { get; set; } = -1;
     public int EndNodeKey { get; set; } = -1;
     public float AvgHalfWidth { get; set; } = 0.625f;
+    public List<float> CellHalfWidths { get; set; } = new();
     public List<Vector3> Centerline { get; set; } = new();
+    public List<float> CenterlineHalfWidths { get; set; } = new();
     public float WorldLength { get; set; }
     public bool TaperStart { get; set; }
     public bool TaperEnd { get; set; }

@@ -210,7 +210,7 @@ public sealed class RiverMapService
                     seg.StartKind = KindFromPixel(Cells[sp.X, sp.Y].Type);
                     seg.StartNodeKey = sp.Y * 65536 + sp.X;
                     NormalizeDirection(seg);
-                    seg.AvgHalfWidth = ComputeAvgWidth(seg, Cells);
+                    PopulateWidthSamples(seg, Cells);
                     segments.Add(seg);
                 }
             }
@@ -309,17 +309,46 @@ public sealed class RiverMapService
         _ => 1,
     };
 
-    private static float ComputeAvgWidth(RiverSegment seg, RiverCell[,] cells)
+    private void PopulateWidthSamples(RiverSegment seg, RiverCell[,] cells)
     {
-        float total = 0;
+        seg.CellHalfWidths.Clear();
+
+        float total = 0.0f;
         int count = 0;
-        foreach (var (x, y) in seg.Cells)
+        float lastWidth = RiverCell.GetHalfWidth(0, riverMinWidth, riverMaxWidth);
+
+        for (int i = 0; i < seg.Cells.Count; i++)
         {
-            if (cells[x, y].Type != RiverPixelType.River) continue;
-            total += RiverCell.GetHalfWidth(cells[x, y].Width);
-            count++;
+            var (x, y) = seg.Cells[i];
+            RiverCell cell = cells[x, y];
+            if (cell.Type == RiverPixelType.River)
+            {
+                lastWidth = RiverCell.GetHalfWidth(cell.Width, riverMinWidth, riverMaxWidth);
+                total += lastWidth;
+                count++;
+            }
+            else if (i == 0)
+            {
+                lastWidth = FindNearestSegmentRiverHalfWidth(seg, cells, startIndex: 0, direction: 1, fallback: lastWidth);
+            }
+
+            seg.CellHalfWidths.Add(lastWidth);
         }
-        return count > 0 ? total / count : 0.625f;
+
+        seg.AvgHalfWidth = count > 0 ? total / count : RiverCell.GetHalfWidth(1, riverMinWidth, riverMaxWidth);
+    }
+
+    private float FindNearestSegmentRiverHalfWidth(RiverSegment seg, RiverCell[,] cells, int startIndex, int direction, float fallback)
+    {
+        for (int i = startIndex; i >= 0 && i < seg.Cells.Count; i += direction)
+        {
+            var (x, y) = seg.Cells[i];
+            RiverCell cell = cells[x, y];
+            if (cell.Type == RiverPixelType.River)
+                return RiverCell.GetHalfWidth(cell.Width, riverMinWidth, riverMaxWidth);
+        }
+
+        return fallback;
     }
 
     private static SegmentEndKind KindFromPixel(RiverPixelType t) => t switch

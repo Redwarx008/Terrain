@@ -15,6 +15,7 @@ Run("branch honors adjacent confluence marker before side continuation", BranchH
 Run("confluence to none segment is reversed to flow into confluence", ConfluenceToNoneSegmentIsReversedToFlowIntoConfluence);
 Run("bifurcation to none segment is reversed to flow into bifurcation", BifurcationToNoneSegmentIsReversedToFlowIntoBifurcation);
 Run("semantic endpoints do not shrink average river width", SemanticEndpointsDoNotShrinkAverageRiverWidth);
+Run("river palette maps to configured local width samples", RiverPaletteMapsToConfiguredLocalWidthSamples);
 Run("river map service validates configured width range", RiverMapServiceValidatesConfiguredWidthRange);
 Run("special endpoints require adjacent river pixels", SpecialEndpointsRequireAdjacentRiverPixels);
 Run("centerline simplification removes pixel stair steps", CenterlineSimplificationRemovesPixelStairSteps);
@@ -215,7 +216,34 @@ void SemanticEndpointsDoNotShrinkAverageRiverWidth()
     var segments = service.ExtractSegments();
 
     AssertEqual(1, segments.Count, "segment count");
-    AssertNearlyEqual(1.75f, segments[0].AvgHalfWidth, 0.0001f, "average width should only use river palette pixels");
+    AssertNearlyEqual(2.0f, segments[0].AvgHalfWidth, 0.0001f, "average width should only use river palette pixels");
+}
+
+void RiverPaletteMapsToConfiguredLocalWidthSamples()
+{
+    var path = Path.Combine(tempDir, "width-gradient.png");
+    using (var image = new Image<Rgba32>(5, 3))
+    {
+        image[0, 1] = new Rgba32(0, 255, 0);
+        image[1, 1] = new Rgba32(0x00, 0xe1, 0xff);
+        image[2, 1] = new Rgba32(0x00, 0x00, 0xff);
+        image[3, 1] = new Rgba32(0x18, 0xce, 0x00);
+        image[4, 1] = new Rgba32(255, 0, 0);
+        image.Save(path);
+    }
+
+    var service = new RiverMapService(riverMinWidth: 1.0f, riverMaxWidth: 4.0f);
+    Assert(service.Load(path), "river map should load");
+    var segments = service.ExtractSegments();
+
+    AssertEqual(1, segments.Count, "segment count");
+    var samples = segments[0].CellHalfWidths;
+    AssertEqual(5, samples.Count, "width samples include semantic endpoint cells");
+    AssertNearlyEqual(0.5f, samples[0], 0.0001f, "source endpoint should inherit first river width");
+    AssertNearlyEqual(0.5f, samples[1], 0.0001f, "light blue should map to min half-width");
+    AssertNearlyEqual(1.1f, samples[2], 0.0001f, "middle blue should interpolate configured half-width");
+    AssertNearlyEqual(2.0f, samples[3], 0.0001f, "green should map to max half-width");
+    AssertNearlyEqual(2.0f, samples[4], 0.0001f, "confluence endpoint should inherit previous river width");
 }
 
 void RiverMapServiceValidatesConfiguredWidthRange()
