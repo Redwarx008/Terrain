@@ -120,6 +120,14 @@ RenderFeatures:
         RenderStageSelectors: {}
         PipelineProcessors: {}
         RenderFeatures: {}
+    8df249f89b144227972a4c6388f267e1: !Terrain.Rendering.River.RiverRenderFeature,Terrain
+        RenderStageSelectors:
+            13c8f5ded00f4bc39341f9ab3e4afe54: !Stride.Rendering.SimpleGroupToRenderStageSelector,Stride.Rendering
+                RenderStage: ref!! 0fbd7f2d-8037-4033-9616-14d59c88b1fd
+                EffectName: RiverSurface
+                RenderGroup: Group1
+        PipelineProcessors: {}
+        RenderFeatures: {}
 SharedRenderers:
     60459475d3a3adaf2d1ba5d99913ca75: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine
         Id: 174f9875-9c7a-4234-a152-78ad10b332be

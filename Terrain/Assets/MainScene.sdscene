@@ -10,6 +10,7 @@ Hierarchy:
         - ref!! 5369f368-a858-4c5b-a2ce-287300ee54af
         - ref!! 8f3955bf-2df5-4fef-9967-03668d6360ac
         - ref!! 1cfe1131-cc2f-4a41-947d-3102b1f351dd
+        - ref!! c8f8f226-3477-45ec-84d8-d8e8de365e1b
         - ref!! a68fec97-eeb3-44c6-8877-12e43d214e56
     Parts:
         -   Entity:
@@ -28,6 +29,18 @@ Hierarchy:
                         MaxScreenSpaceErrorPixels: 8.0
                         DefaultDiffuseTexture: 4ecb1370-7ee3-41d3-a06f-17ca7336ae72:Grid Gray 128x128
                         BaseColor: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}
+        -   Entity:
+                Id: c8f8f226-3477-45ec-84d8-d8e8de365e1b
+                Name: RiverSystem
+                Components:
+                    1e60bd75c1fd45a98b5f89b08207e4f7: !TransformComponent
+                        Id: 599af9e2-1c2b-4230-8c24-9f37111e5e55
+                        Position: {X: 0.0, Y: 0.0, Z: 0.0}
+                        Rotation: {X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
+                        Scale: {X: 1.0, Y: 1.0, Z: 1.0}
+                        Children: {}
+                    17d6e522e35445b2aa1dbed5dddb62db: !Terrain.Rendering.River.RiverComponent,Terrain
+                        Id: 764d8cb4-27be-4ed3-935f-3ed571bdc62e
         -   Entity:
                 Id: 5369f368-a858-4c5b-a2ce-287300ee54af
                 Name: Directional light
