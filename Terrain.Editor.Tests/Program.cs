@@ -23,6 +23,7 @@ Run("centerline simplification removes pixel stair steps", CenterlineSimplificat
 Run("centerline smoothing cuts hard corners", CenterlineSmoothingCutsHardCorners);
 Run("centerline smoothing limits repeated river bend angles", CenterlineSmoothingLimitsRepeatedRiverBendAngles);
 Run("centerline smoothing stays near original river corridor", CenterlineSmoothingStaysNearOriginalRiverCorridor);
+Run("river centerline generation preserves palette width gradient", RiverCenterlineGenerationPreservesPaletteWidthGradient);
 Run("ribbon indices preserve boundary strip organization with stride-visible winding", RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding);
 Run("mitered corner preserves river half width", MiteredCornerPreservesRiverHalfWidth);
 Run("river mesh preserves local width gradient", RiverMeshPreservesLocalWidthGradient);
@@ -363,6 +364,22 @@ void CenterlineSmoothingStaysNearOriginalRiverCorridor()
     float maxOffset = MaxHorizontalDistanceToPolyline(smoothed, points);
 
     Assert(maxOffset <= 0.625f, $"smoothed centerline should stay inside the default river half-width corridor, actual max offset {maxOffset:0.00}");
+}
+
+void RiverCenterlineGenerationPreservesPaletteWidthGradient()
+{
+    var segment = new RiverSegment
+    {
+        Cells = [(0, 1), (1, 1), (2, 1), (3, 1)],
+        CellHalfWidths = [0.5f, 0.75f, 1.25f, 2.0f],
+    };
+
+    var service = new RiverMeshService(null!);
+    service.BuildCenterlines([segment], mapWidth: 4, mapHeight: 3);
+
+    Assert(segment.Centerline.Count > 2, "centerline generation should produce samples");
+    AssertEqual(segment.Centerline.Count, segment.CenterlineHalfWidths.Count, "centerline widths should align with centerline samples");
+    Assert(segment.CenterlineHalfWidths[0] < segment.CenterlineHalfWidths[^1], "width gradient should remain increasing after resampling");
 }
 
 void RibbonIndicesPreserveBoundaryStripOrganizationWithStrideVisibleWinding()

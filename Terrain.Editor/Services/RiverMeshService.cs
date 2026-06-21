@@ -35,9 +35,6 @@ public sealed class RiverMeshService
 
     public void BuildCenterlines(List<RiverSegment> segments, int mapWidth, int mapHeight)
     {
-        if (terrainManager == null)
-            throw new InvalidOperationException("River centerline generation requires a TerrainManager for height sampling.");
-
         // river.png is 1/2 the resolution of the heightmap, and each heightmap pixel = 1 world unit.
         // So 1 river pixel = 2 world units.
         float pixelToWorld = 2.0f;
@@ -48,19 +45,24 @@ public sealed class RiverMeshService
 
             // Build raw centerline from pixel centers
             var rawPoints = new List<Vector3>();
-            foreach (var (x, y) in seg.Cells)
+            var rawWidths = new List<float>();
+            for (int cellIndex = 0; cellIndex < seg.Cells.Count; cellIndex++)
             {
+                var (x, y) = seg.Cells[cellIndex];
                 float wx = (x + 0.5f) * pixelToWorld;
                 float wz = (y + 0.5f) * pixelToWorld;
                 float wy = SampleTerrainHeight(wx, wz) + SurfaceOffset;
                 rawPoints.Add(new Vector3(wx, wy, wz));
+                rawWidths.Add(GetCellHalfWidth(seg, cellIndex));
             }
 
-            var simplifiedPoints = SimplifyCenterline(rawPoints, CenterlineSimplificationTolerance);
+            var (simplifiedPoints, simplifiedWidths) = SimplifyCenterlineWithWidths(rawPoints, rawWidths, CenterlineSimplificationTolerance);
             var smoothedPoints = SmoothCenterline(simplifiedPoints, CenterlineSmoothingIterations);
+            var smoothedWidths = SmoothWidths(simplifiedWidths, CenterlineSmoothingIterations);
 
-            var interpolatedPoints = CatmullRomInterpolate(smoothedPoints);
+            var (interpolatedPoints, interpolatedWidths) = CatmullRomInterpolateWithWidths(smoothedPoints, smoothedWidths);
             seg.Centerline = ResampleTerrainHeights(interpolatedPoints);
+            seg.CenterlineHalfWidths = interpolatedWidths;
             seg.WorldLength = ComputeMapUnitPolylineLength(seg.Centerline);
         }
     }
@@ -107,6 +109,30 @@ public sealed class RiverMeshService
 
         if (iterations >= 2)
             current = RelaxRepeatedBends(current, iterations + 3);
+
+        return current;
+    }
+
+    private static List<float> SmoothWidths(List<float> widths, int iterations)
+    {
+        if (widths.Count <= 2 || iterations <= 0)
+            return new List<float>(widths);
+
+        var current = new List<float>(widths);
+        for (int iteration = 0; iteration < iterations; iteration++)
+        {
+            var next = new List<float>(current.Count * 2) { current[0] };
+            for (int i = 0; i < current.Count - 1; i++)
+            {
+                float a = current[i];
+                float b = current[i + 1];
+                next.Add(Math.Max(MinVisibleHalfWidth, a * 0.75f + b * 0.25f));
+                next.Add(Math.Max(MinVisibleHalfWidth, a * 0.25f + b * 0.75f));
+            }
+
+            next.Add(current[^1]);
+            current = next;
+        }
 
         return current;
     }
@@ -216,6 +242,57 @@ public sealed class RiverMeshService
         return result;
     }
 
+    private static (List<Vector3> Points, List<float> Widths) CatmullRomInterpolateWithWidths(List<Vector3> controlPoints, List<float> controlWidths)
+    {
+        if (controlPoints.Count < 2)
+            return (new List<Vector3>(controlPoints), new List<float>(controlWidths));
+
+        var resultPoints = new List<Vector3> { controlPoints[0] };
+        var resultWidths = new List<float> { GetControlWidth(controlWidths, 0) };
+        float accumulated = 0.0f;
+
+        for (int i = 0; i < controlPoints.Count - 1; i++)
+        {
+            Vector3 p0 = controlPoints[Math.Max(0, i - 1)];
+            Vector3 p1 = controlPoints[i];
+            Vector3 p2 = controlPoints[i + 1];
+            Vector3 p3 = controlPoints[Math.Min(controlPoints.Count - 1, i + 2)];
+
+            float w0 = GetControlWidth(controlWidths, Math.Max(0, i - 1));
+            float w1 = GetControlWidth(controlWidths, i);
+            float w2 = GetControlWidth(controlWidths, i + 1);
+            float w3 = GetControlWidth(controlWidths, Math.Min(controlPoints.Count - 1, i + 2));
+
+            float spacing = ComputeAdaptiveSampleSpacing(p0, p1, p2, p3);
+            float segmentLength = HorizontalDistance(p1, p2);
+            if (segmentLength < 0.001f) continue;
+
+            int steps = Math.Max(1, (int)(segmentLength / spacing));
+            for (int s = 1; s <= steps; s++)
+            {
+                float t = s / (float)steps;
+                Vector3 point = CatmullRom(p0, p1, p2, p3, t);
+                float width = Math.Max(MinVisibleHalfWidth, CatmullRomScalar(w0, w1, w2, w3, t));
+                float dist = HorizontalDistance(resultPoints[^1], point);
+                accumulated += dist;
+                if (accumulated >= spacing)
+                {
+                    resultPoints.Add(point);
+                    resultWidths.Add(width);
+                    accumulated = 0;
+                }
+            }
+        }
+
+        if (Vector3.Distance(resultPoints[^1], controlPoints[^1]) > 0.01f)
+        {
+            resultPoints.Add(controlPoints[^1]);
+            resultWidths.Add(GetControlWidth(controlWidths, controlPoints.Count - 1));
+        }
+
+        return (resultPoints, resultWidths);
+    }
+
     private List<Vector3> ResampleTerrainHeights(List<Vector3> points)
     {
         var result = new List<Vector3>(points.Count);
@@ -270,6 +347,68 @@ public sealed class RiverMeshService
             (-p0 + p2) * t +
             (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
             (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
+    }
+
+    private static float CatmullRomScalar(float p0, float p1, float p2, float p3, float t)
+    {
+        float t2 = t * t, t3 = t2 * t;
+        return 0.5f * ((2f * p1) +
+            (-p0 + p2) * t +
+            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
+            (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
+    }
+
+    private static (List<Vector3> Points, List<float> Widths) SimplifyCenterlineWithWidths(List<Vector3> points, List<float> widths, float tolerance)
+    {
+        var simplified = SimplifyCenterline(points, tolerance);
+        if (simplified.Count == points.Count)
+            return (simplified, new List<float>(widths));
+
+        var resultWidths = new List<float>(simplified.Count);
+        int searchStart = 0;
+        foreach (Vector3 point in simplified)
+        {
+            int index = FindPointIndex(points, point, searchStart);
+            if (index >= 0 && index < widths.Count)
+            {
+                resultWidths.Add(Math.Max(MinVisibleHalfWidth, widths[index]));
+                searchStart = index + 1;
+            }
+            else
+            {
+                resultWidths.Add(GetControlWidth(widths, searchStart));
+            }
+        }
+
+        return (simplified, resultWidths);
+    }
+
+    private static int FindPointIndex(List<Vector3> points, Vector3 point, int start)
+    {
+        for (int i = Math.Max(0, start); i < points.Count; i++)
+        {
+            if (Vector3.DistanceSquared(points[i], point) <= 0.000001f)
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static float GetCellHalfWidth(RiverSegment segment, int index)
+    {
+        if (index >= 0 && index < segment.CellHalfWidths.Count)
+            return Math.Max(MinVisibleHalfWidth, segment.CellHalfWidths[index]);
+
+        return Math.Max(MinVisibleHalfWidth, segment.AvgHalfWidth);
+    }
+
+    private static float GetControlWidth(List<float> widths, int index)
+    {
+        if (widths.Count == 0)
+            return MinVisibleHalfWidth;
+
+        int clamped = Math.Clamp(index, 0, widths.Count - 1);
+        return Math.Max(MinVisibleHalfWidth, widths[clamped]);
     }
 
     private static float ComputePolylineLength(List<Vector3> points)
