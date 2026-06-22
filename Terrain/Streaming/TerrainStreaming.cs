@@ -119,6 +119,14 @@ internal struct TerrainFileHeader
     public int DetailMapResolutionRatio;
 }
 
+internal enum TerrainTextureFormat : int
+{
+    Rgba32 = 0,
+    L16 = 1,
+    Rg32 = 2,
+    R8 = 3,
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 internal struct TerrainVirtualTextureHeader
 {
@@ -163,43 +171,56 @@ internal sealed class TerrainFileReader : ITerrainFileReader
     public TerrainFileReader(string path)
     {
         fileHandle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
-        long offset = 0;
-
-        Header = ReadStruct<TerrainFileHeader>(fileHandle, ref offset);
-        if (Header.Magic != TerrainFileHeader.MagicValue)
+        try
         {
-            throw new InvalidDataException($"'{path}' is not a valid .terrain file.");
+            long offset = 0;
+
+            Header = ReadStruct<TerrainFileHeader>(fileHandle, ref offset);
+            if (Header.Magic != TerrainFileHeader.MagicValue)
+            {
+                throw new InvalidDataException($"'{path}' is not a valid .terrain file.");
+            }
+
+            int mapCount = ReadInt32(fileHandle, ref offset);
+            ValidateHeader(Header, mapCount);
+            minMaxErrorMaps = new TerrainMinMaxErrorMap[mapCount];
+            for (int i = 0; i < mapCount; i++)
+            {
+                minMaxErrorMaps[i] = ReadMinMaxErrorMap(fileHandle, ref offset);
+            }
+
+            heightmapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref offset);
+            ValidateHeightmapHeader(Header, heightmapHeader);
+            tileByteSize = ComputeTileByteSize(heightmapHeader);
+            long currentOffset = offset;
+            heightmapMipLayouts = BuildMipLayouts(heightmapHeader, tileByteSize, ref currentOffset);
+
+            detailIndexMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
+            ValidateDetailHeader(Header, detailIndexMapHeader, "DetailIndex");
+            detailIndexTileByteSize = ComputeTileByteSize(detailIndexMapHeader);
+            detailIndexMipLayouts = BuildMipLayouts(detailIndexMapHeader, detailIndexTileByteSize, ref currentOffset);
+
+            detailWeightMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
+            ValidateDetailHeader(Header, detailWeightMapHeader, "DetailWeight");
+            ValidateMatchingDetailHeaders(detailIndexMapHeader, detailWeightMapHeader);
+            detailWeightTileByteSize = ComputeTileByteSize(detailWeightMapHeader);
+            detailWeightMipLayouts = BuildMipLayouts(detailWeightMapHeader, detailWeightTileByteSize, ref currentOffset);
+
+            long fileLength = RandomAccess.GetLength(fileHandle);
+            if (currentOffset > fileLength)
+            {
+                throw new InvalidDataException($"Terrain detail VT payload is truncated. Expected at least {currentOffset} bytes, got {fileLength}.");
+            }
         }
-
-        int mapCount = ReadInt32(fileHandle, ref offset);
-        ValidateHeader(Header, mapCount);
-        minMaxErrorMaps = new TerrainMinMaxErrorMap[mapCount];
-        for (int i = 0; i < mapCount; i++)
+        catch (EndOfStreamException ex)
         {
-            minMaxErrorMaps[i] = ReadMinMaxErrorMap(fileHandle, ref offset);
+            fileHandle.Dispose();
+            throw new InvalidDataException("Terrain file is missing required v8 baked detail data or is truncated.", ex);
         }
-
-        heightmapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref offset);
-        ValidateHeightmapHeader(Header, heightmapHeader);
-        tileByteSize = ComputeTileByteSize(heightmapHeader);
-        long currentOffset = offset;
-        heightmapMipLayouts = BuildMipLayouts(heightmapHeader, tileByteSize, ref currentOffset);
-
-        detailIndexMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
-        ValidateDetailHeader(Header, detailIndexMapHeader, "DetailIndex");
-        detailIndexTileByteSize = ComputeTileByteSize(detailIndexMapHeader);
-        detailIndexMipLayouts = BuildMipLayouts(detailIndexMapHeader, detailIndexTileByteSize, ref currentOffset);
-
-        detailWeightMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
-        ValidateDetailHeader(Header, detailWeightMapHeader, "DetailWeight");
-        ValidateMatchingDetailHeaders(detailIndexMapHeader, detailWeightMapHeader);
-        detailWeightTileByteSize = ComputeTileByteSize(detailWeightMapHeader);
-        detailWeightMipLayouts = BuildMipLayouts(detailWeightMapHeader, detailWeightTileByteSize, ref currentOffset);
-
-        long fileLength = RandomAccess.GetLength(fileHandle);
-        if (currentOffset > fileLength)
+        catch
         {
-            throw new InvalidDataException($"Terrain detail VT payload is truncated. Expected at least {currentOffset} bytes, got {fileLength}.");
+            fileHandle.Dispose();
+            throw;
         }
     }
 
@@ -410,6 +431,11 @@ internal sealed class TerrainFileReader : ITerrainFileReader
         if (header.HeightMapMipLevels <= 0)
         {
             throw new InvalidDataException($"Invalid heightmap mip count {header.HeightMapMipLevels}.");
+        }
+
+        if (header.DetailMapFormat != (int)TerrainTextureFormat.Rgba32)
+        {
+            throw new InvalidDataException($"Unsupported detail map format {header.DetailMapFormat}. Expected {nameof(TerrainTextureFormat.Rgba32)}.");
         }
 
         if (header.DetailMapMipLevels <= 0)

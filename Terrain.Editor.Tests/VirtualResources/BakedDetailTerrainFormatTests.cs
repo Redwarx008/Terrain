@@ -10,6 +10,8 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Run("runtime streaming rejects pre baked detail terrain versions", RuntimeStreamingRejectsPreBakedDetailVersions);
         TestHarness.Run("terrain file reader exposes baked detail page reads", TerrainFileReaderExposesBakedDetailPageReads);
         TestHarness.Run("terrain file reader rejects missing baked detail streams", TerrainFileReaderRejectsMissingBakedDetailStreams);
+        TestHarness.Run("terrain file reader rejects non rgba detail header format", TerrainFileReaderRejectsNonRgbaDetailHeaderFormat);
+        TestHarness.Run("terrain exporter fails until baked detail payloads exist", TerrainExporterFailsUntilBakedDetailPayloadsExist);
         TestHarness.Run("runtime source no longer contains generated detail map state", RuntimeSourceNoLongerContainsGeneratedDetailMapState);
     }
 
@@ -49,9 +51,10 @@ internal static class BakedDetailTerrainFormatTests
 
         string missingWeightPath = Path.Combine(directory, "missing-detail-weight.terrain");
         WriteMinimalTerrainFile(missingWeightPath, writeDetailWeightHeader: false, writeDetailWeightPayload: false);
-        TestHarness.AssertThrows<EndOfStreamException>(
+        InvalidDataException missingEx = TestHarness.AssertThrows<InvalidDataException>(
             () => new global::Terrain.TerrainFileReader(missingWeightPath).Dispose(),
             "reader should reject missing DetailWeight VT header");
+        TestHarness.Assert(missingEx.Message.Contains("baked detail", StringComparison.OrdinalIgnoreCase), "missing detail payload error should mention baked detail data");
 
         string truncatedWeightPath = Path.Combine(directory, "truncated-detail-weight.terrain");
         WriteMinimalTerrainFile(truncatedWeightPath, writeDetailWeightHeader: true, writeDetailWeightPayload: false);
@@ -59,6 +62,40 @@ internal static class BakedDetailTerrainFormatTests
             () => new global::Terrain.TerrainFileReader(truncatedWeightPath).Dispose(),
             "reader should reject truncated DetailWeight VT payload");
         TestHarness.Assert(ex.Message.Contains("truncated", StringComparison.OrdinalIgnoreCase), "truncated detail payload error should mention truncation");
+    }
+
+    private static void TerrainFileReaderRejectsNonRgbaDetailHeaderFormat()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "terrain-v8-reader-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        string path = Path.Combine(directory, "bad-detail-format.terrain");
+        WriteMinimalTerrainFile(path, writeDetailWeightHeader: true, writeDetailWeightPayload: true, detailMapFormat: 3);
+
+        InvalidDataException ex = TestHarness.AssertThrows<InvalidDataException>(
+            () => new global::Terrain.TerrainFileReader(path).Dispose(),
+            "reader should reject non-RGBA detail map header format");
+        TestHarness.Assert(ex.Message.Contains("detail map format", StringComparison.OrdinalIgnoreCase), "format error should name the detail map format");
+    }
+
+    private static void TerrainExporterFailsUntilBakedDetailPayloadsExist()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "terrain-v8-exporter-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string outputPath = Path.Combine(directory, "terrain.terrain");
+
+        var exporter = new global::Terrain.Editor.Services.Export.Exporters.TerrainExporter();
+        InvalidOperationException ex = TestHarness.AssertThrows<InvalidOperationException>(
+            () => exporter.ExportAsync(outputPath, new Progress<global::Terrain.Editor.Services.Export.ExportProgress>(), CancellationToken.None)
+                .GetAwaiter()
+                .GetResult(),
+            "terrain exporter should fail until baked DetailIndex and DetailWeight payloads are implemented");
+        TestHarness.Assert(ex.Message.Contains("DetailIndex", StringComparison.Ordinal), "exporter failure should mention DetailIndex");
+        TestHarness.Assert(ex.Message.Contains("DetailWeight", StringComparison.Ordinal), "exporter failure should mention DetailWeight");
+        TestHarness.Assert(!File.Exists(outputPath), "exporter should not create a fake v8 terrain file");
+
+        string exporterSource = ReadRepoText("Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs");
+        TestHarness.Assert(!exporterSource.Contains("Writing BiomeMask VT data", StringComparison.Ordinal), "exporter should not keep the old BiomeMask VT write path");
     }
 
     private static void RuntimeSourceNoLongerContainsGeneratedDetailMapState()
@@ -72,7 +109,11 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Assert(!processor.Contains("DetailMapBuilder", StringComparison.Ordinal), "runtime processor should not carry a detail builder delegate");
     }
 
-    private static void WriteMinimalTerrainFile(string path, bool writeDetailWeightHeader, bool writeDetailWeightPayload)
+    private static void WriteMinimalTerrainFile(
+        string path,
+        bool writeDetailWeightHeader,
+        bool writeDetailWeightPayload,
+        int detailMapFormat = 0)
     {
         const int heightWidth = 33;
         const int heightHeight = 33;
@@ -95,7 +136,7 @@ internal static class BakedDetailTerrainFormatTests
             TileSize = tileSize,
             Padding = heightPadding,
             HeightMapMipLevels = 1,
-            DetailMapFormat = 0,
+            DetailMapFormat = detailMapFormat,
             DetailMapMipLevels = 1,
             DetailMapResolutionRatio = 2,
         };
