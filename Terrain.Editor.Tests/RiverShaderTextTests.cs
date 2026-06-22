@@ -410,19 +410,29 @@ internal static class RiverShaderTextTests
         AssertContains(renderObject, "public int ParallaxIterations { get; private set; } = 10;", "RiverRenderObject should cache parallax iteration count for advanced paths");
         AssertContains(renderObject, "MapWorldSize = mesh.MapWorldSize;", "RiverRenderObject should keep the per-axis map world size from the generated river mesh");
         AssertContains(processor, "renderObject.ApplySettings(component.Settings);", "RiverProcessor should push component settings into each render object");
-        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);", "RiverRenderFeature should bind water height for bottom ocean fade");
+        AssertContains(feature, "bottomEffect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);", "RiverRenderFeature should bind static water height for bottom ocean fade");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._TextureUvScale, riverObject.TextureUvScale);", "RiverRenderFeature should continue binding texture UV scale for available shader variants");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, riverObject.OceanFadeRate);", "RiverRenderFeature should bind bottom ocean fade rate from the render object");
-        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._WorldToMapUnitScale, 0.5f);", "RiverRenderFeature should bind the local world-to-map-unit conversion for world-UV bottom sampling");
-        AssertContains(feature, "effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, riverObject.RefractionMaxCameraHeight);", "RiverRenderFeature should bind the height-scale-aware refraction clamp plane into bottom");
+        AssertContains(feature, "bottomEffect.Parameters.Set(RiverBottomKeys._WorldToMapUnitScale, 0.5f);", "RiverRenderFeature should bind the static local world-to-map-unit conversion for world-UV bottom sampling");
+        AssertContains(feature, "BindRefractionMaxCameraHeight(bottomEffect, refractionMaxCameraHeight);", "RiverRenderFeature should bind the draw-range refraction clamp plane into bottom");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._BottomNormalStrength, riverObject.BottomNormalStrength);", "RiverRenderFeature should bind bottom normal strength from the render object");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._ViewMatrix, viewMatrix);", "RiverRenderFeature should bind the view matrix required by view-space refraction offset");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._GlobalTime, globalTime);", "RiverRenderFeature should bind animated water time");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._FlattenMult, riverObject.FlattenMultiplier);", "RiverRenderFeature should bind water normal flattening");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);", "RiverRenderFeature should bind per-axis map world size into the surface shader");
-        AssertContains(feature, "effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, riverObject.RefractionMaxCameraHeight);", "RiverRenderFeature should bind the height-scale-aware refraction clamp plane into surface");
+        AssertContains(feature, "BindRefractionMaxCameraHeight(surfaceEffect, refractionMaxCameraHeight);", "RiverRenderFeature should bind the same draw-range refraction clamp plane into surface");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._BankFade, riverObject.BankFade);", "RiverRenderFeature should bind the target river bank fade into the surface shader");
         AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionScale, riverObject.WaterRefractionScale);", "RiverRenderFeature should bind refraction scale from the render object");
+        AssertContains(feature, "public override void Prepare(RenderDrawContext context)", "RiverRenderFeature should move non-frame river parameter binding out of Draw");
+        AssertContains(feature, "ApplyBottomParameters(bottomEffect, riverParametersSource);", "RiverRenderFeature should bind bottom parameters once during Prepare");
+        AssertContains(feature, "ApplySurfaceParameters(surfaceEffect, riverParametersSource);", "RiverRenderFeature should bind surface parameters once during Prepare");
+        AssertContains(feature, "DebugAssertPreparedRiverParametersMatch(riverParametersSource);", "RiverRenderFeature should assert the shared non-frame river parameter invariant");
+        AssertContains(feature, "RiverParametersMatch(source, riverObject)", "RiverRenderFeature should compare prepared river parameters before sharing one binding");
+        AssertNotContains(feature, "ApplyBottomParameters(bottomEffect, bottomParametersSource);", "RiverRenderFeature should not bind full bottom parameters in Draw");
+        AssertNotContains(feature, "ApplySurfaceParameters(surfaceEffect, surfaceParametersSource);", "RiverRenderFeature should not bind full surface parameters in Draw");
+        AssertNotContains(feature, "ApplySurfaceParameters(effect, riverObject);", "RiverRenderFeature should not unconditionally bind all surface parameters inside the per-object draw loop");
+        AssertNotContains(feature, "ApplyBottomParameters(effect, riverObject);", "RiverRenderFeature should not unconditionally bind all bottom parameters inside the per-object draw loop");
+        AssertNotContains(feature, "effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, riverObject.RefractionMaxCameraHeight);", "RiverRenderFeature should not bind object-local refraction clamp while scene seed uses a draw-range clamp");
         AssertNotContains(feature, "_BottomSpecularIntensity", "RiverRenderFeature should not bind river-local bottom specular intensity");
     }
 
@@ -593,7 +603,9 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "commandList.CopyRegion(renderResources.SceneSeedColor, 0, null, renderResources.BottomColor, 0);", "RiverRenderFeature should copy the scene seed into the working bottom/refraction buffer before the bottom pass");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);", "RiverRenderFeature should sample refraction with the target linear clamp sampler");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys._RefractionTextureSize, new Vector2(renderResources.Width, renderResources.Height));", "RiverRenderFeature should bind the working refraction size for unfiltered payload reads");
-        AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._RefractionTextureSize, new Vector2(refractionTexture.Width, refractionTexture.Height));", "RiverRenderFeature should refresh refraction size when binding the surface pass texture per object");
+        AssertNotContains(feature, "Texture? refractionTexture)", "RiverRenderFeature should not pass the shared refraction texture into the per-object draw loop");
+        AssertNotContains(feature, "effect.Parameters.Set(RiverSurfaceKeys.RefractionTexture, refractionTexture);", "RiverRenderFeature should not bind the shared refraction texture per river object");
+        AssertNotContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._RefractionTextureSize, new Vector2(refractionTexture.Width, refractionTexture.Height));", "RiverRenderFeature should not refresh the shared refraction size per river object");
         AssertContains(feature, "blendState.RenderTargets[0].AlphaSourceBlend = Blend.SecondarySourceAlpha;", "RiverRenderFeature should match the target bottom pass alpha source factor");
         AssertContains(feature, "blendState.RenderTargets[0].AlphaDestinationBlend = Blend.InverseSecondarySourceAlpha;", "RiverRenderFeature should match the target bottom pass alpha destination factor");
         AssertNotContains(feature, "RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.PointClamp", "RiverRenderFeature should not keep the previous point-clamp refraction sampler binding");
