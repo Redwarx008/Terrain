@@ -20,7 +20,8 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Run("terrain file reader rejects missing baked detail streams", TerrainFileReaderRejectsMissingBakedDetailStreams);
         TestHarness.Run("terrain file reader rejects non rgba detail header format", TerrainFileReaderRejectsNonRgbaDetailHeaderFormat);
         TestHarness.Run("terrain file reader releases file handle after constructor failure", TerrainFileReaderReleasesFileHandleAfterConstructorFailure);
-        TestHarness.Run("terrain exporter fails until baked detail payloads exist", TerrainExporterFailsUntilBakedDetailPayloadsExist);
+        TestHarness.Run("terrain exporter writes baked detail VT payloads readable by runtime", TerrainExporterWritesBakedDetailVtPayloadsReadableByRuntime);
+        TestHarness.Run("terrain exporter source writes detail index and weight VT payloads", TerrainExporterSourceWritesDetailIndexAndWeightVtPayloads);
         TestHarness.Run("runtime source no longer contains generated detail map state", RuntimeSourceNoLongerContainsGeneratedDetailMapState);
     }
 
@@ -327,23 +328,83 @@ internal static class BakedDetailTerrainFormatTests
         AssertCanReopenForExclusiveWrite(badFormatPath);
     }
 
-    private static void TerrainExporterFailsUntilBakedDetailPayloadsExist()
+    private static void TerrainExporterWritesBakedDetailVtPayloadsReadableByRuntime()
     {
         string directory = Path.Combine(Path.GetTempPath(), "terrain-v8-exporter-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         string outputPath = Path.Combine(directory, "terrain.terrain");
 
-        var exporter = new global::Terrain.Editor.Services.Export.Exporters.TerrainExporter();
-        InvalidOperationException ex = TestHarness.AssertThrows<InvalidOperationException>(
-            () => exporter.ExportAsync(outputPath, new Progress<global::Terrain.Editor.Services.Export.ExportProgress>(), CancellationToken.None)
-                .GetAwaiter()
-                .GetResult(),
-            "terrain exporter should fail until baked DetailIndex and DetailWeight payloads are implemented");
-        TestHarness.Assert(ex.Message.Contains("DetailIndex", StringComparison.Ordinal), "exporter failure should mention DetailIndex");
-        TestHarness.Assert(ex.Message.Contains("DetailWeight", StringComparison.Ordinal), "exporter failure should mention DetailWeight");
-        TestHarness.Assert(!File.Exists(outputPath), "exporter should not create a fake v8 terrain file");
+        ushort[] heightData = new ushort[33 * 33];
+        for (int i = 0; i < heightData.Length; i++)
+            heightData[i] = (ushort)(i % ushort.MaxValue);
 
+        byte[] biomeMask = Enumerable.Repeat((byte)0, 17 * 17).ToArray();
+        var progress = new RecordingExportProgress();
+
+        global::Terrain.Editor.Services.Export.Exporters.TerrainExporter.ExportBakedTerrain(
+            outputPath,
+            heightData,
+            33,
+            33,
+            100.0f,
+            biomeMask,
+            17,
+            17,
+            [CreateLayer(0, materialSlotIndex: 7, priority: 0)],
+            progress,
+            CancellationToken.None);
+
+        using var reader = new global::Terrain.TerrainFileReader(outputPath);
+        TestHarness.AssertEqual(8, reader.Header.Version, "exported terrain version");
+        TestHarness.AssertEqual(33, reader.HeightmapHeader.Width, "heightmap width");
+        TestHarness.AssertEqual(33, reader.HeightmapHeader.Height, "heightmap height");
+        TestHarness.AssertEqual(2, reader.HeightmapHeader.BytesPerPixel, "heightmap bytes per pixel");
+
+        TestHarness.AssertEqual(17, reader.DetailIndexMapHeader.Width, "detail index width");
+        TestHarness.AssertEqual(17, reader.DetailIndexMapHeader.Height, "detail index height");
+        TestHarness.AssertEqual(4, reader.DetailIndexMapHeader.BytesPerPixel, "detail index bytes per pixel");
+        TestHarness.AssertEqual(17, reader.DetailWeightMapHeader.Width, "detail weight width");
+        TestHarness.AssertEqual(17, reader.DetailWeightMapHeader.Height, "detail weight height");
+        TestHarness.AssertEqual(4, reader.DetailWeightMapHeader.BytesPerPixel, "detail weight bytes per pixel");
+        TestHarness.AssertEqual(2, reader.DetailMapResolutionRatio, "detail map resolution ratio");
+        TestHarness.AssertEqual(reader.DetailIndexMapHeader.Mipmaps, reader.DetailWeightMapHeader.Mipmaps, "detail mip count should match");
+
+        byte[] heightPage = new byte[ComputeTileByteSize(reader.HeightmapHeader)];
+        byte[] detailIndexPage = new byte[ComputeTileByteSize(reader.DetailIndexMapHeader)];
+        byte[] detailWeightPage = new byte[ComputeTileByteSize(reader.DetailWeightMapHeader)];
+        var pageKey = new global::Terrain.TerrainPageKey(0, 0, 0);
+        reader.ReadHeightPage(pageKey, heightPage);
+        reader.ReadDetailIndexPage(pageKey, detailIndexPage);
+        reader.ReadDetailWeightPage(pageKey, detailWeightPage);
+
+        int heightSampleOffset = reader.HeightmapHeader.Padding * (reader.HeightmapHeader.TileSize + reader.HeightmapHeader.Padding * 2) + reader.HeightmapHeader.Padding;
+        ushort firstHeight = MemoryMarshal.Cast<byte, ushort>(heightPage)[heightSampleOffset];
+        TestHarness.AssertEqual(heightData[0], firstHeight, "first height page sample");
+
+        int detailSampleOffset = reader.DetailIndexMapHeader.Padding * (reader.DetailIndexMapHeader.TileSize + reader.DetailIndexMapHeader.Padding * 2) + reader.DetailIndexMapHeader.Padding;
+        global::Terrain.Editor.Services.Export.DetailControlPixel firstIndex =
+            MemoryMarshal.Cast<byte, global::Terrain.Editor.Services.Export.DetailControlPixel>(detailIndexPage)[detailSampleOffset];
+        global::Terrain.Editor.Services.Export.DetailControlPixel firstWeight =
+            MemoryMarshal.Cast<byte, global::Terrain.Editor.Services.Export.DetailControlPixel>(detailWeightPage)[detailSampleOffset];
+        TestHarness.AssertEqual(7, firstIndex.R, "first baked detail material index");
+        TestHarness.AssertEqual(byte.MaxValue, firstWeight.R, "first baked detail material weight");
+
+        long expectedLength = ComputeExpectedTerrainFileLength(reader);
+        TestHarness.AssertEqual(expectedLength, new FileInfo(outputPath).Length, "exported terrain should contain exactly height, detail index, and detail weight payloads");
+        TestHarness.Assert(progress.Messages.Any(static message => message.Contains("Baking DetailTexture", StringComparison.Ordinal)), "export progress should report detail baking");
+        TestHarness.Assert(progress.Messages.Any(static message => message.Contains("Writing DetailIndex VT data", StringComparison.Ordinal)), "export progress should report detail index write");
+        TestHarness.Assert(progress.Messages.Any(static message => message.Contains("Writing DetailWeight VT data", StringComparison.Ordinal)), "export progress should report detail weight write");
+    }
+
+    private static void TerrainExporterSourceWritesDetailIndexAndWeightVtPayloads()
+    {
         string exporterSource = ReadRepoText("Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs");
+        TestHarness.Assert(exporterSource.Contains("BakedDetailMapBuilder.Generate", StringComparison.Ordinal), "exporter should bake detail maps");
+        TestHarness.Assert(exporterSource.Contains("Writing DetailIndex VT data", StringComparison.Ordinal), "export progress should mention detail index");
+        TestHarness.Assert(exporterSource.Contains("Writing DetailWeight VT data", StringComparison.Ordinal), "export progress should mention detail weight");
+        TestHarness.Assert(exporterSource.Contains("BytesPerPixel = 4", StringComparison.Ordinal), "detail VT payloads should be RGBA8");
+        TestHarness.Assert(exporterSource.Contains("StreamMipLevels<DetailControlPixel>", StringComparison.Ordinal), "detail VT streams should use packed DetailControlPixel");
+        TestHarness.Assert(!exporterSource.Contains("StreamMipLevels<byte>", StringComparison.Ordinal), "detail VT streams should not use byte streams");
         TestHarness.Assert(!exporterSource.Contains("Writing BiomeMask VT data", StringComparison.Ordinal), "exporter should not keep the old BiomeMask VT write path");
     }
 
@@ -447,6 +508,43 @@ internal static class BakedDetailTerrainFormatTests
     {
         int paddedTileSize = checked(header.TileSize + header.Padding * 2);
         return checked(paddedTileSize * paddedTileSize * header.BytesPerPixel);
+    }
+
+    private static long ComputeExpectedTerrainFileLength(global::Terrain.TerrainFileReader reader)
+    {
+        long length = Marshal.SizeOf<global::Terrain.Editor.Models.TerrainFileHeader>() + sizeof(int);
+        foreach (global::Terrain.TerrainMinMaxErrorMap map in reader.ReadAllMinMaxErrorMaps())
+            length += sizeof(int) + sizeof(int) + (long)map.Width * map.Height * 3 * sizeof(float);
+
+        length += Marshal.SizeOf<global::Terrain.Editor.Models.VTHeader>() + ComputePayloadByteLength(reader.HeightmapHeader);
+        length += Marshal.SizeOf<global::Terrain.Editor.Models.VTHeader>() + ComputePayloadByteLength(reader.DetailIndexMapHeader);
+        length += Marshal.SizeOf<global::Terrain.Editor.Models.VTHeader>() + ComputePayloadByteLength(reader.DetailWeightMapHeader);
+        return length;
+    }
+
+    private static long ComputePayloadByteLength(global::Terrain.TerrainVirtualTextureHeader header)
+    {
+        long pageBytes = ComputeTileByteSize(header);
+        long total = 0;
+        for (int mip = 0; mip < header.Mipmaps; mip++)
+        {
+            global::Terrain.VirtualTextureMipLayoutInfo layout =
+                global::Terrain.VirtualTextureLayout.GetMipLayout(header.Width, header.Height, header.TileSize, mip);
+            total += (long)layout.TilesX * layout.TilesY * pageBytes;
+        }
+
+        return total;
+    }
+
+    private sealed class RecordingExportProgress : IProgress<global::Terrain.Editor.Services.Export.ExportProgress>
+    {
+        public List<string> Messages { get; } = new();
+
+        public void Report(global::Terrain.Editor.Services.Export.ExportProgress value)
+        {
+            if (!string.IsNullOrWhiteSpace(value.Message))
+                Messages.Add(value.Message);
+        }
     }
 
     internal static string ReadRepoText(string relativePath)
