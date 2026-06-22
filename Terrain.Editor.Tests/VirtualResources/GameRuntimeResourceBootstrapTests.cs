@@ -28,8 +28,6 @@ internal static class GameRuntimeResourceBootstrapTests
         TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(CreateResolver(root)).Load();
 
         TestHarness.AssertEqual(FullPath(root, "map", "terrain.terrain"), bundle.TerrainDataPath, "terrain data path");
-        TestHarness.AssertEqual(FullPath(root, "map", "biome_mask.png"), bundle.BiomeMaskPath, "biome mask path");
-        TestHarness.AssertEqual(FullPath(root, "map", "biome_settings.toml"), bundle.BiomeSettingsPath, "biome settings path");
         TestHarness.AssertEqual(FullPath(root, "map", "materials", "descriptor.toml"), bundle.MaterialDescriptorPath, "material descriptor path");
         TestHarness.AssertEqual(FullPath(root, "map", "materials"), bundle.MaterialsDirectory, "materials directory");
         TestHarness.AssertEqual(FullPath(root, "map", "materials", "grass_a.png"), bundle.MaterialTextureSlots[0].AlbedoPath, "resolved albedo path");
@@ -38,7 +36,6 @@ internal static class GameRuntimeResourceBootstrapTests
         TestHarness.AssertEqual(2.0f, bundle.RiverMinWidth, "river min width");
         TestHarness.AssertEqual(6.0f, bundle.RiverMaxWidth, "river max width");
         TestHarness.AssertEqual(1, bundle.MaterialDescriptor.Materials.Count, "material count");
-        TestHarness.AssertEqual(1, bundle.BiomeSettings.Layers.Count, "biome layer count");
     }
 
     private static void BootstrapDoesNotRequireHeightmapResource()

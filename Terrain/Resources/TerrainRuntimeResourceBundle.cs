@@ -7,8 +7,6 @@ namespace Terrain.Resources;
 public sealed class TerrainRuntimeResourceBundle
 {
     public string TerrainDataPath { get; init; } = string.Empty;
-    public string BiomeMaskPath { get; init; } = string.Empty;
-    public string BiomeSettingsPath { get; init; } = string.Empty;
     public string MaterialDescriptorPath { get; init; } = string.Empty;
     public string MaterialsDirectory { get; init; } = string.Empty;
     public string? RiversPath { get; init; }
@@ -18,6 +16,5 @@ public sealed class TerrainRuntimeResourceBundle
     public float RiverMaxWidth { get; init; } = 4.0f;
     public RuntimeMaterialDescriptor MaterialDescriptor { get; init; } = new();
     public List<RuntimeMaterialTextureSlot> MaterialTextureSlots { get; init; } = new();
-    public RuntimeBiomeSettings BiomeSettings { get; init; } = new();
     public List<string> Diagnostics { get; init; } = new();
 }

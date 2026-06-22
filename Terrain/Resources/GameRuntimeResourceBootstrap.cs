@@ -3,7 +3,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace Terrain.Resources;
 
@@ -11,8 +10,6 @@ public sealed class GameRuntimeResourceBootstrap
 {
     private const string MapDataDirectory = "map";
     private const string DefaultMapDefinitionPath = "map/default.toml";
-    private const string BiomeMaskPath = "map/biome_mask.png";
-    private const string BiomeSettingsPath = "map/biome_settings.toml";
     private const string MaterialDescriptorPath = "map/materials/descriptor.toml";
 
     private readonly GameResourceResolver resolver;
@@ -30,14 +27,9 @@ public sealed class GameRuntimeResourceBootstrap
             requireHeightmap: false);
 
         ResolvedGameResource terrainDataResource = resolver.ResolveRequiredFile(ToMapDataVirtualPath(mapDefinition.TerrainDataPath));
-        ResolvedGameResource biomeMaskResource = resolver.ResolveRequiredFile(BiomeMaskPath);
         ResolvedGameResource materialDescriptorResource = resolver.ResolveRequiredFile(MaterialDescriptorPath);
         RuntimeMaterialDescriptor materialDescriptor = RuntimeMaterialDescriptorReader.ReadFrom(materialDescriptorResource.ResolvedPath);
         List<RuntimeMaterialTextureSlot> materialTextureSlots = ResolveMaterialTextureSlots(materialDescriptor);
-
-        ResolvedGameResource biomeSettingsResource = resolver.ResolveRequiredFile(BiomeSettingsPath);
-        var materialIds = new HashSet<string>(materialDescriptor.Materials.Select(material => material.Id), StringComparer.Ordinal);
-        RuntimeBiomeSettings biomeSettings = RuntimeBiomeSettingsReader.ReadFrom(biomeSettingsResource.ResolvedPath, materialIds);
 
         string? riversPath = null;
         var diagnostics = new List<string>();
@@ -61,8 +53,6 @@ public sealed class GameRuntimeResourceBootstrap
         return new TerrainRuntimeResourceBundle
         {
             TerrainDataPath = terrainDataResource.ResolvedPath,
-            BiomeMaskPath = biomeMaskResource.ResolvedPath,
-            BiomeSettingsPath = biomeSettingsResource.ResolvedPath,
             MaterialDescriptorPath = materialDescriptorResource.ResolvedPath,
             MaterialsDirectory = Path.GetFullPath(Path.GetDirectoryName(materialDescriptorResource.ResolvedPath)!),
             RiversPath = riversPath,
@@ -72,7 +62,6 @@ public sealed class GameRuntimeResourceBootstrap
             RiverMaxWidth = mapDefinition.RiverMaxWidth,
             MaterialDescriptor = materialDescriptor,
             MaterialTextureSlots = materialTextureSlots,
-            BiomeSettings = biomeSettings,
             Diagnostics = diagnostics,
         };
     }

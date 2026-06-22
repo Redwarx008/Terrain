@@ -20,6 +20,7 @@ internal static class RuntimeMigrationTextTests
         TestHarness.Run("runtime bootstrap failures are logged as errors", RuntimeBootstrapFailuresAreLoggedAsErrors);
         TestHarness.Run("runtime resource bootstrap uses the game-scoped name", RuntimeResourceBootstrapUsesGameScopedName);
         TestHarness.Run("resource bootstrap production paths use Terrain assembly directory", ResourceBootstrapProductionPathsUseTerrainAssemblyDirectory);
+        TestHarness.Run("runtime no longer requires biome authoring resources", RuntimeNoLongerRequiresBiomeAuthoringResources);
     }
 
     private static void RemovesTerrainSharedUsages()
@@ -176,6 +177,15 @@ internal static class RuntimeMigrationTextTests
                 !text.Contains(hostRootLocatorCall, StringComparison.Ordinal),
                 $"{Relative(filePath)} should not locate game resources from the host AppContext.BaseDirectory");
         }
+    }
+
+    private static void RuntimeNoLongerRequiresBiomeAuthoringResources()
+    {
+        AssertContains("Terrain/Resources/GameRuntimeResourceBootstrap.cs", "MaterialDescriptorPath");
+        string bootstrap = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain", "Resources", "GameRuntimeResourceBootstrap.cs"));
+        TestHarness.Assert(!bootstrap.Contains("BiomeMaskPath", StringComparison.Ordinal), "runtime bootstrap should not resolve biome mask");
+        TestHarness.Assert(!bootstrap.Contains("BiomeSettingsPath", StringComparison.Ordinal), "runtime bootstrap should not resolve biome settings");
+        TestHarness.Assert(!bootstrap.Contains("RuntimeBiomeSettingsReader.ReadFrom", StringComparison.Ordinal), "runtime bootstrap should not validate biome settings");
     }
 
     private static void AssertContains(string relativePath, string expected)

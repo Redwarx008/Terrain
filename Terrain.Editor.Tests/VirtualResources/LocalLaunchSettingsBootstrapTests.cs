@@ -121,8 +121,6 @@ height_scale = 100.0
 
         TestHarness.Assert(File.Exists(Path.Combine(appRoot, "LaunchSetting.json")), "LaunchSetting.json should be created next to the exe");
         TestHarness.AssertEqual(Path.GetFullPath(Path.Combine(gameRoot, "map", "terrain.terrain")), bundle.TerrainDataPath, "terrain data should come from sibling game");
-        TestHarness.AssertEqual(Path.GetFullPath(Path.Combine(gameRoot, "map", "biome_mask.png")), bundle.BiomeMaskPath, "biome mask should come from sibling game");
-        TestHarness.AssertEqual(Path.GetFullPath(Path.Combine(gameRoot, "map", "biome_settings.toml")), bundle.BiomeSettingsPath, "biome settings should come from sibling game");
         TestHarness.AssertEqual(Path.GetFullPath(Path.Combine(gameRoot, "map", "materials", "descriptor.toml")), bundle.MaterialDescriptorPath, "material descriptor should come from sibling game");
     }
 

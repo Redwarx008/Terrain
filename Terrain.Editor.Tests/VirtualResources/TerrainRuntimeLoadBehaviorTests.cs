@@ -1,7 +1,5 @@
 using Terrain;
 using Terrain.Resources;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace Terrain.Editor.Tests.VirtualResources;
 
@@ -197,30 +195,11 @@ internal static class TerrainRuntimeLoadBehaviorTests
     }
 
     private static TerrainRuntimeResourceBundle CreateResourceBundle()
-        => CreateResourceBundle(biomeMaskPath: null);
-
-    private static TerrainRuntimeResourceBundle CreateResourceBundle(string? biomeMaskPath)
     {
         return new TerrainRuntimeResourceBundle
         {
             TerrainDataPath = "fake.terrain",
-            BiomeMaskPath = biomeMaskPath ?? CreateExistingBiomeMaskPath(),
             HeightScale = 123.0f,
         };
     }
-
-    private static string CreateExistingBiomeMaskPath()
-    {
-        string directory = Path.Combine(Path.GetTempPath(), "terrain-runtime-load-tests", "biome-mask");
-        Directory.CreateDirectory(directory);
-        string path = Path.Combine(directory, "biome_mask.png");
-        if (!File.Exists(path))
-        {
-            using var image = new Image<Rgba32>(2, 2);
-            image.SaveAsPng(path);
-        }
-
-        return path;
-    }
-
 }
