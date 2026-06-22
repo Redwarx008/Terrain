@@ -55,7 +55,6 @@ DescriptorReaderTests.RunAll();
 GameRuntimeResourceBootstrapTests.RunAll();
 TerrainRuntimeLoadBehaviorTests.RunAll();
 RuntimeMigrationTextTests.RunAll();
-RuntimeBiomeMaskReaderTests.RunAll();
 EditorWorkflowTextTests.RunAll();
 ExportWorkflowTests.RunAll();
 BakedDetailTerrainFormatTests.RunAll();

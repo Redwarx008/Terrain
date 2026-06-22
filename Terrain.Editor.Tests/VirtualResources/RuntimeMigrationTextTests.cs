@@ -22,6 +22,8 @@ internal static class RuntimeMigrationTextTests
         TestHarness.Run("runtime resource bootstrap uses the game-scoped name", RuntimeResourceBootstrapUsesGameScopedName);
         TestHarness.Run("resource bootstrap production paths use Terrain assembly directory", ResourceBootstrapProductionPathsUseTerrainAssemblyDirectory);
         TestHarness.Run("runtime no longer requires biome authoring resources", RuntimeNoLongerRequiresBiomeAuthoringResources);
+        TestHarness.Run("runtime migration removes runtime detail generation API", RuntimeMigrationRemovesRuntimeDetailGenerationApi);
+        TestHarness.Run("runtime migration removes runtime biome mask reader API", RuntimeMigrationRemovesRuntimeBiomeMaskReaderApi);
     }
 
     private static void RemovesTerrainSharedUsages()
@@ -194,6 +196,25 @@ internal static class RuntimeMigrationTextTests
         TestHarness.Assert(bundleType.GetProperty("BiomeSettings") == null, "runtime bundle API should not expose biome settings data as a required contract");
     }
 
+    private static void RuntimeMigrationRemovesRuntimeDetailGenerationApi()
+    {
+        TestHarness.Assert(!File.Exists(Path.Combine(RepositoryRoot, "Terrain", "Materials", "RuntimeDetailMapBuilder.cs")), "runtime detail map builder source should not exist");
+        TestHarness.Assert(!File.Exists(Path.Combine(RepositoryRoot, "Terrain", "Materials", "TerrainDetailGeneration.cs")), "runtime terrain detail generation source should not exist");
+
+        AssertTerrainProjectDoesNotContain("RuntimeDetailMapBuilder");
+        AssertTerrainProjectDoesNotContain("RuntimeDetailMapData");
+        AssertTerrainProjectDoesNotContain("TerrainDetailGenerationContext");
+        AssertTerrainProjectDoesNotContain("TerrainDetailMapGenerator");
+    }
+
+    private static void RuntimeMigrationRemovesRuntimeBiomeMaskReaderApi()
+    {
+        TestHarness.Assert(!File.Exists(Path.Combine(RepositoryRoot, "Terrain", "Resources", "RuntimeBiomeMaskReader.cs")), "runtime biome mask reader source should not exist");
+
+        AssertTerrainProjectDoesNotContain("RuntimeBiomeMaskReader");
+        AssertTerrainProjectDoesNotContain("RuntimeBiomeMaskData");
+    }
+
     private static void AssertContains(string relativePath, string expected)
     {
         string filePath = Path.Combine(RepositoryRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -201,6 +222,15 @@ internal static class RuntimeMigrationTextTests
         TestHarness.Assert(
             text.Contains(expected, StringComparison.Ordinal),
             $"{relativePath} should contain {expected}");
+    }
+
+    private static void AssertTerrainProjectDoesNotContain(string forbidden)
+    {
+        foreach (string filePath in Directory.EnumerateFiles(Path.Combine(RepositoryRoot, "Terrain"), "*.cs", SearchOption.AllDirectories))
+        {
+            string text = File.ReadAllText(filePath);
+            TestHarness.Assert(!text.Contains(forbidden, StringComparison.Ordinal), $"{Relative(filePath)} should not expose {forbidden}");
+        }
     }
 
     private static IEnumerable<string> EnumerateTextFiles(string pattern)
