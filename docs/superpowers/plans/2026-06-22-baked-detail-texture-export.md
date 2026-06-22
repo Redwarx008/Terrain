@@ -1168,88 +1168,45 @@ DetailMapResolutionRatio = 2,
 
 Remove old `SplatMapFormat`, `SplatMapMipLevels`, and `SplatMapResolutionRatio` assignments.
 
-- [ ] **Step 4: Add RGBA8 VT writer**
+- [ ] **Step 4: Add a packed RGBA8 detail pixel type**
 
 Add:
 
 ```csharp
-private static void StreamRgba8MipLevels(
-    BinaryWriter writer,
-    byte[] source,
-    int srcW,
-    int srcH,
-    int tileSize,
-    int padding,
-    CancellationToken ct)
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+private readonly struct DetailControlPixel
 {
-    byte[] currentLevel = source;
-    int curW = srcW;
-    int curH = srcH;
-
-    while (true)
+    public DetailControlPixel(byte r, byte g, byte b, byte a)
     {
-        ct.ThrowIfCancellationRequested();
-        WriteRgba8LevelTilesParallel(writer, currentLevel, curW, curH, tileSize, padding);
-        if (curW <= tileSize && curH <= tileSize)
-            break;
-
-        int nextW = (curW + 1) / 2;
-        int nextH = (curH + 1) / 2;
-        currentLevel = GenerateNextRgba8Mip(currentLevel, curW, curH, nextW, nextH);
-        curW = nextW;
-        curH = nextH;
+        R = r;
+        G = g;
+        B = b;
+        A = a;
     }
+
+    public readonly byte R;
+    public readonly byte G;
+    public readonly byte B;
+    public readonly byte A;
 }
+```
 
-private static byte[] GenerateNextRgba8Mip(byte[] src, int srcW, int srcH, int dstW, int dstH)
+Add:
+
+```csharp
+private static DetailControlPixel[] ToDetailPixels(byte[] source)
 {
-    var dst = new byte[checked(dstW * dstH * 4)];
-    Parallel.For(0, dstH, y =>
+    if (source.Length % 4 != 0)
+        throw new ArgumentException("Detail control data length must be a multiple of 4.", nameof(source));
+
+    var pixels = new DetailControlPixel[source.Length / 4];
+    for (int i = 0; i < pixels.Length; i++)
     {
-        int srcY = Math.Min(y * 2, srcH - 1);
-        for (int x = 0; x < dstW; x++)
-        {
-            int srcX = Math.Min(x * 2, srcW - 1);
-            int srcOffset = (srcY * srcW + srcX) * 4;
-            int dstOffset = (y * dstW + x) * 4;
-            src.AsSpan(srcOffset, 4).CopyTo(dst.AsSpan(dstOffset, 4));
-        }
-    });
+        int offset = i * 4;
+        pixels[i] = new DetailControlPixel(source[offset], source[offset + 1], source[offset + 2], source[offset + 3]);
+    }
 
-    return dst;
-}
-
-private static void WriteRgba8LevelTilesParallel(BinaryWriter writer, byte[] data, int width, int height, int tileSize, int padding)
-{
-    int nTilesX = VirtualTextureLayout.ComputeTileCount(width, tileSize);
-    int nTilesY = VirtualTextureLayout.ComputeTileCount(height, tileSize);
-    int totalTiles = nTilesX * nTilesY;
-    int paddedSize = tileSize + padding * 2;
-    int effectiveTileSpan = tileSize - 1;
-    var tiles = new byte[totalTiles][];
-
-    Parallel.For(0, totalTiles, i =>
-    {
-        int ty = i / nTilesX;
-        int tx = i % nTilesX;
-        int originX = tx * effectiveTileSpan - padding;
-        int originY = ty * effectiveTileSpan - padding;
-        var tile = new byte[paddedSize * paddedSize * 4];
-        for (int y = 0; y < paddedSize; y++)
-        {
-            int srcY = Math.Clamp(originY + y, 0, height - 1);
-            for (int x = 0; x < paddedSize; x++)
-            {
-                int srcX = Math.Clamp(originX + x, 0, width - 1);
-                data.AsSpan((srcY * width + srcX) * 4, 4).CopyTo(tile.AsSpan((y * paddedSize + x) * 4, 4));
-            }
-        }
-
-        tiles[i] = tile;
-    });
-
-    for (int i = 0; i < totalTiles; i++)
-        writer.Write(tiles[i]);
+    return pixels;
 }
 ```
 
@@ -1269,12 +1226,12 @@ var detailIndexHeader = new VTHeader
     Mipmaps = detailMapMipLevels,
 };
 WriteStruct(writer, ref detailIndexHeader);
-StreamRgba8MipLevels(writer, bakedDetail.IndexData, bakedDetail.Width, bakedDetail.Height, DefaultTileSize, SplatMapPadding, ct);
+StreamMipLevels<DetailControlPixel>(writer, ToDetailPixels(bakedDetail.IndexData), bakedDetail.Width, bakedDetail.Height, DefaultTileSize, SplatMapPadding, ct);
 
 progress.Report(ExportProgress.Running(6, 6, "Writing DetailWeight VT data..."));
 var detailWeightHeader = detailIndexHeader;
 WriteStruct(writer, ref detailWeightHeader);
-StreamRgba8MipLevels(writer, bakedDetail.WeightData, bakedDetail.Width, bakedDetail.Height, DefaultTileSize, SplatMapPadding, ct);
+StreamMipLevels<DetailControlPixel>(writer, ToDetailPixels(bakedDetail.WeightData), bakedDetail.Width, bakedDetail.Height, DefaultTileSize, SplatMapPadding, ct);
 ```
 
 - [ ] **Step 6: Run exporter tests**
