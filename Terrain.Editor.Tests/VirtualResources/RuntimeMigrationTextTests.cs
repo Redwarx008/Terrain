@@ -1,4 +1,5 @@
 using Terrain.Editor.Tests;
+using Terrain.Resources;
 
 namespace Terrain.Editor.Tests.VirtualResources;
 
@@ -186,6 +187,11 @@ internal static class RuntimeMigrationTextTests
         TestHarness.Assert(!bootstrap.Contains("BiomeMaskPath", StringComparison.Ordinal), "runtime bootstrap should not resolve biome mask");
         TestHarness.Assert(!bootstrap.Contains("BiomeSettingsPath", StringComparison.Ordinal), "runtime bootstrap should not resolve biome settings");
         TestHarness.Assert(!bootstrap.Contains("RuntimeBiomeSettingsReader.ReadFrom", StringComparison.Ordinal), "runtime bootstrap should not validate biome settings");
+
+        Type bundleType = typeof(TerrainRuntimeResourceBundle);
+        TestHarness.Assert(bundleType.GetProperty("BiomeMaskPath") == null, "runtime bundle API should not expose biome mask as a required contract");
+        TestHarness.Assert(bundleType.GetProperty("BiomeSettingsPath") == null, "runtime bundle API should not expose biome settings path as a required contract");
+        TestHarness.Assert(bundleType.GetProperty("BiomeSettings") == null, "runtime bundle API should not expose biome settings data as a required contract");
     }
 
     private static void AssertContains(string relativePath, string expected)

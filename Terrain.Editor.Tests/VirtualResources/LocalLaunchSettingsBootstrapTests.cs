@@ -14,6 +14,7 @@ internal static class LocalLaunchSettingsBootstrapTests
         TestHarness.Run("editor bootstrap logs missing heightmap in pending branch", EditorBootstrapLogsMissingHeightmapInPendingBranch);
         TestHarness.Run("editor bootstrap resolves mod override from exe launch settings", EditorBootstrapResolvesModOverrideFromExeLaunchSettings);
         TestHarness.Run("runtime bootstrap resolves sibling game resources from exe launch settings", RuntimeBootstrapResolvesSiblingGameResourcesFromExeLaunchSettings);
+        TestHarness.Run("runtime bootstrap from launch settings does not require biome authoring resources", RuntimeBootstrapFromLaunchSettingsDoesNotRequireBiomeAuthoringResources);
         TestHarness.Run("runtime bootstrap resolves mod override from exe launch settings", RuntimeBootstrapResolvesModOverrideFromExeLaunchSettings);
         TestHarness.Run("runtime bootstrap rejects mod root that equals game root", RuntimeBootstrapRejectsModRootThatEqualsGameRoot);
         TestHarness.Run("runtime bootstrap rejects mod root under game root", RuntimeBootstrapRejectsModRootUnderGameRoot);
@@ -122,6 +123,19 @@ height_scale = 100.0
         TestHarness.Assert(File.Exists(Path.Combine(appRoot, "LaunchSetting.json")), "LaunchSetting.json should be created next to the exe");
         TestHarness.AssertEqual(Path.GetFullPath(Path.Combine(gameRoot, "map", "terrain.terrain")), bundle.TerrainDataPath, "terrain data should come from sibling game");
         TestHarness.AssertEqual(Path.GetFullPath(Path.Combine(gameRoot, "map", "materials", "descriptor.toml")), bundle.MaterialDescriptorPath, "material descriptor should come from sibling game");
+    }
+
+    private static void RuntimeBootstrapFromLaunchSettingsDoesNotRequireBiomeAuthoringResources()
+    {
+        (string _, string appRoot, string gameRoot) = CreateWorkspaceWithBaseMap(includeRuntimeResources: true);
+        File.Delete(Path.Combine(gameRoot, "map", "biome_mask.png"));
+        File.Delete(Path.Combine(gameRoot, "map", "biome_settings.toml"));
+
+        GameResourceResolver resolver = GameResourceResolverBootstrap.CreateForAppDirectory(appRoot);
+        TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(resolver).Load();
+
+        TestHarness.AssertEqual(Path.GetFullPath(Path.Combine(gameRoot, "map", "terrain.terrain")), bundle.TerrainDataPath, "terrain data should load without authoring biome mask/settings");
+        TestHarness.AssertEqual(Path.GetFullPath(Path.Combine(gameRoot, "map", "materials", "descriptor.toml")), bundle.MaterialDescriptorPath, "material descriptor should load without authoring biome mask/settings");
     }
 
     private static void RuntimeBootstrapResolvesModOverrideFromExeLaunchSettings()
