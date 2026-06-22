@@ -2,7 +2,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Terrain.Editor.Services.Export;
@@ -40,14 +40,21 @@ internal static class BakedDetailMapBuilder
             throw new ArgumentOutOfRangeException(nameof(heightHeight));
         ValidateBufferLength(heightData.Length, heightWidth, heightHeight, "Height data", nameof(heightData));
 
-        float heightScaleFactor = heightScale / ushort.MaxValue;
+        int detailWidth = ComputeHalfResolution(heightWidth);
+        int detailHeight = ComputeHalfResolution(heightHeight);
+        ValidateDetailInputs(biomeMaskData, biomeMaskWidth, biomeMaskHeight, layers, detailWidth, detailHeight);
+
         return Generate(
-            (x, y) => heightData[y * heightWidth + x] * heightScaleFactor,
-            heightWidth,
-            heightHeight,
-            biomeMaskData,
-            biomeMaskWidth,
-            biomeMaskHeight,
+            new DetailEvaluationContext(
+                heightData,
+                heightScale / ushort.MaxValue,
+                heightWidth,
+                heightHeight,
+                biomeMaskData,
+                biomeMaskWidth,
+                biomeMaskHeight,
+                detailWidth,
+                detailHeight),
             layers);
     }
 
@@ -60,16 +67,27 @@ internal static class BakedDetailMapBuilder
         int biomeMaskHeight,
         IReadOnlyList<BiomeRuleLayer> layers)
     {
+        ArgumentNullException.ThrowIfNull(getHeight);
+        if (heightWidth <= 0)
+            throw new ArgumentOutOfRangeException(nameof(heightWidth));
+        if (heightHeight <= 0)
+            throw new ArgumentOutOfRangeException(nameof(heightHeight));
+
+        int detailWidth = ComputeHalfResolution(heightWidth);
+        int detailHeight = ComputeHalfResolution(heightHeight);
+        ValidateDetailInputs(biomeMaskData, biomeMaskWidth, biomeMaskHeight, layers, detailWidth, detailHeight);
+
         return Generate(
-            getHeight,
-            heightWidth,
-            heightHeight,
-            biomeMaskData,
-            biomeMaskWidth,
-            biomeMaskHeight,
-            layers,
-            ComputeHalfResolution(heightWidth),
-            ComputeHalfResolution(heightHeight));
+            new DetailEvaluationContext(
+                getHeight,
+                heightWidth,
+                heightHeight,
+                biomeMaskData,
+                biomeMaskWidth,
+                biomeMaskHeight,
+                detailWidth,
+                detailHeight),
+            layers);
     }
 
     public static BakedDetailMapData Generate(
@@ -91,25 +109,8 @@ internal static class BakedDetailMapBuilder
             throw new ArgumentOutOfRangeException(nameof(heightWidth));
         if (heightHeight <= 0)
             throw new ArgumentOutOfRangeException(nameof(heightHeight));
-        if (biomeMaskWidth <= 0)
-            throw new ArgumentOutOfRangeException(nameof(biomeMaskWidth));
-        if (biomeMaskHeight <= 0)
-            throw new ArgumentOutOfRangeException(nameof(biomeMaskHeight));
-        if (detailWidth <= 0)
-            throw new ArgumentOutOfRangeException(nameof(detailWidth));
-        if (detailHeight <= 0)
-            throw new ArgumentOutOfRangeException(nameof(detailHeight));
-        if (biomeMaskWidth != detailWidth || biomeMaskHeight != detailHeight)
-            throw new ArgumentException(
-                $"Biome mask dimensions must have the same dimensions as the baked detail map. Expected {detailWidth}x{detailHeight}, got {biomeMaskWidth}x{biomeMaskHeight}.",
-                nameof(biomeMaskData));
+        ValidateDetailInputs(biomeMaskData, biomeMaskWidth, biomeMaskHeight, layers, detailWidth, detailHeight);
 
-        ValidateBufferLength(biomeMaskData.Length, biomeMaskWidth, biomeMaskHeight, "Biome mask", nameof(biomeMaskData));
-        int pixelCount = ValidatePixelCount(detailWidth, detailHeight, "Detail map");
-
-        var detailIndex = new DetailControlPixel[pixelCount];
-        var detailWeight = new DetailControlPixel[detailIndex.Length];
-        var orderedLayers = layers.OrderBy(static layer => layer.PriorityOrder).ToArray();
         var context = new DetailEvaluationContext(
             getHeight,
             heightWidth,
@@ -120,23 +121,47 @@ internal static class BakedDetailMapBuilder
             detailWidth,
             detailHeight);
 
-        for (int y = 0; y < detailHeight; y++)
+        return Generate(context, layers);
+    }
+
+    private static BakedDetailMapData Generate(
+        DetailEvaluationContext context,
+        IReadOnlyList<BiomeRuleLayer> layers)
+    {
+        int pixelCount = ValidatePixelCount(context.DetailWidth, context.DetailHeight, "Detail map");
+        var detailIndex = new DetailControlPixel[pixelCount];
+        var detailWeight = new DetailControlPixel[detailIndex.Length];
+
+        var orderedLayers = new OrderedBiomeRuleLayer[layers.Count];
+        for (int i = 0; i < layers.Count; i++)
+            orderedLayers[i] = new OrderedBiomeRuleLayer(layers[i], i);
+        Array.Sort(orderedLayers, static (left, right) =>
         {
-            for (int x = 0; x < detailWidth; x++)
+            int priorityOrder = left.Layer.PriorityOrder.CompareTo(right.Layer.PriorityOrder);
+            return priorityOrder != 0
+                ? priorityOrder
+                : left.OriginalIndex.CompareTo(right.OriginalIndex);
+        });
+
+        var contributions = new MaterialContribution[Math.Max(1, orderedLayers.Length)];
+        for (int y = 0; y < context.DetailHeight; y++)
+        {
+            for (int x = 0; x < context.DetailWidth; x++)
             {
-                DetailControlPair pixel = EvaluatePixel(context, orderedLayers, x, y);
-                int offset = y * detailWidth + x;
+                DetailControlPair pixel = EvaluatePixel(context, orderedLayers, contributions, x, y);
+                int offset = y * context.DetailWidth + x;
                 detailIndex[offset] = pixel.Index;
                 detailWeight[offset] = pixel.Weight;
             }
         }
 
-        return new BakedDetailMapData(detailIndex, detailWeight, detailWidth, detailHeight);
+        return new BakedDetailMapData(detailIndex, detailWeight, context.DetailWidth, context.DetailHeight);
     }
 
     private static DetailControlPair EvaluatePixel(
         DetailEvaluationContext context,
-        IReadOnlyList<BiomeRuleLayer> layers,
+        IReadOnlyList<OrderedBiomeRuleLayer> layers,
+        Span<MaterialContribution> contributions,
         int detailX,
         int detailY)
     {
@@ -145,15 +170,14 @@ internal static class BakedDetailMapBuilder
         float altitude = SampleHeightWorld(context, heightX, heightY);
         float slope = SampleSlopeDegrees(context, heightX, heightY);
         float directionDegrees = SampleDirectionDegrees(context, heightX, heightY);
-
-        var contributions = new List<MaterialContribution>();
+        int contributionCount = 0;
         bool foundValidLayer = false;
         float remainingWeight = 1.0f;
         int fallbackMaterialSlotIndex = 0;
 
         for (int layerIndex = layers.Count - 1; layerIndex >= 0; layerIndex--)
         {
-            BiomeRuleLayer layer = layers[layerIndex];
+            BiomeRuleLayer layer = layers[layerIndex].Layer;
             if (!layer.Enabled || !layer.Visible || layer.BiomeId != biomeId)
                 continue;
 
@@ -170,7 +194,14 @@ internal static class BakedDetailMapBuilder
                 if (modifier.Type == BiomeModifierType.TextureMask)
                     throw CreateUnsupportedTextureMaskException(layer, modifier);
 
-                float modifierValue = EvaluateModifier(context, modifier, detailX, detailY, heightX, heightY, altitude, slope, directionDegrees);
+                float modifierValue = EvaluateModifier(
+                    context,
+                    modifier,
+                    heightX,
+                    heightY,
+                    altitude,
+                    slope,
+                    directionDegrees);
                 if (modifier.Invert > 0.5f)
                     modifierValue = 1.0f - modifierValue;
 
@@ -186,7 +217,7 @@ internal static class BakedDetailMapBuilder
             if (contribution <= 0.0f)
                 continue;
 
-            AddMaterialContribution(contributions, layer.MaterialSlotIndex, contribution);
+            AddMaterialContribution(contributions, ref contributionCount, layer.MaterialSlotIndex, contribution);
             remainingWeight *= 1.0f - weight;
 
             if (remainingWeight <= 0.0001f)
@@ -197,17 +228,17 @@ internal static class BakedDetailMapBuilder
             return DetailControlPair.Default;
 
         if (remainingWeight > 0.0001f)
-            AddMaterialContribution(contributions, fallbackMaterialSlotIndex, remainingWeight);
+            AddMaterialContribution(contributions, ref contributionCount, fallbackMaterialSlotIndex, remainingWeight);
 
-        return PackTopFour(contributions);
+        return PackTopFour(contributions[..contributionCount]);
     }
 
-    private static void AddMaterialContribution(List<MaterialContribution> contributions, int materialIndex, float weight)
+    private static void AddMaterialContribution(Span<MaterialContribution> contributions, ref int contributionCount, int materialIndex, float weight)
     {
         if (weight <= 0.0f)
             return;
 
-        for (int i = 0; i < contributions.Count; i++)
+        for (int i = 0; i < contributionCount; i++)
         {
             MaterialContribution contribution = contributions[i];
             if (contribution.MaterialIndex != materialIndex)
@@ -218,23 +249,37 @@ internal static class BakedDetailMapBuilder
             return;
         }
 
-        contributions.Add(new MaterialContribution(materialIndex, weight, contributions.Count));
+        Debug.Assert(contributionCount < contributions.Length, "Contribution buffer must fit one contribution per layer.");
+        contributions[contributionCount] = new MaterialContribution(materialIndex, weight, contributionCount);
+        contributionCount++;
     }
 
-    private static DetailControlPair PackTopFour(List<MaterialContribution> contributions)
+    private static DetailControlPair PackTopFour(ReadOnlySpan<MaterialContribution> contributions)
     {
-        MaterialContribution[] top = contributions
-            .OrderByDescending(static contribution => contribution.Weight)
-            .ThenBy(static contribution => contribution.FirstOrder)
-            .Take(4)
-            .ToArray();
-
         Span<int> bestIndices = stackalloc int[4] { byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue };
         Span<float> bestWeights = stackalloc float[4];
-        for (int i = 0; i < top.Length; i++)
+        Span<int> bestOrders = stackalloc int[4] { int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue };
+
+        for (int i = 0; i < contributions.Length; i++)
         {
-            bestIndices[i] = top[i].MaterialIndex;
-            bestWeights[i] = top[i].Weight;
+            MaterialContribution candidate = contributions[i];
+            for (int slot = 0; slot < 4; slot++)
+            {
+                if (!IsBetterContribution(candidate.Weight, candidate.FirstOrder, bestWeights[slot], bestOrders[slot]))
+                    continue;
+
+                for (int move = 3; move > slot; move--)
+                {
+                    bestIndices[move] = bestIndices[move - 1];
+                    bestWeights[move] = bestWeights[move - 1];
+                    bestOrders[move] = bestOrders[move - 1];
+                }
+
+                bestIndices[slot] = candidate.MaterialIndex;
+                bestWeights[slot] = candidate.Weight;
+                bestOrders[slot] = candidate.FirstOrder;
+                break;
+            }
         }
 
         float totalWeight = MathF.Max(bestWeights[0] + bestWeights[1] + bestWeights[2] + bestWeights[3], 0.0001f);
@@ -251,11 +296,16 @@ internal static class BakedDetailMapBuilder
                 EncodeWeight(bestWeights[3], totalWeight)));
     }
 
+    private static bool IsBetterContribution(float candidateWeight, int candidateOrder, float existingWeight, int existingOrder)
+    {
+        if (candidateWeight > existingWeight)
+            return true;
+        return candidateWeight == existingWeight && candidateOrder < existingOrder;
+    }
+
     private static float EvaluateModifier(
         DetailEvaluationContext context,
         BiomeModifier modifier,
-        int detailX,
-        int detailY,
         int heightX,
         int heightY,
         float altitude,
@@ -302,6 +352,34 @@ internal static class BakedDetailMapBuilder
             throw new ArgumentOutOfRangeException(nameof(width), $"{label} dimensions {width}x{height} are too large.");
 
         return (int)pixelCount;
+    }
+
+    private static void ValidateDetailInputs(
+        byte[] biomeMaskData,
+        int biomeMaskWidth,
+        int biomeMaskHeight,
+        IReadOnlyList<BiomeRuleLayer> layers,
+        int detailWidth,
+        int detailHeight)
+    {
+        ArgumentNullException.ThrowIfNull(biomeMaskData);
+        ArgumentNullException.ThrowIfNull(layers);
+
+        if (biomeMaskWidth <= 0)
+            throw new ArgumentOutOfRangeException(nameof(biomeMaskWidth));
+        if (biomeMaskHeight <= 0)
+            throw new ArgumentOutOfRangeException(nameof(biomeMaskHeight));
+        if (detailWidth <= 0)
+            throw new ArgumentOutOfRangeException(nameof(detailWidth));
+        if (detailHeight <= 0)
+            throw new ArgumentOutOfRangeException(nameof(detailHeight));
+        if (biomeMaskWidth != detailWidth || biomeMaskHeight != detailHeight)
+            throw new ArgumentException(
+                $"Biome mask dimensions must have the same dimensions as the baked detail map. Expected {detailWidth}x{detailHeight}, got {biomeMaskWidth}x{biomeMaskHeight}.",
+                nameof(biomeMaskData));
+
+        ValidateBufferLength(biomeMaskData.Length, biomeMaskWidth, biomeMaskHeight, "Biome mask", nameof(biomeMaskData));
+        _ = ValidatePixelCount(detailWidth, detailHeight, "Detail map");
     }
 
     private static void ValidateMaterialSlot(int materialSlotIndex, string layerName)
@@ -489,24 +567,71 @@ internal static class BakedDetailMapBuilder
         public int FirstOrder { get; } = firstOrder;
     }
 
-    private sealed class DetailEvaluationContext(
-        Func<int, int, float> getHeight,
-        int heightWidth,
-        int heightHeight,
-        byte[] biomeMaskData,
-        int biomeMaskWidth,
-        int biomeMaskHeight,
-        int detailWidth,
-        int detailHeight)
+    private readonly record struct OrderedBiomeRuleLayer(BiomeRuleLayer Layer, int OriginalIndex);
+
+    private sealed class DetailEvaluationContext
     {
-        public Func<int, int, float> GetHeight { get; } = getHeight;
-        public int HeightWidth { get; } = heightWidth;
-        public int HeightHeight { get; } = heightHeight;
-        public byte[] BiomeMaskData { get; } = biomeMaskData;
-        public int BiomeMaskWidth { get; } = biomeMaskWidth;
-        public int BiomeMaskHeight { get; } = biomeMaskHeight;
-        public int DetailWidth { get; } = detailWidth;
-        public int DetailHeight { get; } = detailHeight;
+        private readonly Func<int, int, float>? getHeight;
+        private readonly ushort[]? heightData;
+        private readonly float heightScaleFactor;
+
+        public DetailEvaluationContext(
+            Func<int, int, float> getHeight,
+            int heightWidth,
+            int heightHeight,
+            byte[] biomeMaskData,
+            int biomeMaskWidth,
+            int biomeMaskHeight,
+            int detailWidth,
+            int detailHeight)
+        {
+            this.getHeight = getHeight;
+            HeightWidth = heightWidth;
+            HeightHeight = heightHeight;
+            BiomeMaskData = biomeMaskData;
+            BiomeMaskWidth = biomeMaskWidth;
+            BiomeMaskHeight = biomeMaskHeight;
+            DetailWidth = detailWidth;
+            DetailHeight = detailHeight;
+        }
+
+        public DetailEvaluationContext(
+            ushort[] heightData,
+            float heightScaleFactor,
+            int heightWidth,
+            int heightHeight,
+            byte[] biomeMaskData,
+            int biomeMaskWidth,
+            int biomeMaskHeight,
+            int detailWidth,
+            int detailHeight)
+        {
+            this.heightData = heightData;
+            this.heightScaleFactor = heightScaleFactor;
+            HeightWidth = heightWidth;
+            HeightHeight = heightHeight;
+            BiomeMaskData = biomeMaskData;
+            BiomeMaskWidth = biomeMaskWidth;
+            BiomeMaskHeight = biomeMaskHeight;
+            DetailWidth = detailWidth;
+            DetailHeight = detailHeight;
+        }
+
+        public int HeightWidth { get; }
+        public int HeightHeight { get; }
+        public byte[] BiomeMaskData { get; }
+        public int BiomeMaskWidth { get; }
+        public int BiomeMaskHeight { get; }
+        public int DetailWidth { get; }
+        public int DetailHeight { get; }
+
+        public float GetHeight(int x, int y)
+        {
+            if (heightData != null)
+                return heightData[y * HeightWidth + x] * heightScaleFactor;
+
+            return getHeight!(x, y);
+        }
 
         public byte GetBiomeId(int detailX, int detailY)
         {

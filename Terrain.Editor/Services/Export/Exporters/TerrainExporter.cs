@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -486,59 +487,109 @@ public class TerrainExporter : IExporter
         out DetailControlPixel index,
         out DetailControlPixel weight)
     {
-        var contributions = new Dictionary<byte, int>();
+        Span<byte> contributionIndices = stackalloc byte[16];
+        Span<int> contributionWeights = stackalloc int[16];
+        int contributionCount = 0;
+
         for (int y = sourceY; y < Math.Min(sourceY + 2, source.Height); y++)
         {
             int row = y * source.Width;
             for (int x = sourceX; x < Math.Min(sourceX + 2, source.Width); x++)
             {
                 int offset = row + x;
-                AddDetailContributions(contributions, source.Index[offset], source.Weight[offset]);
+                AddDetailContributions(
+                    contributionIndices,
+                    contributionWeights,
+                    ref contributionCount,
+                    source.Index[offset],
+                    source.Weight[offset]);
             }
         }
 
-        if (contributions.Count == 0)
+        if (contributionCount == 0)
         {
             index = DetailControlPixel.DefaultIndex;
             weight = DetailControlPixel.DefaultWeight;
             return;
         }
 
-        DetailContribution[] top = contributions
-            .Select(static pair => new DetailContribution(pair.Key, pair.Value))
-            .OrderByDescending(static contribution => contribution.Weight)
-            .ThenBy(static contribution => contribution.MaterialIndex)
-            .Take(4)
-            .ToArray();
-        int totalWeight = Math.Max(1, top.Sum(static contribution => contribution.Weight));
-
         Span<byte> indices = stackalloc byte[4] { byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue };
         Span<byte> weights = stackalloc byte[4];
-        for (int i = 0; i < top.Length; i++)
+        Span<int> topWeights = stackalloc int[4];
+
+        for (int candidate = 0; candidate < contributionCount; candidate++)
         {
-            indices[i] = top[i].MaterialIndex;
-            weights[i] = EncodeDetailWeight(top[i].Weight, totalWeight);
+            byte candidateIndex = contributionIndices[candidate];
+            int candidateWeight = contributionWeights[candidate];
+
+            for (int slot = 0; slot < 4; slot++)
+            {
+                if (!IsBetterDetailContribution(candidateIndex, candidateWeight, indices[slot], topWeights[slot]))
+                    continue;
+
+                for (int move = 3; move > slot; move--)
+                {
+                    indices[move] = indices[move - 1];
+                    topWeights[move] = topWeights[move - 1];
+                }
+
+                indices[slot] = candidateIndex;
+                topWeights[slot] = candidateWeight;
+                break;
+            }
         }
+
+        int totalWeight = Math.Max(1, topWeights[0] + topWeights[1] + topWeights[2] + topWeights[3]);
+        for (int i = 0; i < 4; i++)
+            weights[i] = EncodeDetailWeight(topWeights[i], totalWeight);
 
         index = new DetailControlPixel(indices[0], indices[1], indices[2], indices[3]);
         weight = new DetailControlPixel(weights[0], weights[1], weights[2], weights[3]);
     }
 
-    private static void AddDetailContributions(Dictionary<byte, int> contributions, DetailControlPixel index, DetailControlPixel weight)
+    private static void AddDetailContributions(
+        Span<byte> contributionIndices,
+        Span<int> contributionWeights,
+        ref int contributionCount,
+        DetailControlPixel index,
+        DetailControlPixel weight)
     {
-        AddDetailContribution(contributions, index.R, weight.R);
-        AddDetailContribution(contributions, index.G, weight.G);
-        AddDetailContribution(contributions, index.B, weight.B);
-        AddDetailContribution(contributions, index.A, weight.A);
+        AddDetailContribution(contributionIndices, contributionWeights, ref contributionCount, index.R, weight.R);
+        AddDetailContribution(contributionIndices, contributionWeights, ref contributionCount, index.G, weight.G);
+        AddDetailContribution(contributionIndices, contributionWeights, ref contributionCount, index.B, weight.B);
+        AddDetailContribution(contributionIndices, contributionWeights, ref contributionCount, index.A, weight.A);
     }
 
-    private static void AddDetailContribution(Dictionary<byte, int> contributions, byte materialIndex, byte weight)
+    private static void AddDetailContribution(
+        Span<byte> contributionIndices,
+        Span<int> contributionWeights,
+        ref int contributionCount,
+        byte materialIndex,
+        byte weight)
     {
         if (materialIndex == byte.MaxValue || weight == 0)
             return;
 
-        contributions.TryGetValue(materialIndex, out int existingWeight);
-        contributions[materialIndex] = existingWeight + weight;
+        for (int i = 0; i < contributionCount; i++)
+        {
+            if (contributionIndices[i] != materialIndex)
+                continue;
+
+            contributionWeights[i] += weight;
+            return;
+        }
+
+        Debug.Assert(contributionCount < contributionIndices.Length, "A 2x2 detail mip footprint can contribute at most 16 unique material channels.");
+        contributionIndices[contributionCount] = materialIndex;
+        contributionWeights[contributionCount] = weight;
+        contributionCount++;
+    }
+
+    private static bool IsBetterDetailContribution(byte candidateIndex, int candidateWeight, byte existingIndex, int existingWeight)
+    {
+        if (candidateWeight > existingWeight)
+            return true;
+        return candidateWeight == existingWeight && candidateIndex < existingIndex;
     }
 
     private static byte EncodeDetailWeight(int weight, int totalWeight)
@@ -572,5 +623,4 @@ public class TerrainExporter : IExporter
 
     private readonly record struct DetailMipLevel(DetailControlPixel[] Index, DetailControlPixel[] Weight, int Width, int Height);
 
-    private readonly record struct DetailContribution(byte MaterialIndex, int Weight);
 }

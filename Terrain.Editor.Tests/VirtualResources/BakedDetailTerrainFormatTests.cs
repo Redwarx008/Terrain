@@ -13,6 +13,10 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Run("editor baked detail builder packs ordered layers deterministically", EditorBakedDetailBuilderPacksOrderedLayersDeterministically);
         TestHarness.Run("editor baked detail builder keeps only top four aggregated materials", EditorBakedDetailBuilderKeepsOnlyTopFourAggregatedMaterials);
         TestHarness.Run("editor baked detail builder aggregates duplicate material before top four selection", EditorBakedDetailBuilderAggregatesDuplicateMaterialBeforeTopFourSelection);
+        TestHarness.Run("editor baked detail builder preserves stable ordering for equal priorities", EditorBakedDetailBuilderPreservesStableOrderingForEqualPriorities);
+        TestHarness.Run("editor baked detail builder function overload preserves validation contract", EditorBakedDetailBuilderFunctionOverloadPreservesValidationContract);
+        TestHarness.Run("editor baked detail builder fast height path matches functional height path", EditorBakedDetailBuilderFastHeightPathMatchesFunctionalHeightPath);
+        TestHarness.Run("editor baked detail builder avoids per pixel collection sorting", EditorBakedDetailBuilderAvoidsPerPixelCollectionSorting);
         TestHarness.Run("editor baked detail builder rejects invalid material slots", EditorBakedDetailBuilderRejectsInvalidMaterialSlots);
         TestHarness.Run("editor baked detail builder rejects unsupported texture masks", EditorBakedDetailBuilderRejectsUnsupportedTextureMasks);
         TestHarness.Run("editor baked detail builder detail pixel is four bytes", EditorBakedDetailBuilderDetailPixelIsFourBytes);
@@ -23,6 +27,7 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Run("terrain file reader releases file handle after constructor failure", TerrainFileReaderReleasesFileHandleAfterConstructorFailure);
         TestHarness.Run("terrain exporter writes baked detail VT payloads readable by runtime", TerrainExporterWritesBakedDetailVtPayloadsReadableByRuntime);
         TestHarness.Run("terrain exporter aggregates detail mip contributions instead of copying top left texel", TerrainExporterAggregatesDetailMipContributionsInsteadOfCopyingTopLeftTexel);
+        TestHarness.Run("terrain exporter sorts equal weight detail mip contributions by material index", TerrainExporterSortsEqualWeightDetailMipContributionsByMaterialIndex);
         TestHarness.Run("terrain exporter cancellation preserves existing target and deletes temp file", TerrainExporterCancellationPreservesExistingTargetAndDeletesTempFile);
         TestHarness.Run("terrain exporter source writes detail index and weight VT payloads", TerrainExporterSourceWritesDetailIndexAndWeightVtPayloads);
         TestHarness.Run("runtime source no longer contains generated detail map state", RuntimeSourceNoLongerContainsGeneratedDetailMapState);
@@ -169,6 +174,153 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.AssertEqual(49, weight.A, "duplicate aggregate normalized weight");
     }
 
+    private static void EditorBakedDetailBuilderPreservesStableOrderingForEqualPriorities()
+    {
+        global::Terrain.Editor.Services.Export.BakedDetailMapData data =
+            global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                new ushort[16],
+                4,
+                4,
+                100.0f,
+                [0, 0, 0, 0],
+                2,
+                2,
+                [
+                    CreateLayer(0, materialSlotIndex: 1, priority: 10),
+                    CreateLayer(0, materialSlotIndex: 2, priority: 10),
+                    CreateLayer(0, materialSlotIndex: 3, priority: 10),
+                ]);
+
+        global::Terrain.Editor.Services.Export.DetailControlPixel index = data.DetailIndex[0];
+        TestHarness.AssertEqual(3, index.R, "stable priority ordering should let the last same-priority layer retain top coverage");
+        TestHarness.AssertEqual(byte.MaxValue, index.G, "full top coverage should stop before earlier equal-priority layers");
+    }
+
+    private static void EditorBakedDetailBuilderFunctionOverloadPreservesValidationContract()
+    {
+        ArgumentNullException nullHeight = TestHarness.AssertThrows<ArgumentNullException>(
+            () => global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                (Func<int, int, float>)null!,
+                4,
+                4,
+                [0, 0, 0, 0],
+                2,
+                2,
+                [CreateLayer(0, materialSlotIndex: 1, priority: 0)]),
+            "function overload should reject null getHeight before computing detail dimensions");
+        TestHarness.AssertEqual("getHeight", nullHeight.ParamName, "null getHeight parameter name");
+
+        ArgumentOutOfRangeException badWidth = TestHarness.AssertThrows<ArgumentOutOfRangeException>(
+            () => global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                static (_, _) => 0.0f,
+                0,
+                4,
+                [0, 0],
+                1,
+                2,
+                [CreateLayer(0, materialSlotIndex: 1, priority: 0)]),
+            "function overload should reject invalid height width before validating detail dimensions");
+        TestHarness.AssertEqual("heightWidth", badWidth.ParamName, "invalid width parameter name");
+
+        ArgumentOutOfRangeException badHeight = TestHarness.AssertThrows<ArgumentOutOfRangeException>(
+            () => global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                static (_, _) => 0.0f,
+                4,
+                0,
+                [0, 0],
+                2,
+                1,
+                [CreateLayer(0, materialSlotIndex: 1, priority: 0)]),
+            "function overload should reject invalid height height before validating detail dimensions");
+        TestHarness.AssertEqual("heightHeight", badHeight.ParamName, "invalid height parameter name");
+    }
+
+    private static void EditorBakedDetailBuilderFastHeightPathMatchesFunctionalHeightPath()
+    {
+        const int heightSize = 9;
+        const int detailSize = 5;
+        ushort[] heightData = new ushort[heightSize * heightSize];
+        for (int y = 0; y < heightSize; y++)
+        {
+            for (int x = 0; x < heightSize; x++)
+                heightData[y * heightSize + x] = (ushort)(1000 + x * 251 + y * 617 + x * y * 43);
+        }
+
+        byte[] biomeMask = new byte[detailSize * detailSize];
+        for (int i = 0; i < biomeMask.Length; i++)
+            biomeMask[i] = (byte)(i % 2);
+
+        const float heightScale = 200.0f;
+        float heightScaleFactor = heightScale / ushort.MaxValue;
+        global::Terrain.Editor.Services.BiomeRuleLayer[] layers =
+        [
+            CreateLayer(
+                0,
+                materialSlotIndex: 3,
+                priority: 0,
+                CreateModifier(global::Terrain.Editor.Services.BiomeModifierType.HeightRange, min: 5.0f, max: 55.0f, minFalloff: 8.0f, maxFalloff: 13.0f),
+                CreateModifier(global::Terrain.Editor.Services.BiomeModifierType.SlopeRange, min: 2.0f, max: 70.0f, minFalloff: 3.0f, maxFalloff: 4.0f)),
+            CreateLayer(
+                0,
+                materialSlotIndex: 4,
+                priority: 1,
+                CreateModifier(global::Terrain.Editor.Services.BiomeModifierType.CurvatureRange, min: 0.15f, max: 0.85f, minFalloff: 0.2f, maxFalloff: 0.1f, radius: 2.0f),
+                CreateModifier(global::Terrain.Editor.Services.BiomeModifierType.DirectionRange, min: 0.0f, max: 1.0f, angleDegrees: 30.0f, angleRangeDegrees: 160.0f)),
+            CreateLayer(
+                1,
+                materialSlotIndex: 7,
+                priority: 2,
+                CreateModifier(global::Terrain.Editor.Services.BiomeModifierType.Noise, min: 0.0f, max: 1.0f, scale: 0.17f, seed: 11.0f, octaves: 3.0f),
+                CreateModifier(global::Terrain.Editor.Services.BiomeModifierType.HeightRange, min: 0.0f, max: 100.0f, minFalloff: 5.0f, maxFalloff: 5.0f, invert: 1.0f, opacity: 0.4f)),
+            CreateLayer(
+                1,
+                materialSlotIndex: 8,
+                priority: 3,
+                CreateModifier(global::Terrain.Editor.Services.BiomeModifierType.SlopeRange, min: 0.0f, max: 90.0f, minFalloff: 1.0f, maxFalloff: 1.0f, blendMode: global::Terrain.Editor.Services.BiomeModifierBlendMode.Max, opacity: 0.7f)),
+        ];
+
+        global::Terrain.Editor.Services.Export.BakedDetailMapData fast =
+            global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                heightData,
+                heightSize,
+                heightSize,
+                heightScale,
+                biomeMask,
+                detailSize,
+                detailSize,
+                layers);
+
+        global::Terrain.Editor.Services.Export.BakedDetailMapData functional =
+            global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                (x, y) => heightData[y * heightSize + x] * heightScaleFactor,
+                heightSize,
+                heightSize,
+                biomeMask,
+                detailSize,
+                detailSize,
+                layers);
+
+        TestHarness.AssertEqual(fast.Width, functional.Width, "detail width");
+        TestHarness.AssertEqual(fast.Height, functional.Height, "detail height");
+        for (int i = 0; i < fast.DetailIndex.Length; i++)
+        {
+            TestHarness.AssertEqual(fast.DetailIndex[i], functional.DetailIndex[i], $"detail index texel {i}");
+            TestHarness.AssertEqual(fast.DetailWeight[i], functional.DetailWeight[i], $"detail weight texel {i}");
+        }
+    }
+
+    private static void EditorBakedDetailBuilderAvoidsPerPixelCollectionSorting()
+    {
+        string builderSource = ReadRepoText("Terrain.Editor/Services/Export/BakedDetailMapBuilder.cs");
+        TestHarness.Assert(!builderSource.Contains("new List<MaterialContribution>", StringComparison.Ordinal), "builder should not allocate a contribution list per detail texel");
+        TestHarness.Assert(!builderSource.Contains("OrderByDescending(static contribution => contribution.Weight)", StringComparison.Ordinal), "builder should not sort material contributions with LINQ per detail texel");
+        TestHarness.Assert(!builderSource.Contains("Take(4)", StringComparison.Ordinal), "builder should use fixed top-four selection instead of LINQ Take per texel");
+
+        string exporterSource = ReadRepoText("Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs");
+        TestHarness.Assert(!exporterSource.Contains("new Dictionary<byte, int>", StringComparison.Ordinal), "detail mip downsample should not allocate a dictionary per destination texel");
+        TestHarness.Assert(!exporterSource.Contains("OrderByDescending(static contribution => contribution.Weight)", StringComparison.Ordinal), "detail mip downsample should not sort contributions with LINQ per texel");
+    }
+
     private static void EditorBakedDetailBuilderRejectsInvalidMaterialSlots()
     {
         ArgumentOutOfRangeException negative = TestHarness.AssertThrows<ArgumentOutOfRangeException>(
@@ -274,6 +426,43 @@ internal static class BakedDetailTerrainFormatTests
             MinFalloff = 0.001f,
             MaxFalloff = 0.001f,
             Opacity = 1.0f - weight,
+        };
+    }
+
+    private static global::Terrain.Editor.Services.BiomeModifier CreateModifier(
+        global::Terrain.Editor.Services.BiomeModifierType type,
+        float min,
+        float max,
+        float minFalloff = 0.001f,
+        float maxFalloff = 0.001f,
+        float radius = 1.0f,
+        float angleDegrees = 0.0f,
+        float angleRangeDegrees = 180.0f,
+        float scale = 1.0f,
+        float seed = 0.0f,
+        float octaves = 1.0f,
+        float invert = 0.0f,
+        float opacity = 1.0f,
+        global::Terrain.Editor.Services.BiomeModifierBlendMode blendMode = global::Terrain.Editor.Services.BiomeModifierBlendMode.Multiply)
+    {
+        return new global::Terrain.Editor.Services.BiomeModifier
+        {
+            Type = type,
+            BlendMode = blendMode,
+            Enabled = true,
+            Visible = true,
+            Min = min,
+            Max = max,
+            MinFalloff = minFalloff,
+            MaxFalloff = maxFalloff,
+            Radius = radius,
+            AngleDegrees = angleDegrees,
+            AngleRangeDegrees = angleRangeDegrees,
+            Scale = scale,
+            Seed = seed,
+            Octaves = octaves,
+            Invert = invert,
+            Opacity = opacity,
         };
     }
 
@@ -470,6 +659,61 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.AssertEqual(64, weight.G, "second material weight should be normalized from one source texel");
         TestHarness.AssertEqual(64, weight.B, "third material weight should be normalized from one source texel");
         TestHarness.AssertEqual(0, weight.A, "unused detail mip weight channel");
+    }
+
+    private static void TerrainExporterSortsEqualWeightDetailMipContributionsByMaterialIndex()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "terrain-v8-exporter-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string outputPath = Path.Combine(directory, "terrain.terrain");
+
+        const int heightSize = 513;
+        const int detailSize = 257;
+        ushort[] heightData = new ushort[heightSize * heightSize];
+        byte[] biomeMask = new byte[detailSize * detailSize];
+        biomeMask[0] = 0;
+        biomeMask[1] = 1;
+        biomeMask[detailSize] = 2;
+        biomeMask[detailSize + 1] = 3;
+
+        global::Terrain.Editor.Services.Export.Exporters.TerrainExporter.ExportBakedTerrain(
+            outputPath,
+            heightData,
+            heightSize,
+            heightSize,
+            100.0f,
+            biomeMask,
+            detailSize,
+            detailSize,
+            [
+                CreateLayer(0, materialSlotIndex: 9, priority: 0),
+                CreateLayer(1, materialSlotIndex: 2, priority: 1),
+                CreateLayer(2, materialSlotIndex: 7, priority: 2),
+                CreateLayer(3, materialSlotIndex: 4, priority: 3),
+            ],
+            progress: null,
+            CancellationToken.None);
+
+        using var reader = new global::Terrain.TerrainFileReader(outputPath);
+        byte[] mip1IndexPage = new byte[ComputeTileByteSize(reader.DetailIndexMapHeader)];
+        byte[] mip1WeightPage = new byte[ComputeTileByteSize(reader.DetailWeightMapHeader)];
+        reader.ReadDetailIndexPage(new global::Terrain.TerrainPageKey(1, 0, 0), mip1IndexPage);
+        reader.ReadDetailWeightPage(new global::Terrain.TerrainPageKey(1, 0, 0), mip1WeightPage);
+
+        int sampleOffset = reader.DetailIndexMapHeader.Padding * (reader.DetailIndexMapHeader.TileSize + reader.DetailIndexMapHeader.Padding * 2) + reader.DetailIndexMapHeader.Padding;
+        global::Terrain.Editor.Services.Export.DetailControlPixel index =
+            MemoryMarshal.Cast<byte, global::Terrain.Editor.Services.Export.DetailControlPixel>(mip1IndexPage)[sampleOffset];
+        global::Terrain.Editor.Services.Export.DetailControlPixel weight =
+            MemoryMarshal.Cast<byte, global::Terrain.Editor.Services.Export.DetailControlPixel>(mip1WeightPage)[sampleOffset];
+
+        TestHarness.AssertEqual(2, index.R, "lowest material index should sort first when mip weights tie");
+        TestHarness.AssertEqual(4, index.G, "second lowest material index should sort second when mip weights tie");
+        TestHarness.AssertEqual(7, index.B, "third lowest material index should sort third when mip weights tie");
+        TestHarness.AssertEqual(9, index.A, "highest material index should sort fourth when mip weights tie");
+        TestHarness.AssertEqual(64, weight.R, "first equal mip weight");
+        TestHarness.AssertEqual(64, weight.G, "second equal mip weight");
+        TestHarness.AssertEqual(64, weight.B, "third equal mip weight");
+        TestHarness.AssertEqual(64, weight.A, "fourth equal mip weight");
     }
 
     private static void TerrainExporterCancellationPreservesExistingTargetAndDeletesTempFile()
