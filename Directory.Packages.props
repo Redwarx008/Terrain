@@ -4,14 +4,14 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- Stride 核心包 - 本地版本 -->
-    <PackageVersion Include="Stride.Engine" Version="4.3.0.1" />
-    <PackageVersion Include="Stride.Video" Version="4.3.0.1" />
-    <PackageVersion Include="Stride.Physics" Version="4.3.0.1" />
-    <PackageVersion Include="Stride.Navigation" Version="4.3.0.1" />
-    <PackageVersion Include="Stride.Particles" Version="4.3.0.1" />
-    <PackageVersion Include="Stride.UI" Version="4.3.0.1" />
-    <PackageVersion Include="Stride.TextureConverter" Version="4.3.0.1" />
-    <PackageVersion Include="Stride.Core.Assets.CompilerApp" Version="4.3.0.1" />
+    <PackageVersion Include="Stride.Engine" Version="4.3.0.2743" />
+    <PackageVersion Include="Stride.Video" Version="4.3.0.2743" />
+    <PackageVersion Include="Stride.Physics" Version="4.3.0.2743" />
+    <PackageVersion Include="Stride.Navigation" Version="4.3.0.2743" />
+    <PackageVersion Include="Stride.Particles" Version="4.3.0.2743" />
+    <PackageVersion Include="Stride.UI" Version="4.3.0.2743" />
+    <PackageVersion Include="Stride.TextureConverter" Version="4.3.0.2743" />
+    <PackageVersion Include="Stride.Core.Assets.CompilerApp" Version="4.3.0.2743" />
     <!-- 第三方包 - NuGet 版本 -->
     <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageVersion Include="Avalonia" Version="11.3.9" />

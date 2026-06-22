@@ -243,7 +243,11 @@ public sealed class RuntimeMaterialManager : IDisposable
         var texture = Texture.New2D(graphicsDevice, width, height, mipCount, format, TextureFlags.ShaderResource);
         var mipData = TextureBlockEncoder.CreateFlatNormalMipData(format, width, height, mipCount);
         for (int mip = 0; mip < mipCount; mip++)
-            texture.SetData(commandList, mipData[mip], 0, mip);
+        {
+            var mipWidth = Math.Max(1, width >> mip);
+            var mipHeight = Math.Max(1, height >> mip);
+            texture.SetData(commandList, mipData[mip], 0, mip, new ResourceRegion(0, 0, 0, mipWidth, mipHeight, 1));
+        }
         return texture;
     }
 

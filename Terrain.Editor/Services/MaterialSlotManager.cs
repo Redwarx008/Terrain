@@ -549,7 +549,9 @@ public sealed class MaterialSlotManager
             signature.Format, signature.Width, signature.Height, signature.MipLevelCount);
         for (int mipLevel = 0; mipLevel < signature.MipLevelCount; mipLevel++)
         {
-            cachedDefaultNormalTexture.SetData(commandList, mipData[mipLevel], 0, mipLevel);
+            var mipWidth = Math.Max(1, signature.Width >> mipLevel);
+            var mipHeight = Math.Max(1, signature.Height >> mipLevel);
+            cachedDefaultNormalTexture.SetData(commandList, mipData[mipLevel], 0, mipLevel, new ResourceRegion(0, 0, 0, mipWidth, mipHeight, 1));
         }
 
         cachedDefaultNormalSignature = signature;
