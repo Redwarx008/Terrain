@@ -16,6 +16,9 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Run("editor baked detail builder preserves stable ordering for equal priorities", EditorBakedDetailBuilderPreservesStableOrderingForEqualPriorities);
         TestHarness.Run("editor baked detail builder function overload preserves validation contract", EditorBakedDetailBuilderFunctionOverloadPreservesValidationContract);
         TestHarness.Run("editor baked detail builder fast height path matches functional height path", EditorBakedDetailBuilderFastHeightPathMatchesFunctionalHeightPath);
+        TestHarness.Run("editor baked detail builder keeps parallel row evaluation", EditorBakedDetailBuilderKeepsParallelRowEvaluation);
+        TestHarness.Run("editor baked detail builder large parallel path preserves direct validation exceptions", EditorBakedDetailBuilderLargeParallelPathPreservesDirectValidationExceptions);
+        TestHarness.Run("editor baked detail builder function overload keeps large maps serial", EditorBakedDetailBuilderFunctionOverloadKeepsLargeMapsSerial);
         TestHarness.Run("editor baked detail builder avoids per pixel collection sorting", EditorBakedDetailBuilderAvoidsPerPixelCollectionSorting);
         TestHarness.Run("editor baked detail builder rejects invalid material slots", EditorBakedDetailBuilderRejectsInvalidMaterialSlots);
         TestHarness.Run("editor baked detail builder rejects unsupported texture masks", EditorBakedDetailBuilderRejectsUnsupportedTextureMasks);
@@ -321,6 +324,107 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Assert(!exporterSource.Contains("OrderByDescending(static contribution => contribution.Weight)", StringComparison.Ordinal), "detail mip downsample should not sort contributions with LINQ per texel");
     }
 
+    private static void EditorBakedDetailBuilderKeepsParallelRowEvaluation()
+    {
+        string builderSource = ReadRepoText("Terrain.Editor/Services/Export/BakedDetailMapBuilder.cs");
+        TestHarness.Assert(builderSource.Contains("Parallel.For", StringComparison.Ordinal), "builder should keep parallel row evaluation for large detail maps");
+        TestHarness.Assert(builderSource.Contains("ParallelDetailTexelThreshold", StringComparison.Ordinal), "builder should gate parallel row evaluation behind a threshold");
+        TestHarness.Assert(builderSource.Contains("CanEvaluateInParallel", StringComparison.Ordinal), "function-backed height evaluation should not be forced into parallel execution");
+
+        string exporterSource = ReadRepoText("Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs");
+        TestHarness.Assert(exporterSource.Contains("Parallel.For", StringComparison.Ordinal), "detail mip downsample should keep parallel row evaluation for large mips");
+        TestHarness.Assert(exporterSource.Contains("ParallelDetailMipTexelThreshold", StringComparison.Ordinal), "detail mip downsample should gate parallel row evaluation behind a threshold");
+    }
+
+    private static void EditorBakedDetailBuilderLargeParallelPathPreservesDirectValidationExceptions()
+    {
+        const int heightSize = 513;
+        const int detailSize = 257;
+        ushort[] heightData = new ushort[heightSize * heightSize];
+        byte[] biomeMask = Enumerable.Repeat((byte)0, detailSize * detailSize).ToArray();
+
+        ArgumentOutOfRangeException invalidSlot = TestHarness.AssertThrows<ArgumentOutOfRangeException>(
+            () => global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                heightData,
+                heightSize,
+                heightSize,
+                100.0f,
+                biomeMask,
+                detailSize,
+                detailSize,
+                [CreateLayer(0, materialSlotIndex: 255, priority: 0)]),
+            "large parallel builder should preserve direct invalid material slot exceptions");
+        TestHarness.AssertEqual("materialSlotIndex", invalidSlot.ParamName, "parallel invalid slot exception parameter");
+
+        var textureMaskLayer = CreateLayer(
+            0,
+            materialSlotIndex: 1,
+            priority: 0,
+            new global::Terrain.Editor.Services.BiomeModifier
+            {
+                Type = global::Terrain.Editor.Services.BiomeModifierType.TextureMask,
+                Enabled = true,
+                Visible = true,
+            });
+
+        TestHarness.AssertThrows<NotSupportedException>(
+            () => global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                heightData,
+                heightSize,
+                heightSize,
+                100.0f,
+                biomeMask,
+                detailSize,
+                detailSize,
+                [textureMaskLayer]),
+            "large parallel builder should preserve direct TextureMask exceptions");
+
+        global::Terrain.Editor.Services.Export.BakedDetailMapData shielded =
+            global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                heightData,
+                heightSize,
+                heightSize,
+                100.0f,
+                biomeMask,
+                detailSize,
+                detailSize,
+                [
+                    CreateLayer(0, materialSlotIndex: 255, priority: 0),
+                    CreateLayer(0, materialSlotIndex: 1, priority: 1),
+                ]);
+        TestHarness.AssertEqual(1, shielded.DetailIndex[0].R, "higher priority full-coverage layer should hide lower invalid layer");
+    }
+
+    private static void EditorBakedDetailBuilderFunctionOverloadKeepsLargeMapsSerial()
+    {
+        const int heightSize = 513;
+        const int detailSize = 257;
+        byte[] biomeMask = Enumerable.Repeat((byte)0, detailSize * detailSize).ToArray();
+        int activeHeightCalls = 0;
+        int overlappingHeightCalls = 0;
+
+        float GetHeight(int x, int y)
+        {
+            if (Interlocked.Increment(ref activeHeightCalls) > 1)
+                Interlocked.Exchange(ref overlappingHeightCalls, 1);
+
+            Thread.SpinWait(32);
+            Interlocked.Decrement(ref activeHeightCalls);
+            return x + y;
+        }
+
+        _ = global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+            GetHeight,
+            heightSize,
+            heightSize,
+            biomeMask,
+            detailSize,
+            detailSize,
+            [CreateLayer(0, materialSlotIndex: 1, priority: 0)]);
+
+        TestHarness.AssertEqual(0, overlappingHeightCalls, "function height overload should keep large maps serial");
+    }
+
     private static void EditorBakedDetailBuilderRejectsInvalidMaterialSlots()
     {
         ArgumentOutOfRangeException negative = TestHarness.AssertThrows<ArgumentOutOfRangeException>(
@@ -609,8 +713,8 @@ internal static class BakedDetailTerrainFormatTests
         Directory.CreateDirectory(directory);
         string outputPath = Path.Combine(directory, "terrain.terrain");
 
-        const int heightSize = 513;
-        const int detailSize = 257;
+        const int heightSize = 1025;
+        const int detailSize = 513;
         ushort[] heightData = new ushort[heightSize * heightSize];
         byte[] biomeMask = new byte[detailSize * detailSize];
         biomeMask[0] = 0;

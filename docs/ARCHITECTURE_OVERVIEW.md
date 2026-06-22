@@ -166,7 +166,7 @@
 **问题：** 编辑器中的修改无法直接导出为运行时 .terrain 文件，需依赖独立的 TerrainPreProcessor
 **方案：** IExporter 接口 + ExportManager 单例，每种导出类型实现接口并注册；TerrainExporter 从内存状态直接导出
 **权衡：** 在 Editor 内重写导出逻辑 vs 引用 TerrainPreProcessor 库；选择重写以避免跨项目依赖
-**关键：** `.terrain` v8 写入 `HeightMap VT + DetailIndex VT + DetailWeight VT`。HeightMap 使用 padding=2；两个 detail stream 使用 padding=1、RGBA8 packed `DetailControlPixel`，由 Editor Export 读取作者态 `biome_mask.png` / `biome_settings.toml` 后 bake。2026-06-22 Export bake 热路径已移除逐 detail texel 的 `List`/`Dictionary`/LINQ top4 聚合，改为固定小缓冲以降低分配和排序开销，同时用行为测试锁定输出语义。Exporter 先写同目录临时文件，完整成功后 replace/move 到目标，失败或取消时删除临时文件并保留旧目标。Export 期间 `EditorShellViewModel.IsExporting` 驱动模态进度 owned top-level window，并与 Save 共用可变更命令/视口输入阻断。
+**关键：** `.terrain` v8 写入 `HeightMap VT + DetailIndex VT + DetailWeight VT`。HeightMap 使用 padding=2；两个 detail stream 使用 padding=1、RGBA8 packed `DetailControlPixel`，由 Editor Export 读取作者态 `biome_mask.png` / `biome_settings.toml` 后 bake。2026-06-22 Export bake 热路径已移除逐 detail texel 的 `List`/`Dictionary`/LINQ top4 聚合，改为固定小缓冲以降低分配和排序开销，同时用行为测试锁定输出语义；大图 detail texel bake 与 detail mip 下采样现在按行并行，并以阈值避免小图并行调度开销。Exporter 先写同目录临时文件，完整成功后 replace/move 到目标，失败或取消时删除临时文件并保留旧目标。Export 期间 `EditorShellViewModel.IsExporting` 驱动模态进度 owned top-level window，并与 Save 共用可变更命令/视口输入阻断。
 
 ### 8. 虚拟资源系统驱动 Runtime 地形加载
 **问题：** Runtime 依赖组件上的显式文件路径和旧 BiomeConfig TOML，无法表达 base + mod 覆盖顺序
@@ -237,7 +237,7 @@
 | `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
 | `Terrain.Editor/Services/Export/ExportManager.cs` | 导出管理器（注册、执行、错误回滚） |
 | `Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs` | `.terrain` v8 文件导出实现，写 HeightMap + baked DetailIndex/DetailWeight VT |
-| `Terrain.Editor/Services/Export/BakedDetailMapBuilder.cs` | Editor authoring biome 规则到 baked DetailIndex/DetailWeight RGBA8 control buffers 的转换；热路径使用固定小缓冲做材质贡献聚合，避免逐 texel 集合分配 |
+| `Terrain.Editor/Services/Export/BakedDetailMapBuilder.cs` | Editor authoring biome 规则到 baked DetailIndex/DetailWeight RGBA8 control buffers 的转换；热路径使用固定小缓冲做材质贡献聚合，避免逐 texel 集合分配；大图按行并行 |
 
 ### 着色器
 | 文件 | 职责 |

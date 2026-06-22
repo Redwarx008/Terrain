@@ -23,6 +23,7 @@ public class TerrainExporter : IExporter
     private const int HeightMapPadding = 2;
     private const int DetailMapPadding = 1;
     private const int DetailMapResolutionRatio = 2;
+    private const int ParallelDetailMipTexelThreshold = 65_536;
 
     /// <summary>
     /// The TerrainManager to export data from. Must be set before calling ExportAsync.
@@ -466,18 +467,44 @@ public class TerrainExporter : IExporter
         var destinationIndex = new DetailControlPixel[checked(nextWidth * nextHeight)];
         var destinationWeight = new DetailControlPixel[destinationIndex.Length];
 
-        for (int y = 0; y < nextHeight; y++)
+        if (ShouldRunDetailMipParallel(nextWidth, nextHeight))
         {
-            for (int x = 0; x < nextWidth; x++)
+            Parallel.For(
+                0,
+                nextHeight,
+                y => DownsampleDetailRow(source, destinationIndex, destinationWeight, nextWidth, y));
+        }
+        else
+        {
+            for (int y = 0; y < nextHeight; y++)
             {
-                PackDownsampledDetailTexel(source, x * 2, y * 2, out DetailControlPixel index, out DetailControlPixel weight);
-                int destinationOffset = y * nextWidth + x;
-                destinationIndex[destinationOffset] = index;
-                destinationWeight[destinationOffset] = weight;
+                DownsampleDetailRow(source, destinationIndex, destinationWeight, nextWidth, y);
             }
         }
 
         return new DetailMipLevel(destinationIndex, destinationWeight, nextWidth, nextHeight);
+    }
+
+    private static bool ShouldRunDetailMipParallel(int width, int height)
+    {
+        return Environment.ProcessorCount > 1
+            && (long)width * height >= ParallelDetailMipTexelThreshold;
+    }
+
+    private static void DownsampleDetailRow(
+        DetailMipLevel source,
+        DetailControlPixel[] destinationIndex,
+        DetailControlPixel[] destinationWeight,
+        int destinationWidth,
+        int y)
+    {
+        for (int x = 0; x < destinationWidth; x++)
+        {
+            PackDownsampledDetailTexel(source, x * 2, y * 2, out DetailControlPixel index, out DetailControlPixel weight);
+            int destinationOffset = y * destinationWidth + x;
+            destinationIndex[destinationOffset] = index;
+            destinationWeight[destinationOffset] = weight;
+        }
     }
 
     private static void PackDownsampledDetailTexel(

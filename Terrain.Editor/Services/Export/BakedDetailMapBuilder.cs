@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace Terrain.Editor.Services.Export;
 
@@ -22,6 +23,8 @@ internal readonly record struct BakedDetailMapData(
 
 internal static class BakedDetailMapBuilder
 {
+    private const int ParallelDetailTexelThreshold = 65_536;
+
     public static BakedDetailMapData Generate(
         ushort[] heightData,
         int heightWidth,
@@ -143,19 +146,77 @@ internal static class BakedDetailMapBuilder
                 : left.OriginalIndex.CompareTo(right.OriginalIndex);
         });
 
-        var contributions = new MaterialContribution[Math.Max(1, orderedLayers.Length)];
-        for (int y = 0; y < context.DetailHeight; y++)
+        int contributionCapacity = Math.Max(1, orderedLayers.Length);
+        if (ShouldRunParallel(context))
         {
-            for (int x = 0; x < context.DetailWidth; x++)
+            try
             {
-                DetailControlPair pixel = EvaluatePixel(context, orderedLayers, contributions, x, y);
-                int offset = y * context.DetailWidth + x;
-                detailIndex[offset] = pixel.Index;
-                detailWeight[offset] = pixel.Weight;
+                Parallel.For(
+                    0,
+                    context.DetailHeight,
+                    () => new MaterialContribution[contributionCapacity],
+                    (y, _, contributions) =>
+                    {
+                        EvaluateRow(context, orderedLayers, contributions, detailIndex, detailWeight, y);
+                        return contributions;
+                    },
+                    static _ => { });
+            }
+            catch (AggregateException)
+            {
+                ReplaySerialEvaluationForOriginalException(context, orderedLayers, contributionCapacity);
+                throw;
+            }
+        }
+        else
+        {
+            var contributions = new MaterialContribution[contributionCapacity];
+            for (int y = 0; y < context.DetailHeight; y++)
+            {
+                EvaluateRow(context, orderedLayers, contributions, detailIndex, detailWeight, y);
             }
         }
 
         return new BakedDetailMapData(detailIndex, detailWeight, context.DetailWidth, context.DetailHeight);
+    }
+
+    private static bool ShouldRunParallel(DetailEvaluationContext context)
+    {
+        return context.CanEvaluateInParallel
+            && Environment.ProcessorCount > 1
+            && (long)context.DetailWidth * context.DetailHeight >= ParallelDetailTexelThreshold;
+    }
+
+    private static void ReplaySerialEvaluationForOriginalException(
+        DetailEvaluationContext context,
+        IReadOnlyList<OrderedBiomeRuleLayer> orderedLayers,
+        int contributionCapacity)
+    {
+        var contributions = new MaterialContribution[contributionCapacity];
+        for (int y = 0; y < context.DetailHeight; y++)
+        {
+            for (int x = 0; x < context.DetailWidth; x++)
+            {
+                _ = EvaluatePixel(context, orderedLayers, contributions, x, y);
+            }
+        }
+    }
+
+    private static void EvaluateRow(
+        DetailEvaluationContext context,
+        IReadOnlyList<OrderedBiomeRuleLayer> orderedLayers,
+        MaterialContribution[] contributions,
+        DetailControlPixel[] detailIndex,
+        DetailControlPixel[] detailWeight,
+        int y)
+    {
+        for (int x = 0; x < context.DetailWidth; x++)
+        {
+            DetailControlPair pixel = EvaluatePixel(context, orderedLayers, contributions, x, y);
+            int offset = y * context.DetailWidth + x;
+            detailIndex[offset] = pixel.Index;
+            detailWeight[offset] = pixel.Weight;
+        }
     }
 
     private static DetailControlPair EvaluatePixel(
@@ -385,10 +446,15 @@ internal static class BakedDetailMapBuilder
     private static void ValidateMaterialSlot(int materialSlotIndex, string layerName)
     {
         if (materialSlotIndex is < 0 or > 254)
-            throw new ArgumentOutOfRangeException(
-                nameof(materialSlotIndex),
-                materialSlotIndex,
-                $"Biome rule layer '{layerName}' has invalid material slot index {materialSlotIndex}. Baked detail material slot indices must be in 0..254; 255 is reserved as the shader sentinel.");
+            throw CreateInvalidMaterialSlotException(materialSlotIndex, layerName);
+    }
+
+    private static ArgumentOutOfRangeException CreateInvalidMaterialSlotException(int materialSlotIndex, string layerName)
+    {
+        return new ArgumentOutOfRangeException(
+            nameof(materialSlotIndex),
+            materialSlotIndex,
+            $"Biome rule layer '{layerName}' has invalid material slot index {materialSlotIndex}. Baked detail material slot indices must be in 0..254; 255 is reserved as the shader sentinel.");
     }
 
     private static void ResolveDetailTexelToHeightCoord(DetailEvaluationContext context, int detailX, int detailY, out int heightX, out int heightY)
@@ -624,6 +690,7 @@ internal static class BakedDetailMapBuilder
         public int BiomeMaskHeight { get; }
         public int DetailWidth { get; }
         public int DetailHeight { get; }
+        public bool CanEvaluateInParallel => heightData != null;
 
         public float GetHeight(int x, int y)
         {
