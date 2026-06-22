@@ -767,7 +767,6 @@ internal sealed class TerrainStreamingManager : IDisposable
     private readonly GpuVirtualTextureArray gpuHeightArray;
     private readonly GpuVirtualTextureArray? gpuDetailIndexArray;
     private readonly Texture? detailWeightArray;
-    private RuntimeDetailMapData? generatedDetailMaps;
     private readonly BlockingCollection<StreamingRequest> pendingRequests = new();
     private readonly ConcurrentQueue<StreamingRequest> completedRequests = new();
     private readonly ConcurrentDictionary<(TerrainPageKey Key, bool IsDetailMap), byte> queuedKeys = new();
@@ -776,9 +775,9 @@ internal sealed class TerrainStreamingManager : IDisposable
     private readonly int baseChunkSize;
     private readonly int effectivePageSpanInSamples;
     private readonly int heightmapLodOffset;
-    private readonly int splatMapLodOffset;
+    private readonly int detailMapLodOffset;
     private readonly PageBufferAllocator heightmapBufferPool;
-    private readonly PageBufferAllocator? splatMapBufferPool;
+    private readonly PageBufferAllocator? detailMapBufferPool;
     private readonly ConcurrentDictionary<TerrainPageKey, CachedHeightPage> cachedHeightPages = new();
     private readonly ConcurrentQueue<TerrainPageKey> cachedHeightPageOrder = new();
     private readonly int maxCachedHeightPages;
@@ -816,9 +815,9 @@ internal sealed class TerrainStreamingManager : IDisposable
 
         if (gpuDetailIndexArray != null)
         {
-            int splatMapPaddedTileSize = gpuDetailIndexArray.TileSize + gpuDetailIndexArray.Padding * 2;
-            int splatMapPageByteSize = splatMapPaddedTileSize * splatMapPaddedTileSize * DetailControlBytesPerPixel;
-            splatMapBufferPool = new PageBufferAllocator(splatMapPageByteSize, Math.Max(64, gpuDetailIndexArray.Capacity * 2));
+            int detailMapPaddedTileSize = gpuDetailIndexArray.TileSize + gpuDetailIndexArray.Padding * 2;
+            int detailMapPageByteSize = detailMapPaddedTileSize * detailMapPaddedTileSize * DetailControlBytesPerPixel;
+            detailMapBufferPool = new PageBufferAllocator(detailMapPageByteSize, Math.Max(64, gpuDetailIndexArray.Capacity * 2));
         }
 
         // Matches the Godot terrain path's HeightmapLodOffset:
@@ -830,8 +829,8 @@ internal sealed class TerrainStreamingManager : IDisposable
         // Detail map LOD offset: each detail page covers ratio times more world area
         // because detail texel (x,y) maps to heightmap texel (ratio*x, ratio*y).
         int ratio = fileReader.DetailMapResolutionRatio;
-        int splatMapPageSpanInChunks = Math.Max(1, (fileReader.DetailIndexMapHeader.TileSize - 1) * ratio / Math.Max(1, baseChunkSize));
-        splatMapLodOffset = splatMapPageSpanInChunks > 0 ? BitOperations.Log2((uint)splatMapPageSpanInChunks) : 0;
+        int detailMapPageSpanInChunks = Math.Max(1, (fileReader.DetailIndexMapHeader.TileSize - 1) * ratio / Math.Max(1, baseChunkSize));
+        detailMapLodOffset = detailMapPageSpanInChunks > 0 ? BitOperations.Log2((uint)detailMapPageSpanInChunks) : 0;
         ioThread = new Thread(IoThreadMain)
         {
             IsBackground = true,
@@ -849,11 +848,6 @@ internal sealed class TerrainStreamingManager : IDisposable
     public int TileSize => gpuHeightArray.TileSize;
 
     public int Padding => gpuHeightArray.Padding;
-
-    public void SetGeneratedDetailMaps(RuntimeDetailMapData detailMaps)
-    {
-        generatedDetailMaps = detailMaps;
-    }
 
     public float GetHeight(int sampleX, int sampleZ, float heightScale)
     {
@@ -874,10 +868,10 @@ internal sealed class TerrainStreamingManager : IDisposable
     }
 
     /// <summary>
-    /// 直接从 chunk key 计算 splatmap page key。
-    /// Splatmap 有独立的 LOD offset，因为每个 splatmap page 覆盖更大的 world 区域。
+    /// 直接从 chunk key 计算 detail map page key。
+    /// Detail map 有独立的 LOD offset，因为每个 detail page 覆盖更大的 world 区域。
     /// </summary>
-    private TerrainPageKey GetSplatMapPageKey(TerrainChunkKey chunkKey, out float pageOffsetX, out float pageOffsetY, out float pageTexelStride)
+    private TerrainPageKey GetDetailMapPageKey(TerrainChunkKey chunkKey, out float pageOffsetX, out float pageOffsetY, out float pageTexelStride)
     {
         int ratio = fileReader.DetailMapResolutionRatio;
         if (ratio <= 1)
@@ -890,17 +884,17 @@ internal sealed class TerrainStreamingManager : IDisposable
             return key;
         }
 
-        // Splatmap uses its own LOD offset calculation, but offsets/strides must stay in
-        // splat texel space. LOD0 therefore needs a 0.5 stride instead of being rounded up to 1.
-        int sourceMip = Math.Min(Math.Max(0, chunkKey.LodLevel - splatMapLodOffset), fileReader.DetailMapMipCount - 1);
+        // Detail map uses its own LOD offset calculation, but offsets/strides must stay in
+        // detail texel space. LOD0 therefore needs a 0.5 stride instead of being rounded up to 1.
+        int sourceMip = Math.Min(Math.Max(0, chunkKey.LodLevel - detailMapLodOffset), fileReader.DetailMapMipCount - 1);
         int sourceHeightTexelStride = 1 << (chunkKey.LodLevel - sourceMip);
         pageTexelStride = (float)sourceHeightTexelStride / ratio;
 
         // Page coverage is determined in heightmap texel space, then converted back to
-        // splat texel space for the shader-facing offsets.
-        int splatMapPageSpanInHeightTexels = (fileReader.DetailIndexMapHeader.TileSize - 1) * ratio;
+        // detail texel space for the shader-facing offsets.
+        int detailMapPageSpanInHeightTexels = (fileReader.DetailIndexMapHeader.TileSize - 1) * ratio;
         int chunkSpanInHeightTexels = baseChunkSize * sourceHeightTexelStride;
-        int pageChunkSpanAtLod = Math.Max(1, splatMapPageSpanInHeightTexels / Math.Max(1, chunkSpanInHeightTexels));
+        int pageChunkSpanAtLod = Math.Max(1, detailMapPageSpanInHeightTexels / Math.Max(1, chunkSpanInHeightTexels));
         int pageX = Math.DivRem(chunkKey.ChunkX, pageChunkSpanAtLod, out int pageXRemainder);
         int pageY = Math.DivRem(chunkKey.ChunkY, pageChunkSpanAtLod, out int pageYRemainder);
         pageOffsetX = pageXRemainder * baseChunkSize * pageTexelStride;
@@ -922,7 +916,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         if (gpuDetailIndexArray != null)
         {
             // Use direct calculation for correct LOD offset handling
-            TerrainPageKey splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
+            TerrainPageKey splatPageKey = GetDetailMapPageKey(chunkKey, out _, out _, out _);
             if (!gpuDetailIndexArray.IsPageResident(splatPageKey))
             {
                 splatSliceIndex = -1;
@@ -951,7 +945,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         }
 
         // Direct calculation with splatmap's own LOD offset
-        GetSplatMapPageKey(chunkKey, out float splatPageOffsetX, out float splatPageOffsetY, out float splatPageTexelStride);
+        GetDetailMapPageKey(chunkKey, out float splatPageOffsetX, out float splatPageOffsetY, out float splatPageTexelStride);
         return (splatPageOffsetX, splatPageOffsetY, splatPageTexelStride);
     }
 
@@ -963,7 +957,7 @@ internal sealed class TerrainStreamingManager : IDisposable
     public void PreloadTopLevelChunks(CommandList commandList, TerrainMinMaxErrorMap topMap)
     {
         using IMemoryOwner<byte> heightmapPageData = heightmapBufferPool.Rent();
-        IMemoryOwner<byte>? splatMapPageData = splatMapBufferPool?.Rent();
+        IMemoryOwner<byte>? detailMapPageData = detailMapBufferPool?.Rent();
         try
         {
             var seenPages = new HashSet<TerrainPageKey>();
@@ -983,17 +977,17 @@ internal sealed class TerrainStreamingManager : IDisposable
                     CacheHeightPage(pageKey, heightmapPageData.Memory.Span, isGpuResident: true);
                     gpuHeightArray.UploadPage(commandList, pageKey, heightmapPageData.Memory.Span, pinned: false);
 
-                    if (splatMapPageData != null && gpuDetailIndexArray != null && detailWeightArray != null && generatedDetailMaps != null)
+                    if (detailMapPageData != null && gpuDetailIndexArray != null && detailWeightArray != null)
                     {
-                        TerrainPageKey splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
-                        if (!gpuDetailIndexArray.IsPageResident(splatPageKey))
+                        TerrainPageKey detailPageKey = GetDetailMapPageKey(chunkKey, out _, out _, out _);
+                        if (!gpuDetailIndexArray.IsPageResident(detailPageKey))
                         {
-                            FillGeneratedDetailPage(splatPageKey, splatMapPageData.Memory.Span, generatedDetailMaps.Value.IndexData);
-                            gpuDetailIndexArray.UploadPage(commandList, splatPageKey, splatMapPageData.Memory.Span, pinned: false);
-                            if (gpuDetailIndexArray.TryGetResidentSlice(splatPageKey, out int sliceIndex))
+                            fileReader.ReadDetailIndexPage(detailPageKey, detailMapPageData.Memory.Span);
+                            gpuDetailIndexArray.UploadPage(commandList, detailPageKey, detailMapPageData.Memory.Span, pinned: false);
+                            if (gpuDetailIndexArray.TryGetResidentSlice(detailPageKey, out int sliceIndex))
                             {
-                                using IMemoryOwner<byte> weightPageData = splatMapBufferPool!.Rent();
-                                FillGeneratedDetailPage(splatPageKey, weightPageData.Memory.Span, generatedDetailMaps.Value.WeightData);
+                                using IMemoryOwner<byte> weightPageData = detailMapBufferPool!.Rent();
+                                fileReader.ReadDetailWeightPage(detailPageKey, weightPageData.Memory.Span);
                                 detailWeightArray.SetData(commandList, weightPageData.Memory.Span, sliceIndex, 0, null);
                             }
                         }
@@ -1003,7 +997,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         }
         finally
         {
-            splatMapPageData?.Dispose();
+            detailMapPageData?.Dispose();
         }
     }
 
@@ -1059,7 +1053,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         pendingRequests.Dispose();
         cancellation.Dispose();
         heightmapBufferPool.Dispose();
-        splatMapBufferPool?.Dispose();
+        detailMapBufferPool?.Dispose();
         gpuHeightArray.PageEvicted -= RemoveCachedHeightPage;
         gpuHeightArray.Dispose();
         gpuDetailIndexArray?.Dispose();
@@ -1076,15 +1070,10 @@ internal sealed class TerrainStreamingManager : IDisposable
                 {
                     if (request.IsDetailMap)
                     {
-                        if (generatedDetailMaps == null)
-                        {
-                            throw new InvalidOperationException("Detail map streaming requires generated runtime detail data.");
-                        }
-
-                        FillGeneratedDetailPage(request.Key, request.Data.Memory.Span, generatedDetailMaps.Value.IndexData);
+                        fileReader.ReadDetailIndexPage(request.Key, request.Data.Memory.Span);
                         if (request.WeightData != null)
                         {
-                            FillGeneratedDetailPage(request.Key, request.WeightData.Memory.Span, generatedDetailMaps.Value.WeightData);
+                            fileReader.ReadDetailWeightPage(request.Key, request.WeightData.Memory.Span);
                         }
                     }
                     else
@@ -1181,7 +1170,7 @@ internal sealed class TerrainStreamingManager : IDisposable
 
         if (gpuDetailIndexArray != null)
         {
-            TerrainPageKey splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
+            TerrainPageKey splatPageKey = GetDetailMapPageKey(chunkKey, out _, out _, out _);
             if (!gpuDetailIndexArray.IsPageResident(splatPageKey))
                 return false;
         }
@@ -1198,7 +1187,7 @@ internal sealed class TerrainStreamingManager : IDisposable
         bool detailResident = true;
         if (gpuDetailIndexArray != null)
         {
-            splatPageKey = GetSplatMapPageKey(chunkKey, out _, out _, out _);
+            splatPageKey = GetDetailMapPageKey(chunkKey, out _, out _, out _);
             detailResident = gpuDetailIndexArray.IsPageResident(splatPageKey);
         }
 
@@ -1257,10 +1246,10 @@ internal sealed class TerrainStreamingManager : IDisposable
 
         IMemoryOwner<byte>? detailIndexBuffer = null;
         IMemoryOwner<byte>? detailWeightBuffer = null;
-        if (splatMapBufferPool == null
-            || !splatMapBufferPool.TryRent(out detailIndexBuffer)
+        if (detailMapBufferPool == null
+            || !detailMapBufferPool.TryRent(out detailIndexBuffer)
             || detailIndexBuffer == null
-            || !splatMapBufferPool.TryRent(out detailWeightBuffer)
+            || !detailMapBufferPool.TryRent(out detailWeightBuffer)
             || detailWeightBuffer == null)
         {
             queuedKeys.TryRemove((splatPageKey, true), out _);
@@ -1288,41 +1277,6 @@ internal sealed class TerrainStreamingManager : IDisposable
         {
             request.Data.Dispose();
             request.WeightData?.Dispose();
-        }
-    }
-
-    private void FillGeneratedDetailPage(TerrainPageKey key, Span<byte> destination, byte[] sourceData)
-    {
-        if (gpuDetailIndexArray == null || generatedDetailMaps == null)
-        {
-            throw new InvalidOperationException("Generated detail data is unavailable.");
-        }
-
-        int paddedTileSize = gpuDetailIndexArray.TileSize + gpuDetailIndexArray.Padding * 2;
-        int expectedByteSize = paddedTileSize * paddedTileSize * DetailControlBytesPerPixel;
-        if (destination.Length < expectedByteSize)
-        {
-            throw new ArgumentException($"Destination buffer must be at least {expectedByteSize} bytes.", nameof(destination));
-        }
-
-        int stride = 1 << key.MipLevel;
-        int originX = key.PageX * (gpuDetailIndexArray.TileSize - 1) - gpuDetailIndexArray.Padding;
-        int originY = key.PageY * (gpuDetailIndexArray.TileSize - 1) - gpuDetailIndexArray.Padding;
-        int sourceWidth = generatedDetailMaps.Value.Width;
-        int sourceHeight = generatedDetailMaps.Value.Height;
-
-        for (int y = 0; y < paddedTileSize; y++)
-        {
-            int sourceY = Math.Clamp((originY + y) * stride, 0, sourceHeight - 1);
-            int destRow = y * paddedTileSize * DetailControlBytesPerPixel;
-            int srcRow = sourceY * sourceWidth * DetailControlBytesPerPixel;
-            for (int x = 0; x < paddedTileSize; x++)
-            {
-                int sourceX = Math.Clamp((originX + x) * stride, 0, sourceWidth - 1);
-                int srcOffset = srcRow + sourceX * DetailControlBytesPerPixel;
-                int destOffset = destRow + x * DetailControlBytesPerPixel;
-                sourceData.AsSpan(srcOffset, DetailControlBytesPerPixel).CopyTo(destination[destOffset..]);
-            }
         }
     }
 

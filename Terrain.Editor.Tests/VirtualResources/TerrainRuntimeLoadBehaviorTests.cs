@@ -136,8 +136,7 @@ internal static class TerrainRuntimeLoadBehaviorTests
             component,
             CreateResourceBundle,
             out _,
-            _ => reader,
-            static (_, _, _, _) => new RuntimeDetailMapData(new byte[4], new byte[4], 2, 2));
+            _ => reader);
 
         TestHarness.Assert(loaded, "runtime terrain data should load");
         TestHarness.AssertEqual(0, reader.ReadAllHeightDataCount, "runtime load should not read the full heightmap into CPU memory");

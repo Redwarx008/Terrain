@@ -172,7 +172,6 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         Func<TerrainRuntimeResourceBundle> bundleLoader,
         out LoadedTerrainData loadedData,
         Func<string, ITerrainFileReader>? fileReaderFactory = null,
-        Func<TerrainComponent, ITerrainFileReader, TerrainRuntimeResourceBundle, RuntimeBiomeMaskData, RuntimeDetailMapData>? detailMapBuilder = null,
         Action<string>? logError = null)
     {
         ArgumentNullException.ThrowIfNull(component);
@@ -183,7 +182,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         {
             TerrainRuntimeResourceBundle bundle = bundleLoader();
             component.HeightScale = bundle.HeightScale;
-            loadedData = CreateLoadedTerrainData(component, bundle, fileReaderFactory, detailMapBuilder);
+            loadedData = CreateLoadedTerrainData(component, bundle, fileReaderFactory);
             return true;
         }
         catch (Exception exception)
@@ -218,11 +217,9 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
     internal static LoadedTerrainData CreateLoadedTerrainData(
         TerrainComponent component,
         TerrainRuntimeResourceBundle bundle,
-        Func<string, ITerrainFileReader>? fileReaderFactory = null,
-        Func<TerrainComponent, ITerrainFileReader, TerrainRuntimeResourceBundle, RuntimeBiomeMaskData, RuntimeDetailMapData>? detailMapBuilder = null)
+        Func<string, ITerrainFileReader>? fileReaderFactory = null)
     {
         fileReaderFactory ??= static path => new TerrainFileReader(path);
-        detailMapBuilder ??= BuildRuntimeDetailMaps;
 
         ITerrainFileReader? fileReader = null;
         bool ownsReader = false;
@@ -239,14 +236,10 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             int maxLod = minMaxErrorMaps.Length - 1;
             int baseChunkSize = fileReader.Header.LeafNodeSize;
             int maxResidentChunks = Math.Max(component.MaxResidentChunks, minMaxErrorMaps[maxLod].Width * minMaxErrorMaps[maxLod].Height);
-            RuntimeBiomeMaskData biomeMask = LoadRuntimeBiomeMask(fileReader, bundle);
 
             var loadedData = new LoadedTerrainData(
                 fileReader,
                 bundle.MaterialTextureSlots,
-                bundle,
-                biomeMask,
-                detailMapBuilder,
                 fileReader.Header.Width,
                 fileReader.Header.Height,
                 minHeight,
@@ -338,12 +331,6 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
                 attachedStreamingManager);
             streamingManager = null;
 
-            RuntimeDetailMapData generatedDetailMaps = loadedData.DetailMapBuilder(
-                component,
-                loadedData.FileReader,
-                loadedData.Bundle,
-                loadedData.BiomeMask);
-            attachedStreamingManager.SetGeneratedDetailMaps(generatedDetailMaps);
             attachedStreamingManager.PreloadTopLevelChunks(commandList, loadedData.MinMaxErrorMaps[loadedData.MaxLod]);
         }
         catch
@@ -545,44 +532,9 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         return new GameRuntimeResourceBootstrap(resolver).Load();
     }
 
-    private static RuntimeBiomeMaskData LoadRuntimeBiomeMask(
-        ITerrainFileReader fileReader,
-        TerrainRuntimeResourceBundle bundle)
-    {
-        RuntimeBiomeMaskData biomeMask = RuntimeBiomeMaskReader.ReadFrom(bundle.BiomeMaskPath);
-        if (biomeMask.Width != fileReader.DetailIndexMapHeader.Width || biomeMask.Height != fileReader.DetailIndexMapHeader.Height)
-        {
-            throw new InvalidDataException(
-                $"Biome mask dimensions {biomeMask.Width}x{biomeMask.Height} do not match terrain detail dimensions {fileReader.DetailIndexMapHeader.Width}x{fileReader.DetailIndexMapHeader.Height}.");
-        }
-
-        return biomeMask;
-    }
-
-    private static RuntimeDetailMapData BuildRuntimeDetailMaps(
-        TerrainComponent component,
-        ITerrainFileReader fileReader,
-        TerrainRuntimeResourceBundle bundle,
-        RuntimeBiomeMaskData biomeMask)
-    {
-        return RuntimeDetailMapBuilder.Generate(
-            component.GetHeight,
-            fileReader.Header.Width,
-            fileReader.Header.Height,
-            biomeMask.Data,
-            biomeMask.Width,
-            biomeMask.Height,
-            bundle.BiomeSettings,
-            bundle.MaterialDescriptor,
-            fileReader.DetailMapResolutionRatio);
-    }
-
     internal readonly record struct LoadedTerrainData(
         ITerrainFileReader FileReader,
         IReadOnlyList<RuntimeMaterialTextureSlot> MaterialTextureSlots,
-        TerrainRuntimeResourceBundle Bundle,
-        RuntimeBiomeMaskData BiomeMask,
-        Func<TerrainComponent, ITerrainFileReader, TerrainRuntimeResourceBundle, RuntimeBiomeMaskData, RuntimeDetailMapData> DetailMapBuilder,
         int Width,
         int Height,
         float MinHeight,
