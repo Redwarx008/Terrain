@@ -146,8 +146,7 @@ internal static class BakedDetailMapBuilder
         float slope = SampleSlopeDegrees(context, heightX, heightY);
         float directionDegrees = SampleDirectionDegrees(context, heightX, heightY);
 
-        Span<int> bestIndices = stackalloc int[4] { byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue };
-        Span<float> bestWeights = stackalloc float[4];
+        var contributions = new List<MaterialContribution>();
         bool foundValidLayer = false;
         float remainingWeight = 1.0f;
         int fallbackMaterialSlotIndex = 0;
@@ -168,6 +167,9 @@ internal static class BakedDetailMapBuilder
                 if (!modifier.Enabled)
                     continue;
 
+                if (modifier.Type == BiomeModifierType.TextureMask)
+                    throw CreateUnsupportedTextureMaskException(layer, modifier);
+
                 float modifierValue = EvaluateModifier(context, modifier, detailX, detailY, heightX, heightY, altitude, slope, directionDegrees);
                 if (modifier.Invert > 0.5f)
                     modifierValue = 1.0f - modifierValue;
@@ -184,7 +186,7 @@ internal static class BakedDetailMapBuilder
             if (contribution <= 0.0f)
                 continue;
 
-            PushTop4(bestIndices, bestWeights, layer.MaterialSlotIndex, contribution);
+            AddMaterialContribution(contributions, layer.MaterialSlotIndex, contribution);
             remainingWeight *= 1.0f - weight;
 
             if (remainingWeight <= 0.0001f)
@@ -195,7 +197,45 @@ internal static class BakedDetailMapBuilder
             return DetailControlPair.Default;
 
         if (remainingWeight > 0.0001f)
-            PushTop4(bestIndices, bestWeights, fallbackMaterialSlotIndex, remainingWeight);
+            AddMaterialContribution(contributions, fallbackMaterialSlotIndex, remainingWeight);
+
+        return PackTopFour(contributions);
+    }
+
+    private static void AddMaterialContribution(List<MaterialContribution> contributions, int materialIndex, float weight)
+    {
+        if (weight <= 0.0f)
+            return;
+
+        for (int i = 0; i < contributions.Count; i++)
+        {
+            MaterialContribution contribution = contributions[i];
+            if (contribution.MaterialIndex != materialIndex)
+                continue;
+
+            contribution.Weight += weight;
+            contributions[i] = contribution;
+            return;
+        }
+
+        contributions.Add(new MaterialContribution(materialIndex, weight, contributions.Count));
+    }
+
+    private static DetailControlPair PackTopFour(List<MaterialContribution> contributions)
+    {
+        MaterialContribution[] top = contributions
+            .OrderByDescending(static contribution => contribution.Weight)
+            .ThenBy(static contribution => contribution.FirstOrder)
+            .Take(4)
+            .ToArray();
+
+        Span<int> bestIndices = stackalloc int[4] { byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue };
+        Span<float> bestWeights = stackalloc float[4];
+        for (int i = 0; i < top.Length; i++)
+        {
+            bestIndices[i] = top[i].MaterialIndex;
+            bestWeights[i] = top[i].Weight;
+        }
 
         float totalWeight = MathF.Max(bestWeights[0] + bestWeights[1] + bestWeights[2] + bestWeights[3], 0.0001f);
         return new DetailControlPair(
@@ -232,6 +272,12 @@ internal static class BakedDetailMapBuilder
             BiomeModifierType.TextureMask => throw new NotSupportedException("Baked detail export does not support texture mask modifiers yet."),
             _ => 1.0f,
         };
+    }
+
+    private static NotSupportedException CreateUnsupportedTextureMaskException(BiomeRuleLayer layer, BiomeModifier modifier)
+    {
+        return new NotSupportedException(
+            $"Baked detail export does not support texture mask modifiers yet. Layer '{layer.Name}' (id {layer.Id}) modifier '{modifier.Name}' (id {modifier.Id}, type {modifier.Type}) cannot be baked.");
     }
 
     private static int ComputeHalfResolution(int dimension)
@@ -382,44 +428,6 @@ internal static class BakedDetailMapBuilder
         return Saturate(result);
     }
 
-    private static void PushTop4(Span<int> bestIndices, Span<float> bestWeights, int materialIndex, float weight)
-    {
-        if (weight <= 0.0f)
-            return;
-
-        for (int i = 0; i < 4; i++)
-        {
-            if (bestIndices[i] != materialIndex)
-                continue;
-
-            bestWeights[i] += weight;
-            return;
-        }
-
-        if (weight > bestWeights[0])
-        {
-            bestWeights[3] = bestWeights[2]; bestIndices[3] = bestIndices[2];
-            bestWeights[2] = bestWeights[1]; bestIndices[2] = bestIndices[1];
-            bestWeights[1] = bestWeights[0]; bestIndices[1] = bestIndices[0];
-            bestWeights[0] = weight; bestIndices[0] = materialIndex;
-        }
-        else if (weight > bestWeights[1])
-        {
-            bestWeights[3] = bestWeights[2]; bestIndices[3] = bestIndices[2];
-            bestWeights[2] = bestWeights[1]; bestIndices[2] = bestIndices[1];
-            bestWeights[1] = weight; bestIndices[1] = materialIndex;
-        }
-        else if (weight > bestWeights[2])
-        {
-            bestWeights[3] = bestWeights[2]; bestIndices[3] = bestIndices[2];
-            bestWeights[2] = weight; bestIndices[2] = materialIndex;
-        }
-        else if (weight > bestWeights[3])
-        {
-            bestWeights[3] = weight; bestIndices[3] = materialIndex;
-        }
-    }
-
     private static byte EncodeWeight(float value, float totalWeight)
     {
         return (byte)Math.Clamp((int)MathF.Round(Saturate(value / totalWeight) * byte.MaxValue), 0, byte.MaxValue);
@@ -472,6 +480,13 @@ internal static class BakedDetailMapBuilder
     private readonly record struct DetailControlPair(DetailControlPixel Index, DetailControlPixel Weight)
     {
         public static readonly DetailControlPair Default = new(DetailControlPixel.DefaultIndex, DetailControlPixel.DefaultWeight);
+    }
+
+    private struct MaterialContribution(int materialIndex, float weight, int firstOrder)
+    {
+        public int MaterialIndex { get; } = materialIndex;
+        public float Weight { get; set; } = weight;
+        public int FirstOrder { get; } = firstOrder;
     }
 
     private sealed class DetailEvaluationContext(

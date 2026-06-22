@@ -11,6 +11,8 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Run("terrain file reader exposes baked detail page reads", TerrainFileReaderExposesBakedDetailPageReads);
         TestHarness.Run("editor baked detail builder emits typed RGBA index and weight maps", EditorBakedDetailBuilderEmitsTypedRgbaIndexAndWeightMaps);
         TestHarness.Run("editor baked detail builder packs ordered layers deterministically", EditorBakedDetailBuilderPacksOrderedLayersDeterministically);
+        TestHarness.Run("editor baked detail builder keeps only top four aggregated materials", EditorBakedDetailBuilderKeepsOnlyTopFourAggregatedMaterials);
+        TestHarness.Run("editor baked detail builder aggregates duplicate material before top four selection", EditorBakedDetailBuilderAggregatesDuplicateMaterialBeforeTopFourSelection);
         TestHarness.Run("editor baked detail builder rejects invalid material slots", EditorBakedDetailBuilderRejectsInvalidMaterialSlots);
         TestHarness.Run("editor baked detail builder rejects unsupported texture masks", EditorBakedDetailBuilderRejectsUnsupportedTextureMasks);
         TestHarness.Run("editor baked detail builder detail pixel is four bytes", EditorBakedDetailBuilderDetailPixelIsFourBytes);
@@ -90,9 +92,9 @@ internal static class BakedDetailTerrainFormatTests
 
     private static void EditorBakedDetailBuilderPacksOrderedLayersDeterministically()
     {
-        global::Terrain.Editor.Services.BiomeRuleLayer lowPriorityDuplicate = CreateLayer(0, materialSlotIndex: 5, priority: 0, CreateHalfWeightModifier());
-        global::Terrain.Editor.Services.BiomeRuleLayer middlePriority = CreateLayer(0, materialSlotIndex: 6, priority: 1, CreateHalfWeightModifier());
-        global::Terrain.Editor.Services.BiomeRuleLayer highPriorityDuplicate = CreateLayer(0, materialSlotIndex: 5, priority: 2, CreateHalfWeightModifier());
+        global::Terrain.Editor.Services.BiomeRuleLayer lowPriorityDuplicate = CreateLayer(0, materialSlotIndex: 5, priority: 0, CreateWeightModifier(0.5f));
+        global::Terrain.Editor.Services.BiomeRuleLayer middlePriority = CreateLayer(0, materialSlotIndex: 6, priority: 1, CreateWeightModifier(0.5f));
+        global::Terrain.Editor.Services.BiomeRuleLayer highPriorityDuplicate = CreateLayer(0, materialSlotIndex: 5, priority: 2, CreateWeightModifier(0.5f));
 
         global::Terrain.Editor.Services.Export.BakedDetailMapData data =
             global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
@@ -116,6 +118,51 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.AssertEqual(64, weight.G, "remaining layer weight should normalize to the second channel");
         TestHarness.AssertEqual(0, weight.B, "unused third weight slot");
         TestHarness.AssertEqual(0, weight.A, "unused fourth weight slot");
+    }
+
+    private static void EditorBakedDetailBuilderKeepsOnlyTopFourAggregatedMaterials()
+    {
+        global::Terrain.Editor.Services.Export.BakedDetailMapData data = GeneratePackingCase(
+        [
+            CreateLayer(0, materialSlotIndex: 6, priority: 0),
+            CreateLayer(0, materialSlotIndex: 5, priority: 1, CreateWeightModifier(0.5f)),
+            CreateLayer(0, materialSlotIndex: 4, priority: 2, CreateWeightModifier(0.5f)),
+            CreateLayer(0, materialSlotIndex: 3, priority: 3, CreateWeightModifier(0.5f)),
+            CreateLayer(0, materialSlotIndex: 2, priority: 4, CreateWeightModifier(0.5f)),
+            CreateLayer(0, materialSlotIndex: 1, priority: 5, CreateWeightModifier(0.5f)),
+        ]);
+
+        global::Terrain.Editor.Services.Export.DetailControlPixel index = data.DetailIndex[0];
+        TestHarness.AssertEqual(1, index.R, "highest aggregate material");
+        TestHarness.AssertEqual(2, index.G, "second aggregate material");
+        TestHarness.AssertEqual(3, index.B, "third aggregate material");
+        TestHarness.AssertEqual(4, index.A, "fourth aggregate material");
+    }
+
+    private static void EditorBakedDetailBuilderAggregatesDuplicateMaterialBeforeTopFourSelection()
+    {
+        global::Terrain.Editor.Services.Export.BakedDetailMapData data = GeneratePackingCase(
+        [
+            CreateLayer(0, materialSlotIndex: 8, priority: 0),
+            CreateLayer(0, materialSlotIndex: 9, priority: 1, CreateWeightModifier(0.2f)),
+            CreateLayer(0, materialSlotIndex: 9, priority: 2, CreateWeightModifier(0.2f)),
+            CreateLayer(0, materialSlotIndex: 4, priority: 3, CreateWeightModifier(0.2f)),
+            CreateLayer(0, materialSlotIndex: 3, priority: 4, CreateWeightModifier(0.2f)),
+            CreateLayer(0, materialSlotIndex: 2, priority: 5, CreateWeightModifier(0.2f)),
+            CreateLayer(0, materialSlotIndex: 1, priority: 6, CreateWeightModifier(0.2f)),
+        ]);
+
+        global::Terrain.Editor.Services.Export.DetailControlPixel index = data.DetailIndex[0];
+        global::Terrain.Editor.Services.Export.DetailControlPixel weight = data.DetailWeight[0];
+
+        TestHarness.AssertEqual(8, index.R, "remaining coverage material should be top aggregate");
+        TestHarness.AssertEqual(1, index.G, "first processed material should stay second after aggregation");
+        TestHarness.AssertEqual(2, index.B, "second processed material should stay third after aggregation");
+        TestHarness.AssertEqual(9, index.A, "duplicate material should enter top four after aggregate weight is considered");
+        TestHarness.AssertEqual(87, weight.R, "remaining coverage normalized weight");
+        TestHarness.AssertEqual(66, weight.G, "first layer normalized weight");
+        TestHarness.AssertEqual(53, weight.B, "second layer normalized weight");
+        TestHarness.AssertEqual(49, weight.A, "duplicate aggregate normalized weight");
     }
 
     private static void EditorBakedDetailBuilderRejectsInvalidMaterialSlots()
@@ -175,7 +222,12 @@ internal static class BakedDetailTerrainFormatTests
 
     private static void GenerateSingleLayer(global::Terrain.Editor.Services.BiomeRuleLayer layer)
     {
-        _ = global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+        _ = GeneratePackingCase([layer]);
+    }
+
+    private static global::Terrain.Editor.Services.Export.BakedDetailMapData GeneratePackingCase(global::Terrain.Editor.Services.BiomeRuleLayer[] layers)
+    {
+        return global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
             new ushort[16],
             4,
             4,
@@ -183,7 +235,7 @@ internal static class BakedDetailTerrainFormatTests
             [0, 0, 0, 0],
             2,
             2,
-            [layer]);
+            layers);
     }
 
     private static global::Terrain.Editor.Services.BiomeRuleLayer CreateLayer(
@@ -205,7 +257,7 @@ internal static class BakedDetailTerrainFormatTests
         return layer;
     }
 
-    private static global::Terrain.Editor.Services.BiomeModifier CreateHalfWeightModifier()
+    private static global::Terrain.Editor.Services.BiomeModifier CreateWeightModifier(float weight)
     {
         return new global::Terrain.Editor.Services.BiomeModifier
         {
@@ -217,7 +269,7 @@ internal static class BakedDetailTerrainFormatTests
             Max = 1000.0f,
             MinFalloff = 0.001f,
             MaxFalloff = 0.001f,
-            Opacity = 0.5f,
+            Opacity = 1.0f - weight,
         };
     }
 
