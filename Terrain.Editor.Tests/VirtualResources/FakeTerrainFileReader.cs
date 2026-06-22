@@ -19,9 +19,13 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
         this.heightData = heightData ?? new ushort[width * height];
         Header = new TerrainFileHeader
         {
+            Version = 8,
             LeafNodeSize = 32,
             Width = width,
             Height = height,
+            DetailMapFormat = 0,
+            DetailMapMipLevels = 1,
+            DetailMapResolutionRatio = 2,
         };
         HeightmapHeader = new TerrainVirtualTextureHeader
         {
@@ -42,19 +46,21 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
 
     public TerrainVirtualTextureHeader HeightmapHeader { get; }
 
-    public TerrainVirtualTextureHeader SplatMapHeader { get; } = new()
+    public TerrainVirtualTextureHeader DetailIndexMapHeader { get; } = new()
     {
         Width = 2,
         Height = 2,
         TileSize = 2,
         Padding = 1,
-        BytesPerPixel = 1,
+        BytesPerPixel = 4,
         Mipmaps = 1,
     };
 
-    public int SplatMapResolutionRatio => 2;
+    public TerrainVirtualTextureHeader DetailWeightMapHeader => DetailIndexMapHeader;
 
-    public int SplatMapMipCount => 1;
+    public int DetailMapResolutionRatio => 2;
+
+    public int DetailMapMipCount => 1;
 
     public TerrainMinMaxErrorMap[] ReadAllMinMaxErrorMaps()
     {
@@ -84,6 +90,16 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
                 BitConverter.TryWriteBytes(destination[destinationIndex..], value);
             }
         }
+    }
+
+    public void ReadDetailIndexPage(TerrainPageKey key, Span<byte> destination)
+    {
+        destination.Clear();
+    }
+
+    public void ReadDetailWeightPage(TerrainPageKey key, Span<byte> destination)
+    {
+        destination.Clear();
     }
 
     public void Dispose()

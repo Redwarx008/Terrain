@@ -103,8 +103,8 @@ internal readonly struct TerrainPageKey : IEquatable<TerrainPageKey>
 internal struct TerrainFileHeader
 {
     public const int MagicValue = 0x52524554;
-    public const int MinSupportedVersion = 6;
-    public const int MaxSupportedVersion = 7;
+    public const int MinSupportedVersion = 8;
+    public const int MaxSupportedVersion = 8;
 
     public int Magic;
     public int Version;
@@ -114,12 +114,9 @@ internal struct TerrainFileHeader
     public int TileSize;
     public int Padding;
     public int HeightMapMipLevels;
-    public int SplatMapFormat;
-    public int SplatMapMipLevels;
-    public int SplatMapResolutionRatio;
-    public int RiverMapFormat;
-    public int RiverMapMipLevels;
-    public int RiverMapResolutionRatio;
+    public int DetailMapFormat;
+    public int DetailMapMipLevels;
+    public int DetailMapResolutionRatio;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -137,12 +134,15 @@ internal interface ITerrainFileReader : IDisposable
 {
     TerrainFileHeader Header { get; }
     TerrainVirtualTextureHeader HeightmapHeader { get; }
-    TerrainVirtualTextureHeader SplatMapHeader { get; }
-    int SplatMapResolutionRatio { get; }
-    int SplatMapMipCount { get; }
+    TerrainVirtualTextureHeader DetailIndexMapHeader { get; }
+    TerrainVirtualTextureHeader DetailWeightMapHeader { get; }
+    int DetailMapResolutionRatio { get; }
+    int DetailMapMipCount { get; }
     TerrainMinMaxErrorMap[] ReadAllMinMaxErrorMaps();
     ushort[] ReadAllHeightData();
     void ReadHeightPage(TerrainPageKey key, Span<byte> destination);
+    void ReadDetailIndexPage(TerrainPageKey key, Span<byte> destination);
+    void ReadDetailWeightPage(TerrainPageKey key, Span<byte> destination);
 }
 
 internal sealed class TerrainFileReader : ITerrainFileReader
@@ -153,12 +153,12 @@ internal sealed class TerrainFileReader : ITerrainFileReader
     private readonly TerrainVirtualTextureHeader heightmapHeader;
     private readonly TerrainMipLayout[] heightmapMipLayouts;
     private readonly int tileByteSize;
-    private readonly TerrainVirtualTextureHeader splatMapHeader;
-    private readonly TerrainMipLayout[] splatMapMipLayouts;
-    private readonly int splatMapTileByteSize;
-    private readonly TerrainVirtualTextureHeader? riverMapHeader;
-    private readonly TerrainMipLayout[] riverMapMipLayouts;
-    private readonly int riverMapTileByteSize;
+    private readonly TerrainVirtualTextureHeader detailIndexMapHeader;
+    private readonly TerrainMipLayout[] detailIndexMipLayouts;
+    private readonly int detailIndexTileByteSize;
+    private readonly TerrainVirtualTextureHeader detailWeightMapHeader;
+    private readonly TerrainMipLayout[] detailWeightMipLayouts;
+    private readonly int detailWeightTileByteSize;
 
     public TerrainFileReader(string path)
     {
@@ -181,62 +181,25 @@ internal sealed class TerrainFileReader : ITerrainFileReader
 
         heightmapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref offset);
         ValidateHeightmapHeader(Header, heightmapHeader);
-        int paddedTileSize = checked(heightmapHeader.TileSize + heightmapHeader.Padding * 2);
-        tileByteSize = checked(paddedTileSize * paddedTileSize * heightmapHeader.BytesPerPixel);
-
-        heightmapMipLayouts = new TerrainMipLayout[heightmapHeader.Mipmaps];
+        tileByteSize = ComputeTileByteSize(heightmapHeader);
         long currentOffset = offset;
-        for (int mip = 0; mip < heightmapHeader.Mipmaps; mip++)
-        {
-            VirtualTextureMipLayoutInfo layoutInfo = VirtualTextureLayout.GetMipLayout(
-                heightmapHeader.Width,
-                heightmapHeader.Height,
-                heightmapHeader.TileSize,
-                mip);
-            heightmapMipLayouts[mip] = new TerrainMipLayout(layoutInfo.Width, layoutInfo.Height, layoutInfo.TilesX, layoutInfo.TilesY, currentOffset);
-            currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * tileByteSize));
-        }
+        heightmapMipLayouts = BuildMipLayouts(heightmapHeader, tileByteSize, ref currentOffset);
 
-        // v6+: this VT block stores the authored biome mask.
-        splatMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
-        int splatMapPaddedTileSize = checked(splatMapHeader.TileSize + splatMapHeader.Padding * 2);
-        splatMapTileByteSize = checked(splatMapPaddedTileSize * splatMapPaddedTileSize * splatMapHeader.BytesPerPixel);
+        detailIndexMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
+        ValidateDetailHeader(Header, detailIndexMapHeader, "DetailIndex");
+        detailIndexTileByteSize = ComputeTileByteSize(detailIndexMapHeader);
+        detailIndexMipLayouts = BuildMipLayouts(detailIndexMapHeader, detailIndexTileByteSize, ref currentOffset);
 
-        splatMapMipLayouts = new TerrainMipLayout[splatMapHeader.Mipmaps];
-        for (int mip = 0; mip < splatMapHeader.Mipmaps; mip++)
-        {
-            VirtualTextureMipLayoutInfo layoutInfo = VirtualTextureLayout.GetMipLayout(
-                splatMapHeader.Width,
-                splatMapHeader.Height,
-                splatMapHeader.TileSize,
-                mip);
-            splatMapMipLayouts[mip] = new TerrainMipLayout(layoutInfo.Width, layoutInfo.Height, layoutInfo.TilesX, layoutInfo.TilesY, currentOffset);
-            currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * splatMapTileByteSize));
-        }
+        detailWeightMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
+        ValidateDetailHeader(Header, detailWeightMapHeader, "DetailWeight");
+        ValidateMatchingDetailHeaders(detailIndexMapHeader, detailWeightMapHeader);
+        detailWeightTileByteSize = ComputeTileByteSize(detailWeightMapHeader);
+        detailWeightMipLayouts = BuildMipLayouts(detailWeightMapHeader, detailWeightTileByteSize, ref currentOffset);
 
-        if (Header.Version >= 7 && Header.RiverMapFormat != 0 && Header.RiverMapMipLevels > 0)
+        long fileLength = RandomAccess.GetLength(fileHandle);
+        if (currentOffset > fileLength)
         {
-            riverMapHeader = ReadStruct<TerrainVirtualTextureHeader>(fileHandle, ref currentOffset);
-            int riverMapPaddedTileSize = checked(riverMapHeader.Value.TileSize + riverMapHeader.Value.Padding * 2);
-            riverMapTileByteSize = checked(riverMapPaddedTileSize * riverMapPaddedTileSize * riverMapHeader.Value.BytesPerPixel);
-
-            riverMapMipLayouts = new TerrainMipLayout[riverMapHeader.Value.Mipmaps];
-            for (int mip = 0; mip < riverMapHeader.Value.Mipmaps; mip++)
-            {
-                VirtualTextureMipLayoutInfo layoutInfo = VirtualTextureLayout.GetMipLayout(
-                    riverMapHeader.Value.Width,
-                    riverMapHeader.Value.Height,
-                    riverMapHeader.Value.TileSize,
-                    mip);
-                riverMapMipLayouts[mip] = new TerrainMipLayout(layoutInfo.Width, layoutInfo.Height, layoutInfo.TilesX, layoutInfo.TilesY, currentOffset);
-                currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * riverMapTileByteSize));
-            }
-        }
-        else
-        {
-            riverMapHeader = null;
-            riverMapMipLayouts = Array.Empty<TerrainMipLayout>();
-            riverMapTileByteSize = 0;
+            throw new InvalidDataException($"Terrain detail VT payload is truncated. Expected at least {currentOffset} bytes, got {fileLength}.");
         }
     }
 
@@ -244,23 +207,10 @@ internal sealed class TerrainFileReader : ITerrainFileReader
 
     public TerrainVirtualTextureHeader HeightmapHeader => heightmapHeader;
 
-    /// <summary>
-    /// v6 起这里持久化的是 BiomeMask，而不是预烘焙的 detail index map。
-    /// </summary>
-    public TerrainVirtualTextureHeader SplatMapHeader => splatMapHeader;
-    public TerrainVirtualTextureHeader? RiverMapHeader => riverMapHeader;
-
-    /// <summary>
-    /// Splatmap 与 heightmap 的分辨率比。1 = 同分辨率（legacy v2），2 = 半分辨率（v3）。
-    /// </summary>
-    public int SplatMapResolutionRatio =>
-        Header.Version >= 3 ? Header.SplatMapResolutionRatio : 1;
-
-    public int RiverMapResolutionRatio =>
-        Header.Version >= 7 ? Header.RiverMapResolutionRatio : 1;
-
-    public int SplatMapMipCount => splatMapMipLayouts.Length;
-    public int RiverMapMipCount => riverMapMipLayouts.Length;
+    public TerrainVirtualTextureHeader DetailIndexMapHeader => detailIndexMapHeader;
+    public TerrainVirtualTextureHeader DetailWeightMapHeader => detailWeightMapHeader;
+    public int DetailMapResolutionRatio => Header.DetailMapResolutionRatio;
+    public int DetailMapMipCount => detailIndexMipLayouts.Length;
 
     public TerrainMinMaxErrorMap[] ReadAllMinMaxErrorMaps()
         => minMaxErrorMaps;
@@ -268,64 +218,74 @@ internal sealed class TerrainFileReader : ITerrainFileReader
     public ushort[] ReadAllHeightData()
         => ReadAllVirtualTextureData<ushort>(heightmapHeader, heightmapMipLayouts, tileByteSize);
 
-    public byte[] ReadAllBiomeMaskData()
-        => ReadAllVirtualTextureData<byte>(splatMapHeader, splatMapMipLayouts, splatMapTileByteSize);
-
-    public byte[] ReadAllRiverMaskData()
-    {
-        if (riverMapHeader == null || riverMapMipLayouts.Length == 0)
-            return Array.Empty<byte>();
-
-        return ReadAllVirtualTextureData<byte>(riverMapHeader.Value, riverMapMipLayouts, riverMapTileByteSize);
-    }
-
     public void ReadHeightPage(TerrainPageKey key, Span<byte> destination)
     {
-        if ((uint)key.MipLevel >= (uint)heightmapMipLayouts.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(key), $"Invalid mip level {key.MipLevel}.");
-        }
-
-        if (destination.Length < tileByteSize)
-        {
-            throw new ArgumentException($"Destination buffer must be at least {tileByteSize} bytes.", nameof(destination));
-        }
-
-        ref readonly var layout = ref heightmapMipLayouts[key.MipLevel];
-        if ((uint)key.PageX >= (uint)layout.TilesX || (uint)key.PageY >= (uint)layout.TilesY)
-        {
-            throw new ArgumentOutOfRangeException(nameof(key), $"Invalid page coordinates ({key.PageX}, {key.PageY}) for mip {key.MipLevel}.");
-        }
-
-        long offset = layout.Offset + (long)(key.PageY * layout.TilesX + key.PageX) * tileByteSize;
-        ReadExactly(fileHandle, destination[..tileByteSize], offset);
+        ReadVirtualTexturePage(key, destination, heightmapMipLayouts, tileByteSize, "heightmap");
     }
 
-    public void ReadSplatMapPage(TerrainPageKey key, Span<byte> destination)
+    public void ReadDetailIndexPage(TerrainPageKey key, Span<byte> destination)
     {
-        if ((uint)key.MipLevel >= (uint)splatMapMipLayouts.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(key), $"Invalid mip level {key.MipLevel}.");
-        }
+        ReadVirtualTexturePage(key, destination, detailIndexMipLayouts, detailIndexTileByteSize, "detail index");
+    }
 
-        if (destination.Length < splatMapTileByteSize)
-        {
-            throw new ArgumentException($"Destination buffer must be at least {splatMapTileByteSize} bytes.", nameof(destination));
-        }
-
-        ref readonly var layout = ref splatMapMipLayouts[key.MipLevel];
-        if ((uint)key.PageX >= (uint)layout.TilesX || (uint)key.PageY >= (uint)layout.TilesY)
-        {
-            throw new ArgumentOutOfRangeException(nameof(key), $"Invalid page coordinates ({key.PageX}, {key.PageY}) for mip {key.MipLevel}.");
-        }
-
-        long offset = layout.Offset + (long)(key.PageY * layout.TilesX + key.PageX) * splatMapTileByteSize;
-        ReadExactly(fileHandle, destination[..splatMapTileByteSize], offset);
+    public void ReadDetailWeightPage(TerrainPageKey key, Span<byte> destination)
+    {
+        ReadVirtualTexturePage(key, destination, detailWeightMipLayouts, detailWeightTileByteSize, "detail weight");
     }
 
     public void Dispose()
     {
         fileHandle.Dispose();
+    }
+
+    private void ReadVirtualTexturePage(
+        TerrainPageKey key,
+        Span<byte> destination,
+        TerrainMipLayout[] layouts,
+        int pageByteSize,
+        string payloadName)
+    {
+        if ((uint)key.MipLevel >= (uint)layouts.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(key), $"Invalid {payloadName} mip level {key.MipLevel}.");
+        }
+
+        if (destination.Length < pageByteSize)
+        {
+            throw new ArgumentException($"Destination buffer must be at least {pageByteSize} bytes.", nameof(destination));
+        }
+
+        ref readonly var layout = ref layouts[key.MipLevel];
+        if ((uint)key.PageX >= (uint)layout.TilesX || (uint)key.PageY >= (uint)layout.TilesY)
+        {
+            throw new ArgumentOutOfRangeException(nameof(key), $"Invalid {payloadName} page coordinates ({key.PageX}, {key.PageY}) for mip {key.MipLevel}.");
+        }
+
+        long offset = layout.Offset + (long)(key.PageY * layout.TilesX + key.PageX) * pageByteSize;
+        ReadExactly(fileHandle, destination[..pageByteSize], offset);
+    }
+
+    private static int ComputeTileByteSize(TerrainVirtualTextureHeader header)
+    {
+        int paddedTileSize = checked(header.TileSize + header.Padding * 2);
+        return checked(paddedTileSize * paddedTileSize * header.BytesPerPixel);
+    }
+
+    private static TerrainMipLayout[] BuildMipLayouts(TerrainVirtualTextureHeader header, int tileByteSize, ref long currentOffset)
+    {
+        var layouts = new TerrainMipLayout[header.Mipmaps];
+        for (int mip = 0; mip < header.Mipmaps; mip++)
+        {
+            VirtualTextureMipLayoutInfo layoutInfo = VirtualTextureLayout.GetMipLayout(
+                header.Width,
+                header.Height,
+                header.TileSize,
+                mip);
+            layouts[mip] = new TerrainMipLayout(layoutInfo.Width, layoutInfo.Height, layoutInfo.TilesX, layoutInfo.TilesY, currentOffset);
+            currentOffset = checked(currentOffset + checked((long)layoutInfo.TilesX * layoutInfo.TilesY * tileByteSize));
+        }
+
+        return layouts;
     }
 
     private static T ReadStruct<T>(SafeFileHandle fileHandle, ref long fileOffset) where T : unmanaged
@@ -434,7 +394,7 @@ internal sealed class TerrainFileReader : ITerrainFileReader
     {
         if (header.Version < TerrainFileHeader.MinSupportedVersion || header.Version > TerrainFileHeader.MaxSupportedVersion)
         {
-            throw new InvalidDataException($"Unsupported terrain file version {header.Version}. Expected {TerrainFileHeader.MinSupportedVersion}-{TerrainFileHeader.MaxSupportedVersion}.");
+            throw new InvalidDataException($"Unsupported terrain file version {header.Version}. Re-export the terrain to .terrain v8 with baked detail textures.");
         }
 
         if (header.Width <= 1 || header.Height <= 1 || header.Width > MaxTerrainDimension || header.Height > MaxTerrainDimension)
@@ -450,6 +410,16 @@ internal sealed class TerrainFileReader : ITerrainFileReader
         if (header.HeightMapMipLevels <= 0)
         {
             throw new InvalidDataException($"Invalid heightmap mip count {header.HeightMapMipLevels}.");
+        }
+
+        if (header.DetailMapMipLevels <= 0)
+        {
+            throw new InvalidDataException($"Invalid detail map mip count {header.DetailMapMipLevels}.");
+        }
+
+        if (header.DetailMapResolutionRatio != 2)
+        {
+            throw new InvalidDataException($"Unsupported detail map resolution ratio {header.DetailMapResolutionRatio}. Expected 2.");
         }
 
         int chunkCountX = DivideRoundUp(header.Width - 1, header.LeafNodeSize);
@@ -512,6 +482,55 @@ internal sealed class TerrainFileReader : ITerrainFileReader
         {
             throw new InvalidDataException(
                 $"Heightmap mip count {heightmapHeader.Mipmaps} does not match the shared VT layout rule; expected {expectedMipCount}.");
+        }
+    }
+
+    private static void ValidateDetailHeader(TerrainFileHeader header, TerrainVirtualTextureHeader detailHeader, string payloadName)
+    {
+        if (detailHeader.BytesPerPixel != 4)
+        {
+            throw new InvalidDataException($"{payloadName} block must be RGBA8, got {detailHeader.BytesPerPixel} bytes per pixel.");
+        }
+
+        int expectedWidth = (header.Width + 1) / 2;
+        int expectedHeight = (header.Height + 1) / 2;
+        if (detailHeader.Width != expectedWidth || detailHeader.Height != expectedHeight)
+        {
+            throw new InvalidDataException($"{payloadName} dimensions {detailHeader.Width}x{detailHeader.Height} do not match expected half-resolution {expectedWidth}x{expectedHeight}.");
+        }
+
+        if (detailHeader.TileSize != header.TileSize)
+        {
+            throw new InvalidDataException($"{payloadName} tile size does not match the terrain header.");
+        }
+
+        if (detailHeader.Padding != 1)
+        {
+            throw new InvalidDataException($"{payloadName} padding must be 1.");
+        }
+
+        if (detailHeader.Mipmaps != header.DetailMapMipLevels)
+        {
+            throw new InvalidDataException($"{payloadName} mip count {detailHeader.Mipmaps} does not match terrain header detail mip count {header.DetailMapMipLevels}.");
+        }
+
+        int expectedMipCount = VirtualTextureLayout.GetMipCount(detailHeader.Width, detailHeader.Height, detailHeader.TileSize);
+        if (detailHeader.Mipmaps != expectedMipCount)
+        {
+            throw new InvalidDataException($"{payloadName} mip count {detailHeader.Mipmaps} does not match the shared VT layout rule; expected {expectedMipCount}.");
+        }
+    }
+
+    private static void ValidateMatchingDetailHeaders(TerrainVirtualTextureHeader indexHeader, TerrainVirtualTextureHeader weightHeader)
+    {
+        if (indexHeader.Width != weightHeader.Width
+            || indexHeader.Height != weightHeader.Height
+            || indexHeader.TileSize != weightHeader.TileSize
+            || indexHeader.Padding != weightHeader.Padding
+            || indexHeader.BytesPerPixel != weightHeader.BytesPerPixel
+            || indexHeader.Mipmaps != weightHeader.Mipmaps)
+        {
+            throw new InvalidDataException("DetailIndex and DetailWeight VT headers must match.");
         }
     }
 
@@ -782,10 +801,10 @@ internal sealed class TerrainStreamingManager : IDisposable
         int pageChunkSpanAtLod0 = Math.Max(1, effectivePageSpanInSamples / Math.Max(1, baseChunkSize));
         heightmapLodOffset = pageChunkSpanAtLod0 > 0 ? BitOperations.Log2((uint)pageChunkSpanAtLod0) : 0;
 
-        // Splatmap LOD offset: each splatmap page covers ratio times more world area
-        // because splatmap texel (x,y) maps to heightmap texel (ratio*x, ratio*y)
-        int ratio = fileReader.SplatMapResolutionRatio;
-        int splatMapPageSpanInChunks = Math.Max(1, (fileReader.SplatMapHeader.TileSize - 1) * ratio / Math.Max(1, baseChunkSize));
+        // Detail map LOD offset: each detail page covers ratio times more world area
+        // because detail texel (x,y) maps to heightmap texel (ratio*x, ratio*y).
+        int ratio = fileReader.DetailMapResolutionRatio;
+        int splatMapPageSpanInChunks = Math.Max(1, (fileReader.DetailIndexMapHeader.TileSize - 1) * ratio / Math.Max(1, baseChunkSize));
         splatMapLodOffset = splatMapPageSpanInChunks > 0 ? BitOperations.Log2((uint)splatMapPageSpanInChunks) : 0;
         ioThread = new Thread(IoThreadMain)
         {
@@ -834,7 +853,7 @@ internal sealed class TerrainStreamingManager : IDisposable
     /// </summary>
     private TerrainPageKey GetSplatMapPageKey(TerrainChunkKey chunkKey, out float pageOffsetX, out float pageOffsetY, out float pageTexelStride)
     {
-        int ratio = fileReader.SplatMapResolutionRatio;
+        int ratio = fileReader.DetailMapResolutionRatio;
         if (ratio <= 1)
         {
             // Legacy: same as heightmap, but keep the shader path consistently float-based.
@@ -847,13 +866,13 @@ internal sealed class TerrainStreamingManager : IDisposable
 
         // Splatmap uses its own LOD offset calculation, but offsets/strides must stay in
         // splat texel space. LOD0 therefore needs a 0.5 stride instead of being rounded up to 1.
-        int sourceMip = Math.Min(Math.Max(0, chunkKey.LodLevel - splatMapLodOffset), fileReader.SplatMapMipCount - 1);
+        int sourceMip = Math.Min(Math.Max(0, chunkKey.LodLevel - splatMapLodOffset), fileReader.DetailMapMipCount - 1);
         int sourceHeightTexelStride = 1 << (chunkKey.LodLevel - sourceMip);
         pageTexelStride = (float)sourceHeightTexelStride / ratio;
 
         // Page coverage is determined in heightmap texel space, then converted back to
         // splat texel space for the shader-facing offsets.
-        int splatMapPageSpanInHeightTexels = (fileReader.SplatMapHeader.TileSize - 1) * ratio;
+        int splatMapPageSpanInHeightTexels = (fileReader.DetailIndexMapHeader.TileSize - 1) * ratio;
         int chunkSpanInHeightTexels = baseChunkSize * sourceHeightTexelStride;
         int pageChunkSpanAtLod = Math.Max(1, splatMapPageSpanInHeightTexels / Math.Max(1, chunkSpanInHeightTexels));
         int pageX = Math.DivRem(chunkKey.ChunkX, pageChunkSpanAtLod, out int pageXRemainder);
@@ -898,7 +917,7 @@ internal sealed class TerrainStreamingManager : IDisposable
     /// </summary>
     public (float splatPageOffsetX, float splatPageOffsetY, float splatPageTexelStride) GetSplatMapPageInfo(TerrainChunkKey chunkKey)
     {
-        int ratio = fileReader.SplatMapResolutionRatio;
+        int ratio = fileReader.DetailMapResolutionRatio;
         if (ratio <= 1)
         {
             GetPageKey(chunkKey, out int _, out int _, out int heightStride);

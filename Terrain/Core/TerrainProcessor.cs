@@ -255,8 +255,8 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
                 baseChunkSize,
                 fileReader.HeightmapHeader.TileSize,
                 fileReader.HeightmapHeader.Padding,
-                fileReader.SplatMapHeader.TileSize,
-                fileReader.SplatMapHeader.Padding,
+                fileReader.DetailIndexMapHeader.TileSize,
+                fileReader.DetailIndexMapHeader.Padding,
                 maxResidentChunks,
                 minMaxErrorMaps);
 
@@ -550,10 +550,10 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
         TerrainRuntimeResourceBundle bundle)
     {
         RuntimeBiomeMaskData biomeMask = RuntimeBiomeMaskReader.ReadFrom(bundle.BiomeMaskPath);
-        if (biomeMask.Width != fileReader.SplatMapHeader.Width || biomeMask.Height != fileReader.SplatMapHeader.Height)
+        if (biomeMask.Width != fileReader.DetailIndexMapHeader.Width || biomeMask.Height != fileReader.DetailIndexMapHeader.Height)
         {
             throw new InvalidDataException(
-                $"Biome mask dimensions {biomeMask.Width}x{biomeMask.Height} do not match terrain splatmap dimensions {fileReader.SplatMapHeader.Width}x{fileReader.SplatMapHeader.Height}.");
+                $"Biome mask dimensions {biomeMask.Width}x{biomeMask.Height} do not match terrain detail dimensions {fileReader.DetailIndexMapHeader.Width}x{fileReader.DetailIndexMapHeader.Height}.");
         }
 
         return biomeMask;
@@ -574,7 +574,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             biomeMask.Height,
             bundle.BiomeSettings,
             bundle.MaterialDescriptor,
-            fileReader.SplatMapResolutionRatio);
+            fileReader.DetailMapResolutionRatio);
     }
 
     internal readonly record struct LoadedTerrainData(

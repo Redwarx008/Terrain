@@ -100,9 +100,9 @@ public class TerrainExporter : IExporter
             TileSize = DefaultTileSize,
             Padding = HeightMapPadding,
             HeightMapMipLevels = heightMapMipLevels,
-            SplatMapFormat = (int)VTFormat.R8,
-            SplatMapMipLevels = biomeMaskMipLevels,
-            SplatMapResolutionRatio = 2,
+            DetailMapFormat = (int)VTFormat.Rgba32,
+            DetailMapMipLevels = biomeMaskMipLevels,
+            DetailMapResolutionRatio = 2,
         };
         WriteStruct(writer, ref header);
 
