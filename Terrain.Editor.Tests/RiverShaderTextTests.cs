@@ -404,7 +404,9 @@ internal static class RiverShaderTextTests
         AssertContains(renderObject, "public Vector2 MapWorldSize { get; private set; } = new(4096.0f, 4096.0f);", "RiverRenderObject should cache per-axis map world size for rectangular map UV normalization");
         AssertContains(meshData, "public float RefractionMaxCameraHeight { get; init; } = 50.0f;", "River mesh data should carry the height-scale-aware refraction clamp plane");
         AssertContains(meshData, "RefractionMaxCameraHeight = RefractionMaxCameraHeight,", "River mesh snapshots should preserve the refraction clamp plane");
-        AssertContains(meshService, "RefractionMaxCameraHeight = MathF.Max(50.0f, heightScale > 0.0f ? heightScale : heightSource?.HeightScale ?? 50.0f),", "River mesh generation should raise the refraction clamp plane for large height scales");
+        AssertContains(meshService, "float refractionMaxCameraHeight = float.IsFinite(boundingBox.Maximum.Y)", "River mesh generation should derive the refraction clamp plane from actual generated river height");
+        AssertContains(meshService, "? MathF.Ceiling(boundingBox.Maximum.Y + 1.0f)", "River mesh generation should leave a small clearance above the highest river vertex");
+        AssertContains(meshService, "RefractionMaxCameraHeight = refractionMaxCameraHeight,", "River mesh data should carry the generated-height refraction clamp plane");
         AssertContains(renderObject, "public float RefractionMaxCameraHeight { get; private set; } = 50.0f;", "RiverRenderObject should cache the refraction clamp plane");
         AssertContains(renderObject, "RefractionMaxCameraHeight = mesh.RefractionMaxCameraHeight;", "RiverRenderObject should keep the refraction clamp plane from mesh data");
         AssertContains(renderObject, "public int ParallaxIterations { get; private set; } = 10;", "RiverRenderObject should cache parallax iteration count for advanced paths");

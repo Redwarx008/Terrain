@@ -542,6 +542,9 @@ public sealed class RiverMeshService
         }
 
         var boundingBox = new BoundingBox(boundsMin, boundsMax);
+        float refractionMaxCameraHeight = float.IsFinite(boundingBox.Maximum.Y)
+            ? MathF.Ceiling(boundingBox.Maximum.Y + 1.0f)
+            : 50.0f;
         return new RiverMeshData
         {
             SegmentId = segment.SystemId,
@@ -553,7 +556,7 @@ public sealed class RiverMeshService
             AvgHalfWidth = segment.AvgHalfWidth,
             MapExtent = mapExtent,
             MapWorldSize = mapWorldSize,
-            RefractionMaxCameraHeight = MathF.Max(50.0f, heightScale > 0.0f ? heightScale : heightSource?.HeightScale ?? 50.0f),
+            RefractionMaxCameraHeight = refractionMaxCameraHeight,
         };
     }
 
