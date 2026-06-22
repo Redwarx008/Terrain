@@ -10,6 +10,11 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Run("runtime streaming rejects pre baked detail terrain versions", RuntimeStreamingRejectsPreBakedDetailVersions);
         TestHarness.Run("terrain file reader exposes baked detail page reads", TerrainFileReaderExposesBakedDetailPageReads);
         TestHarness.Run("editor baked detail builder emits typed RGBA index and weight maps", EditorBakedDetailBuilderEmitsTypedRgbaIndexAndWeightMaps);
+        TestHarness.Run("editor baked detail builder packs ordered layers deterministically", EditorBakedDetailBuilderPacksOrderedLayersDeterministically);
+        TestHarness.Run("editor baked detail builder rejects invalid material slots", EditorBakedDetailBuilderRejectsInvalidMaterialSlots);
+        TestHarness.Run("editor baked detail builder rejects unsupported texture masks", EditorBakedDetailBuilderRejectsUnsupportedTextureMasks);
+        TestHarness.Run("editor baked detail builder detail pixel is four bytes", EditorBakedDetailBuilderDetailPixelIsFourBytes);
+        TestHarness.Run("editor baked detail builder requires biome mask detail dimensions", EditorBakedDetailBuilderRequiresBiomeMaskDetailDimensions);
         TestHarness.Run("terrain file reader rejects missing baked detail streams", TerrainFileReaderRejectsMissingBakedDetailStreams);
         TestHarness.Run("terrain file reader rejects non rgba detail header format", TerrainFileReaderRejectsNonRgbaDetailHeaderFormat);
         TestHarness.Run("terrain file reader releases file handle after constructor failure", TerrainFileReaderReleasesFileHandleAfterConstructorFailure);
@@ -81,6 +86,139 @@ internal static class BakedDetailTerrainFormatTests
 
         int weightSum = firstWeight.R + firstWeight.G + firstWeight.B + firstWeight.A;
         TestHarness.Assert(weightSum is >= 254 and <= 255, $"encoded weights should be normalized, actual sum {weightSum}");
+    }
+
+    private static void EditorBakedDetailBuilderPacksOrderedLayersDeterministically()
+    {
+        global::Terrain.Editor.Services.BiomeRuleLayer lowPriorityDuplicate = CreateLayer(0, materialSlotIndex: 5, priority: 0, CreateHalfWeightModifier());
+        global::Terrain.Editor.Services.BiomeRuleLayer middlePriority = CreateLayer(0, materialSlotIndex: 6, priority: 1, CreateHalfWeightModifier());
+        global::Terrain.Editor.Services.BiomeRuleLayer highPriorityDuplicate = CreateLayer(0, materialSlotIndex: 5, priority: 2, CreateHalfWeightModifier());
+
+        global::Terrain.Editor.Services.Export.BakedDetailMapData data =
+            global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                new ushort[16],
+                4,
+                4,
+                100.0f,
+                [0, 0, 0, 0],
+                2,
+                2,
+                [lowPriorityDuplicate, middlePriority, highPriorityDuplicate]);
+
+        global::Terrain.Editor.Services.Export.DetailControlPixel index = data.DetailIndex[0];
+        global::Terrain.Editor.Services.Export.DetailControlPixel weight = data.DetailWeight[0];
+
+        TestHarness.AssertEqual(5, index.R, "duplicate material should stay in the first slot");
+        TestHarness.AssertEqual(6, index.G, "middle layer material should stay in the second slot");
+        TestHarness.AssertEqual(byte.MaxValue, index.B, "unused third material slot");
+        TestHarness.AssertEqual(byte.MaxValue, index.A, "unused fourth material slot");
+        TestHarness.AssertEqual(191, weight.R, "duplicate material contributions should merge before normalization");
+        TestHarness.AssertEqual(64, weight.G, "remaining layer weight should normalize to the second channel");
+        TestHarness.AssertEqual(0, weight.B, "unused third weight slot");
+        TestHarness.AssertEqual(0, weight.A, "unused fourth weight slot");
+    }
+
+    private static void EditorBakedDetailBuilderRejectsInvalidMaterialSlots()
+    {
+        ArgumentOutOfRangeException negative = TestHarness.AssertThrows<ArgumentOutOfRangeException>(
+            () => GenerateSingleLayer(CreateLayer(0, materialSlotIndex: -1, priority: 0)),
+            "builder should reject negative material slots");
+        TestHarness.Assert(negative.Message.Contains("material slot", StringComparison.OrdinalIgnoreCase), "negative slot error should mention material slot");
+
+        ArgumentOutOfRangeException sentinel = TestHarness.AssertThrows<ArgumentOutOfRangeException>(
+            () => GenerateSingleLayer(CreateLayer(0, materialSlotIndex: 255, priority: 0)),
+            "builder should reject material slot 255 sentinel");
+        TestHarness.Assert(sentinel.Message.Contains("0..254", StringComparison.Ordinal), "sentinel slot error should mention valid range");
+    }
+
+    private static void EditorBakedDetailBuilderRejectsUnsupportedTextureMasks()
+    {
+        var layer = CreateLayer(
+            0,
+            materialSlotIndex: 1,
+            priority: 0,
+            new global::Terrain.Editor.Services.BiomeModifier
+            {
+                Type = global::Terrain.Editor.Services.BiomeModifierType.TextureMask,
+                Enabled = true,
+                Visible = true,
+            });
+
+        NotSupportedException ex = TestHarness.AssertThrows<NotSupportedException>(
+            () => GenerateSingleLayer(layer),
+            "builder should reject active TextureMask modifiers until mask sampling is implemented");
+        TestHarness.Assert(
+            ex.Message.Contains("baked detail export does not support texture mask modifiers yet", StringComparison.OrdinalIgnoreCase),
+            "TextureMask error should clearly describe unsupported baked detail export path");
+    }
+
+    private static void EditorBakedDetailBuilderDetailPixelIsFourBytes()
+    {
+        TestHarness.AssertEqual(4, Marshal.SizeOf<global::Terrain.Editor.Services.Export.DetailControlPixel>(), "DetailControlPixel size");
+    }
+
+    private static void EditorBakedDetailBuilderRequiresBiomeMaskDetailDimensions()
+    {
+        ArgumentException ex = TestHarness.AssertThrows<ArgumentException>(
+            () => global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                new ushort[16],
+                4,
+                4,
+                100.0f,
+                new byte[16],
+                4,
+                4,
+                [CreateLayer(0, materialSlotIndex: 1, priority: 0)]),
+            "builder should reject full-resolution biome masks");
+        TestHarness.Assert(ex.Message.Contains("same dimensions as the baked detail map", StringComparison.OrdinalIgnoreCase), "dimension error should explain required mask/detail match");
+    }
+
+    private static void GenerateSingleLayer(global::Terrain.Editor.Services.BiomeRuleLayer layer)
+    {
+        _ = global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+            new ushort[16],
+            4,
+            4,
+            100.0f,
+            [0, 0, 0, 0],
+            2,
+            2,
+            [layer]);
+    }
+
+    private static global::Terrain.Editor.Services.BiomeRuleLayer CreateLayer(
+        int biomeId,
+        int materialSlotIndex,
+        int priority,
+        params global::Terrain.Editor.Services.BiomeModifier[] modifiers)
+    {
+        var layer = new global::Terrain.Editor.Services.BiomeRuleLayer
+        {
+            BiomeId = biomeId,
+            MaterialSlotIndex = materialSlotIndex,
+            PriorityOrder = priority,
+            Enabled = true,
+            Visible = true,
+        };
+
+        layer.Modifiers.AddRange(modifiers);
+        return layer;
+    }
+
+    private static global::Terrain.Editor.Services.BiomeModifier CreateHalfWeightModifier()
+    {
+        return new global::Terrain.Editor.Services.BiomeModifier
+        {
+            Type = global::Terrain.Editor.Services.BiomeModifierType.HeightRange,
+            BlendMode = global::Terrain.Editor.Services.BiomeModifierBlendMode.Multiply,
+            Enabled = true,
+            Visible = true,
+            Min = 1000.0f,
+            Max = 1000.0f,
+            MinFalloff = 0.001f,
+            MaxFalloff = 0.001f,
+            Opacity = 0.5f,
+        };
     }
 
     private static void TerrainFileReaderRejectsMissingBakedDetailStreams()

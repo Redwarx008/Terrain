@@ -38,8 +38,7 @@ internal static class BakedDetailMapBuilder
             throw new ArgumentOutOfRangeException(nameof(heightWidth));
         if (heightHeight <= 0)
             throw new ArgumentOutOfRangeException(nameof(heightHeight));
-        if (heightData.Length != heightWidth * heightHeight)
-            throw new ArgumentException("Height data length does not match dimensions.", nameof(heightData));
+        ValidateBufferLength(heightData.Length, heightWidth, heightHeight, "Height data", nameof(heightData));
 
         float heightScaleFactor = heightScale / ushort.MaxValue;
         return Generate(
@@ -69,8 +68,8 @@ internal static class BakedDetailMapBuilder
             biomeMaskWidth,
             biomeMaskHeight,
             layers,
-            (heightWidth + 1) / 2,
-            (heightHeight + 1) / 2);
+            ComputeHalfResolution(heightWidth),
+            ComputeHalfResolution(heightHeight));
     }
 
     public static BakedDetailMapData Generate(
@@ -96,14 +95,19 @@ internal static class BakedDetailMapBuilder
             throw new ArgumentOutOfRangeException(nameof(biomeMaskWidth));
         if (biomeMaskHeight <= 0)
             throw new ArgumentOutOfRangeException(nameof(biomeMaskHeight));
-        if (biomeMaskData.Length != biomeMaskWidth * biomeMaskHeight)
-            throw new ArgumentException("Biome mask length does not match dimensions.", nameof(biomeMaskData));
         if (detailWidth <= 0)
             throw new ArgumentOutOfRangeException(nameof(detailWidth));
         if (detailHeight <= 0)
             throw new ArgumentOutOfRangeException(nameof(detailHeight));
+        if (biomeMaskWidth != detailWidth || biomeMaskHeight != detailHeight)
+            throw new ArgumentException(
+                $"Biome mask dimensions must have the same dimensions as the baked detail map. Expected {detailWidth}x{detailHeight}, got {biomeMaskWidth}x{biomeMaskHeight}.",
+                nameof(biomeMaskData));
 
-        var detailIndex = new DetailControlPixel[checked(detailWidth * detailHeight)];
+        ValidateBufferLength(biomeMaskData.Length, biomeMaskWidth, biomeMaskHeight, "Biome mask", nameof(biomeMaskData));
+        int pixelCount = ValidatePixelCount(detailWidth, detailHeight, "Detail map");
+
+        var detailIndex = new DetailControlPixel[pixelCount];
         var detailWeight = new DetailControlPixel[detailIndex.Length];
         var orderedLayers = layers.OrderBy(static layer => layer.PriorityOrder).ToArray();
         var context = new DetailEvaluationContext(
@@ -154,6 +158,7 @@ internal static class BakedDetailMapBuilder
             if (!layer.Enabled || !layer.Visible || layer.BiomeId != biomeId)
                 continue;
 
+            ValidateMaterialSlot(layer.MaterialSlotIndex, layer.Name);
             foundValidLayer = true;
             fallbackMaterialSlotIndex = layer.MaterialSlotIndex;
             float weight = 1.0f;
@@ -195,10 +200,10 @@ internal static class BakedDetailMapBuilder
         float totalWeight = MathF.Max(bestWeights[0] + bestWeights[1] + bestWeights[2] + bestWeights[3], 0.0001f);
         return new DetailControlPair(
             new DetailControlPixel(
-                (byte)Math.Clamp(bestIndices[0], 0, byte.MaxValue),
-                (byte)Math.Clamp(bestIndices[1], 0, byte.MaxValue),
-                (byte)Math.Clamp(bestIndices[2], 0, byte.MaxValue),
-                (byte)Math.Clamp(bestIndices[3], 0, byte.MaxValue)),
+                (byte)bestIndices[0],
+                (byte)bestIndices[1],
+                (byte)bestIndices[2],
+                (byte)bestIndices[3]),
             new DetailControlPixel(
                 EncodeWeight(bestWeights[0], totalWeight),
                 EncodeWeight(bestWeights[1], totalWeight),
@@ -224,9 +229,42 @@ internal static class BakedDetailMapBuilder
             BiomeModifierType.CurvatureRange => EvaluateCurvatureModifier(context, modifier, heightX, heightY),
             BiomeModifierType.DirectionRange => EvaluateDirectionModifier(modifier, directionDegrees),
             BiomeModifierType.Noise => EvaluateNoiseModifier(context, modifier, heightX, heightY),
-            BiomeModifierType.TextureMask => 1.0f,
+            BiomeModifierType.TextureMask => throw new NotSupportedException("Baked detail export does not support texture mask modifiers yet."),
             _ => 1.0f,
         };
+    }
+
+    private static int ComputeHalfResolution(int dimension)
+    {
+        return (int)(((long)dimension + 1L) / 2L);
+    }
+
+    private static void ValidateBufferLength(int actualLength, int width, int height, string label, string parameterName)
+    {
+        long expectedLength = (long)width * height;
+        if (expectedLength > int.MaxValue)
+            throw new ArgumentOutOfRangeException(parameterName, $"{label} dimensions {width}x{height} are too large.");
+
+        if (actualLength != expectedLength)
+            throw new ArgumentException($"{label} length mismatch. Expected {expectedLength} elements for {width}x{height}, got {actualLength}.", parameterName);
+    }
+
+    private static int ValidatePixelCount(int width, int height, string label)
+    {
+        long pixelCount = (long)width * height;
+        if (pixelCount > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(width), $"{label} dimensions {width}x{height} are too large.");
+
+        return (int)pixelCount;
+    }
+
+    private static void ValidateMaterialSlot(int materialSlotIndex, string layerName)
+    {
+        if (materialSlotIndex is < 0 or > 254)
+            throw new ArgumentOutOfRangeException(
+                nameof(materialSlotIndex),
+                materialSlotIndex,
+                $"Biome rule layer '{layerName}' has invalid material slot index {materialSlotIndex}. Baked detail material slot indices must be in 0..254; 255 is reserved as the shader sentinel.");
     }
 
     private static void ResolveDetailTexelToHeightCoord(DetailEvaluationContext context, int detailX, int detailY, out int heightX, out int heightY)
@@ -457,9 +495,7 @@ internal static class BakedDetailMapBuilder
 
         public byte GetBiomeId(int detailX, int detailY)
         {
-            int maskX = Math.Clamp((int)((long)detailX * BiomeMaskWidth / DetailWidth), 0, BiomeMaskWidth - 1);
-            int maskY = Math.Clamp((int)((long)detailY * BiomeMaskHeight / DetailHeight), 0, BiomeMaskHeight - 1);
-            return BiomeMaskData[maskY * BiomeMaskWidth + maskX];
+            return BiomeMaskData[detailY * BiomeMaskWidth + detailX];
         }
     }
 }
