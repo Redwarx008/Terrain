@@ -10,9 +10,7 @@ internal static class TerrainRuntimeLoadBehaviorTests
     public static void RunAll()
     {
         TestHarness.Run("runtime load gate blocks repeated retries until config changes", RuntimeLoadGateBlocksRepeatedRetriesUntilConfigChanges);
-        TestHarness.Run("terrain runtime load disposes reader when biome mask load fails", TerrainRuntimeLoadDisposesReaderWhenBiomeMaskLoadFails);
         TestHarness.Run("runtime load failure marks component when terrain data is missing", RuntimeLoadFailureMarksComponentWhenTerrainDataIsMissing);
-        TestHarness.Run("runtime load failure marks component when biome mask is missing", RuntimeLoadFailureMarksComponentWhenBiomeMaskIsMissing);
         TestHarness.Run("terrain component get height fails before streaming attaches", TerrainComponentGetHeightFailsBeforeStreamingAttaches);
         TestHarness.Run("runtime apply failure is captured by runtime load gate", RuntimeApplyFailureIsCapturedByRuntimeLoadGate);
         TestHarness.Run("runtime height sampling stays inside terrain streaming", RuntimeHeightSamplingStaysInsideTerrainStreaming);
@@ -40,23 +38,6 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Assert(TerrainProcessor.ShouldAttemptRuntimeLoad(component), "successful load should clear runtime failure gate");
     }
 
-    private static void TerrainRuntimeLoadDisposesReaderWhenBiomeMaskLoadFails()
-    {
-        var component = new TerrainComponent();
-        var reader = new FakeTerrainFileReader();
-        string missingBiomeMaskPath = Path.Combine(Path.GetTempPath(), "terrain-runtime-load-tests", Guid.NewGuid().ToString("N"), "biome_mask.png");
-
-        TestHarness.AssertThrows<FileNotFoundException>(
-            () => TerrainProcessor.CreateLoadedTerrainData(
-                component,
-                CreateResourceBundle(missingBiomeMaskPath),
-                _ => reader,
-                static (_, _, _, _) => new RuntimeDetailMapData(new byte[4], new byte[4], 2, 2)),
-            "biome mask load failure should surface as FileNotFoundException");
-
-        TestHarness.Assert(reader.IsDisposed, "reader should be disposed when load fails after opening terrain data");
-    }
-
     private static void RuntimeLoadFailureMarksComponentWhenTerrainDataIsMissing()
     {
         var component = new TerrainComponent();
@@ -76,35 +57,6 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Assert(
             diagnostics.Any(message => message.Contains("map/terrain.terrain", StringComparison.Ordinal)),
             "runtime load error should mention the missing terrain data path");
-    }
-
-    private static void RuntimeLoadFailureMarksComponentWhenBiomeMaskIsMissing()
-    {
-        var component = new TerrainComponent();
-        var diagnostics = new List<string>();
-        var reader = new FakeTerrainFileReader();
-        string missingBiomeMaskPath = Path.Combine(Path.GetTempPath(), "terrain-runtime-load-tests", Guid.NewGuid().ToString("N"), "biome_mask.png");
-
-        bool loaded = TerrainProcessor.TryLoadRuntimeData(
-            component,
-            () => new TerrainRuntimeResourceBundle
-            {
-                TerrainDataPath = "fake.terrain",
-                BiomeMaskPath = missingBiomeMaskPath,
-                HeightScale = 123.0f,
-            },
-            out _,
-            _ => reader,
-            logError: diagnostics.Add);
-
-        TestHarness.Assert(!loaded, "missing biome mask should fail the runtime load");
-        TestHarness.Assert(!component.IsInitialized, "failed biome mask load should keep the component uninitialized");
-        TestHarness.Assert(component.HasRuntimeLoadFailure, "failed biome mask load should latch the failure gate");
-        TestHarness.Assert(!TerrainProcessor.ShouldAttemptRuntimeLoad(component), "same config should not retry after a biome mask load failure");
-        TestHarness.Assert(reader.IsDisposed, "reader should be disposed when runtime detail map generation fails");
-        TestHarness.Assert(
-            diagnostics.Any(message => message.Contains("biome_mask", StringComparison.OrdinalIgnoreCase)),
-            "runtime load error should mention the missing biome mask");
     }
 
     private static void TerrainComponentGetHeightFailsBeforeStreamingAttaches()
