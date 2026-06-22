@@ -211,6 +211,11 @@ internal sealed class TerrainFileReader : ITerrainFileReader
             {
                 throw new InvalidDataException($"Terrain detail VT payload is truncated. Expected at least {currentOffset} bytes, got {fileLength}.");
             }
+
+            if (currentOffset < fileLength)
+            {
+                throw new InvalidDataException($"Terrain file contains trailing bytes after baked detail payloads. Expected exactly {currentOffset} bytes, got {fileLength}.");
+            }
         }
         catch (EndOfStreamException ex)
         {

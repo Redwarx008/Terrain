@@ -19,8 +19,11 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Run("editor baked detail builder requires biome mask detail dimensions", EditorBakedDetailBuilderRequiresBiomeMaskDetailDimensions);
         TestHarness.Run("terrain file reader rejects missing baked detail streams", TerrainFileReaderRejectsMissingBakedDetailStreams);
         TestHarness.Run("terrain file reader rejects non rgba detail header format", TerrainFileReaderRejectsNonRgbaDetailHeaderFormat);
+        TestHarness.Run("terrain file reader rejects trailing bytes after baked detail payloads", TerrainFileReaderRejectsTrailingBytesAfterBakedDetailPayloads);
         TestHarness.Run("terrain file reader releases file handle after constructor failure", TerrainFileReaderReleasesFileHandleAfterConstructorFailure);
         TestHarness.Run("terrain exporter writes baked detail VT payloads readable by runtime", TerrainExporterWritesBakedDetailVtPayloadsReadableByRuntime);
+        TestHarness.Run("terrain exporter aggregates detail mip contributions instead of copying top left texel", TerrainExporterAggregatesDetailMipContributionsInsteadOfCopyingTopLeftTexel);
+        TestHarness.Run("terrain exporter cancellation preserves existing target and deletes temp file", TerrainExporterCancellationPreservesExistingTargetAndDeletesTempFile);
         TestHarness.Run("terrain exporter source writes detail index and weight VT payloads", TerrainExporterSourceWritesDetailIndexAndWeightVtPayloads);
         TestHarness.Run("runtime source no longer contains generated detail map state", RuntimeSourceNoLongerContainsGeneratedDetailMapState);
     }
@@ -308,6 +311,21 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Assert(ex.Message.Contains("detail map format", StringComparison.OrdinalIgnoreCase), "format error should name the detail map format");
     }
 
+    private static void TerrainFileReaderRejectsTrailingBytesAfterBakedDetailPayloads()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "terrain-v8-reader-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        string path = Path.Combine(directory, "trailing-bytes.terrain");
+        WriteMinimalTerrainFile(path, writeDetailWeightHeader: true, writeDetailWeightPayload: true);
+        File.AppendAllBytes(path, [0xBA, 0xAD, 0xF0, 0x0D]);
+
+        InvalidDataException ex = TestHarness.AssertThrows<InvalidDataException>(
+            () => new global::Terrain.TerrainFileReader(path).Dispose(),
+            "reader should reject bytes after the final DetailWeight payload");
+        TestHarness.Assert(ex.Message.Contains("trailing", StringComparison.OrdinalIgnoreCase), "trailing data error should mention trailing bytes");
+    }
+
     private static void TerrainFileReaderReleasesFileHandleAfterConstructorFailure()
     {
         string directory = Path.Combine(Path.GetTempPath(), "terrain-v8-reader-tests", Guid.NewGuid().ToString("N"));
@@ -394,6 +412,123 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Assert(progress.Messages.Any(static message => message.Contains("Baking DetailTexture", StringComparison.Ordinal)), "export progress should report detail baking");
         TestHarness.Assert(progress.Messages.Any(static message => message.Contains("Writing DetailIndex VT data", StringComparison.Ordinal)), "export progress should report detail index write");
         TestHarness.Assert(progress.Messages.Any(static message => message.Contains("Writing DetailWeight VT data", StringComparison.Ordinal)), "export progress should report detail weight write");
+    }
+
+    private static void TerrainExporterAggregatesDetailMipContributionsInsteadOfCopyingTopLeftTexel()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "terrain-v8-exporter-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string outputPath = Path.Combine(directory, "terrain.terrain");
+
+        const int heightSize = 513;
+        const int detailSize = 257;
+        ushort[] heightData = new ushort[heightSize * heightSize];
+        byte[] biomeMask = new byte[detailSize * detailSize];
+        biomeMask[0] = 0;
+        biomeMask[1] = 1;
+        biomeMask[detailSize] = 2;
+        biomeMask[detailSize + 1] = 3;
+
+        global::Terrain.Editor.Services.Export.Exporters.TerrainExporter.ExportBakedTerrain(
+            outputPath,
+            heightData,
+            heightSize,
+            heightSize,
+            100.0f,
+            biomeMask,
+            detailSize,
+            detailSize,
+            [
+                CreateLayer(0, materialSlotIndex: 1, priority: 0),
+                CreateLayer(1, materialSlotIndex: 2, priority: 1),
+                CreateLayer(2, materialSlotIndex: 1, priority: 2),
+                CreateLayer(3, materialSlotIndex: 3, priority: 3),
+            ],
+            progress: null,
+            CancellationToken.None);
+
+        using var reader = new global::Terrain.TerrainFileReader(outputPath);
+        TestHarness.Assert(reader.DetailMapMipCount >= 2, "test terrain should produce detail mip1");
+
+        byte[] mip1IndexPage = new byte[ComputeTileByteSize(reader.DetailIndexMapHeader)];
+        byte[] mip1WeightPage = new byte[ComputeTileByteSize(reader.DetailWeightMapHeader)];
+        var mip1Key = new global::Terrain.TerrainPageKey(1, 0, 0);
+        reader.ReadDetailIndexPage(mip1Key, mip1IndexPage);
+        reader.ReadDetailWeightPage(mip1Key, mip1WeightPage);
+
+        int sampleOffset = reader.DetailIndexMapHeader.Padding * (reader.DetailIndexMapHeader.TileSize + reader.DetailIndexMapHeader.Padding * 2) + reader.DetailIndexMapHeader.Padding;
+        global::Terrain.Editor.Services.Export.DetailControlPixel index =
+            MemoryMarshal.Cast<byte, global::Terrain.Editor.Services.Export.DetailControlPixel>(mip1IndexPage)[sampleOffset];
+        global::Terrain.Editor.Services.Export.DetailControlPixel weight =
+            MemoryMarshal.Cast<byte, global::Terrain.Editor.Services.Export.DetailControlPixel>(mip1WeightPage)[sampleOffset];
+
+        TestHarness.AssertEqual(1, index.R, "aggregated dominant material should merge the two material 1 source texels");
+        TestHarness.AssertEqual(2, index.G, "second material should survive detail mip aggregation");
+        TestHarness.AssertEqual(3, index.B, "third material should survive detail mip aggregation");
+        TestHarness.AssertEqual(byte.MaxValue, index.A, "unused detail mip material channel");
+        TestHarness.AssertEqual(128, weight.R, "merged material weight should be normalized from two source texels");
+        TestHarness.AssertEqual(64, weight.G, "second material weight should be normalized from one source texel");
+        TestHarness.AssertEqual(64, weight.B, "third material weight should be normalized from one source texel");
+        TestHarness.AssertEqual(0, weight.A, "unused detail mip weight channel");
+    }
+
+    private static void TerrainExporterCancellationPreservesExistingTargetAndDeletesTempFile()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "terrain-v8-exporter-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string outputPath = Path.Combine(directory, "terrain.terrain");
+
+        ushort[] originalHeightData = new ushort[33 * 33];
+        originalHeightData[0] = 1234;
+        byte[] biomeMask = Enumerable.Repeat((byte)0, 17 * 17).ToArray();
+        global::Terrain.Editor.Services.BiomeRuleLayer[] layers = [CreateLayer(0, materialSlotIndex: 7, priority: 0)];
+        global::Terrain.Editor.Services.Export.Exporters.TerrainExporter.ExportBakedTerrain(
+            outputPath,
+            originalHeightData,
+            33,
+            33,
+            100.0f,
+            biomeMask,
+            17,
+            17,
+            layers,
+            progress: null,
+            CancellationToken.None);
+
+        long originalLength = new FileInfo(outputPath).Length;
+        using (var originalReader = new global::Terrain.TerrainFileReader(outputPath))
+        {
+            TestHarness.AssertEqual((ushort)1234, ReadFirstHeightSample(originalReader), "original exported height sample");
+        }
+
+        ushort[] replacementHeightData = new ushort[33 * 33];
+        replacementHeightData[0] = 5678;
+        using var cts = new CancellationTokenSource();
+        var cancelOnWrite = new CancelOnMessageProgress(cts, "Writing HeightMap VT data");
+
+        TestHarness.AssertThrows<OperationCanceledException>(
+            () => global::Terrain.Editor.Services.Export.Exporters.TerrainExporter.ExportBakedTerrain(
+                outputPath,
+                replacementHeightData,
+                33,
+                33,
+                100.0f,
+                biomeMask,
+                17,
+                17,
+                layers,
+                cancelOnWrite,
+                cts.Token),
+            "cancelled export should throw");
+
+        TestHarness.AssertEqual(originalLength, new FileInfo(outputPath).Length, "cancelled export should preserve existing target length");
+        using (var reader = new global::Terrain.TerrainFileReader(outputPath))
+        {
+            TestHarness.AssertEqual((ushort)1234, ReadFirstHeightSample(reader), "cancelled export should preserve existing target content");
+        }
+
+        string[] tempFiles = Directory.GetFiles(directory, "*.tmp", SearchOption.TopDirectoryOnly);
+        TestHarness.AssertEqual(0, tempFiles.Length, "cancelled export should delete temp files");
     }
 
     private static void TerrainExporterSourceWritesDetailIndexAndWeightVtPayloads()
@@ -536,6 +671,14 @@ internal static class BakedDetailTerrainFormatTests
         return total;
     }
 
+    private static ushort ReadFirstHeightSample(global::Terrain.TerrainFileReader reader)
+    {
+        byte[] heightPage = new byte[ComputeTileByteSize(reader.HeightmapHeader)];
+        reader.ReadHeightPage(new global::Terrain.TerrainPageKey(0, 0, 0), heightPage);
+        int sampleOffset = reader.HeightmapHeader.Padding * (reader.HeightmapHeader.TileSize + reader.HeightmapHeader.Padding * 2) + reader.HeightmapHeader.Padding;
+        return MemoryMarshal.Cast<byte, ushort>(heightPage)[sampleOffset];
+    }
+
     private sealed class RecordingExportProgress : IProgress<global::Terrain.Editor.Services.Export.ExportProgress>
     {
         public List<string> Messages { get; } = new();
@@ -544,6 +687,15 @@ internal static class BakedDetailTerrainFormatTests
         {
             if (!string.IsNullOrWhiteSpace(value.Message))
                 Messages.Add(value.Message);
+        }
+    }
+
+    private sealed class CancelOnMessageProgress(CancellationTokenSource cancellation, string messagePart) : IProgress<global::Terrain.Editor.Services.Export.ExportProgress>
+    {
+        public void Report(global::Terrain.Editor.Services.Export.ExportProgress value)
+        {
+            if (value.Message.Contains(messagePart, StringComparison.Ordinal))
+                cancellation.Cancel();
         }
     }
 

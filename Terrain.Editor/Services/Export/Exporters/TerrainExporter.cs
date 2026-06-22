@@ -139,12 +139,47 @@ public class TerrainExporter : IExporter
         IProgress<ExportProgress>? progress,
         CancellationToken ct)
     {
-        string? directory = Path.GetDirectoryName(outputPath);
-        if (!string.IsNullOrEmpty(directory))
-            Directory.CreateDirectory(directory);
+        string fullOutputPath = Path.GetFullPath(outputPath);
+        string directory = Path.GetDirectoryName(fullOutputPath) ?? Directory.GetCurrentDirectory();
+        Directory.CreateDirectory(directory);
 
+        string tempPath = Path.Combine(directory, $".{Path.GetFileName(fullOutputPath)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            WriteTerrainFilePayload(
+                tempPath,
+                heightData,
+                width,
+                height,
+                minMaxErrorMaps,
+                bakedDetail,
+                progress,
+                ct);
+
+            ct.ThrowIfCancellationRequested();
+            ReplaceOutputFile(tempPath, fullOutputPath);
+            tempPath = "";
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(tempPath))
+                TryDelete(tempPath);
+        }
+    }
+
+    private static void WriteTerrainFilePayload(
+        string outputPath,
+        ushort[] heightData,
+        int width,
+        int height,
+        EditorMinMaxErrorMap[] minMaxErrorMaps,
+        BakedDetailMapData bakedDetail,
+        IProgress<ExportProgress>? progress,
+        CancellationToken ct)
+    {
         int heightMapMipLevels = global::Terrain.VirtualTextureLayout.GetMipCount(width, height, DefaultTileSize);
-        int detailMapMipLevels = global::Terrain.VirtualTextureLayout.GetMipCount(bakedDetail.Width, bakedDetail.Height, DefaultTileSize);
+        DetailMipLevel[] detailMipLevels = BuildDetailMipLevels(bakedDetail);
+        int detailMapMipLevels = detailMipLevels.Length;
 
         using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
         using var writer = new BinaryWriter(stream);
@@ -203,12 +238,11 @@ public class TerrainExporter : IExporter
         WriteStruct(writer, ref detailIndexHeader);
         StreamMipLevels<DetailControlPixel>(
             writer,
-            bakedDetail.DetailIndex,
+            detailMipLevels.Select(static mip => mip.Index).ToArray(),
             bakedDetail.Width,
             bakedDetail.Height,
             DefaultTileSize,
             DetailMapPadding,
-            DownsampleDetailControl,
             ct);
 
         progress?.Report(ExportProgress.Running(6, 6, "Writing DetailWeight VT data..."));
@@ -216,13 +250,36 @@ public class TerrainExporter : IExporter
         WriteStruct(writer, ref detailWeightHeader);
         StreamMipLevels<DetailControlPixel>(
             writer,
-            bakedDetail.DetailWeight,
+            detailMipLevels.Select(static mip => mip.Weight).ToArray(),
             bakedDetail.Width,
             bakedDetail.Height,
             DefaultTileSize,
             DetailMapPadding,
-            DownsampleDetailControl,
             ct);
+    }
+
+    private static void ReplaceOutputFile(string tempPath, string outputPath)
+    {
+        if (File.Exists(outputPath))
+        {
+            File.Replace(tempPath, outputPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            return;
+        }
+
+        File.Move(tempPath, outputPath);
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            // Best effort cleanup. The export never relies on temp files after failure.
+        }
     }
 
     private static IReadOnlyList<BiomeRuleLayer> CreateLayerSnapshot(IEnumerable<BiomeRuleLayer> layers)
@@ -274,6 +331,32 @@ public class TerrainExporter : IExporter
                 mipWidth = Math.Max(1, (mipWidth + 1) / 2);
                 mipHeight = Math.Max(1, (mipHeight + 1) / 2);
             }
+        }
+    }
+
+    private static void StreamMipLevels<T>(
+        BinaryWriter writer,
+        IReadOnlyList<T[]> mipLevels,
+        int width,
+        int height,
+        int tileSize,
+        int padding,
+        CancellationToken ct)
+        where T : unmanaged
+    {
+        int mipWidth = width;
+        int mipHeight = height;
+        int expectedMipCount = global::Terrain.VirtualTextureLayout.GetMipCount(width, height, tileSize);
+        if (mipLevels.Count != expectedMipCount)
+            throw new ArgumentException($"Expected {expectedMipCount} mip levels, got {mipLevels.Count}.", nameof(mipLevels));
+
+        for (int mip = 0; mip < mipLevels.Count; mip++)
+        {
+            T[] mipData = mipLevels[mip];
+            ValidateBufferLength(mipData.Length, mipWidth, mipHeight, "VT mip", nameof(mipLevels));
+            WriteMipPages(writer, mipData, mipWidth, mipHeight, tileSize, padding, ct);
+            mipWidth = Math.Max(1, (mipWidth + 1) / 2);
+            mipHeight = Math.Max(1, (mipHeight + 1) / 2);
         }
     }
 
@@ -359,23 +442,108 @@ public class TerrainExporter : IExporter
         return destination;
     }
 
-    private static DetailControlPixel[] DownsampleDetailControl(DetailControlPixel[] source, int width, int height)
+    private static DetailMipLevel[] BuildDetailMipLevels(BakedDetailMapData bakedDetail)
     {
-        int nextWidth = Math.Max(1, (width + 1) / 2);
-        int nextHeight = Math.Max(1, (height + 1) / 2);
-        var destination = new DetailControlPixel[checked(nextWidth * nextHeight)];
+        var levels = new List<DetailMipLevel>();
+        DetailMipLevel current = new(bakedDetail.DetailIndex, bakedDetail.DetailWeight, bakedDetail.Width, bakedDetail.Height);
+        int mipCount = global::Terrain.VirtualTextureLayout.GetMipCount(bakedDetail.Width, bakedDetail.Height, DefaultTileSize);
+
+        for (int mip = 0; mip < mipCount; mip++)
+        {
+            levels.Add(current);
+            if (mip + 1 < mipCount)
+                current = DownsampleDetailControl(current);
+        }
+
+        return levels.ToArray();
+    }
+
+    private static DetailMipLevel DownsampleDetailControl(DetailMipLevel source)
+    {
+        int nextWidth = Math.Max(1, (source.Width + 1) / 2);
+        int nextHeight = Math.Max(1, (source.Height + 1) / 2);
+        var destinationIndex = new DetailControlPixel[checked(nextWidth * nextHeight)];
+        var destinationWeight = new DetailControlPixel[destinationIndex.Length];
 
         for (int y = 0; y < nextHeight; y++)
         {
-            int sourceY = Math.Min(y * 2, height - 1);
             for (int x = 0; x < nextWidth; x++)
             {
-                int sourceX = Math.Min(x * 2, width - 1);
-                destination[y * nextWidth + x] = source[sourceY * width + sourceX];
+                PackDownsampledDetailTexel(source, x * 2, y * 2, out DetailControlPixel index, out DetailControlPixel weight);
+                int destinationOffset = y * nextWidth + x;
+                destinationIndex[destinationOffset] = index;
+                destinationWeight[destinationOffset] = weight;
             }
         }
 
-        return destination;
+        return new DetailMipLevel(destinationIndex, destinationWeight, nextWidth, nextHeight);
+    }
+
+    private static void PackDownsampledDetailTexel(
+        DetailMipLevel source,
+        int sourceX,
+        int sourceY,
+        out DetailControlPixel index,
+        out DetailControlPixel weight)
+    {
+        var contributions = new Dictionary<byte, int>();
+        for (int y = sourceY; y < Math.Min(sourceY + 2, source.Height); y++)
+        {
+            int row = y * source.Width;
+            for (int x = sourceX; x < Math.Min(sourceX + 2, source.Width); x++)
+            {
+                int offset = row + x;
+                AddDetailContributions(contributions, source.Index[offset], source.Weight[offset]);
+            }
+        }
+
+        if (contributions.Count == 0)
+        {
+            index = DetailControlPixel.DefaultIndex;
+            weight = DetailControlPixel.DefaultWeight;
+            return;
+        }
+
+        DetailContribution[] top = contributions
+            .Select(static pair => new DetailContribution(pair.Key, pair.Value))
+            .OrderByDescending(static contribution => contribution.Weight)
+            .ThenBy(static contribution => contribution.MaterialIndex)
+            .Take(4)
+            .ToArray();
+        int totalWeight = Math.Max(1, top.Sum(static contribution => contribution.Weight));
+
+        Span<byte> indices = stackalloc byte[4] { byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue };
+        Span<byte> weights = stackalloc byte[4];
+        for (int i = 0; i < top.Length; i++)
+        {
+            indices[i] = top[i].MaterialIndex;
+            weights[i] = EncodeDetailWeight(top[i].Weight, totalWeight);
+        }
+
+        index = new DetailControlPixel(indices[0], indices[1], indices[2], indices[3]);
+        weight = new DetailControlPixel(weights[0], weights[1], weights[2], weights[3]);
+    }
+
+    private static void AddDetailContributions(Dictionary<byte, int> contributions, DetailControlPixel index, DetailControlPixel weight)
+    {
+        AddDetailContribution(contributions, index.R, weight.R);
+        AddDetailContribution(contributions, index.G, weight.G);
+        AddDetailContribution(contributions, index.B, weight.B);
+        AddDetailContribution(contributions, index.A, weight.A);
+    }
+
+    private static void AddDetailContribution(Dictionary<byte, int> contributions, byte materialIndex, byte weight)
+    {
+        if (materialIndex == byte.MaxValue || weight == 0)
+            return;
+
+        contributions.TryGetValue(materialIndex, out int existingWeight);
+        contributions[materialIndex] = existingWeight + weight;
+    }
+
+    private static byte EncodeDetailWeight(int weight, int totalWeight)
+    {
+        return (byte)Math.Clamp((int)MathF.Round(weight / (float)totalWeight * byte.MaxValue), 0, byte.MaxValue);
     }
 
     private static void WriteStruct<T>(BinaryWriter writer, ref T value)
@@ -401,4 +569,8 @@ public class TerrainExporter : IExporter
         if (actualLength != expected)
             throw new ArgumentException($"{label} length mismatch. Expected {expected} elements for {width}x{height}, got {actualLength}.", parameterName);
     }
+
+    private readonly record struct DetailMipLevel(DetailControlPixel[] Index, DetailControlPixel[] Weight, int Width, int Height);
+
+    private readonly record struct DetailContribution(byte MaterialIndex, int Weight);
 }
