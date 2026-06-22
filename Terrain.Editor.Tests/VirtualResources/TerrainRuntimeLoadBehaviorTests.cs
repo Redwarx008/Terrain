@@ -16,6 +16,7 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Run("runtime height sampling stays inside terrain streaming", RuntimeHeightSamplingStaysInsideTerrainStreaming);
         TestHarness.Run("runtime height CPU cache follows terrain streaming residency", RuntimeHeightCpuCacheFollowsTerrainStreamingResidency);
         TestHarness.Run("runtime terrain startup does not build detail maps", RuntimeTerrainStartupDoesNotBuildDetailMaps);
+        TestHarness.Run("runtime streaming reads baked detail pages from terrain reader", RuntimeStreamingReadsBakedDetailPagesFromTerrainReader);
         TestHarness.Run("terrain component does not retain full runtime height data", TerrainComponentDoesNotRetainFullRuntimeHeightData);
     }
 
@@ -127,6 +128,29 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Assert(!streaming.Contains("RuntimeDetailMapData", StringComparison.Ordinal), "runtime streaming should not retain full generated detail data");
     }
 
+    private static void RuntimeStreamingReadsBakedDetailPagesFromTerrainReader()
+    {
+        var reader = new FakeTerrainFileReader();
+        using var heightArray = new GpuVirtualTextureArray(null!, reader.HeightmapHeader.TileSize, reader.HeightmapHeader.Padding, maxResidentChunks: 4);
+        using var detailIndexArray = new GpuVirtualTextureArray(null!, reader.DetailIndexMapHeader.TileSize, reader.DetailIndexMapHeader.Padding, maxResidentChunks: 4);
+        using var streaming = new TerrainStreamingManager(
+            reader,
+            heightArray,
+            detailIndexArray,
+            detailWeightArray: null,
+            baseChunkSize: reader.Header.LeafNodeSize);
+
+        streaming.RequestChunk(new TerrainChunkKey(lodLevel: 0, chunkX: 0, chunkY: 0));
+
+        TestHarness.Assert(
+            WaitUntil(() => reader.DetailIndexPageReadCount == 1 && reader.DetailWeightPageReadCount == 1),
+            "streaming should read one baked detail index page and one matching weight page from the terrain reader");
+        TestHarness.AssertEqual(1, reader.DetailIndexPageReadCount, "detail index page read count");
+        TestHarness.AssertEqual(1, reader.DetailWeightPageReadCount, "detail weight page read count");
+        TestHarness.AssertEqual(reader.DetailIndexPageReads[0], reader.DetailWeightPageReads[0], "detail index and weight page keys should match");
+        TestHarness.AssertEqual(new TerrainPageKey(0, 0, 0), reader.DetailIndexPageReads[0], "first requested detail page key");
+    }
+
     private static void TerrainComponentDoesNotRetainFullRuntimeHeightData()
     {
         var component = new TerrainComponent();
@@ -156,6 +180,20 @@ internal static class TerrainRuntimeLoadBehaviorTests
         }
 
         throw new DirectoryNotFoundException("Could not locate repository root from AppContext.BaseDirectory.");
+    }
+
+    private static bool WaitUntil(Func<bool> condition)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+                return true;
+
+            Thread.Sleep(10);
+        }
+
+        return condition();
     }
 
     private static TerrainRuntimeResourceBundle CreateResourceBundle()

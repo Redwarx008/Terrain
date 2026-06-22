@@ -1,9 +1,12 @@
 using Terrain;
+using System.Collections.Concurrent;
 
 namespace Terrain.Editor.Tests.VirtualResources;
 
 internal sealed class FakeTerrainFileReader : ITerrainFileReader
 {
+    private readonly ConcurrentQueue<TerrainPageKey> detailIndexPageReads = new();
+    private readonly ConcurrentQueue<TerrainPageKey> detailWeightPageReads = new();
     private readonly TerrainMinMaxErrorMap[] minMaxErrorMaps;
     private readonly ushort[] heightData;
     private readonly int width;
@@ -41,6 +44,10 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
     public bool IsDisposed { get; private set; }
     public int HeightPageReadCount { get; private set; }
     public int ReadAllHeightDataCount { get; private set; }
+    public int DetailIndexPageReadCount => detailIndexPageReads.Count;
+    public int DetailWeightPageReadCount => detailWeightPageReads.Count;
+    public TerrainPageKey[] DetailIndexPageReads => detailIndexPageReads.ToArray();
+    public TerrainPageKey[] DetailWeightPageReads => detailWeightPageReads.ToArray();
 
     public TerrainFileHeader Header { get; }
 
@@ -94,11 +101,13 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
 
     public void ReadDetailIndexPage(TerrainPageKey key, Span<byte> destination)
     {
+        detailIndexPageReads.Enqueue(key);
         destination.Clear();
     }
 
     public void ReadDetailWeightPage(TerrainPageKey key, Span<byte> destination)
     {
+        detailWeightPageReads.Enqueue(key);
         destination.Clear();
     }
 
