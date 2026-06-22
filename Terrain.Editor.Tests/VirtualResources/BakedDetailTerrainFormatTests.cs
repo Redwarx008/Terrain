@@ -9,6 +9,7 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Run("terrain format version is v8 baked detail", TerrainFormatVersionIsV8BakedDetail);
         TestHarness.Run("runtime streaming rejects pre baked detail terrain versions", RuntimeStreamingRejectsPreBakedDetailVersions);
         TestHarness.Run("terrain file reader exposes baked detail page reads", TerrainFileReaderExposesBakedDetailPageReads);
+        TestHarness.Run("editor baked detail builder emits typed RGBA index and weight maps", EditorBakedDetailBuilderEmitsTypedRgbaIndexAndWeightMaps);
         TestHarness.Run("terrain file reader rejects missing baked detail streams", TerrainFileReaderRejectsMissingBakedDetailStreams);
         TestHarness.Run("terrain file reader rejects non rgba detail header format", TerrainFileReaderRejectsNonRgbaDetailHeaderFormat);
         TestHarness.Run("terrain file reader releases file handle after constructor failure", TerrainFileReaderReleasesFileHandleAfterConstructorFailure);
@@ -43,6 +44,43 @@ internal static class BakedDetailTerrainFormatTests
         TestHarness.Assert(streaming.Contains("ReadDetailIndexPage", StringComparison.Ordinal), "reader should read detail index pages");
         TestHarness.Assert(streaming.Contains("ReadDetailWeightPage", StringComparison.Ordinal), "reader should read detail weight pages");
         TestHarness.Assert(!streaming.Contains("ReadSplatMapPage", StringComparison.Ordinal), "reader should not expose old splat/biome mask pages");
+    }
+
+    private static void EditorBakedDetailBuilderEmitsTypedRgbaIndexAndWeightMaps()
+    {
+        global::Terrain.Editor.Services.BiomeRuleService service = global::Terrain.Editor.Services.BiomeRuleService.Instance;
+        service.ClearAll();
+        service.AddBiomeFromConfig(1, "Default", new System.Numerics.Vector4(0, 1, 0, 1));
+        service.AddLayerFromConfig(1, "Base", true, 0.0f, 1000.0f, 0.0f, 90.0f, 1.0f, 7);
+
+        ushort[] heightData = new ushort[16];
+        byte[] biomeMask = [1, 1, 1, 1];
+
+        global::Terrain.Editor.Services.Export.BakedDetailMapData data =
+            global::Terrain.Editor.Services.Export.BakedDetailMapBuilder.Generate(
+                heightData,
+                4,
+                4,
+                100.0f,
+                biomeMask,
+                2,
+                2,
+                service.Layers);
+
+        TestHarness.AssertEqual(2, data.Width, "detail width");
+        TestHarness.AssertEqual(2, data.Height, "detail height");
+        TestHarness.AssertEqual(4, data.DetailIndex.Length, "detail index pixel count");
+        TestHarness.AssertEqual(4, data.DetailWeight.Length, "detail weight pixel count");
+
+        global::Terrain.Editor.Services.Export.DetailControlPixel firstIndex = data.DetailIndex[0];
+        global::Terrain.Editor.Services.Export.DetailControlPixel firstWeight = data.DetailWeight[0];
+        TestHarness.AssertEqual(7, firstIndex.R, "first material index");
+        TestHarness.AssertEqual(byte.MaxValue, firstIndex.G, "unused material index channel");
+        TestHarness.AssertEqual(byte.MaxValue, firstWeight.R, "first material weight");
+        TestHarness.AssertEqual(0, firstWeight.G, "unused material weight channel");
+
+        int weightSum = firstWeight.R + firstWeight.G + firstWeight.B + firstWeight.A;
+        TestHarness.Assert(weightSum is >= 254 and <= 255, $"encoded weights should be normalized, actual sum {weightSum}");
     }
 
     private static void TerrainFileReaderRejectsMissingBakedDetailStreams()
