@@ -17,9 +17,8 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Run("runtime apply failure is captured by runtime load gate", RuntimeApplyFailureIsCapturedByRuntimeLoadGate);
         TestHarness.Run("runtime height sampling stays inside terrain streaming", RuntimeHeightSamplingStaysInsideTerrainStreaming);
         TestHarness.Run("runtime height CPU cache follows terrain streaming residency", RuntimeHeightCpuCacheFollowsTerrainStreamingResidency);
-        TestHarness.Run("runtime detail map builds after terrain streaming is attached", RuntimeDetailMapBuildsAfterTerrainStreamingIsAttached);
+        TestHarness.Run("runtime terrain startup does not build detail maps", RuntimeTerrainStartupDoesNotBuildDetailMaps);
         TestHarness.Run("terrain component does not retain full runtime height data", TerrainComponentDoesNotRetainFullRuntimeHeightData);
-        TestHarness.Run("runtime detail map uses terrain component height interface", RuntimeDetailMapUsesTerrainComponentHeightInterface);
     }
 
     private static void RuntimeLoadGateBlocksRepeatedRetriesUntilConfigChanges()
@@ -165,18 +164,15 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Assert(!terrainStreamingSource.Contains("heightCacheGate", StringComparison.Ordinal), "CPU height cache should not block runtime generation behind a global lock");
     }
 
-    private static void RuntimeDetailMapBuildsAfterTerrainStreamingIsAttached()
+    private static void RuntimeTerrainStartupDoesNotBuildDetailMaps()
     {
-        string terrainProcessorSource = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Terrain", "Core", "TerrainProcessor.cs"));
-        int quadTreeIndex = terrainProcessorSource.IndexOf("component.QuadTree = new TerrainQuadTree", StringComparison.Ordinal);
-        int detailMapIndex = terrainProcessorSource.IndexOf("RuntimeDetailMapData generatedDetailMaps = loadedData.DetailMapBuilder", StringComparison.Ordinal);
-        int injectIndex = terrainProcessorSource.IndexOf("attachedStreamingManager.SetGeneratedDetailMaps(generatedDetailMaps)", StringComparison.Ordinal);
-        int preloadIndex = terrainProcessorSource.IndexOf("attachedStreamingManager.PreloadTopLevelChunks", StringComparison.Ordinal);
+        string repositoryRoot = FindRepositoryRoot();
+        string processor = File.ReadAllText(Path.Combine(repositoryRoot, "Terrain", "Core", "TerrainProcessor.cs"));
+        string streaming = File.ReadAllText(Path.Combine(repositoryRoot, "Terrain", "Streaming", "TerrainStreaming.cs"));
 
-        TestHarness.Assert(quadTreeIndex >= 0, "terrain quad tree should be attached before runtime detail map generation");
-        TestHarness.Assert(detailMapIndex > quadTreeIndex, "runtime detail map generation should happen after TerrainComponent.GetHeight is backed by streaming");
-        TestHarness.Assert(injectIndex > detailMapIndex, "generated runtime detail maps should be provided to the streaming upload path after generation");
-        TestHarness.Assert(preloadIndex > injectIndex, "top-level detail pages should preload only after generated detail maps are available");
+        TestHarness.Assert(!processor.Contains("RuntimeDetailMapBuilder", StringComparison.Ordinal), "runtime processor should not reference runtime detail builder");
+        TestHarness.Assert(!processor.Contains("LoadRuntimeBiomeMask", StringComparison.Ordinal), "runtime processor should not load biome masks for terrain detail");
+        TestHarness.Assert(!streaming.Contains("RuntimeDetailMapData", StringComparison.Ordinal), "runtime streaming should not retain full generated detail data");
     }
 
     private static void TerrainComponentDoesNotRetainFullRuntimeHeightData()
@@ -195,16 +191,6 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.AssertEqual(0, reader.ReadAllHeightDataCount, "runtime load should not read the full heightmap into CPU memory");
         string componentSource = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Terrain", "Core", "TerrainComponent.cs"));
         TestHarness.Assert(!componentSource.Contains("RuntimeHeightData", StringComparison.Ordinal), "TerrainComponent should not retain full runtime height data");
-    }
-
-    private static void RuntimeDetailMapUsesTerrainComponentHeightInterface()
-    {
-        string terrainProcessorSource = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Terrain", "Core", "TerrainProcessor.cs"));
-
-        TestHarness.Assert(terrainProcessorSource.Contains("RuntimeDetailMapBuilder.Generate(\r\n            component.GetHeight,", StringComparison.Ordinal)
-            || terrainProcessorSource.Contains("RuntimeDetailMapBuilder.Generate(\n            component.GetHeight,", StringComparison.Ordinal),
-            "runtime detail map generation should sample through TerrainComponent.GetHeight");
-        TestHarness.Assert(!terrainProcessorSource.Contains("ReadAllHeightData()", StringComparison.Ordinal), "runtime detail map generation should not read the full heightmap");
     }
 
     private static string FindRepositoryRoot()

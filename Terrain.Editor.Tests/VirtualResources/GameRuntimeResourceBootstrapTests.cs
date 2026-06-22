@@ -11,13 +11,11 @@ internal static class GameRuntimeResourceBootstrapTests
         TestHarness.Run("bootstrap does not require heightmap declaration", BootstrapDoesNotRequireHeightmapDeclaration);
         TestHarness.Run("bootstrap ignores invalid heightmap declaration", BootstrapIgnoresInvalidHeightmapDeclaration);
         TestHarness.Run("bootstrap requires terrain data resource", BootstrapRequiresTerrainDataResource);
-        TestHarness.Run("bootstrap requires biome mask resource", BootstrapRequiresBiomeMaskResource);
+        TestHarness.Run("bootstrap does not require biome authoring resources", BootstrapDoesNotRequireBiomeAuthoringResources);
         TestHarness.Run("bootstrap keeps rivers optional", BootstrapKeepsRiversOptional);
         TestHarness.Run("bootstrap resolves declared rivers when present", BootstrapResolvesDeclaredRiversWhenPresent);
         TestHarness.Run("bootstrap keeps declared rivers missing optional", BootstrapKeepsDeclaredRiversMissingOptional);
         TestHarness.Run("bootstrap reports provinces as declared but not implemented", BootstrapReportsProvincesAsDeclaredButNotImplemented);
-        TestHarness.Run("bootstrap validates biome material references", BootstrapValidatesBiomeMaterialReferences);
-        TestHarness.Run("bootstrap validates biome material references case sensitively", BootstrapValidatesBiomeMaterialReferencesCaseSensitively);
         TestHarness.Run("bootstrap follows resolver override order", BootstrapFollowsResolverOverrideOrder);
         TestHarness.Run("bootstrap resolves material textures through resource layers", BootstrapResolvesMaterialTexturesThroughResourceLayers);
     }
@@ -87,17 +85,16 @@ internal static class GameRuntimeResourceBootstrapTests
         TestHarness.AssertEqual("map/terrain.terrain", ex.FileName, "missing terrain data virtual path");
     }
 
-    private static void BootstrapRequiresBiomeMaskResource()
+    private static void BootstrapDoesNotRequireBiomeAuthoringResources()
     {
         string root = CreateWorkspace();
         WriteResourceBundle(root);
         File.Delete(Path.Combine(root, "map", "biome_mask.png"));
+        File.Delete(Path.Combine(root, "map", "biome_settings.toml"));
 
-        FileNotFoundException ex = TestHarness.AssertThrows<FileNotFoundException>(
-            () => new GameRuntimeResourceBootstrap(CreateResolver(root)).Load(),
-            "missing biome mask should throw FileNotFoundException");
+        TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(CreateResolver(root)).Load();
 
-        TestHarness.AssertEqual("map/biome_mask.png", ex.FileName, "missing biome mask virtual path");
+        TestHarness.AssertEqual(FullPath(root, "map", "terrain.terrain"), bundle.TerrainDataPath, "runtime should load terrain data without biome authoring resources");
     }
 
     private static void BootstrapKeepsRiversOptional()
@@ -149,26 +146,6 @@ internal static class GameRuntimeResourceBootstrapTests
                 diagnostic.Contains("provinces", StringComparison.OrdinalIgnoreCase) &&
                 diagnostic.Contains("not implemented", StringComparison.OrdinalIgnoreCase)),
             "provinces diagnostic should mention not implemented");
-    }
-
-    private static void BootstrapValidatesBiomeMaterialReferences()
-    {
-        string root = CreateWorkspace();
-        WriteResourceBundle(root, biomeMaterialId: "missing");
-
-        AssertThrowsInvalidData(
-            () => new GameRuntimeResourceBootstrap(CreateResolver(root)).Load(),
-            "unknown biome material_id should throw InvalidDataException");
-    }
-
-    private static void BootstrapValidatesBiomeMaterialReferencesCaseSensitively()
-    {
-        string root = CreateWorkspace();
-        WriteResourceBundle(root, biomeMaterialId: "Grassland");
-
-        AssertThrowsInvalidData(
-            () => new GameRuntimeResourceBootstrap(CreateResolver(root)).Load(),
-            "material_id should be case sensitive");
     }
 
     private static void BootstrapFollowsResolverOverrideOrder()

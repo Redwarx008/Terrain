@@ -58,6 +58,7 @@ RuntimeMigrationTextTests.RunAll();
 RuntimeBiomeMaskReaderTests.RunAll();
 EditorWorkflowTextTests.RunAll();
 ExportWorkflowTests.RunAll();
+BakedDetailTerrainFormatTests.RunAll();
 EditorResourceWriterTests.RunAll();
 AtomicResourceWriteTransactionTests.RunAll();
 EditorResourceSaveServiceTests.RunAll();
