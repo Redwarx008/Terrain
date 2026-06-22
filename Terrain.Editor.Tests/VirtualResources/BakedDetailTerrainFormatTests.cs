@@ -1,6 +1,3 @@
-using System.Runtime.InteropServices;
-using Terrain.Editor.Models;
-
 namespace Terrain.Editor.Tests.VirtualResources;
 
 internal static class BakedDetailTerrainFormatTests

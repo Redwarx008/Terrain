@@ -84,7 +84,7 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Assert(createLoadedDataIndex > tryLoadRuntimeDataIndex, "TryLoadRuntimeData should still create loaded runtime metadata");
 
         string tryLoadRuntimeDataBody = terrainProcessorSource[tryLoadRuntimeDataIndex..createLoadedTerrainDataMethodIndex];
-        TestHarness.Assert(!tryLoadRuntimeDataBody.Contains("MarkRuntimeLoadSuccess(component)", StringComparison.Ordinal), "TryLoadRuntimeData should not mark success before apply-time detail map generation succeeds");
+        TestHarness.Assert(!tryLoadRuntimeDataBody.Contains("MarkRuntimeLoadSuccess(component)", StringComparison.Ordinal), "TryLoadRuntimeData should not mark success before runtime apply succeeds");
 
         int handlerIndex = terrainProcessorSource.IndexOf("private static void HandleRuntimeApplyFailure", StringComparison.Ordinal);
         TestHarness.Assert(handlerIndex >= 0, "runtime apply failure cleanup should be centralized");
