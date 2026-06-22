@@ -906,6 +906,6 @@
 
   <Border
     Background="#80000000"
-    IsVisible="{Binding IsSaving}" />
+    IsVisible="{Binding !IsEditorInteractionEnabled}" />
   </Panel>
 </Window>

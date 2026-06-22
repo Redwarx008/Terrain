@@ -124,6 +124,10 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private bool _isSaving;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditorInteractionEnabled))]
+    private bool _isExporting;
+
+    [ObservableProperty]
     private int _saveProgressCurrent;
 
     [ObservableProperty]
@@ -134,6 +138,18 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _saveProgressMessage = string.Empty;
+
+    [ObservableProperty]
+    private int _exportProgressCurrent;
+
+    [ObservableProperty]
+    private int _exportProgressTotal = 1;
+
+    [ObservableProperty]
+    private double _exportProgressPercent;
+
+    [ObservableProperty]
+    private string _exportProgressMessage = string.Empty;
 
     public NativeStrideViewportViewModel Viewport { get; }
 
@@ -193,7 +209,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public bool HasTools => SelectedMode != EditorMode.Settings;
 
-    public bool IsEditorInteractionEnabled => !IsSaving;
+    public bool IsEditorInteractionEnabled => !IsSaving && !IsExporting;
 
     public bool IsBiomeVisible => IsPaintMode;
 
@@ -370,7 +386,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private bool CanRunMutatingCommand()
     {
-        return !IsSaving;
+        return !IsSaving && !IsExporting;
     }
 
     private void BeginSaveProgress()
@@ -401,6 +417,47 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void BeginExportProgress()
+    {
+        ExportProgressCurrent = 0;
+        ExportProgressTotal = 1;
+        ExportProgressPercent = 0.0;
+        ExportProgressMessage = "Preparing terrain export...";
+        IsExporting = true;
+    }
+
+    private void EndExportProgress()
+    {
+        IsExporting = false;
+    }
+
+    private void UpdateExportProgress(ExportProgress report)
+    {
+        int total = report.Total > 0 ? report.Total : ExportProgressTotal;
+        if (total <= 0)
+        {
+            total = 1;
+        }
+
+        int current = report.IsCompleted && report.ErrorMessage == null
+            ? total
+            : report.Current;
+
+        ExportProgressCurrent = Math.Clamp(current, 0, total);
+        ExportProgressTotal = total;
+        ExportProgressPercent = Math.Clamp((double)ExportProgressCurrent / ExportProgressTotal * 100.0, 0.0, 100.0);
+
+        if (!string.IsNullOrWhiteSpace(report.Message))
+        {
+            ExportProgressMessage = report.Message;
+        }
+
+        if (!string.IsNullOrWhiteSpace(report.ErrorMessage))
+        {
+            ExportProgressMessage = report.ErrorMessage;
+        }
+    }
+
     private void NotifyMutatingCommandsCanExecuteChanged()
     {
         SaveCommand.NotifyCanExecuteChanged();
@@ -414,7 +471,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     partial void OnIsSavingChanged(bool value)
     {
-        _viewportHost.SetInputBlocked(value);
+        _viewportHost.SetInputBlocked(IsSaving || IsExporting);
+        OnPropertyChanged(nameof(IsEditorInteractionEnabled));
+        RefreshHistoryState();
+        NotifyMutatingCommandsCanExecuteChanged();
+    }
+
+    partial void OnIsExportingChanged(bool value)
+    {
+        _viewportHost.SetInputBlocked(IsSaving || IsExporting);
+        OnPropertyChanged(nameof(IsEditorInteractionEnabled));
         RefreshHistoryState();
         NotifyMutatingCommandsCanExecuteChanged();
     }
@@ -506,11 +572,13 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
         string path = _resourceSession.TerrainData.ResolvedPath;
         _terrainExporter.TerrainManager = terrainManager;
+        BeginExportProgress();
 
         try
         {
             var progress = new Progress<ExportProgress>(report =>
             {
+                UpdateExportProgress(report);
                 if (report.IsCompleted)
                 {
                     AddConsole(report.ErrorMessage == null ? "Info" : "Error",
@@ -524,12 +592,19 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 }
             });
 
+            await Task.Yield();
             await ExportManager.Instance.ExecuteAsync("Terrain", path, progress, CancellationToken.None);
+            UpdateExportProgress(ExportProgress.Completed());
             AddConsole("Info", $"Terrain exported to {path}.");
         }
         catch (Exception exception)
         {
+            UpdateExportProgress(ExportProgress.Failed(exception.Message));
             AddConsole("Error", $"Terrain export failed: {exception.Message}");
+        }
+        finally
+        {
+            EndExportProgress();
         }
     }
 
@@ -671,7 +746,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private bool CanDeleteAssetItem(AssetBrowserItemViewModel item)
     {
-        return !IsSaving && item is not null && item.MaterialSlotIndex >= 0 && !item.IsCreateItem;
+        return CanRunMutatingCommand() && item is not null && item.MaterialSlotIndex >= 0 && !item.IsCreateItem;
     }
 
     [RelayCommand(CanExecute = nameof(CanDeleteAssetItem))]
@@ -1045,8 +1120,8 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private void RefreshHistoryState()
     {
-        CanUndo = !IsSaving && _historyManager.CanUndo;
-        CanRedo = !IsSaving && _historyManager.CanRedo;
+        CanUndo = !IsSaving && !IsExporting && _historyManager.CanUndo;
+        CanRedo = !IsSaving && !IsExporting && _historyManager.CanRedo;
         UndoLabel = _historyManager.UndoDescription is { Length: > 0 } undo ? $"Undo {undo}" : "Undo";
         RedoLabel = _historyManager.RedoDescription is { Length: > 0 } redo ? $"Redo {redo}" : "Redo";
         UndoCommand.NotifyCanExecuteChanged();

@@ -17,6 +17,7 @@ public sealed partial class MainWindow : Window
     private ListBox? _assetListBox;
     private EditorShellViewModel? _observedViewModel;
     private SaveProgressWindow? _saveProgressWindow;
+    private ExportProgressWindow? _exportProgressWindow;
 
     public MainWindow()
     {
@@ -63,10 +64,12 @@ public sealed partial class MainWindow : Window
         {
             _observedViewModel.PropertyChanged += OnViewModelPropertyChanged;
             SyncSaveProgressWindow(_observedViewModel.IsSaving);
+            SyncExportProgressWindow(_observedViewModel.IsExporting);
             return;
         }
 
         CloseSaveProgressWindow();
+        CloseExportProgressWindow();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -74,6 +77,10 @@ public sealed partial class MainWindow : Window
         if (e.PropertyName == nameof(EditorShellViewModel.IsSaving))
         {
             SyncSaveProgressWindow(_observedViewModel?.IsSaving == true);
+        }
+        else if (e.PropertyName == nameof(EditorShellViewModel.IsExporting))
+        {
+            SyncExportProgressWindow(_observedViewModel?.IsExporting == true);
         }
     }
 
@@ -91,7 +98,10 @@ public sealed partial class MainWindow : Window
     private void ShowSaveProgressWindow()
     {
         if (_saveProgressWindow != null)
+        {
+            _saveProgressWindow.DataContext = _observedViewModel;
             return;
+        }
 
         _saveProgressWindow = new SaveProgressWindow
         {
@@ -118,6 +128,53 @@ public sealed partial class MainWindow : Window
         if (ReferenceEquals(sender, _saveProgressWindow))
         {
             _saveProgressWindow = null;
+        }
+    }
+
+    private void SyncExportProgressWindow(bool isExporting)
+    {
+        if (isExporting)
+        {
+            ShowExportProgressWindow();
+            return;
+        }
+
+        CloseExportProgressWindow();
+    }
+
+    private void ShowExportProgressWindow()
+    {
+        if (_exportProgressWindow != null)
+        {
+            _exportProgressWindow.DataContext = _observedViewModel;
+            return;
+        }
+
+        _exportProgressWindow = new ExportProgressWindow
+        {
+            DataContext = _observedViewModel,
+        };
+        _exportProgressWindow.Closed += OnExportProgressWindowClosed;
+        _exportProgressWindow.Show(this);
+        _exportProgressWindow.Activate();
+    }
+
+    private void CloseExportProgressWindow()
+    {
+        if (_exportProgressWindow == null)
+            return;
+
+        ExportProgressWindow window = _exportProgressWindow;
+        _exportProgressWindow = null;
+        window.Closed -= OnExportProgressWindowClosed;
+        window.Close();
+    }
+
+    private void OnExportProgressWindowClosed(object? sender, EventArgs e)
+    {
+        if (ReferenceEquals(sender, _exportProgressWindow))
+        {
+            _exportProgressWindow = null;
         }
     }
 
@@ -212,6 +269,7 @@ public sealed partial class MainWindow : Window
     protected override void OnClosed(System.EventArgs e)
     {
         CloseSaveProgressWindow();
+        CloseExportProgressWindow();
 
         if (DataContext is EditorShellViewModel viewModel)
         {

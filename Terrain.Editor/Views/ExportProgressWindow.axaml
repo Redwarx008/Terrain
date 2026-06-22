@@ -1,0 +1,41 @@
+<Window
+  x:Class="Terrain.Editor.Views.ExportProgressWindow"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  Width="390"
+  SizeToContent="Height"
+  CanResize="False"
+  ShowInTaskbar="False"
+  SystemDecorations="None"
+  WindowStartupLocation="CenterOwner"
+  Topmost="True"
+  Background="{DynamicResource EditorSurfaceBrush}">
+  <Border
+    Background="{DynamicResource EditorSurfaceBrush}"
+    BorderBrush="{DynamicResource EditorPanelBorderBrush}"
+    BorderThickness="1"
+    Padding="22">
+    <StackPanel Spacing="12">
+      <TextBlock
+        Text="Exporting terrain"
+        FontSize="18"
+        FontWeight="SemiBold"
+        Foreground="{DynamicResource EditorTextPrimaryBrush}" />
+      <TextBlock
+        Text="{Binding ExportProgressMessage}"
+        FontSize="12"
+        TextWrapping="Wrap"
+        Foreground="{DynamicResource EditorTextSecondaryBrush}" />
+      <ProgressBar
+        Minimum="0"
+        Maximum="100"
+        Height="8"
+        Value="{Binding ExportProgressPercent}" />
+      <TextBlock
+        Text="{Binding ExportProgressPercent, StringFormat='{}{0:F0}%'}"
+        HorizontalAlignment="Right"
+        FontSize="12"
+        Foreground="{DynamicResource EditorTextSecondaryBrush}" />
+    </StackPanel>
+  </Border>
+</Window>

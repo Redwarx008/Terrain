@@ -2,7 +2,8 @@
 
 **Topic**: Avalonia 覆盖层与 NativeControlHost/SDL child HWND 的 airspace 限制
 **Date**: 2026-06-15
-**Related Sessions**: [2026-06-15-editor-save-progress-native-airspace-fix](../2026/06/15/2026-06-15-editor-save-progress-native-airspace-fix.md)
+**Updated**: 2026-06-22
+**Related Sessions**: [2026-06-15-editor-save-progress-native-airspace-fix](../2026/06/15/2026-06-15-editor-save-progress-native-airspace-fix.md), [2026-06-22-export-terrain-progress-window](../2026/06/22/2026-06-22-export-terrain-progress-window.md)
 
 ---
 
@@ -11,6 +12,7 @@
 - Terrain Editor 的 Stride viewport 通过 Avalonia `NativeControlHost` 嵌入 Win32/SDL child HWND。
 - Save 时 Avalonia inline overlay 的半透明背景能让 viewport 外区域变暗，但居中的 progress card 被 native child HWND 覆盖。
 - 初次尝试隐藏部分 native HWND 后，用户截图仍显示白色 `Terrain Editor Viewport` native host 区域压在 overlay 上。
+- 2026-06-22 Export Terrain 迁移到 baked detail 导出后，入口只把 `ExportProgress` 写入 Console，不再打开可见模态进度窗口；用户看到的是点击后进度条消失。
 
 ---
 
@@ -29,7 +31,7 @@ _saveProgressWindow.Show(this);
 await Task.Yield();
 ```
 
-Avalonia inline overlay 可继续用于禁用交互和让非 native 区域变暗，但不要把它作为 native viewport 上方关键 UI 的唯一承载层。
+Avalonia inline overlay 可继续用于禁用交互和让非 native 区域变暗，但不要把它作为 native viewport 上方关键 UI 的唯一承载层。Save 与 Export 这类长操作都应暴露显式 busy state（例如 `IsSaving` / `IsExporting`），由 `MainWindow` 监听并打开对应 owned top-level progress window。
 
 ---
 
@@ -47,6 +49,10 @@ Avalonia inline overlay 可继续用于禁用交互和让非 native 区域变暗
 ### 4. 打开窗口后要给 UI loop 一次绘制机会
 - 如果 `IsSaving=true` 后立刻执行同步 snapshot 捕获，owned window 可能已经创建但还没绘制首帧。
 - 在同步重工作前 `await Task.Yield()`，让 UI 调度先处理窗口显示。
+
+### 5. 进度报告不能只写 Console
+- Console 适合保留操作日志，但不是 modal progress 的可见承载层。
+- 对 Export 这类用户主动触发的长操作，`IProgress<T>` 应同时更新 ViewModel 的进度文本/百分比，让 owned window 有稳定绑定源。
 
 ---
 

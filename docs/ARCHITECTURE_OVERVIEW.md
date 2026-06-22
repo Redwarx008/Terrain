@@ -93,7 +93,7 @@
 | **Editor 作者态启动** | ✅ 已实现 | 自动补齐 `default.toml` / `descriptor.toml` / `biome_settings.toml`，并在这些 TOML 顶部保留固定注释模板；缺失 `heightmap.png` 时以待补资源模式进入；缺失 `material_id` 时为每个缺失项创建运行时默认槽位并禁止 `Save` / `Export`；缺失贴图文件时仅该槽位逐通道降级：`albedo` 回退洋红缺失材质纹理、`normal` 回退 flat normal、`properties` 仅记录诊断 |
 | **旧项目持久化（TOML）** | ❌ 已移除 | Editor 固定 Terrain 工作区；旧 ProjectManager/TomlProjectConfig 已删除 |
 | **植被编辑** | 🚧 进行中 | [terrain-editor-design-phase-3](design/terrain-editor-design-phase-3.md) |
-| **导出系统（IExporter）** | ✅ 已实现 | 当前保留 Terrain `.terrain` 导出；旧 Biome Config 导出已移除 |
+| **导出系统（IExporter）** | ✅ 已实现 | 当前保留 Terrain `.terrain` 导出；旧 Biome Config 导出已移除；Export 进度使用 owned top-level window，避免嵌入式 Stride viewport child HWND 遮挡 |
 
 ### 未来系统
 
@@ -166,7 +166,7 @@
 **问题：** 编辑器中的修改无法直接导出为运行时 .terrain 文件，需依赖独立的 TerrainPreProcessor
 **方案：** IExporter 接口 + ExportManager 单例，每种导出类型实现接口并注册；TerrainExporter 从内存状态直接导出
 **权衡：** 在 Editor 内重写导出逻辑 vs 引用 TerrainPreProcessor 库；选择重写以避免跨项目依赖
-**关键：** `.terrain` v8 写入 `HeightMap VT + DetailIndex VT + DetailWeight VT`。HeightMap 使用 padding=2；两个 detail stream 使用 padding=1、RGBA8 packed `DetailControlPixel`，由 Editor Export 读取作者态 `biome_mask.png` / `biome_settings.toml` 后 bake。Exporter 先写同目录临时文件，完整成功后 replace/move 到目标，失败或取消时删除临时文件并保留旧目标。
+**关键：** `.terrain` v8 写入 `HeightMap VT + DetailIndex VT + DetailWeight VT`。HeightMap 使用 padding=2；两个 detail stream 使用 padding=1、RGBA8 packed `DetailControlPixel`，由 Editor Export 读取作者态 `biome_mask.png` / `biome_settings.toml` 后 bake。Exporter 先写同目录临时文件，完整成功后 replace/move 到目标，失败或取消时删除临时文件并保留旧目标。Export 期间 `EditorShellViewModel.IsExporting` 驱动模态进度 owned top-level window，并与 Save 共用可变更命令/视口输入阻断。
 
 ### 8. 虚拟资源系统驱动 Runtime 地形加载
 **问题：** Runtime 依赖组件上的显式文件路径和旧 BiomeConfig TOML，无法表达 base + mod 覆盖顺序
@@ -204,8 +204,9 @@
 ### 编辑器
 | 文件 | 职责 |
 |------|------|
-| `Terrain.Editor/ViewModels/EditorShellViewModel.cs` | 主窗口状态与命令；`Save` 使用 `AuthoringSaveProgress` 驱动模态进度，打开进度窗口后先让 UI 调度一次，再由 UI 线程捕获保存快照并在后台执行作者态资源写回；保存期间禁用可变更命令 |
+| `Terrain.Editor/ViewModels/EditorShellViewModel.cs` | 主窗口状态与命令；`Save` 使用 `AuthoringSaveProgress` 驱动模态进度，打开进度窗口后先让 UI 调度一次，再由 UI 线程捕获保存快照并在后台执行作者态资源写回；`Export Terrain` 使用 `ExportProgress` 驱动独立导出进度窗口；Save/Export 期间禁用可变更命令 |
 | `Terrain.Editor/Views/SaveProgressWindow.axaml` | Save 进度 owned top-level window；避免 Avalonia inline overlay 被嵌入式 Stride native child HWND 遮盖 |
+| `Terrain.Editor/Views/ExportProgressWindow.axaml` | Export Terrain 进度 owned top-level window；避免 Avalonia inline overlay 被嵌入式 Stride native child HWND 遮盖 |
 | `Terrain.Editor/Services/TerrainManager.cs` | 地形管理服务 |
 | `Terrain.Editor/Services/HeightEditor.cs` | 高度编辑服务 |
 | `Terrain.Editor/Services/PaintEditor.cs` | 材质绘制服务 |
@@ -230,14 +231,13 @@
 | `Terrain/Rendering/River/RiverRenderObject.cs` | 河流 GPU 顶点/索引缓冲与 bounds |
 | `Terrain/Rendering/River/RiverRenderFeature.cs` | 河流河底/水面双 pass 渲染特性 |
 | `Terrain/Streaming/TerrainStreaming.cs` | Runtime height/detail VT streaming；height、DetailIndex、DetailWeight 均来自 `.terrain` v8 reader；CPU height page cache 随 GPU resident page 生命周期释放 |
-| `Terrain.Editor/Rendering/NativeViewport/NativeStrideViewportHost.cs` | 原生 Stride 视口宿主；`SetInputBlocked` 在 Save 模态期间阻断视口输入并要求 Stride game flush 当前输入状态 |
-| `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem；Save 模态期间响应输入阻断，释放相机/笔刷状态并 flush 鼠标锁定与笔触输入 |
+| `Terrain.Editor/Rendering/NativeViewport/NativeStrideViewportHost.cs` | 原生 Stride 视口宿主；`SetInputBlocked` 在 Save/Export 模态期间阻断视口输入并要求 Stride game flush 当前输入状态 |
+| `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem；Save/Export 模态期间响应输入阻断，释放相机/笔刷状态并 flush 鼠标锁定与笔触输入 |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
 | `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
 | `Terrain.Editor/Services/Export/ExportManager.cs` | 导出管理器（注册、执行、错误回滚） |
 | `Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs` | `.terrain` v8 文件导出实现，写 HeightMap + baked DetailIndex/DetailWeight VT |
 | `Terrain.Editor/Services/Export/BakedDetailMapBuilder.cs` | Editor authoring biome 规则到 baked DetailIndex/DetailWeight RGBA8 control buffers 的转换 |
-| `Terrain.Editor/UI/Dialogs/ExportProgressDialog.cs` | 导出进度模态弹窗 |
 
 ### 着色器
 | 文件 | 职责 |

@@ -20,6 +20,7 @@ internal static class EditorWorkflowTextTests
         TestHarness.Run("main window dims and disables during save", MainWindowDimsAndDisablesDuringSave);
         TestHarness.Run("viewport input can be blocked during modal save", ViewportInputCanBeBlockedDuringModalSave);
         TestHarness.Run("save progress uses owned top-level window", SaveProgressUsesOwnedTopLevelWindow);
+        TestHarness.Run("export progress uses owned top-level window", ExportProgressUsesOwnedTopLevelWindow);
     }
 
     private static void HasAutomaticVirtualResourceBootstrap()
@@ -132,7 +133,7 @@ internal static class EditorWorkflowTextTests
             "Save should leave saving state after authoring writes");
 
         string savingChangedBody = ExtractMethodBody(viewModel, "partial void OnIsSavingChanged(bool value)");
-        TestHarness.Assert(savingChangedBody.Contains("_viewportHost.SetInputBlocked(value)", StringComparison.Ordinal), "Save state changes should block viewport input");
+        TestHarness.Assert(savingChangedBody.Contains("_viewportHost.SetInputBlocked(IsSaving || IsExporting)", StringComparison.Ordinal), "Save state changes should block viewport input while any modal operation is active");
     }
 
     private static void SaveSnapshotsAuthoringStateBeforeBackgroundWrite()
@@ -182,7 +183,7 @@ internal static class EditorWorkflowTextTests
         string window = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml"));
         TestHarness.Assert(window.Contains("IsEditorInteractionEnabled", StringComparison.Ordinal), "MainWindow should disable editor interaction while saving");
         TestHarness.Assert(window.Contains("Background=\"#80000000\"", StringComparison.Ordinal), "MainWindow should keep a dimmer while saving");
-        TestHarness.Assert(window.Contains("IsVisible=\"{Binding IsSaving}\"", StringComparison.Ordinal), "MainWindow dimmer should track save state");
+        TestHarness.Assert(window.Contains("IsVisible=\"{Binding !IsEditorInteractionEnabled}\"", StringComparison.Ordinal), "MainWindow dimmer should track modal interaction state");
         TestHarness.Assert(!window.Contains("Saving authoring resources", StringComparison.Ordinal), "MainWindow should not host the progress card inline where native child HWNDs can cover it");
         TestHarness.Assert(!window.Contains("SaveProgressMessage", StringComparison.Ordinal), "Save progress text should live in the owned top-level window");
         TestHarness.Assert(!window.Contains("SaveProgressPercent", StringComparison.Ordinal), "Save progress percent should live in the owned top-level window");
@@ -230,6 +231,39 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(progressWindow.Contains("Saving authoring resources", StringComparison.Ordinal), "Save progress window should show a title");
         TestHarness.Assert(progressWindow.Contains("SaveProgressMessage", StringComparison.Ordinal), "Save progress window should bind progress text");
         TestHarness.Assert(progressWindow.Contains("SaveProgressPercent", StringComparison.Ordinal), "Save progress window should bind progress percent");
+    }
+
+    private static void ExportProgressUsesOwnedTopLevelWindow()
+    {
+        string progressWindowPath = Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "ExportProgressWindow.axaml");
+        string mainWindowCodeBehind = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml.cs"));
+        string viewModel = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs"));
+        TestHarness.Assert(File.Exists(progressWindowPath), "Export progress should use an owned top-level window so native viewport HWND airspace cannot cover it");
+        TestHarness.Assert(mainWindowCodeBehind.Contains("ExportProgressWindow", StringComparison.Ordinal), "MainWindow should own the export progress window lifecycle");
+        TestHarness.Assert(mainWindowCodeBehind.Contains("nameof(EditorShellViewModel.IsExporting)", StringComparison.Ordinal), "MainWindow should open and close the progress window when IsExporting changes");
+        TestHarness.Assert(viewModel.Contains("IsExporting", StringComparison.Ordinal), "EditorShellViewModel should expose IsExporting");
+        TestHarness.Assert(viewModel.Contains("ExportProgressMessage", StringComparison.Ordinal), "EditorShellViewModel should expose export progress text");
+        TestHarness.Assert(viewModel.Contains("ExportProgressPercent", StringComparison.Ordinal), "EditorShellViewModel should expose export progress percent");
+        string deleteGateBody = ExtractMethodBody(viewModel, "private bool CanDeleteAssetItem");
+        TestHarness.Assert(deleteGateBody.Contains("CanRunMutatingCommand()", StringComparison.Ordinal), "Delete asset command should share the Save/Export mutating command gate");
+
+        string exportBody = ExtractMethodBody(viewModel, "private async Task ExportTerrain");
+        TestHarness.Assert(exportBody.Contains("BeginExportProgress();", StringComparison.Ordinal), "Export Terrain should enter modal progress before running the exporter");
+        TestHarness.Assert(exportBody.Contains("await Task.Yield()", StringComparison.Ordinal), "Export Terrain should yield to the UI loop after opening progress");
+        TestHarness.Assert(exportBody.Contains("EndExportProgress();", StringComparison.Ordinal), "Export Terrain should leave modal progress after export completes or fails");
+        TestHarness.Assert(exportBody.Contains("UpdateExportProgress", StringComparison.Ordinal), "Export Terrain should update visible progress from ExportProgress reports");
+        string showExportBody = ExtractMethodBody(mainWindowCodeBehind, "private void ShowExportProgressWindow");
+        TestHarness.Assert(showExportBody.Contains("_exportProgressWindow.Show(this)", StringComparison.Ordinal), "Export progress window should be shown as an owned window above native child HWNDs");
+        TestHarness.Assert(showExportBody.Contains("_exportProgressWindow.DataContext = _observedViewModel", StringComparison.Ordinal), "Export progress window should refresh DataContext if the observed ViewModel changes");
+
+        string progressWindow = File.ReadAllText(progressWindowPath);
+        TestHarness.Assert(!progressWindow.Contains("TransparencyLevelHint", StringComparison.Ordinal), "Export progress window should avoid top-level transparency because unsupported alpha can render black corners");
+        TestHarness.Assert(!progressWindow.Contains("CornerRadius", StringComparison.Ordinal), "Export progress window should not put a rounded card inside a rectangular top-level window");
+        TestHarness.Assert(!progressWindow.Contains("BoxShadow", StringComparison.Ordinal), "Export progress window should not draw clipped shadow into top-level window corners");
+        TestHarness.Assert(progressWindow.Contains("Background=\"{DynamicResource EditorSurfaceBrush}\"", StringComparison.Ordinal), "Export progress window should use an opaque surface background");
+        TestHarness.Assert(progressWindow.Contains("Exporting terrain", StringComparison.Ordinal), "Export progress window should show a title");
+        TestHarness.Assert(progressWindow.Contains("ExportProgressMessage", StringComparison.Ordinal), "Export progress window should bind progress text");
+        TestHarness.Assert(progressWindow.Contains("ExportProgressPercent", StringComparison.Ordinal), "Export progress window should bind progress percent");
     }
 
     private static string ExtractMethodBody(string source, string marker)
