@@ -65,7 +65,7 @@
 | Save 作者态资源 | ✅ | `Terrain.Editor/ViewModels/EditorShellViewModel.cs`, `Terrain.Editor/Views/SaveProgressWindow.axaml`, `Terrain.Editor/Services/TerrainManager.cs`, `Terrain.Editor/Services/Resources/EditorResourceSaveService.cs` | `Save` 通过异步模态进度写回 `default.toml` / heightmap / biome mask / biome settings / materials descriptor；打开进度窗口后先让 UI 调度一次，再由 UI 线程捕获不可变 save snapshot，后台只做文件写入；保存期间禁用 Save/Export/Import/Undo/Redo 等可变更命令，并阻止 Stride 视口输入；由于 Stride viewport 是 native child HWND，进度条使用 owned top-level window 显示，避免 Avalonia inline overlay 被子窗口遮盖；缺失 `biome_mask.png` 时首次保存再生成；作者态保存使用事务化写回，后续 writer 失败时会回滚前面已 staged 的资源；当前不写回 `rivers.png` 与材质贴图文件；若存在缺失 `material_id` 的运行时临时槽位则禁止保存 |
 | TOML 项目持久化 | ❌ 已移除 | 旧 `ProjectManager.cs` / `TomlProjectConfig.cs` 已删除 | Editor 固定 Terrain 工作区 |
 | 导出系统 (IExporter) | ✅ | `Terrain.Editor/Services/Export/` | - |
-| Biome 配置导出 | ❌ 已移除 | 旧 `BiomeConfigExporter.cs` 已删除 | Runtime 改用 `map/biome_settings.toml` |
+| Biome 配置导出 | ❌ 已移除 | 旧 `BiomeConfigExporter.cs` 已删除 | `map/biome_settings.toml` 保留为 Editor authoring/export 输入；Runtime 不直接消费 |
 | 设置模式 (HeightScale) | ✅ | `SettingsViewModel.cs`, `game/map/default.toml`, `game/map_data/default.toml` | 默认作者态/运行时 map descriptor 保持 `height_scale=200`，用于支持本项目更高的地形起伏；2026-06-21 对照 CK3 `ck3 river2.rdc` terrain cbuffer 确认 CK3 `HeightScale=50`、`OriginalHeightmapToWorldSpace≈0.5`、`MapSize=9216x4608`。河流 refraction 不再要求降低全局高度尺度；当前由 generated river mesh `Bounds.Maximum.Y` 生成 `ceil(maxY + 1)`，shader 端继续 `max(_, 50)`，让 CK3 `MaxHeight=50` camera clamp 在低地保留目标行为，并在实际高河面超过 terrain `HeightScale` 时继续保持有效距离精度。 |
 | 资产浏览器 | ✅ | `AssetBrowserItemViewModel.cs` | - |
 | 原生 SDL 视口 | ✅ | `NativeStrideViewportHost.cs` | - |
@@ -75,15 +75,16 @@
 
 | 功能 | 状态 | 关键文件 | 设计文档 |
 |------|------|----------|----------|
-| 地形加载 | ✅ | `Terrain/Core/TerrainProcessor.cs`, `Terrain/Resources/GameRuntimeResourceBootstrap.cs` | Runtime 从 `TerrainWorkspaceRoot` 元数据优先定位工作区 `game/` 根并读取 `.terrain`，不使用 Stride Game Studio 宿主进程的 `AppContext.BaseDirectory`，也不依赖 GameStudio 按字节加载项目程序集后不可靠的 `Assembly.Location`；忽略 `default.toml` 中的 `heightmap` 声明；缺失 `.terrain` 或 `biome_mask.png` 时记错误日志并保持未初始化；同配置失败后不逐帧重试 |
-| 双 VT 流式加载 | ✅ | `Terrain/Streaming/TerrainStreaming.cs` | [streaming](log/2026/04/10/2026-04-10-1-runtime-indexmap-streaming.md) |
+| 地形加载 | ✅ | `Terrain/Core/TerrainProcessor.cs`, `Terrain/Resources/GameRuntimeResourceBootstrap.cs` | Runtime 从 `TerrainWorkspaceRoot` 元数据优先定位工作区 `game/` 根并读取 `.terrain`，不使用 Stride Game Studio 宿主进程的 `AppContext.BaseDirectory`，也不依赖 GameStudio 按字节加载项目程序集后不可靠的 `Assembly.Location`；忽略 `default.toml` 中的 `heightmap` 声明；Runtime 只要求 `.terrain` 和 material descriptor，`biome_mask.png` / `biome_settings.toml` 只作为 Editor Export authoring 输入；同配置失败后不逐帧重试 |
+| Height/Detail VT 流式加载 | ✅ | `Terrain/Streaming/TerrainStreaming.cs` | Runtime 从 `.terrain` v8 流式读取 HeightMap、DetailIndex、DetailWeight pages |
 | IndexMap 材质混合 | ✅ | `Terrain/Effects/Material/MaterialTerrainDiffuse.sdsl` | [streaming](log/2026/04/10/2026-04-10-1-runtime-indexmap-streaming.md) |
 | RuntimeMaterialManager | ✅ | `Terrain/Materials/RuntimeMaterialManager.cs` | descriptor 驱动 |
 | 虚拟资源 Bootstrap | ✅ | `Terrain/Resources/` | `TerrainWorkspaceRoot` 元数据优先、`Terrain` 程序集目录回退的 `gameRoot` 扫描或 direct-hit 合法 `game/` 根 + 有效 app 目录旁 `LaunchSetting.json` + `GameResourceResolverBootstrap` + resolver/bootstrap；显式 `CreateForAppDirectory(appRoot)` 仅用于测试和工具入口 |
 | Editor 作者态写回器 | ✅ | `Terrain.Editor/Services/Resources/*Writer.cs` | 写回当前命中的 `default.toml` / heightmap / biome_mask / biome_settings / materials descriptor；rivers 当前仅可选读取，不写回 |
-| Runtime DetailMap 构建 | ✅ | `Terrain/Materials/RuntimeDetailMapBuilder.cs`, `Terrain/Core/TerrainProcessor.cs` | 在 `ApplyLoadedTerrainData` 创建 streaming/quad tree 后生成；高度通过 `TerrainComponent.GetHeight(int,int)` 从 `.terrain` 按需读取 height page，不读取或常驻完整 `ushort[]` heightmap。生成后的完整 `RuntimeDetailMapData` 继续作为现有 detail VT page 上传源交给 `TerrainStreamingManager` |
+| Baked DetailMap 导出 | ✅ | `Terrain.Editor/Services/Export/BakedDetailMapBuilder.cs`, `Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs` | Editor Export 从作者态 biome mask/settings 生成 `DetailIndex` / `DetailWeight` 两个 RGBA8 VT payload，并写入 `.terrain` v8；不写 BiomeMask VT；TextureMask modifier 暂未支持，会在导出时显式失败 |
+| Runtime baked detail streaming | ✅ | `Terrain/Streaming/TerrainStreaming.cs`, `Terrain/Core/TerrainProcessor.cs` | Runtime 不再构建 DetailTexture；`.terrain` reader 直接提供 `ReadDetailIndexPage` / `ReadDetailWeightPage`，streaming manager 上传到两个 detail texture arrays；旧 runtime generation / biome mask reader API 已删除 |
 | Runtime 河流渲染 | ✅ | `Terrain/Rendering/River/`, `Terrain/Rivers/`, `Terrain/Assets/MainScene.sdscene`, `Terrain/Assets/GraphicsCompositor.sdgfxcomp` | Runtime scene asset 持有 `RiverSystem` / `RiverComponent`，GraphicsCompositor asset 持有 `RiverRenderFeature`；`RiverProcessor` 在地形初始化后加载可选 `rivers.png`，按 `river_min_width` / `river_max_width` 生成 mesh。`TerrainComponent` 只暴露离散 `GetHeight(int,int)`，缺 tile 时经 `TerrainStreamingManager` 按需读取 `.terrain` height page；CPU height page 上传 GPU 后保留，直到对应 GPU resident page 因 `MaxResidentChunks` 淘汰时释放。River 自己对离散 sample 做双线性插值，不让 Runtime 常驻完整 heightmap。缺少 `rivers.png` 时只禁用河流，不阻断地形加载。 |
-| 半分辨率 SplatMap | ✅ | Editor + Runtime 均支持 | - |
+| 半分辨率 DetailIndex/DetailWeight VT | ✅ | Editor Export + Runtime streaming | `.terrain` v8 runtime detail control contract |
 
 ## 规划中 (Planned)
 
@@ -104,9 +105,10 @@
 | 决策 | 日期 | 备注 |
 |------|------|------|
 | Biome 规则层体系 | 2026-05 | [ADR-012](log/decisions/adr-012-biome-rule-layer-system.md) |
+| Baked Detail Texture Export | 2026-06 | [ADR-016](log/decisions/adr-016-baked-detail-texture-export.md) |
 | 路径特征系统 (Road/River) | 2026-05~06 | [ADR-013](log/decisions/adr-013-vic3-path-rendering.md), [ADR-014](log/decisions/adr-014-river-rendering-architecture.md) |
 | Avalonia UI 迁移 | 2026-04 | [ADR-011](log/decisions/adr-011-avalonia-sdl-viewport-hosting.md) |
-| 半分辨率 SplatMap/BiomeMask | 2026-05 | 待创建 ADR |
+| 半分辨率 SplatMap/BiomeMask | 2026-05 | 已被 ADR-016 的 baked DetailIndex/DetailWeight runtime contract 取代 |
 
 > **注意**：2026-04-15 之前的旧 ADR 已删除（基于过时日志）。下次会话应基于当前代码状态重新创建 ADR。
 

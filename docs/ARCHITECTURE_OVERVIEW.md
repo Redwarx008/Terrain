@@ -160,19 +160,19 @@
 ### 6. Editor/Runtime 共用本地 LaunchSetting 与 SVN Game 入口
 **问题：** `game/` 将由 SVN 管理，`LaunchSetting.json` 不应继续作为 `game/` 根目录判定条件，也不应再由 Git 跟踪。
 **方案：** 生产路径优先使用编译进 `Terrain.dll` 的 `TerrainWorkspaceRoot` 元数据向上扫描工作区同级 `game/`，避免 Stride Game Studio 宿主进程的 `AppContext.BaseDirectory` 或按字节加载项目程序集后不可靠的 `Assembly.Location` 指向引擎源码输出目录时找不到项目资源；元数据不可用时才回退到 `Terrain` 程序集所在目录。如果起点本身已经位于目录名为 `game` 且包含 `map/` 的合法根，也会直接接受该根。`LaunchSetting.json` 固定放在生产入口解析出的有效 app 目录旁，缺失时自动生成默认文件。Editor 与 Runtime 都先通过共享的 `GameResourceResolverBootstrap` 构建 `base(gameRoot) + enabled absolute-path mods`，再进入各自 bootstrap。
-**关键：** `mods[*].Root` 保持绝对路径语义；Editor 仍允许缺失 `.terrain` / `biome_mask.png`，Runtime 仍严格要求它们。`CreateForAppDirectory(appRoot)` 保留给测试和显式工具入口，生产代码使用 `CreateForTerrainAssemblyDirectory()` / `FindFromTerrainAssembly()`，其中 `FindFromTerrainAssembly()` 优先消费 `TerrainWorkspaceRoot` 元数据。
+**关键：** `mods[*].Root` 保持绝对路径语义；Editor 仍允许缺失 `.terrain` 并把 `biome_mask.png` / `biome_settings.toml` 作为作者态 Export 输入；Runtime 只严格要求 `.terrain`、`default.toml` 与 runtime material descriptor，不再要求 biome authoring 资源。`CreateForAppDirectory(appRoot)` 保留给测试和显式工具入口，生产代码使用 `CreateForTerrainAssemblyDirectory()` / `FindFromTerrainAssembly()`，其中 `FindFromTerrainAssembly()` 优先消费 `TerrainWorkspaceRoot` 元数据。
 
 ### 7. 导出系统（IExporter 模式）
 **问题：** 编辑器中的修改无法直接导出为运行时 .terrain 文件，需依赖独立的 TerrainPreProcessor
 **方案：** IExporter 接口 + ExportManager 单例，每种导出类型实现接口并注册；TerrainExporter 从内存状态直接导出
 **权衡：** 在 Editor 内重写导出逻辑 vs 引用 TerrainPreProcessor 库；选择重写以避免跨项目依赖
-**关键：** 流式 + 分层并行（逐层 mipmap → 并行计算 tiles → 顺序写入），HeightMap padding=2, SplatMap padding=1
+**关键：** `.terrain` v8 写入 `HeightMap VT + DetailIndex VT + DetailWeight VT`。HeightMap 使用 padding=2；两个 detail stream 使用 padding=1、RGBA8 packed `DetailControlPixel`，由 Editor Export 读取作者态 `biome_mask.png` / `biome_settings.toml` 后 bake。Exporter 先写同目录临时文件，完整成功后 replace/move 到目标，失败或取消时删除临时文件并保留旧目标。
 
 ### 8. 虚拟资源系统驱动 Runtime 地形加载
 **问题：** Runtime 依赖组件上的显式文件路径和旧 BiomeConfig TOML，无法表达 base + mod 覆盖顺序
 **方案：** Runtime 固定通过 `TerrainWorkspaceRoot` 元数据优先定位工作区 `game/` 资源根；如果元数据不可用，则回退到从 `Terrain` 程序集所在目录向上定位。如果起点本身已在目录名为 `game` 且包含 `map/` 的合法根，也会直接接受该根。随后从有效 app 目录旁的 `LaunchSetting.json` 读取或自动生成本地 mod 配置；base 作为隐式根，按启用 mod 顺序构建 `GameResourceResolver`，再通过 `GameRuntimeResourceBootstrap` 解析 `map/default.toml` 与固定 companion 资源
 **权衡：** 不保留旧路径兼容，迁移更直接但资源入口更统一
-**关键：** `TerrainComponent` 不再保存资源路径；`.terrain` 仍由 `bundle.TerrainDataPath` 直接读取；Runtime 会忽略 `default.toml` 中的 `heightmap` 声明，并使用 `.terrain` 内的高度数据配合 `biome_settings.toml` + `materials/descriptor.toml` / `biome_mask.png` 构建 detail map；若 `terrain.terrain` 或 `biome_mask.png` 缺失，`TerrainProcessor` 记录错误日志并保持 terrain 未初始化；同配置失败后不会逐帧重复重试
+**关键：** `TerrainComponent` 不再保存资源路径；`.terrain` 仍由 `bundle.TerrainDataPath` 直接读取；Runtime 会忽略 `default.toml` 中的 `heightmap` 声明，并直接从 `.terrain` v8 读取 HeightMap / DetailIndex / DetailWeight virtual texture payload。`biome_mask.png` 和 `biome_settings.toml` 只属于 Editor authoring/export，不再进入 Runtime bootstrap 或启动时 detail 构建。若 `terrain.terrain` 缺失或 `.terrain` payload/header 无效，`TerrainProcessor` 记录错误日志并保持 terrain 未初始化；同配置失败后不会逐帧重复重试。
 
 ### 9. 河流渲染采用 RiverComponent → RiverProcessor → RiverRenderObject → RiverRenderFeature
 **问题：** 仅靠 editor service 或临时 `ModelComponent` 预览无法承载河流的独立 mesh 生命周期、双 pass 渲染和视口调试模式。
@@ -184,7 +184,7 @@
 - 河流 shader 统一使用 `TransformationWAndVP` 生成 `PositionWS / PositionH / DepthVS`
 - `RiverResourceLoader` 负责从 `game/map/water` 直接加载 bottom diffuse/normal/properties/depth 与 water flow/foam/ambient/water-color 等 DDS 文件；这些 Bottom/Water 纹理不再通过 Stride `.sdtex`、`Terrain.Editor.sdpkg` `RootAssets` 或 `ContentManager` 管理，缺失本地文件时先写 `Terrain` 日志再让原始文件异常冒泡。`River/Environment/reflection-specular` 仍保持 Stride 内容资源；`RiverRenderFeature` 将这些资源绑定到 `RiverBottom` / `RiverSurface`
 - Runtime 河流也接入同一套 `Terrain.Rendering.River` core：`Terrain/Assets/MainScene.sdscene` 持有运行时 `RiverSystem` entity 和 `RiverComponent`，`Terrain/Assets/GraphicsCompositor.sdgfxcomp` 持有 `RiverRenderFeature` 注册。`RiverProcessor` 等待 runtime terrain height data 初始化后加载可选 `game/map/rivers.png`，通过 `RiverMapService` / `RiverMeshService` 生成 mesh 并写回 `RiverComponent`；`TerrainRuntimeResourceBundle` 只承载资源路径和宽度配置，不创建 scene object。
-- Runtime 不在 `TerrainComponent` 上常驻完整 `ushort[]` heightmap。`TerrainComponent` 只暴露离散 `GetHeight(int sampleX, int sampleZ)`；内部经 `TerrainQuadTree -> TerrainStreamingManager` 从 `.terrain` 按需读取对应 height tile。CPU height page cache 属于 streaming manager：height page 上传 GPU 后继续保留，直到对应 GPU resident page 因 `MaxResidentChunks` 淘汰时同步释放。Runtime DetailMap 在 `ApplyLoadedTerrainData` 创建 streaming/quad tree 后生成，并复用 `TerrainComponent.GetHeight`；生成后的完整 `RuntimeDetailMapData` 仍交给 `TerrainStreamingManager` 作为现有 detail VT page 上传源。River 需要连续高度时自己对 4 个离散 sample 做双线性插值，Terrain 不承担 river-specific 插值策略。
+- Runtime 不在 `TerrainComponent` 上常驻完整 `ushort[]` heightmap。`TerrainComponent` 只暴露离散 `GetHeight(int sampleX, int sampleZ)`；内部经 `TerrainQuadTree -> TerrainStreamingManager` 从 `.terrain` 按需读取对应 height tile。CPU height page cache 属于 streaming manager：height page 上传 GPU 后继续保留，直到对应 GPU resident page 因 `MaxResidentChunks` 淘汰时同步释放。Runtime detail VT 不再启动时生成：`TerrainStreamingManager` 直接从 `.terrain` reader 读取 `ReadDetailIndexPage` / `ReadDetailWeightPage`，并上传到两个 RGBA8 detail texture arrays。River 需要连续高度时自己对 4 个离散 sample 做双线性插值，Terrain 不承担 river-specific 插值策略。
 - 河底 pass 使用 CK3-style dual-source blending：RT0 RGB 和 RT0 alpha 都按 `src1_alpha / inv_src1_alpha` 与目标折射缓冲混合，RT1 alpha 作为 coverage 权重；bottom 当前对齐到 CK3 这帧实际使用的 non-advanced 分支，`BottomDiffuse/Normal/Properties` 主采样使用 parallax 后的 `worldUv`，depth/profile 继续从 `tangentUv` 计算，steep parallax 使用固定 2/10 layer 与 CK3 插值公式，alpha 为 `fadeOut * connectionFade * saturate(depth * 13.0f)`；bottom lighting 绑定当前 `LightingView` 的 directional light/skybox、shadow cascade 数据、shadow atlas、scene cubemap intensity/rotation，shadow 路径使用 Stride cascade 选择叠加 CK3 bottom shadow 的投影/随机 disc kernel/bias/fade，旧 5x5 filter 与 normal-offset helper 已移除。Editor scene 会提供 CK3 warm sun 与 Jomini terrain sunny cubemap 作为实际 scene light 输入；当前 scene sun intensity 与 skybox intensity 都是 `20`，因此 bottom direct/IBL 的 scene-scale 比例保持 `1:1`。2026-06-18 已移除 `* 3.0f` final gain，并改用 CK3 material BRDF / dominant specular IBL，删除 `_BottomSpecularIntensity` river-local 参数链；`SceneSeedColor` 由 `RiverSceneSeed` image shader 写半分辨率场景种子，RGB 做 Reinhard 压缩，alpha 从 Presenter scene depth 重建 world position 后写 camera-relative distance payload；surface pass 读取折射缓冲并走 `CalcRiverAdvanced -> CalcWater`：单次 flow normal、三层 ambient water-wave normal、water-color、foam 与 cubemap reflection，water-color map UV 执行 CK3 Y 翻转并在 refraction world position 重采样，seed-only 边缘像素 `a <= 0` 会回退到当前水面 world position，`CalcRefraction` 先用 base refraction depth 计算 shore mask，再用最终 `waterNormal` 经 `_ViewMatrix` 转 view-space 后乘 `float2(-1/1920, 1/1080)`、CK3 refraction scale / shore mask / fade，offset 后用 `step(WorldSpacePos.y, OffsetRefractionWorldSpacePos.y)` 回退 base refraction；`WaterFade` 独立重采 base refraction 并使用 CK3 `min(InputDepth, RefractionDepth)` 公式；顶点流中的宽度是归一化 half-width，shader 给 CK3 depth / flow 使用前会还原为 full-width。2026-06-21 复核 CK3 `jomini_river_bottom.fxh` 后确认早期 RT0 alpha direct-write 是本地偏差；若后续再出现边缘 payload 混合问题，应优先修 pre-bottom/refraction payload writer，而不是改偏 bottom blend state。
 - 河流 mesh 顶点 basis 对齐 CK3：tangent 保留中心线 Y 坡度，normal 使用水平横向 side 与 sloped tangent 的正交 ribbon normal，不再用 terrain height 差分 normal 驱动 bottom lighting。
 **权衡：** 架构更复杂，但换来可维护的渲染生命周期、与 Stride render stage 的正确集成，以及后续扩展空间。
@@ -229,13 +229,14 @@
 | `Terrain/Rendering/River/RiverProcessor.cs` | 河流组件到渲染对象的同步处理器 |
 | `Terrain/Rendering/River/RiverRenderObject.cs` | 河流 GPU 顶点/索引缓冲与 bounds |
 | `Terrain/Rendering/River/RiverRenderFeature.cs` | 河流河底/水面双 pass 渲染特性 |
-| `Terrain/Streaming/TerrainStreaming.cs` | Runtime height/detail VT streaming；CPU height page cache 随 GPU resident page 生命周期释放 |
+| `Terrain/Streaming/TerrainStreaming.cs` | Runtime height/detail VT streaming；height、DetailIndex、DetailWeight 均来自 `.terrain` v8 reader；CPU height page cache 随 GPU resident page 生命周期释放 |
 | `Terrain.Editor/Rendering/NativeViewport/NativeStrideViewportHost.cs` | 原生 Stride 视口宿主；`SetInputBlocked` 在 Save 模态期间阻断视口输入并要求 Stride game flush 当前输入状态 |
 | `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem；Save 模态期间响应输入阻断，释放相机/笔刷状态并 flush 鼠标锁定与笔触输入 |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
 | `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
 | `Terrain.Editor/Services/Export/ExportManager.cs` | 导出管理器（注册、执行、错误回滚） |
-| `Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs` | .terrain 文件导出实现 |
+| `Terrain.Editor/Services/Export/Exporters/TerrainExporter.cs` | `.terrain` v8 文件导出实现，写 HeightMap + baked DetailIndex/DetailWeight VT |
+| `Terrain.Editor/Services/Export/BakedDetailMapBuilder.cs` | Editor authoring biome 规则到 baked DetailIndex/DetailWeight RGBA8 control buffers 的转换 |
 | `Terrain.Editor/UI/Dialogs/ExportProgressDialog.cs` | 导出进度模态弹窗 |
 
 ### 着色器

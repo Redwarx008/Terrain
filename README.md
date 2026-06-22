@@ -199,7 +199,7 @@ dotnet restore && dotnet run --project Terrain.Windows -c Debug
 - **高度编辑**：多笔刷类型、Undo/Redo (Chunk 事务模型)
 - **纹理绘制**：气候蒙版 (ClimateMask) + 规则栈驱动材质索引
 - **路径系统**：道路/河流路径渲染、深度偏移、河流线框调试
-- **导入/导出**：TOML 项目持久化、.terrain 导出、Biome 配置导出
+- **导入/导出**：TOML 作者态资源写回、.terrain v8 导出、baked DetailIndex/DetailWeight VT
 - **资产浏览器**：纹理导入（含法线自动生成）、材质槽管理
 
 ### 进行中 🚧
