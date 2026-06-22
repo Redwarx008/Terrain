@@ -157,17 +157,26 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
         var graphicsDevice = context.GraphicsDevice;
         var commandList = context.CommandList;
-        int viewWidth = Math.Max(1, (int)renderView.ViewSize.X);
-        int viewHeight = Math.Max(1, (int)renderView.ViewSize.Y);
-        renderResources.EnsureResources(graphicsDevice, viewWidth, viewHeight);
+        Matrix.Invert(ref renderView.View, out var viewInverse);
+        var cameraWorldPosition = viewInverse.TranslationVector;
+        float riverMaxVisibleCameraHeight = ResolveRiverMaxVisibleCameraHeight(renderViewStage, startIndex, endIndex);
+        if (cameraWorldPosition.Y >= riverMaxVisibleCameraHeight)
+        {
+            return;
+        }
+
+        Texture? sceneColor = commandList.RenderTargetCount > 0 ? commandList.RenderTargets[0] : null;
+        if (sceneColor == null)
+        {
+            return;
+        }
+
+        renderResources.EnsureResources(graphicsDevice, sceneColor.ViewWidth, sceneColor.ViewHeight);
         if (renderResources.SceneSeedColor == null || renderResources.BottomColor == null || renderResources.BottomDepth == null)
         {
             return;
         }
-        Texture? sceneColor = commandList.RenderTargetCount > 0 ? commandList.RenderTargets[0] : null;
 
-        Matrix.Invert(ref renderView.View, out var viewInverse);
-        var cameraWorldPosition = viewInverse.TranslationVector;
         bottomEffect.Parameters.Set(RiverBottomKeys._CameraWorldPosition, cameraWorldPosition);
         surfaceEffect.Parameters.Set(RiverSurfaceKeys._CameraWorldPosition, cameraWorldPosition);
         float refractionMaxCameraHeight = ResolveRefractionMaxCameraHeight(renderViewStage, startIndex, endIndex);
@@ -248,6 +257,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
             && source.MapWorldSize == candidate.MapWorldSize
             && source.TextureUvScale == candidate.TextureUvScale
             && source.FlowNormalUvScale == candidate.FlowNormalUvScale
+            && source.RiverMaxVisibleCameraHeight == candidate.RiverMaxVisibleCameraHeight
             && source.FlowNormalSpeed == candidate.FlowNormalSpeed
             && source.RiverFoamFactor == candidate.RiverFoamFactor
             && source.NoiseScale == candidate.NoiseScale
@@ -285,6 +295,26 @@ public sealed class RiverRenderFeature : RootRenderFeature
         }
 
         return maxHeight;
+    }
+
+    private float ResolveRiverMaxVisibleCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)
+    {
+        float maxVisibleCameraHeight = 3000.0f;
+        bool foundRiverObject = false;
+        for (int index = startIndex; index < endIndex; index++)
+        {
+            var renderNodeReference = renderViewStage.SortedRenderNodes[index].RenderNode;
+            var renderNode = GetRenderNode(renderNodeReference);
+            if (renderNode.RenderObject is RiverRenderObject riverObject && riverObject.Enabled)
+            {
+                maxVisibleCameraHeight = foundRiverObject
+                    ? MathF.Max(maxVisibleCameraHeight, riverObject.RiverMaxVisibleCameraHeight)
+                    : riverObject.RiverMaxVisibleCameraHeight;
+                foundRiverObject = true;
+            }
+        }
+
+        return maxVisibleCameraHeight;
     }
 
     private void SeedSceneColorFromScene(RenderDrawContext context, RenderView renderView, Texture? sceneColor, float refractionMaxCameraHeight)

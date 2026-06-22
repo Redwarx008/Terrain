@@ -13,6 +13,7 @@ public sealed class EditorAuthoringSaveSnapshot
         int height,
         BiomeMask biomeMask,
         float heightScale,
+        float riverMaxVisibleCameraHeight,
         IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots,
         EditorBiomeSettingsSnapshot biomeSnapshot)
     {
@@ -21,6 +22,7 @@ public sealed class EditorAuthoringSaveSnapshot
         Height = height;
         BiomeMask = biomeMask ?? throw new ArgumentNullException(nameof(biomeMask));
         HeightScale = heightScale;
+        RiverMaxVisibleCameraHeight = riverMaxVisibleCameraHeight;
         DescriptorSlots = descriptorSlots ?? throw new ArgumentNullException(nameof(descriptorSlots));
         BiomeSnapshot = biomeSnapshot ?? throw new ArgumentNullException(nameof(biomeSnapshot));
     }
@@ -30,6 +32,7 @@ public sealed class EditorAuthoringSaveSnapshot
     public int Height { get; }
     public BiomeMask BiomeMask { get; }
     public float HeightScale { get; }
+    public float RiverMaxVisibleCameraHeight { get; }
     public IReadOnlyList<EditorMaterialDescriptorSlot> DescriptorSlots { get; }
     public EditorBiomeSettingsSnapshot BiomeSnapshot { get; }
 }

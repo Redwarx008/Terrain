@@ -90,6 +90,7 @@ internal static class EditorMapDataScaffoldTests
         TestHarness.AssertEqual("heightmap.png", map.HeightmapPath, "generated default heightmap path");
         TestHarness.AssertEqual("terrain.terrain", map.TerrainDataPath, "generated default terrain path");
         TestHarness.AssertEqual(100.0f, map.HeightScale, "generated default height scale");
+        TestHarness.AssertEqual(3000.0f, map.RiverMaxVisibleCameraHeight, "generated default river max visible camera height");
         TestHarness.AssertEqual(0, descriptor.Materials.Count, "generated descriptor should start empty");
         TestHarness.AssertEqual(0, settings.Biomes.Count, "generated biome settings should start empty");
         TestHarness.AssertEqual(0, settings.Layers.Count, "generated biome layers should start empty");
@@ -123,6 +124,8 @@ internal static class EditorMapDataScaffoldTests
         TestHarness.AssertEqual("heightmap.png", map.HeightmapPath, "generated default heightmap path");
         TestHarness.AssertEqual("terrain.terrain", map.TerrainDataPath, "generated default terrain path");
         TestHarness.AssertEqual(100.0f, map.HeightScale, "generated default height scale");
+        TestHarness.Assert(defaultText.Contains("river_max_visible_camera_height = 3000", StringComparison.Ordinal), "generated default.toml should write river max visible camera height");
+        TestHarness.AssertEqual(3000.0f, map.RiverMaxVisibleCameraHeight, "generated default river max visible camera height");
         TestHarness.AssertEqual(0, descriptor.Materials.Count, "generated descriptor should start empty");
         TestHarness.AssertEqual(0, settings.Biomes.Count, "generated biome settings should start empty");
         TestHarness.AssertEqual(0, settings.Layers.Count, "generated biome layers should start empty");

@@ -125,6 +125,7 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
             null,
             1.0f,
             4.0f,
+            3000.0f,
             terrainComponent.HeightScale,
             terrainComponent.HeightmapWidth,
             terrainComponent.HeightmapHeight);
@@ -150,6 +151,7 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
             bundle.RiversPath,
             bundle.RiverMinWidth,
             bundle.RiverMaxWidth,
+            bundle.RiverMaxVisibleCameraHeight,
             bundle.HeightScale,
             terrainComponent.HeightmapWidth,
             terrainComponent.HeightmapHeight);
@@ -200,6 +202,7 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
                 .Where(mesh => mesh.Vertices.Length > 0 && mesh.Indices.Length > 0)
                 .ToArray();
 
+            component.Settings.RiverMaxVisibleCameraHeight = bundle.RiverMaxVisibleCameraHeight;
             component.SetMeshes(meshes);
             component.MarkRuntimeLoadSuccess();
         }

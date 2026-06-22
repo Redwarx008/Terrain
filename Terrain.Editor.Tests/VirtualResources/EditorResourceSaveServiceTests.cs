@@ -10,6 +10,8 @@ internal static class EditorResourceSaveServiceTests
     public static void RunAll()
     {
         TestHarness.Run("authoring save reports progress in expected order", AuthoringSaveReportsProgressInExpectedOrder);
+        TestHarness.Run("authoring save persists river max visible camera height", AuthoringSavePersistsRiverMaxVisibleCameraHeight);
+        TestHarness.Run("authoring save preserves loaded river max visible camera height by default", AuthoringSavePreservesLoadedRiverMaxVisibleCameraHeightByDefault);
         TestHarness.Run("authoring save reports failing writer before rollback", AuthoringSaveReportsFailingWriterBeforeRollback);
         TestHarness.Run("authoring save rolls back earlier files when a later writer fails", AuthoringSaveRollsBackEarlierFilesWhenLaterWriterFails);
         TestHarness.Run("authoring save progress failed factory reports completed error", AuthoringSaveProgressFailedFactoryReportsCompletedError);
@@ -60,6 +62,53 @@ internal static class EditorResourceSaveServiceTests
         TestHarness.Assert(
             messages.Contains("Committing staged resources..."),
             "progress should report commit");
+    }
+
+    private static void AuthoringSavePersistsRiverMaxVisibleCameraHeight()
+    {
+        SaveFixture fixture = CreatePopulatedSaveFixture();
+        var biomeMask = new BiomeMask(2, 2);
+
+        EditorResourceSaveService.Save(
+            fixture.Session,
+            [1, 2, 3, 4],
+            width: 2,
+            height: 2,
+            biomeMask,
+            heightScale: 222.0f,
+            descriptorSlots:
+            [
+                new EditorMaterialDescriptorSlot("grass", 0, "Grass", "grass.png", null, null),
+            ],
+            biomeSnapshot: new EditorBiomeSettingsSnapshot([], [], []),
+            riverMaxVisibleCameraHeight: 875.0f);
+
+        RuntimeMapDefinition saved = RuntimeMapDefinitionReader.ReadFrom(fixture.MapDefinitionPath);
+
+        TestHarness.AssertEqual(875.0f, saved.RiverMaxVisibleCameraHeight, "save should persist river max visible camera height");
+    }
+
+    private static void AuthoringSavePreservesLoadedRiverMaxVisibleCameraHeightByDefault()
+    {
+        SaveFixture fixture = CreatePopulatedSaveFixture(riverMaxVisibleCameraHeight: 875.0f);
+        var biomeMask = new BiomeMask(2, 2);
+
+        EditorResourceSaveService.Save(
+            fixture.Session,
+            [1, 2, 3, 4],
+            width: 2,
+            height: 2,
+            biomeMask,
+            heightScale: 222.0f,
+            descriptorSlots:
+            [
+                new EditorMaterialDescriptorSlot("grass", 0, "Grass", "grass.png", null, null),
+            ],
+            biomeSnapshot: new EditorBiomeSettingsSnapshot([], [], []));
+
+        RuntimeMapDefinition saved = RuntimeMapDefinitionReader.ReadFrom(fixture.MapDefinitionPath);
+
+        TestHarness.AssertEqual(875.0f, saved.RiverMaxVisibleCameraHeight, "save should preserve loaded river max visible camera height when caller omits the parameter");
     }
 
     private static void AuthoringSaveReportsFailingWriterBeforeRollback()
@@ -134,7 +183,7 @@ internal static class EditorResourceSaveServiceTests
         AssertOriginalFilesRestored(fixture);
     }
 
-    private static SaveFixture CreatePopulatedSaveFixture()
+    private static SaveFixture CreatePopulatedSaveFixture(float riverMaxVisibleCameraHeight = 3000.0f)
     {
         string root = CreateWorkspace();
         string mapDefinitionPath = Path.Combine(root, "mod", "map", "default.toml");
@@ -155,7 +204,8 @@ internal static class EditorResourceSaveServiceTests
             heightmapPath,
             biomeMaskPath,
             biomeSettingsPath,
-            materialDescriptorPath);
+            materialDescriptorPath,
+            riverMaxVisibleCameraHeight);
 
         return new SaveFixture(
             session,
@@ -194,7 +244,8 @@ internal static class EditorResourceSaveServiceTests
         string heightmapPath,
         string biomeMaskPath,
         string biomeSettingsPath,
-        string materialDescriptorPath)
+        string materialDescriptorPath,
+        float riverMaxVisibleCameraHeight = 3000.0f)
     {
         static ResolvedGameResource Resource(string virtualPath, string path)
         {
@@ -213,6 +264,7 @@ internal static class EditorResourceSaveServiceTests
                 HeightmapPath = "heightmap.png",
                 TerrainDataPath = "terrain.terrain",
                 HeightScale = 100.0f,
+                RiverMaxVisibleCameraHeight = riverMaxVisibleCameraHeight,
             });
     }
 

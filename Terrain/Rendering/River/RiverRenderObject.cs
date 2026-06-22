@@ -20,6 +20,7 @@ public sealed class RiverRenderObject : RenderObject, IDisposable
     public float MapExtent { get; private set; } = 4096.0f;
     public Vector2 MapWorldSize { get; private set; } = new(4096.0f, 4096.0f);
     public float RefractionMaxCameraHeight { get; private set; } = 50.0f;
+    public float RiverMaxVisibleCameraHeight { get; private set; } = 3000.0f;
     public float TextureUvScale { get; private set; } = 1.0f;
     public float FlowNormalUvScale { get; private set; } = 0.4f;
     public float FlowNormalSpeed { get; private set; } = 0.075f;
@@ -54,6 +55,7 @@ public sealed class RiverRenderObject : RenderObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(settings);
 
+        RiverMaxVisibleCameraHeight = settings.RiverMaxVisibleCameraHeight;
         TextureUvScale = settings.TextureUvScale;
         FlowNormalUvScale = settings.FlowNormalUvScale;
         FlowNormalSpeed = settings.FlowNormalSpeed;

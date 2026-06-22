@@ -23,7 +23,7 @@ internal static class GameRuntimeResourceBootstrapTests
     private static void BootstrapLoadsFixedCompanionResources()
     {
         string root = CreateWorkspace();
-        WriteResourceBundle(root, heightScale: 250.0f, includeRivers: true);
+        WriteResourceBundle(root, heightScale: 250.0f, includeRivers: true, riverMaxVisibleCameraHeight: 875.0f);
 
         TerrainRuntimeResourceBundle bundle = new GameRuntimeResourceBootstrap(CreateResolver(root)).Load();
 
@@ -35,6 +35,7 @@ internal static class GameRuntimeResourceBootstrapTests
         TestHarness.AssertEqual(250.0f, bundle.HeightScale, "height scale");
         TestHarness.AssertEqual(2.0f, bundle.RiverMinWidth, "river min width");
         TestHarness.AssertEqual(6.0f, bundle.RiverMaxWidth, "river max width");
+        TestHarness.AssertEqual(875.0f, bundle.RiverMaxVisibleCameraHeight, "river max visible camera height");
         TestHarness.AssertEqual(1, bundle.MaterialDescriptor.Materials.Count, "material count");
     }
 
@@ -213,7 +214,8 @@ normal = "grass_n.png"
         bool includeProvinces = false,
         string biomeMaterialId = "grassland",
         string heightmapText = "heightmap",
-        string heightmapDeclaration = "heightmap = \"heightmap.png\"")
+        string heightmapDeclaration = "heightmap = \"heightmap.png\"",
+        float riverMaxVisibleCameraHeight = 3000.0f)
     {
         string mapData = Path.Combine(root, "map");
         string materials = Path.Combine(mapData, "materials");
@@ -227,7 +229,7 @@ normal = "grass_n.png"
         if (includeRivers && createRiversFile)
             File.WriteAllText(Path.Combine(mapData, "rivers.png"), "rivers");
 
-        File.WriteAllText(Path.Combine(mapData, "default.toml"), CreateDefaultToml(heightScale, includeRivers, includeProvinces, heightmapDeclaration));
+        File.WriteAllText(Path.Combine(mapData, "default.toml"), CreateDefaultToml(heightScale, includeRivers, includeProvinces, heightmapDeclaration, riverMaxVisibleCameraHeight));
         File.WriteAllText(Path.Combine(materials, "descriptor.toml"), """
 version = 1
 
@@ -264,7 +266,12 @@ visible = true
             "heightmap = \"heightmap.png\"");
     }
 
-    private static string CreateDefaultToml(float heightScale, bool includeRivers, bool includeProvinces, string heightmapDeclaration)
+    private static string CreateDefaultToml(
+        float heightScale,
+        bool includeRivers,
+        bool includeProvinces,
+        string heightmapDeclaration,
+        float riverMaxVisibleCameraHeight = 3000.0f)
     {
         string heightmapLine = string.IsNullOrWhiteSpace(heightmapDeclaration)
             ? string.Empty
@@ -283,6 +290,7 @@ terrain_data = "terrain.terrain"
 height_scale = {{heightScale}}
 river_min_width = 2
 river_max_width = 6
+river_max_visible_camera_height = {{riverMaxVisibleCameraHeight}}
 """;
     }
 

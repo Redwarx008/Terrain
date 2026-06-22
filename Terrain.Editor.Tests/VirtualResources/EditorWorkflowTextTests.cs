@@ -14,6 +14,7 @@ internal static class EditorWorkflowTextTests
         TestHarness.Run("editor biome remove command does not dereference selected biome in XAML", BiomeRemoveCommandDoesNotDereferenceSelectedBiomeInXaml);
         TestHarness.Run("editor river inspector does not expose manual import or generate actions", RiverInspectorDoesNotExposeManualImportOrGenerateActions);
         TestHarness.Run("editor river inspector does not expose preview bindings", RiverInspectorDoesNotExposePreviewBindings);
+        TestHarness.Run("editor settings exposes river camera height as slider", SettingsExposesRiverCameraHeightAsSlider);
         TestHarness.Run("editor wires river services before loading workspace session", WiresRiverServicesBeforeLoadingWorkspaceSession);
         TestHarness.Run("editor save exposes async modal progress state", SaveExposesAsyncModalProgressState);
         TestHarness.Run("editor save snapshots authoring state before background write", SaveSnapshotsAuthoringStateBeforeBackgroundWrite);
@@ -90,6 +91,19 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(!shellViewModel.Contains("\"Preview generated rivers\"", StringComparison.Ordinal), "River tool metadata should not describe preview behavior");
     }
 
+    private static void SettingsExposesRiverCameraHeightAsSlider()
+    {
+        string window = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml"));
+        int label = window.IndexOf("River Max Camera Height", StringComparison.Ordinal);
+        int binding = window.IndexOf("Value=\"{Binding Settings.RiverMaxVisibleCameraHeight}\"", label, StringComparison.Ordinal);
+        TestHarness.Assert(label >= 0, "Settings inspector should label the river camera height control");
+        TestHarness.Assert(binding >= 0, "Settings inspector should bind river camera height");
+
+        string controlBlock = window.Substring(label, binding - label);
+        TestHarness.Assert(controlBlock.Contains("<Slider Minimum=\"1\" Maximum=\"10000\"", StringComparison.Ordinal), "river camera height should use a Slider with the expected range");
+        TestHarness.Assert(!controlBlock.Contains("NumericUpDown", StringComparison.Ordinal), "river camera height should not use NumericUpDown");
+    }
+
     private static void WiresRiverServicesBeforeLoadingWorkspaceSession()
     {
         string viewModelPath = Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs");
@@ -149,7 +163,7 @@ internal static class EditorWorkflowTextTests
         int beginProgress = saveBody.IndexOf("BeginSaveProgress();", StringComparison.Ordinal);
         int yieldToUi = saveBody.IndexOf("await Task.Yield()", StringComparison.Ordinal);
         int createProgress = saveBody.IndexOf("new Progress<AuthoringSaveProgress>", StringComparison.Ordinal);
-        int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(progress)", StringComparison.Ordinal);
+        int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress)", StringComparison.Ordinal);
         int taskRun = saveBody.IndexOf("Task.Run(", StringComparison.Ordinal);
         int saveSnapshot = saveBody.IndexOf("terrainManager.SaveAuthoringResources(session, snapshot, progress)", StringComparison.Ordinal);
         int refreshProgress = saveBody.IndexOf("AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, \"Refreshing editor state...\")", StringComparison.Ordinal);

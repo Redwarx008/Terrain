@@ -399,8 +399,11 @@ internal static class RiverShaderTextTests
         AssertContains(settings, "public float FlattenMultiplier { get; set; } = 1.0f;", "RiverRenderSettings should expose water normal flattening");
         AssertContains(settings, "public float BottomNormalStrength { get; set; } = 1.0f;", "RiverRenderSettings should expose bottom normal strength for bottom lighting");
         AssertContains(settings, "public float BottomEnvironmentIntensity { get; set; }", "RiverRenderSettings should expose bottom environment intensity");
+        AssertContains(settings, "public float RiverMaxVisibleCameraHeight { get; set; } = 3000.0f;", "RiverRenderSettings should expose the camera-height river visibility cutoff");
         AssertContains(renderObject, "public float FlattenMultiplier { get; private set; } = 1.0f;", "RiverRenderObject should cache water normal flattening");
         AssertContains(renderObject, "FlattenMultiplier = settings.FlattenMultiplier;", "RiverRenderObject should copy water normal flattening from RiverRenderSettings");
+        AssertContains(renderObject, "public float RiverMaxVisibleCameraHeight { get; private set; } = 3000.0f;", "RiverRenderObject should cache the camera-height river visibility cutoff");
+        AssertContains(renderObject, "RiverMaxVisibleCameraHeight = settings.RiverMaxVisibleCameraHeight;", "RiverRenderObject should copy the camera-height cutoff from RiverRenderSettings");
         AssertContains(renderObject, "public Vector2 MapWorldSize { get; private set; } = new(4096.0f, 4096.0f);", "RiverRenderObject should cache per-axis map world size for rectangular map UV normalization");
         AssertContains(meshData, "public float RefractionMaxCameraHeight { get; init; } = 50.0f;", "River mesh data should carry the height-scale-aware refraction clamp plane");
         AssertContains(meshData, "RefractionMaxCameraHeight = RefractionMaxCameraHeight,", "River mesh snapshots should preserve the refraction clamp plane");
@@ -412,6 +415,14 @@ internal static class RiverShaderTextTests
         AssertContains(renderObject, "public int ParallaxIterations { get; private set; } = 10;", "RiverRenderObject should cache parallax iteration count for advanced paths");
         AssertContains(renderObject, "MapWorldSize = mesh.MapWorldSize;", "RiverRenderObject should keep the per-axis map world size from the generated river mesh");
         AssertContains(processor, "renderObject.ApplySettings(component.Settings);", "RiverProcessor should push component settings into each render object");
+        AssertContains(processor, "component.Settings.RiverMaxVisibleCameraHeight = bundle.RiverMaxVisibleCameraHeight;", "RiverProcessor should copy runtime TOML camera-height cutoff into render settings");
+        AssertContains(feature, "float riverMaxVisibleCameraHeight = ResolveRiverMaxVisibleCameraHeight(renderViewStage, startIndex, endIndex);", "RiverRenderFeature should resolve the camera-height cutoff before river pass work");
+        AssertContains(feature, "if (cameraWorldPosition.Y >= riverMaxVisibleCameraHeight)", "RiverRenderFeature should skip river rendering when the camera is at or above the cutoff");
+        AssertContains(feature, "Texture? sceneColor = commandList.RenderTargetCount > 0 ? commandList.RenderTargets[0] : null;", "RiverRenderFeature should resolve the actual scene color before allocating river refraction targets");
+        AssertContains(feature, "renderResources.EnsureResources(graphicsDevice, sceneColor.ViewWidth, sceneColor.ViewHeight);", "RiverRenderFeature should size river refraction targets from the actual scene color source");
+        AssertContains(feature, "private float ResolveRiverMaxVisibleCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)", "RiverRenderFeature should keep camera-height cutoff resolution explicit");
+        AssertContains(feature, "maxVisibleCameraHeight = foundRiverObject", "RiverRenderFeature should resolve a stable draw-range camera-height cutoff instead of depending on sorted node order");
+        AssertContains(feature, "? MathF.Max(maxVisibleCameraHeight, riverObject.RiverMaxVisibleCameraHeight)", "RiverRenderFeature should use the highest river camera-height cutoff across the draw range");
         AssertContains(feature, "bottomEffect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);", "RiverRenderFeature should bind static water height for bottom ocean fade");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._TextureUvScale, riverObject.TextureUvScale);", "RiverRenderFeature should continue binding texture UV scale for available shader variants");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, riverObject.OceanFadeRate);", "RiverRenderFeature should bind bottom ocean fade rate from the render object");

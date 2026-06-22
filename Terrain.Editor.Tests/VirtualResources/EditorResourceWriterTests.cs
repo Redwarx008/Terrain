@@ -70,9 +70,13 @@ internal static class EditorResourceWriterTests
         TestHarness.Run("map definition writer rewrites existing header with fixed template", MapDefinitionWriterRewritesExistingHeaderWithFixedTemplate);
         TestHarness.Run("map definition reader defaults river width range", MapDefinitionReaderDefaultsRiverWidthRange);
         TestHarness.Run("map definition reader reads explicit river width range", MapDefinitionReaderReadsExplicitRiverWidthRange);
+        TestHarness.Run("map definition reader defaults river camera visibility height", MapDefinitionReaderDefaultsRiverCameraVisibilityHeight);
+        TestHarness.Run("map definition reader reads explicit river camera visibility height", MapDefinitionReaderReadsExplicitRiverCameraVisibilityHeight);
+        TestHarness.Run("map definition reader rejects invalid river camera visibility height", MapDefinitionReaderRejectsInvalidRiverCameraVisibilityHeight);
         TestHarness.Run("map definition reader rejects invalid river width range", MapDefinitionReaderRejectsInvalidRiverWidthRange);
         TestHarness.Run("map definition reader rejects non-finite river width range", MapDefinitionReaderRejectsNonFiniteRiverWidthRange);
         TestHarness.Run("map definition writer rejects non-finite river width range", MapDefinitionWriterRejectsNonFiniteRiverWidthRange);
+        TestHarness.Run("map definition writer rejects invalid river camera visibility height", MapDefinitionWriterRejectsInvalidRiverCameraVisibilityHeight);
         TestHarness.Run("material descriptor writer preserves short relative texture paths", MaterialDescriptorWriterPreservesRelativeTexturePaths);
         TestHarness.Run("material descriptor writer rewrites existing header with fixed template", MaterialDescriptorWriterRewritesExistingHeaderWithFixedTemplate);
         TestHarness.Run("material descriptor writer fails on read-only target without touching fallback", MaterialDescriptorWriterFailsOnReadOnlyTargetWithoutTouchingFallback);
@@ -213,6 +217,7 @@ internal static class EditorResourceWriterTests
             HeightScale = 250.0f,
             RiverMinWidth = 2.0f,
             RiverMaxWidth = 6.0f,
+            RiverMaxVisibleCameraHeight = 750.0f,
         });
 
         string text = File.ReadAllText(output);
@@ -227,6 +232,7 @@ internal static class EditorResourceWriterTests
         TestHarness.AssertEqual(250.0f, map.HeightScale, "height scale");
         TestHarness.AssertEqual(2.0f, map.RiverMinWidth, "river min full width");
         TestHarness.AssertEqual(6.0f, map.RiverMaxWidth, "river max full width");
+        TestHarness.AssertEqual(750.0f, map.RiverMaxVisibleCameraHeight, "river max visible camera height");
     }
 
     private static void MapDefinitionWriterRewritesExistingHeaderWithFixedTemplate()
@@ -276,6 +282,26 @@ height_scale = 200
         TestHarness.AssertEqual(4.0f, map.RiverMaxWidth, "default river max full width");
     }
 
+    private static void MapDefinitionReaderDefaultsRiverCameraVisibilityHeight()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+""");
+
+        RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(output);
+
+        TestHarness.AssertEqual(3000.0f, map.RiverMaxVisibleCameraHeight, "default river max visible camera height");
+    }
+
     private static void MapDefinitionReaderReadsExplicitRiverWidthRange()
     {
         string root = CreateWorkspace();
@@ -291,12 +317,56 @@ terrain_data = "terrain.terrain"
 height_scale = 200
 river_min_width = 2
 river_max_width = 6
+river_max_visible_camera_height = 750
 """);
 
         RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(output);
 
         TestHarness.AssertEqual(2.0f, map.RiverMinWidth, "explicit river min full width");
         TestHarness.AssertEqual(6.0f, map.RiverMaxWidth, "explicit river max full width");
+        TestHarness.AssertEqual(750.0f, map.RiverMaxVisibleCameraHeight, "explicit river max visible camera height");
+    }
+
+    private static void MapDefinitionReaderReadsExplicitRiverCameraVisibilityHeight()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+river_max_visible_camera_height = 875
+""");
+
+        RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(output);
+
+        TestHarness.AssertEqual(875.0f, map.RiverMaxVisibleCameraHeight, "explicit river max visible camera height");
+    }
+
+    private static void MapDefinitionReaderRejectsInvalidRiverCameraVisibilityHeight()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+river_max_visible_camera_height = 0
+""");
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => RuntimeMapDefinitionReader.ReadFrom(output),
+            "non-positive river_max_visible_camera_height should be rejected");
     }
 
     private static void MapDefinitionReaderRejectsInvalidRiverWidthRange()
@@ -388,6 +458,33 @@ river_max_width = inf
                 RiverMaxWidth = float.PositiveInfinity,
             }),
             "infinite river_max_width should be rejected by writer");
+    }
+
+    private static void MapDefinitionWriterRejectsInvalidRiverCameraVisibilityHeight()
+    {
+        string root = CreateWorkspace();
+        var session = CreateSession(root);
+        var writer = new MapDefinitionWriter();
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => writer.Write(session, new RuntimeMapDefinition
+            {
+                HeightmapPath = "heightmap.png",
+                TerrainDataPath = "terrain.terrain",
+                HeightScale = 200.0f,
+                RiverMaxVisibleCameraHeight = float.PositiveInfinity,
+            }),
+            "infinite river_max_visible_camera_height should be rejected by writer");
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => writer.Write(session, new RuntimeMapDefinition
+            {
+                HeightmapPath = "heightmap.png",
+                TerrainDataPath = "terrain.terrain",
+                HeightScale = 200.0f,
+                RiverMaxVisibleCameraHeight = 0.0f,
+            }),
+            "non-positive river_max_visible_camera_height should be rejected by writer");
     }
 
     private static void BiomeSettingsWriterPersistsMaterialIdReferences()
