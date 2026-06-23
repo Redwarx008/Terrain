@@ -76,6 +76,7 @@ internal static class EditorResourceWriterTests
         TestHarness.Run("map definition reader defaults sea level", MapDefinitionReaderDefaultsSeaLevel);
         TestHarness.Run("map definition reader reads explicit sea level", MapDefinitionReaderReadsExplicitSeaLevel);
         TestHarness.Run("map definition reader rejects invalid sea level", MapDefinitionReaderRejectsInvalidSeaLevel);
+        TestHarness.Run("map definition reader rejects out-of-range sea level", MapDefinitionReaderRejectsOutOfRangeSeaLevel);
         TestHarness.Run("map definition writer rejects invalid sea level", MapDefinitionWriterRejectsInvalidSeaLevel);
         TestHarness.Run("map definition reader rejects invalid river width range", MapDefinitionReaderRejectsInvalidRiverWidthRange);
         TestHarness.Run("map definition reader rejects non-finite river width range", MapDefinitionReaderRejectsNonFiniteRiverWidthRange);
@@ -437,6 +438,27 @@ sea_level = nan
             "non-finite sea_level should be rejected");
     }
 
+    private static void MapDefinitionReaderRejectsOutOfRangeSeaLevel()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+sea_level = 1000000000000
+""");
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => RuntimeMapDefinitionReader.ReadFrom(output),
+            "out-of-range sea_level should be rejected");
+    }
+
     private static void MapDefinitionReaderRejectsInvalidRiverWidthRange()
     {
         string root = CreateWorkspace();
@@ -570,6 +592,16 @@ river_max_width = inf
                 SeaLevel = float.PositiveInfinity,
             }),
             "infinite sea_level should be rejected by writer");
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => writer.Write(session, new RuntimeMapDefinition
+            {
+                HeightmapPath = "heightmap.png",
+                TerrainDataPath = "terrain.terrain",
+                HeightScale = 200.0f,
+                SeaLevel = float.MaxValue,
+            }),
+            "out-of-range sea_level should be rejected by writer");
     }
 
     private static void BiomeSettingsWriterPersistsMaterialIdReferences()

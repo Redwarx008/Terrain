@@ -10,6 +10,9 @@ namespace Terrain.Editor.Services.Resources;
 
 public sealed class MapDefinitionWriter
 {
+    private const float MinSeaLevel = -10000.0f;
+    private const float MaxSeaLevel = 10000.0f;
+
     private static readonly string[] TopCommentTemplateLines =
     [
         "# Optional terrain companion resources:",
@@ -90,6 +93,8 @@ public sealed class MapDefinitionWriter
     {
         if (!float.IsFinite(value))
             throw new InvalidDataException("Map definition sea_level must be finite.");
+        if (value < MinSeaLevel || value > MaxSeaLevel)
+            throw new InvalidDataException($"Map definition sea_level must be between {MinSeaLevel} and {MaxSeaLevel}.");
     }
 
     private static TomlFloat ToTomlFloat(float value)

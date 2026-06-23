@@ -12,6 +12,7 @@ internal static class EditorResourceSaveServiceTests
         TestHarness.Run("authoring save reports progress in expected order", AuthoringSaveReportsProgressInExpectedOrder);
         TestHarness.Run("authoring save persists river max visible camera height", AuthoringSavePersistsRiverMaxVisibleCameraHeight);
         TestHarness.Run("authoring save preserves loaded river max visible camera height by default", AuthoringSavePreservesLoadedRiverMaxVisibleCameraHeightByDefault);
+        TestHarness.Run("authoring save preserves loaded sea level by default", AuthoringSavePreservesLoadedSeaLevelByDefault);
         TestHarness.Run("authoring save writes only dirty heightmap resource", AuthoringSaveWritesOnlyDirtyHeightmapResource);
         TestHarness.Run("authoring save writes only dirty map definition resource", AuthoringSaveWritesOnlyDirtyMapDefinitionResource);
         TestHarness.Run("authoring save writes only dirty biome mask resource", AuthoringSaveWritesOnlyDirtyBiomeMaskResource);
@@ -119,6 +120,29 @@ internal static class EditorResourceSaveServiceTests
         RuntimeMapDefinition saved = RuntimeMapDefinitionReader.ReadFrom(fixture.MapDefinitionPath);
 
         TestHarness.AssertEqual(875.0f, saved.RiverMaxVisibleCameraHeight, "save should preserve loaded river max visible camera height when caller omits the parameter");
+    }
+
+    private static void AuthoringSavePreservesLoadedSeaLevelByDefault()
+    {
+        SaveFixture fixture = CreatePopulatedSaveFixture(seaLevel: 9.25f);
+        var biomeMask = new BiomeMask(2, 2);
+
+        EditorResourceSaveService.Save(
+            fixture.Session,
+            [1, 2, 3, 4],
+            width: 2,
+            height: 2,
+            biomeMask,
+            heightScale: 222.0f,
+            descriptorSlots:
+            [
+                new EditorMaterialDescriptorSlot("grass", 0, "Grass", "grass.png", null, null),
+            ],
+            biomeSnapshot: new EditorBiomeSettingsSnapshot([], [], []));
+
+        RuntimeMapDefinition saved = RuntimeMapDefinitionReader.ReadFrom(fixture.MapDefinitionPath);
+
+        TestHarness.AssertEqual(9.25f, saved.SeaLevel, "save should preserve loaded sea level when caller omits the parameter");
     }
 
     private static void AuthoringSaveWritesOnlyDirtyHeightmapResource()
@@ -440,7 +464,9 @@ internal static class EditorResourceSaveServiceTests
         AssertOriginalFilesRestored(fixture);
     }
 
-    private static SaveFixture CreatePopulatedSaveFixture(float riverMaxVisibleCameraHeight = 3000.0f)
+    private static SaveFixture CreatePopulatedSaveFixture(
+        float riverMaxVisibleCameraHeight = 3000.0f,
+        float seaLevel = 3.8f)
     {
         string root = CreateWorkspace();
         string mapDefinitionPath = Path.Combine(root, "mod", "map", "default.toml");
@@ -462,7 +488,8 @@ internal static class EditorResourceSaveServiceTests
             biomeMaskPath,
             biomeSettingsPath,
             materialDescriptorPath,
-            riverMaxVisibleCameraHeight);
+            riverMaxVisibleCameraHeight,
+            seaLevel);
 
         return new SaveFixture(
             session,
@@ -516,7 +543,8 @@ internal static class EditorResourceSaveServiceTests
         string biomeMaskPath,
         string biomeSettingsPath,
         string materialDescriptorPath,
-        float riverMaxVisibleCameraHeight = 3000.0f)
+        float riverMaxVisibleCameraHeight = 3000.0f,
+        float seaLevel = 3.8f)
     {
         static ResolvedGameResource Resource(string virtualPath, string path)
         {
@@ -536,6 +564,7 @@ internal static class EditorResourceSaveServiceTests
                 TerrainDataPath = "terrain.terrain",
                 HeightScale = 100.0f,
                 RiverMaxVisibleCameraHeight = riverMaxVisibleCameraHeight,
+                SeaLevel = seaLevel,
             });
     }
 

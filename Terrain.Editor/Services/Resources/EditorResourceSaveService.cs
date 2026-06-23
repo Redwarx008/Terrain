@@ -77,6 +77,7 @@ public static class EditorResourceSaveService
             RiverMinWidth = session.MapDefinitionModel.RiverMinWidth,
             RiverMaxWidth = session.MapDefinitionModel.RiverMaxWidth,
             RiverMaxVisibleCameraHeight = riverMaxVisibleCameraHeight ?? session.MapDefinitionModel.RiverMaxVisibleCameraHeight,
+            SeaLevel = session.MapDefinitionModel.SeaLevel,
         };
 
         var mapDefinitionWriter = new MapDefinitionWriter();

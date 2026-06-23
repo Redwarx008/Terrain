@@ -9,6 +9,9 @@ namespace Terrain.Resources;
 
 public static class RuntimeMapDefinitionReader
 {
+    private const float MinSeaLevel = -10000.0f;
+    private const float MaxSeaLevel = 10000.0f;
+
     public static RuntimeMapDefinition ReadFrom(string filePath, bool requireHeightmap = true)
     {
         using var reader = File.OpenText(filePath);
@@ -194,5 +197,7 @@ public static class RuntimeMapDefinitionReader
     {
         if (!float.IsFinite(value))
             throw new InvalidDataException($"sea_level must be finite: {filePath}");
+        if (value < MinSeaLevel || value > MaxSeaLevel)
+            throw new InvalidDataException($"sea_level must be between {MinSeaLevel} and {MaxSeaLevel}: {filePath}");
     }
 }
