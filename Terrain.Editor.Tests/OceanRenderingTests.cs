@@ -1,0 +1,97 @@
+#nullable enable
+
+using System.Reflection;
+using Stride.Core.Mathematics;
+using Stride.Engine.Design;
+using Terrain.Rendering.Ocean;
+
+namespace Terrain.Editor.Tests;
+
+internal static class OceanRenderingTests
+{
+    public static void RunAll()
+    {
+        TestHarness.Run("ocean component uses ocean processor renderer", OceanComponentUsesOceanProcessorRenderer);
+        TestHarness.Run("ocean component does not expose sea level property", OceanComponentDoesNotExposeSeaLevelProperty);
+        TestHarness.Run("ocean vertex layout exposes position and uv", OceanVertexLayoutExposesPositionAndUv);
+        TestHarness.Run("map surface applies ocean runtime input", MapSurfaceAppliesOceanRuntimeInput);
+        TestHarness.Run("ocean render object builds full map quad data", OceanRenderObjectBuildsFullMapQuadData);
+    }
+
+    private static void OceanComponentUsesOceanProcessorRenderer()
+    {
+        var attribute = typeof(OceanComponent)
+            .GetCustomAttributes()
+            .OfType<DefaultEntityComponentRendererAttribute>()
+            .FirstOrDefault();
+
+        TestHarness.Assert(attribute != null, "OceanComponent should declare a render processor");
+        TestHarness.AssertEqual(typeof(OceanProcessor).AssemblyQualifiedName, attribute!.TypeName, "renderer type");
+    }
+
+    private static void OceanComponentDoesNotExposeSeaLevelProperty()
+    {
+        PropertyInfo? seaLevel = typeof(OceanComponent).GetProperty(
+            "SeaLevel",
+            BindingFlags.Instance | BindingFlags.Public);
+
+        TestHarness.Assert(seaLevel == null, "SeaLevel should stay in map settings/runtime input, not OceanComponent public API");
+    }
+
+    private static void OceanVertexLayoutExposesPositionAndUv()
+    {
+        var elements = OceanVertex.Layout.VertexElements;
+
+        TestHarness.AssertEqual(2, elements.Length, "OceanVertex layout element count");
+        TestHarness.AssertEqual("POSITION", elements[0].SemanticAsText, "OceanVertex position semantic");
+        TestHarness.AssertEqual("TEXCOORD", elements[1].SemanticAsText, "OceanVertex uv semantic");
+        TestHarness.AssertEqual(System.Runtime.InteropServices.Marshal.SizeOf<OceanVertex>(), OceanVertex.Layout.VertexStride, "OceanVertex layout stride");
+    }
+
+    private static void MapSurfaceAppliesOceanRuntimeInput()
+    {
+        string source = ReadRepositoryText("Terrain/MapSurface/MapSurfaceProcessor.cs");
+
+        TestHarness.Assert(source.Contains("Get<OceanComponent>()", StringComparison.Ordinal), "MapSurfaceProcessor should look up OceanComponent from OceanEntity");
+        TestHarness.Assert(source.Contains("ApplyRuntimeInput(new OceanRuntimeInput(resources.SeaLevel, mapWorldSize))", StringComparison.Ordinal), "MapSurfaceProcessor should apply sea level and map size to OceanRuntimeInput");
+    }
+
+    private static void OceanRenderObjectBuildsFullMapQuadData()
+    {
+        var input = new OceanRuntimeInput(7.5f, new Vector2(128.0f, 64.0f));
+        var quad = OceanRenderObject.BuildQuad(input);
+        using var renderObject = new OceanRenderObject();
+
+        renderObject.ApplyCpuQuadState(input, quad);
+
+        TestHarness.AssertEqual(4, quad.Vertices.Length, "Ocean quad vertex count");
+        TestHarness.AssertEqual(6, quad.Indices.Length, "Ocean quad index count");
+        TestHarness.AssertEqual(new Vector4(0.0f, 7.5f, 0.0f, 1.0f), quad.Vertices[0].Position, "Ocean quad first corner");
+        TestHarness.AssertEqual(new Vector4(128.0f, 7.5f, 64.0f, 1.0f), quad.Vertices[2].Position, "Ocean quad opposite corner");
+        TestHarness.AssertEqual(new Vector2(1.0f, 1.0f), quad.Vertices[2].UV, "Ocean quad uv opposite corner");
+        TestHarness.AssertEqual(7.5f, renderObject.SeaLevel, "OceanRenderObject stores sea level");
+        TestHarness.AssertEqual(new Vector2(128.0f, 64.0f), renderObject.MapWorldSize, "OceanRenderObject stores map size");
+        TestHarness.AssertEqual(6, renderObject.IndexCount, "OceanRenderObject stores index count");
+        TestHarness.Assert(renderObject.Matches(input), "OceanRenderObject should match the input used to build it");
+    }
+
+    private static string ReadRepositoryText(string relativePath)
+    {
+        return File.ReadAllText(Path.Combine(FindRepositoryRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar)));
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        string? directory = AppContext.BaseDirectory;
+        while (directory != null)
+        {
+            string gitPath = Path.Combine(directory, ".git");
+            if (Directory.Exists(gitPath) || File.Exists(gitPath))
+                return directory;
+
+            directory = Directory.GetParent(directory)?.FullName;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate repository root.");
+    }
+}

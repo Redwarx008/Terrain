@@ -8,6 +8,7 @@ using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Games;
 using Terrain.Resources;
+using Terrain.Rendering.Ocean;
 
 namespace Terrain.MapSurface;
 
@@ -55,6 +56,11 @@ public sealed class MapSurfaceProcessor : EntityProcessor<MapSurfaceComponent>
         var mapWorldSize = new Vector2(terrain.HeightmapWidth - 1, terrain.HeightmapHeight - 1);
         state.Context = new MapSurfaceRuntimeContext(resources, terrain, mapWorldSize, resources.SeaLevel);
         state.ContextApplied = true;
+
+        if (component.OceanEntity?.Get<OceanComponent>() is { } ocean)
+        {
+            ocean.ApplyRuntimeInput(new OceanRuntimeInput(resources.SeaLevel, mapWorldSize));
+        }
     }
 
     private static void LogMissingReferencesOnce(MapSurfaceRuntimeState state)
