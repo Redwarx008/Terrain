@@ -15,6 +15,7 @@ internal static class EditorWorkflowTextTests
         TestHarness.Run("editor river inspector does not expose manual import or generate actions", RiverInspectorDoesNotExposeManualImportOrGenerateActions);
         TestHarness.Run("editor river inspector does not expose preview bindings", RiverInspectorDoesNotExposePreviewBindings);
         TestHarness.Run("editor settings exposes river camera height as slider", SettingsExposesRiverCameraHeightAsSlider);
+        TestHarness.Run("editor settings exposes ocean visibility and sea level", SettingsExposesOceanVisibilityAndSeaLevel);
         TestHarness.Run("editor wires river services before loading workspace session", WiresRiverServicesBeforeLoadingWorkspaceSession);
         TestHarness.Run("editor save exposes async modal progress state", SaveExposesAsyncModalProgressState);
         TestHarness.Run("editor save snapshots authoring state before background write", SaveSnapshotsAuthoringStateBeforeBackgroundWrite);
@@ -105,6 +106,25 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(!controlBlock.Contains("NumericUpDown", StringComparison.Ordinal), "river camera height should not use NumericUpDown");
     }
 
+    private static void SettingsExposesOceanVisibilityAndSeaLevel()
+    {
+        string window = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml"));
+        string viewModel = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs"));
+        string host = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "NativeStrideViewportHost.cs"));
+        string game = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "EmbeddedStrideViewportGame.cs"));
+
+        TestHarness.Assert(window.Contains("Show Ocean", StringComparison.Ordinal), "Settings inspector should expose ocean visibility");
+        TestHarness.Assert(window.Contains("Sea Level", StringComparison.Ordinal), "Settings inspector should label the sea level control");
+        TestHarness.Assert(window.Contains("IsChecked=\"{Binding Settings.ShowOcean}\"", StringComparison.Ordinal), "Settings inspector should bind ocean visibility");
+        TestHarness.Assert(window.Contains("Value=\"{Binding Settings.SeaLevel}\"", StringComparison.Ordinal), "Settings inspector should bind sea level slider");
+        TestHarness.Assert(window.Contains("Text=\"{Binding Settings.SeaLevel, StringFormat='{}{0:F1}'}\"", StringComparison.Ordinal), "Settings inspector should show formatted sea level");
+        TestHarness.Assert(host.Contains("public OceanRenderingService? OceanRenderingService", StringComparison.Ordinal), "Native viewport host should expose ocean rendering service");
+        TestHarness.Assert(game.Contains("EnsureOceanRenderFeature(_graphicsCompositor)", StringComparison.Ordinal), "Embedded viewport should ensure OceanRenderFeature in editor compositors");
+        TestHarness.Assert(viewModel.Contains("_viewportHost.OceanRenderingService?.SetVisible(Settings.ShowOcean)", StringComparison.Ordinal), "ShowOcean should drive the ocean rendering service");
+        TestHarness.Assert(viewModel.Contains("_viewportHost.OceanRenderingService?.SetSeaLevel(Settings.SeaLevel)", StringComparison.Ordinal), "SeaLevel should drive the ocean rendering service");
+        TestHarness.Assert(viewModel.Contains("_viewportHost.RiverRenderingService?.SetSeaLevel(Settings.SeaLevel)", StringComparison.Ordinal), "SeaLevel should drive river ocean fade");
+    }
+
     private static void WiresRiverServicesBeforeLoadingWorkspaceSession()
     {
         string viewModelPath = Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs");
@@ -174,7 +194,8 @@ internal static class EditorWorkflowTextTests
         int generatedResources = saveBody.IndexOf("EditorGeneratedAuthoringResourceDetector.DetectMissingGeneratedResources", StringComparison.Ordinal);
         int dirtyResources = saveBody.IndexOf("EditorDirtyResource dirtyResources = dirtySnapshot.Resources", StringComparison.Ordinal);
         int noOpSave = saveBody.IndexOf("No dirty authoring resources to save.", StringComparison.Ordinal);
-        int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress, dirtySnapshot)", StringComparison.Ordinal);
+        int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(", StringComparison.Ordinal);
+        int snapshotSeaLevel = saveBody.IndexOf("Settings.SeaLevel", snapshot, StringComparison.Ordinal);
         int taskRun = saveBody.IndexOf("Task.Run(", StringComparison.Ordinal);
         int saveSnapshot = saveBody.IndexOf("terrainManager.SaveAuthoringResources(session, snapshot, progress)", StringComparison.Ordinal);
         int applyCommittedDescriptorIds = saveBody.IndexOf("_materialSlotManager.ApplyCommittedDescriptorIds(snapshot.DescriptorSlots)", StringComparison.Ordinal);
@@ -189,6 +210,7 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(dirtyResources >= 0, "Save should capture dirty resources before snapshot capture");
         TestHarness.Assert(noOpSave >= 0, "Save should skip authoring snapshot capture when no resources are dirty");
         TestHarness.Assert(snapshot >= 0, "Save should capture an authoring snapshot on the UI thread");
+        TestHarness.Assert(snapshotSeaLevel >= 0, "Save should include the current sea level in the authoring snapshot");
         TestHarness.Assert(taskRun >= 0, "Save should still run file writes in the background");
         TestHarness.Assert(saveSnapshot >= 0, "Save should pass only the snapshot to background file writes");
         TestHarness.Assert(applyCommittedDescriptorIds >= 0, "Save should apply committed descriptor ids to live slots only after writes succeed");
@@ -209,7 +231,8 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(taskRun < refreshProgress, "Refresh progress should be reported after background writes");
         TestHarness.Assert(refreshProgress < completedProgress, "Completed progress should follow refresh");
 
-        string snapshotMethod = ExtractMethodBody(terrainManager, "EditorDirtySnapshot dirtySnapshot)");
+        string normalizedTerrainManager = terrainManager.Replace("\r\n", "\n");
+        string snapshotMethod = ExtractMethodBody(normalizedTerrainManager, "EditorDirtySnapshot dirtySnapshot,\n        float seaLevel)");
         TestHarness.Assert(snapshotMethod.Contains("heightDataCache.ToArray()", StringComparison.Ordinal), "snapshot should clone height data");
         TestHarness.Assert(snapshotMethod.Contains("Array.Copy(BiomeMask.GetRawData()", StringComparison.Ordinal), "snapshot should clone biome mask data");
         TestHarness.Assert(snapshotMethod.Contains("HasActiveSlotMissingMaterialId", StringComparison.Ordinal), "snapshot should include descriptor when biome settings need generated material ids");

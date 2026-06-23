@@ -10,6 +10,7 @@ public sealed class RiverRenderSettings
     public bool ShowBottom { get; set; } = true;
     public bool ShowSurface { get; set; } = true;
     public float RiverMaxVisibleCameraHeight { get; set; } = 3000.0f;
+    public float SeaLevel { get; set; } = 3.8f;
 
     public float TextureUvScale { get; set; } = 1.0f;
     public float FlowNormalUvScale { get; set; } = 0.4f;

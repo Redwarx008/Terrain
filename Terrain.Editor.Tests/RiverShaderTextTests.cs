@@ -45,6 +45,7 @@ internal static class RiverShaderTextTests
             "bottom_properties.dds",
             "bottom_depth.dds",
             "ambient_normal.dds",
+            "flowmap.dds",
             "flow_normal.dds",
             "foam.dds",
             "foam_ramp.dds",
@@ -217,7 +218,7 @@ internal static class RiverShaderTextTests
     {
         string shader = ReadRepositoryText("Terrain/Effects/River/RiverBottom.sdsl");
 
-        AssertContains(shader, "stage float _WaterHeight = 3.0f;", "RiverBottom should expose water height for ocean fade");
+        AssertContains(shader, "stage float _WaterHeight", "RiverBottom should expose water height for ocean fade");
         AssertContains(shader, "float underOceanFade = 1.0f - saturate((_WaterHeight - streams.PositionWS.y) * _OceanFadeRate);", "RiverBottom should compute underwater fade from water height and river surface height");
         AssertContains(shader, "float fadeOut = min(underOceanFade, saturate(streams.RiverTransparency));", "RiverBottom should use a dedicated fadeOut term for bottom blending");
         AssertContains(shader, "float edgeFade1 = smoothstep(0.0f, max(_BankFade, 0.0001f), riverUv.y);", "RiverBottom advanced alpha should use the bank-fade edge term on one side");
@@ -322,26 +323,34 @@ internal static class RiverShaderTextTests
     {
         string loader = ReadRepositoryText("Terrain/Rendering/River/RiverResourceLoader.cs");
         string feature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
+        string binder = ReadRepositoryText("Terrain/Rendering/Water/WaterSceneLightingBinder.cs");
         string viewportGame = ReadRepositoryText("Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs");
 
-        AssertContains(feature, "PrepareRiverSceneLighting(context, renderView);", "RiverRenderFeature should prepare scene lighting for all river passes");
+        AssertContains(feature, "private WaterSceneLightingBinder? sceneLightingBinder;", "RiverRenderFeature should keep scene lighting binding in the shared water binder");
+        AssertContains(feature, "sceneLightingBinder = new WaterSceneLightingBinder(this, forwardLightingFeature, bottomShadowMapRenderer);", "RiverRenderFeature should initialize the shared water scene lighting binder");
+        AssertContains(feature, "sceneLightingBinder?.Bind(context, renderView, bottomEffect, surfaceEffect);", "RiverRenderFeature should bind scene lighting for all river passes through the shared water binder");
+        AssertContains(feature, "sceneLightingBinder = null;", "RiverRenderFeature should release the shared water scene lighting binder on destroy");
+        AssertNotContains(feature, "PrepareRiverSceneLighting", "RiverRenderFeature should not keep river-local scene lighting binding logic");
+        AssertNotContains(feature, "RenderViewDatasField", "RiverRenderFeature should not own ForwardLightingRenderFeature reflection details");
+        AssertNotContains(feature, "fallbackVisibleLights", "RiverRenderFeature should not own fallback scene light collection");
         AssertContains(feature, "bottomShadowMapRenderer = forwardLightingFeature?.ShadowMapRenderer;", "RiverRenderFeature should grab Stride's shadow-map renderer from forward lighting");
-        AssertContains(feature, "var lightingView = renderView.LightingView ?? renderView;", "RiverRenderFeature should resolve river lighting from the current lighting view");
-        AssertContains(feature, "LightDirectionalShadowMapRenderer.ShaderData", "RiverRenderFeature should read Stride's directional shadow shader data for river passes");
-        AssertContains(feature, "sceneShadowDepthBias = shaderData.DepthBias;", "RiverRenderFeature should carry Stride's active shadow depth bias into the shared compare path");
-        AssertContains(feature, "BindDirectionalLightToEffect(bottomEffect?.Parameters", "RiverRenderFeature should bind directional light data to RiverBottom");
-        AssertContains(feature, "BindDirectionalLightToEffect(surfaceEffect?.Parameters", "RiverRenderFeature should bind directional light data to RiverSurface");
-        AssertContains(feature, "BindEnvironmentToEffect(bottomEffect?.Parameters", "RiverRenderFeature should bind skybox data to RiverBottom");
-        AssertContains(feature, "BindEnvironmentToEffect(surfaceEffect?.Parameters", "RiverRenderFeature should bind skybox data to RiverSurface");
-        AssertContains(feature, "RiverStrideLightingKeys._SceneSunDirection", "RiverRenderFeature should use shared generated lighting keys");
-        AssertContains(feature, "RiverStrideLightingKeys._SceneShadowDepthBias", "RiverRenderFeature should bind active scene shadow depth bias through shared lighting keys");
-        AssertContains(feature, "RiverStrideLightingKeys._SceneWorldToShadowCascadeUV", "RiverRenderFeature should bind real scene world-to-shadow matrices through shared lighting keys");
-        AssertContains(feature, "RiverStrideLightingKeys.SceneShadowMapTexture", "RiverRenderFeature should bind the shared shadow map key");
-        AssertContains(feature, "SkyboxKeys.CubeMap", "RiverRenderFeature should read the real scene skybox specular cubemap");
-        AssertContains(feature, "River bottom requires a real scene skybox cubemap.", "RiverRenderFeature should still reject non-target bottom environment fallbacks");
-        AssertContains(feature, "RiverStrideLightingKeys.EnvironmentMapTexture", "RiverRenderFeature should bind the shared environment map key");
-        AssertContains(feature, "RiverStrideLightingKeys._EnvironmentSkyMatrix", "RiverRenderFeature should bind scene skybox rotation through shared lighting keys");
-        AssertContains(feature, "RiverStrideLightingKeys._EnvironmentIntensity", "RiverRenderFeature should bind scene skybox intensity through shared lighting keys");
+        AssertContains(binder, "var lightingView = renderView.LightingView ?? renderView;", "WaterSceneLightingBinder should resolve lighting from the current lighting view");
+        AssertContains(binder, "RenderViewDatasField?.GetValue(forwardLightingFeature)", "WaterSceneLightingBinder should read Stride's per-view lighting data through the existing reflection path");
+        AssertContains(binder, "GetOwnerContext(context).VisibilityGroup.Tags.Get(ForwardLightingRenderFeature.CurrentLights)", "WaterSceneLightingBinder should keep the fallback scene light collection path");
+        AssertContains(binder, "LightDirectionalShadowMapRenderer.ShaderData", "WaterSceneLightingBinder should read Stride's directional shadow shader data for water passes");
+        AssertContains(binder, "sceneShadowDepthBias = shaderData.DepthBias;", "WaterSceneLightingBinder should carry Stride's active shadow depth bias into the shared compare path");
+        AssertContains(binder, "BindDirectionalLightToEffect(effect?.Parameters", "WaterSceneLightingBinder should bind directional light data to each water effect");
+        AssertContains(binder, "BindEnvironmentToEffect(effect?.Parameters", "WaterSceneLightingBinder should bind skybox data to each water effect");
+        AssertContains(binder, "RiverStrideLightingKeys._SceneSunDirection", "WaterSceneLightingBinder should use shared generated lighting keys");
+        AssertContains(binder, "RiverStrideLightingKeys._SceneShadowDepthBias", "WaterSceneLightingBinder should bind active scene shadow depth bias through shared lighting keys");
+        AssertContains(binder, "RiverStrideLightingKeys._SceneWorldToShadowCascadeUV", "WaterSceneLightingBinder should bind real scene world-to-shadow matrices through shared lighting keys");
+        AssertContains(binder, "RiverStrideLightingKeys.SceneShadowMapTexture", "WaterSceneLightingBinder should bind the shared shadow map key");
+        AssertContains(binder, "SkyboxKeys.CubeMap", "WaterSceneLightingBinder should read the real scene skybox specular cubemap");
+        AssertContains(binder, "River bottom requires a real scene skybox cubemap.", "WaterSceneLightingBinder should still reject non-target bottom environment fallbacks");
+        AssertContains(binder, "RiverStrideLightingKeys.EnvironmentMapTexture", "WaterSceneLightingBinder should bind the shared environment map key");
+        AssertContains(binder, "RiverStrideLightingKeys._EnvironmentSkyMatrix", "WaterSceneLightingBinder should bind scene skybox rotation through shared lighting keys");
+        AssertContains(binder, "RiverStrideLightingKeys._EnvironmentIntensity", "WaterSceneLightingBinder should bind scene skybox intensity through shared lighting keys");
+        AssertContains(binder, "effect?.UpdateEffect(context.GraphicsDevice);", "WaterSceneLightingBinder should update each non-null effect after binding scene lighting");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.WaterColorSampler, graphicsDevice.SamplerStates.LinearWrap);", "RiverRenderFeature should bind a dedicated water-color sampler");
         AssertContains(feature, "SetTexture(surfaceEffect.Parameters, RiverSurfaceKeys.ReflectionSpecularTexture, riverResources.ReflectionSpecular);", "RiverRenderFeature should keep the river reflection/specular asset on the surface pass");
         AssertContains(viewportGame, "_riverComponent.Settings.BottomEnvironmentIntensity = 1.0f;", "EmbeddedStrideViewportGame should keep only bottom environment tuning as an explicit river-side multiplier");
@@ -369,8 +378,10 @@ internal static class RiverShaderTextTests
 
         AssertContains(package, "!dir Effects", "Terrain.sdpkg should include the Effects folder that contains RiverStrideLighting.sdsl");
         AssertContains(project, "<Compile Update=\"Effects\\River\\RiverStrideLighting.sdsl.cs\">", "Terrain.csproj should compile generated RiverStrideLighting shader keys");
-        AssertContains(project, "<None Update=\"Effects\\River\\RiverStrideLighting.sdsl\">", "Terrain.csproj should register RiverStrideLighting for shader key generation metadata");
-        AssertContains(project, "<LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>", "Terrain.csproj should name the generated RiverStrideLighting key file");
+        AssertContains(project, "<None Remove=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should remove shader sources from the legacy None item type");
+        AssertContains(project, "<AdditionalFiles Include=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should include RiverStrideLighting as a Stride shader input through the Effects wildcard");
+        AssertNotContains(project, "<None Update=\"Effects\\River\\RiverStrideLighting.sdsl\">", "Terrain.csproj should not use the legacy None shader item type for RiverStrideLighting");
+        AssertNotContains(project, "<LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>", "Terrain.csproj should not use legacy LastGenOutput metadata for RiverStrideLighting");
     }
 
     private static void BottomShaderDoesNotApplyGlobalLightingEnergyBoost()
@@ -400,6 +411,7 @@ internal static class RiverShaderTextTests
         AssertContains(settings, "public float BottomNormalStrength { get; set; } = 1.0f;", "RiverRenderSettings should expose bottom normal strength for bottom lighting");
         AssertContains(settings, "public float BottomEnvironmentIntensity { get; set; }", "RiverRenderSettings should expose bottom environment intensity");
         AssertContains(settings, "public float RiverMaxVisibleCameraHeight { get; set; } = 3000.0f;", "RiverRenderSettings should expose the camera-height river visibility cutoff");
+        AssertContains(settings, "public float SeaLevel { get; set; } = 3.8f;", "RiverRenderSettings should expose runtime map sea level for river water height");
         AssertNotContains(renderObject, "ApplySettings", "RiverRenderObject should not copy shared RiverRenderSettings per object every frame");
         AssertNotContains(renderObject, "settings.", "RiverRenderObject should not cache pass-wide RiverRenderSettings fields");
         AssertContains(renderObject, "public Vector2 MapWorldSize { get; private set; } = new(4096.0f, 4096.0f);", "RiverRenderObject should cache per-axis map world size for rectangular map UV normalization");
@@ -414,6 +426,7 @@ internal static class RiverShaderTextTests
         AssertNotContains(processor, "renderObject.ApplySettings(component.Settings);", "RiverProcessor should not push pass-wide settings into every render object each frame");
         AssertContains(processor, "renderObject.World = entity.Transform.WorldMatrix;", "RiverProcessor should still update per-object transform state each frame");
         AssertContains(processor, "component.Settings.RiverMaxVisibleCameraHeight = bundle.RiverMaxVisibleCameraHeight;", "RiverProcessor should copy runtime TOML camera-height cutoff into render settings");
+        AssertContains(processor, "component.Settings.SeaLevel = bundle.SeaLevel;", "RiverProcessor should copy runtime TOML sea level into render settings");
         AssertContains(feature, "private static RiverRenderSettings? GetRiverSettings(RiverRenderObject riverObject)", "RiverRenderFeature should read pass-wide settings from the render object's source component");
         AssertContains(feature, "return (riverObject.Source as RiverComponent)?.Settings;", "RiverRenderFeature should not depend on duplicated RiverRenderObject settings");
         AssertContains(feature, "float riverMaxVisibleCameraHeight = ResolveRiverMaxVisibleCameraHeight(renderViewStage, startIndex, endIndex);", "RiverRenderFeature should resolve the camera-height cutoff before river pass work");
@@ -423,7 +436,10 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "private float ResolveRiverMaxVisibleCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)", "RiverRenderFeature should keep camera-height cutoff resolution explicit");
         AssertContains(feature, "maxVisibleCameraHeight = foundRiverObject", "RiverRenderFeature should resolve a stable draw-range camera-height cutoff instead of depending on sorted node order");
         AssertContains(feature, "? MathF.Max(maxVisibleCameraHeight, riverMaxVisibleCameraHeight)", "RiverRenderFeature should use the highest river camera-height cutoff across the draw range");
-        AssertContains(feature, "bottomEffect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);", "RiverRenderFeature should bind static water height for bottom ocean fade");
+        AssertNotContains(feature, "bottomEffect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);", "RiverRenderFeature should not bind a static water height for bottom ocean fade");
+        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._WaterHeight, settings.SeaLevel);", "RiverRenderFeature should bind bottom water height from shared river settings");
+        AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._WaterHeight, settings.SeaLevel);", "RiverRenderFeature should bind surface water height from shared river settings");
+        AssertContains(feature, "&& sourceSettings.SeaLevel == candidateSettings.SeaLevel", "RiverRenderFeature should include sea level in the shared-parameter invariant");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._TextureUvScale, settings.TextureUvScale);", "RiverRenderFeature should continue binding texture UV scale for available shader variants");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, settings.OceanFadeRate);", "RiverRenderFeature should bind bottom ocean fade rate from shared settings");
         AssertContains(feature, "bottomEffect.Parameters.Set(RiverBottomKeys._WorldToMapUnitScale, 0.5f);", "RiverRenderFeature should bind the static local world-to-map-unit conversion for world-UV bottom sampling");

@@ -31,9 +31,10 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
-    <None Update="Effects\Build\TerrainBuildLodLookup.sdsl">
-      <LastGenOutput>TerrainBuildLodLookup.sdsl.cs</LastGenOutput>
-    </None>
+    <None Remove="Effects\**\*.sdsl" />
+    <None Remove="Effects\**\*.sdfx" />
+    <AdditionalFiles Include="Effects\**\*.sdsl" />
+    <AdditionalFiles Include="Effects\**\*.sdfx" />
     <None Update="Resources\heightmap.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -83,32 +84,22 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
+    <Compile Update="Effects\Ocean\OceanVertexStreams.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\Ocean\OceanSurface.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Effects\Material\MaterialTerrainDiffuse.sdsl">
-      <LastGenOutput>MaterialTerrainDiffuse.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\River\RiverSurface.sdsl">
-      <LastGenOutput>RiverSurface.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\River\RiverBottom.sdsl">
-      <LastGenOutput>RiverBottom.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\River\RiverSceneSeed.sdsl">
-      <LastGenOutput>RiverSceneSeed.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\River\RiverVertexStreams.sdsl">
-      <LastGenOutput>RiverVertexStreams.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\River\RiverCommon.sdsl">
-      <LastGenOutput>RiverCommon.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\River\RiverWaterCommon.sdsl">
-      <LastGenOutput>RiverWaterCommon.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\River\RiverStrideLighting.sdsl">
-      <LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>
-    </None>
+    <None Remove="Effects\**\*.sdsl" />
+    <None Remove="Effects\**\*.sdfx" />
+    <AdditionalFiles Include="Effects\**\*.sdsl" />
+    <AdditionalFiles Include="Effects\**\*.sdfx" />
   </ItemGroup>
 </Project>

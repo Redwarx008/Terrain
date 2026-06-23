@@ -12,4 +12,5 @@ public sealed class RuntimeMapDefinition
     public float RiverMinWidth { get; init; } = 1.0f;
     public float RiverMaxWidth { get; init; } = 4.0f;
     public float RiverMaxVisibleCameraHeight { get; init; } = 3000.0f;
+    public float SeaLevel { get; init; } = 3.8f;
 }

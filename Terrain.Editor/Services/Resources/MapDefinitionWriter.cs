@@ -10,6 +10,9 @@ namespace Terrain.Editor.Services.Resources;
 
 public sealed class MapDefinitionWriter
 {
+    private const float MinSeaLevel = -10000.0f;
+    private const float MaxSeaLevel = 10000.0f;
+
     private static readonly string[] TopCommentTemplateLines =
     [
         "# Optional terrain companion resources:",
@@ -38,6 +41,7 @@ public sealed class MapDefinitionWriter
             throw new InvalidDataException("Map definition height_scale must be greater than 0.");
         ValidateRiverWidthRange(mapDefinition);
         ValidateRiverMaxVisibleCameraHeight(mapDefinition.RiverMaxVisibleCameraHeight);
+        ValidateSeaLevel(mapDefinition.SeaLevel);
 
         var terrain = new TomlTable
         {
@@ -58,6 +62,7 @@ public sealed class MapDefinitionWriter
                 ["river_min_width"] = mapDefinition.RiverMinWidth,
                 ["river_max_width"] = mapDefinition.RiverMaxWidth,
                 ["river_max_visible_camera_height"] = mapDefinition.RiverMaxVisibleCameraHeight,
+                ["sea_level"] = ToTomlFloat(mapDefinition.SeaLevel),
             },
         };
 
@@ -82,6 +87,19 @@ public sealed class MapDefinitionWriter
             throw new InvalidDataException("Map definition river_max_visible_camera_height must be finite.");
         if (value <= 0.0f)
             throw new InvalidDataException("Map definition river_max_visible_camera_height must be greater than 0.");
+    }
+
+    private static void ValidateSeaLevel(float value)
+    {
+        if (!float.IsFinite(value))
+            throw new InvalidDataException("Map definition sea_level must be finite.");
+        if (value < MinSeaLevel || value > MaxSeaLevel)
+            throw new InvalidDataException($"Map definition sea_level must be between {MinSeaLevel} and {MaxSeaLevel}.");
+    }
+
+    private static TomlFloat ToTomlFloat(float value)
+    {
+        return new TomlFloat { Value = (double)(decimal)value };
     }
 
     private static void AddOptionalPath(TomlTable table, string key, string? path)

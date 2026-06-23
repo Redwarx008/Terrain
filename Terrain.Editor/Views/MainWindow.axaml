@@ -520,6 +520,16 @@
                     <TextBlock Classes="sectionLabel" Text="TERRAIN" />
                     <CheckBox Content="Show Terrain" IsChecked="{Binding Settings.ShowTerrain}" />
                     <CheckBox Content="Show Rivers" IsChecked="{Binding Settings.ShowRivers}" />
+                    <CheckBox Content="Show Ocean" IsChecked="{Binding Settings.ShowOcean}" />
+                    <Grid ColumnDefinitions="*,72" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="Sea Level" />
+                        <Slider Minimum="-100" Maximum="300" Value="{Binding Settings.SeaLevel}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True"
+                               Text="{Binding Settings.SeaLevel, StringFormat='{}{0:F1}'}"
+                               VerticalAlignment="Bottom" />
+                    </Grid>
                     <Grid ColumnDefinitions="*,72" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="River Max Camera Height" />

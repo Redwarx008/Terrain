@@ -281,6 +281,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             AddConsole("Info", "Stride SDL viewport host now owns a Scene and TerrainManager.");
             EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
             TryWireRiverServices();
+            TryWireOceanServices();
             _ = LoadEditorResourceSessionAsync();
         }
         else
@@ -303,6 +304,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     {
         EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
         TryWireRiverServices();
+        TryWireOceanServices();
         if (_viewportHost.TerrainManager != null)
         {
             _viewportHost.TerrainManager.SetTerrainVisible(Settings.ShowTerrain);
@@ -384,6 +386,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             River.SetServices(_viewportHost.RiverRenderingService, _viewportHost.RiverMeshService);
             _viewportHost.RiverRenderingService.SetVisible(Settings.ShowRivers);
             _viewportHost.RiverRenderingService.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
+            _viewportHost.RiverRenderingService.SetSeaLevel(Settings.SeaLevel);
+        }
+    }
+
+    private void TryWireOceanServices()
+    {
+        if (_viewportHost.OceanRenderingService != null)
+        {
+            _viewportHost.OceanRenderingService.SetVisible(Settings.ShowOcean);
+            _viewportHost.OceanRenderingService.SetSeaLevel(Settings.SeaLevel);
         }
     }
 
@@ -538,7 +550,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress, dirtySnapshot);
+            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(
+                riverMaxVisibleCameraHeight: Settings.RiverMaxVisibleCameraHeight,
+                progress: progress,
+                dirtySnapshot: dirtySnapshot,
+                seaLevel: Settings.SeaLevel);
             await Task.Run(() => terrainManager.SaveAuthoringResources(session, snapshot, progress));
             UpdateSaveProgress(AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, "Refreshing editor state..."));
             if (snapshot.DescriptorSlots != null)
@@ -1673,6 +1689,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             _viewportHost.RiverRenderingService?.SetVisible(Settings.ShowRivers);
         }
+        else if (e.PropertyName == nameof(SettingsViewModel.ShowOcean))
+        {
+            _viewportHost.OceanRenderingService?.SetVisible(Settings.ShowOcean);
+        }
+        else if (e.PropertyName == nameof(SettingsViewModel.SeaLevel))
+        {
+            _viewportHost.OceanRenderingService?.SetSeaLevel(Settings.SeaLevel);
+            _viewportHost.RiverRenderingService?.SetSeaLevel(Settings.SeaLevel);
+            EditorDirtyState.Instance.MarkDirty(EditorDirtyResource.MapDefinition);
+        }
         else if (e.PropertyName == nameof(SettingsViewModel.RiverMaxVisibleCameraHeight))
         {
             _viewportHost.RiverRenderingService?.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
@@ -1689,9 +1715,13 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             if (_resourceSession != null)
             {
                 Settings.RiverMaxVisibleCameraHeight = _resourceSession.MapDefinitionModel.RiverMaxVisibleCameraHeight;
+                Settings.SeaLevel = _resourceSession.MapDefinitionModel.SeaLevel;
             }
 
             _viewportHost.RiverRenderingService?.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
+            _viewportHost.RiverRenderingService?.SetSeaLevel(Settings.SeaLevel);
+            _viewportHost.OceanRenderingService?.SetSeaLevel(Settings.SeaLevel);
+            _viewportHost.OceanRenderingService?.SetVisible(Settings.ShowOcean);
         }
     }
 

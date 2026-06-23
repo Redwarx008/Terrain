@@ -135,7 +135,7 @@ public sealed class TerrainProcessor : EntityProcessor<TerrainComponent, Terrain
             component,
             () =>
             {
-                TerrainRuntimeResourceBundle bundle = LoadRuntimeResourceBundle();
+                TerrainRuntimeResourceBundle bundle = component.RuntimeResourceBundle ?? LoadRuntimeResourceBundle();
                 foreach (string diagnostic in bundle.Diagnostics)
                 {
                     Log.Warning(diagnostic);

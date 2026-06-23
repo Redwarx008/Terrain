@@ -360,7 +360,11 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
         if (session == null)
             throw new ArgumentNullException(nameof(session));
 
-        EditorAuthoringSaveSnapshot snapshot = CreateAuthoringSaveSnapshot(session.MapDefinitionModel.RiverMaxVisibleCameraHeight, progress);
+        EditorAuthoringSaveSnapshot snapshot = CreateAuthoringSaveSnapshot(
+            riverMaxVisibleCameraHeight: session.MapDefinitionModel.RiverMaxVisibleCameraHeight,
+            progress: progress,
+            dirtyResources: EditorDirtyResource.All,
+            seaLevel: session.MapDefinitionModel.SeaLevel);
         SaveAuthoringResources(session, snapshot, progress);
     }
 
@@ -372,13 +376,40 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
         return CreateAuthoringSaveSnapshot(
             riverMaxVisibleCameraHeight,
             progress,
-            EditorDirtySnapshot.Unversioned(dirtyResources));
+            EditorDirtySnapshot.Unversioned(dirtyResources),
+            seaLevel: 3.8f);
     }
 
     public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(
         float riverMaxVisibleCameraHeight,
         IProgress<AuthoringSaveProgress>? progress,
         EditorDirtySnapshot dirtySnapshot)
+    {
+        return CreateAuthoringSaveSnapshot(
+            riverMaxVisibleCameraHeight,
+            progress,
+            dirtySnapshot,
+            seaLevel: 3.8f);
+    }
+
+    public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(
+        float riverMaxVisibleCameraHeight,
+        IProgress<AuthoringSaveProgress>? progress,
+        EditorDirtyResource dirtyResources,
+        float seaLevel)
+    {
+        return CreateAuthoringSaveSnapshot(
+            riverMaxVisibleCameraHeight,
+            progress,
+            EditorDirtySnapshot.Unversioned(dirtyResources),
+            seaLevel);
+    }
+
+    public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(
+        float riverMaxVisibleCameraHeight,
+        IProgress<AuthoringSaveProgress>? progress,
+        EditorDirtySnapshot dirtySnapshot,
+        float seaLevel)
     {
         progress?.Report(AuthoringSaveProgress.Running(1, AuthoringSaveProgress.TotalSteps, "Preparing authoring data..."));
         EditorDirtyResource dirtyResources = dirtySnapshot.Resources;
@@ -439,7 +470,8 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             riverMaxVisibleCameraHeight,
             descriptorSlots,
             biomeSnapshot,
-            dirtySnapshot);
+            dirtySnapshot,
+            seaLevel: seaLevel);
     }
 
     private static bool HasDirtyResource(EditorDirtyResource dirtyResources, EditorDirtyResource resource)
@@ -474,9 +506,10 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             snapshot.HeightScale,
             snapshot.DescriptorSlots,
             snapshot.BiomeSnapshot,
-            progress,
-            snapshot.RiverMaxVisibleCameraHeight,
-            snapshot.DirtyResources);
+            progress: progress,
+            riverMaxVisibleCameraHeight: snapshot.RiverMaxVisibleCameraHeight,
+            dirtyResources: snapshot.DirtyResources,
+            seaLevel: snapshot.SeaLevel);
     }
 
     public BoundingBox GetTerrainBounds()

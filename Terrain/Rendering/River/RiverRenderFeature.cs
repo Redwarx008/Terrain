@@ -1,10 +1,8 @@
 #nullable enable
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Reflection;
 using Stride.Core;
 using Stride.Core.Diagnostics;
 using Stride.Core.Mathematics;
@@ -15,7 +13,7 @@ using Stride.Rendering.Compositing;
 using Stride.Rendering.Images;
 using Stride.Rendering.Lights;
 using Stride.Rendering.Shadows;
-using Stride.Rendering.Skyboxes;
+using Terrain.Rendering.Water;
 
 namespace Terrain.Rendering.River;
 
@@ -38,7 +36,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
     private static readonly Logger Log = GlobalLogger.GetLogger("Terrain");
     private static readonly InputElementDescription[] RiverInputElements = RiverVertex.Layout.CreateInputElements();
-    private static readonly FieldInfo? RenderViewDatasField = typeof(ForwardLightingRenderFeature).GetField("renderViewDatas", BindingFlags.Instance | BindingFlags.NonPublic);
     private DynamicEffectInstance? bottomEffect;
     private DynamicEffectInstance? surfaceEffect;
     private MutablePipelineState? bottomPipelineState;
@@ -46,10 +43,10 @@ public sealed class RiverRenderFeature : RootRenderFeature
     private ImageEffectShader? sceneSeedEffect;
     private readonly RiverRenderResources renderResources = new();
     private readonly RiverResourceLoader riverResources = new();
-    private readonly List<RenderLight> fallbackVisibleLights = new(8);
     private ContentManager? contentManager;
     private ForwardLightingRenderFeature? forwardLightingFeature;
     private IShadowMapRenderer? bottomShadowMapRenderer;
+    private WaterSceneLightingBinder? sceneLightingBinder;
 
     public RiverRenderDebugMode DebugMode { get; set; }
 
@@ -85,6 +82,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         var meshRenderFeature = RenderSystem?.RenderFeatures.OfType<MeshRenderFeature>().FirstOrDefault();
         forwardLightingFeature = meshRenderFeature?.RenderFeatures.OfType<ForwardLightingRenderFeature>().FirstOrDefault();
         bottomShadowMapRenderer = forwardLightingFeature?.ShadowMapRenderer;
+        sceneLightingBinder = new WaterSceneLightingBinder(this, forwardLightingFeature, bottomShadowMapRenderer);
 
         bottomPipelineState = CreatePipelineState(
             Context.GraphicsDevice,
@@ -118,6 +116,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         sceneSeedEffect = null;
         forwardLightingFeature = null;
         bottomShadowMapRenderer = null;
+        sceneLightingBinder = null;
         bottomPipelineState = null;
         surfacePipelineState = null;
 
@@ -192,7 +191,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         BindRefractionMaxCameraHeight(bottomEffect, refractionMaxCameraHeight);
         BindRefractionMaxCameraHeight(surfaceEffect, refractionMaxCameraHeight);
 
-        PrepareRiverSceneLighting(context, renderView);
+        sceneLightingBinder?.Bind(context, renderView, bottomEffect, surfaceEffect);
         ApplyDebugRasterizerState(bottomPipelineState, isSurface: false, nearClipPlane: renderView.NearClipPlane);
         ApplyDebugRasterizerState(surfacePipelineState, isSurface: true, nearClipPlane: renderView.NearClipPlane);
 
@@ -274,6 +273,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
             && sourceSettings.TextureUvScale == candidateSettings.TextureUvScale
             && sourceSettings.FlowNormalUvScale == candidateSettings.FlowNormalUvScale
             && sourceSettings.RiverMaxVisibleCameraHeight == candidateSettings.RiverMaxVisibleCameraHeight
+            && sourceSettings.SeaLevel == candidateSettings.SeaLevel
             && sourceSettings.FlowNormalSpeed == candidateSettings.FlowNormalSpeed
             && sourceSettings.RiverFoamFactor == candidateSettings.RiverFoamFactor
             && sourceSettings.NoiseScale == candidateSettings.NoiseScale
@@ -399,277 +399,10 @@ public sealed class RiverRenderFeature : RootRenderFeature
         commandList.CopyRegion(renderResources.SceneSeedColor, 0, null, renderResources.BottomColor, 0);
     }
 
-    private void PrepareRiverSceneLighting(RenderDrawContext context, RenderView renderView)
-    {
-        if (bottomEffect == null || surfaceEffect == null)
-        {
-            return;
-        }
-
-        var lightingView = renderView.LightingView ?? renderView;
-        var renderViewLightData = TryGetRenderViewLightData(lightingView);
-        var lights = renderViewLightData?.VisibleLights ?? CollectFallbackVisibleLights(lightingView);
-        var (directionalLight, shadowMapTexture) = SelectBottomDirectionalLight(lights, renderViewLightData, lightingView);
-        RenderLight? skyboxLight = SelectBottomSkyboxLight(lights);
-
-        BindDirectionalLightFromScene(directionalLight, shadowMapTexture);
-        BindEnvironmentFromScene(skyboxLight);
-        bottomEffect.UpdateEffect(context.GraphicsDevice);
-        surfaceEffect.UpdateEffect(context.GraphicsDevice);
-    }
-
-    private ForwardLightingRenderFeature.RenderViewLightData? TryGetRenderViewLightData(RenderView lightingView)
-    {
-        if (forwardLightingFeature != null
-            && RenderViewDatasField?.GetValue(forwardLightingFeature) is Dictionary<RenderView, ForwardLightingRenderFeature.RenderViewLightData> renderViewDatas
-            && renderViewDatas.TryGetValue(lightingView, out var renderViewLightData))
-        {
-            return renderViewLightData;
-        }
-
-        return null;
-    }
-
-    private IReadOnlyList<RenderLight>? CollectFallbackVisibleLights(RenderView lightingView)
-    {
-        fallbackVisibleLights.Clear();
-
-        var lights = Context.VisibilityGroup.Tags.Get(ForwardLightingRenderFeature.CurrentLights);
-        if (lights == null)
-        {
-            return null;
-        }
-
-        var frustum = lightingView.Frustum;
-        foreach (var light in lights)
-        {
-            if (light.Type is IDirectLight directLight
-                && directLight.HasBoundingBox
-                && !frustum.Contains(ref light.BoundingBoxExt))
-            {
-                continue;
-            }
-
-            fallbackVisibleLights.Add(light);
-        }
-
-        return fallbackVisibleLights;
-    }
-
-    private (RenderLight? DirectionalLight, LightShadowMapTexture? ShadowMapTexture) SelectBottomDirectionalLight(
-        IReadOnlyList<RenderLight>? lights,
-        ForwardLightingRenderFeature.RenderViewLightData? renderViewLightData,
-        RenderView lightingView)
-    {
-        RenderLight? bestDirectionalLight = null;
-        LightShadowMapTexture? bestShadowMapTexture = null;
-
-        if (renderViewLightData != null)
-        {
-            foreach (var light in renderViewLightData.VisibleLightsWithShadows)
-            {
-                if (light.Type is not LightDirectional)
-                {
-                    continue;
-                }
-
-                var shadowMapTexture = TryGetSceneShadowMapTexture(renderViewLightData, lightingView, light);
-                if (shadowMapTexture == null)
-                {
-                    continue;
-                }
-
-                if (bestDirectionalLight == null || light.Intensity > bestDirectionalLight.Intensity)
-                {
-                    bestDirectionalLight = light;
-                    bestShadowMapTexture = shadowMapTexture;
-                }
-            }
-        }
-
-        if (bestDirectionalLight != null)
-        {
-            return (bestDirectionalLight, bestShadowMapTexture);
-        }
-
-        if (lights != null)
-        {
-            foreach (var light in lights)
-            {
-                if (light.Type is not LightDirectional)
-                {
-                    continue;
-                }
-
-                if (bestDirectionalLight == null || light.Intensity > bestDirectionalLight.Intensity)
-                {
-                    bestDirectionalLight = light;
-                }
-            }
-        }
-
-        return (bestDirectionalLight, bestDirectionalLight != null ? TryGetSceneShadowMapTexture(renderViewLightData, lightingView, bestDirectionalLight) : null);
-    }
-
-    private static RenderLight? SelectBottomSkyboxLight(IReadOnlyList<RenderLight>? lights)
-    {
-        if (lights == null)
-        {
-            return null;
-        }
-
-        RenderLight? bestSkyboxLight = null;
-        RenderLight? bestSkyboxWithCubemap = null;
-        foreach (var light in lights)
-        {
-            if (light.Type is not LightSkybox)
-            {
-                continue;
-            }
-
-            if (bestSkyboxLight == null || light.Intensity > bestSkyboxLight.Intensity)
-            {
-                bestSkyboxLight = light;
-            }
-
-            if (TryGetSceneEnvironmentTexture(light) != null
-                && (bestSkyboxWithCubemap == null || light.Intensity > bestSkyboxWithCubemap.Intensity))
-            {
-                bestSkyboxWithCubemap = light;
-            }
-        }
-
-        return bestSkyboxWithCubemap ?? bestSkyboxLight;
-    }
-
-    private LightShadowMapTexture? TryGetSceneShadowMapTexture(
-        ForwardLightingRenderFeature.RenderViewLightData? renderViewLightData,
-        RenderView lightingView,
-        RenderLight directionalLight)
-    {
-        if (renderViewLightData?.RenderLightsWithShadows.TryGetValue(directionalLight, out var shadowMapTexture) == true)
-        {
-            return shadowMapTexture;
-        }
-
-        return bottomShadowMapRenderer?.FindShadowMap(lightingView, directionalLight);
-    }
-
-    private void BindDirectionalLightFromScene(RenderLight? directionalLight, LightShadowMapTexture? shadowMapTexture)
-    {
-        if (bottomEffect == null || surfaceEffect == null)
-        {
-            return;
-        }
-
-        Vector3 sceneSunDirection = directionalLight?.Direction ?? new Vector3(0.0f, -1.0f, 0.0f);
-        Vector3 sceneSunColor = directionalLight?.Color.ToVector3() ?? Vector3.Zero;
-        int cascadeCount = 0;
-        float shadowBlendCascades = 0.0f;
-        float sceneShadowDepthBias = 0.01f;
-        float[] shadowCascadeSplits = [0.0f, 0.0f, 0.0f, 0.0f];
-        Matrix[] worldToShadowCascadeUv =
-        [
-            Matrix.Identity,
-            Matrix.Identity,
-            Matrix.Identity,
-            Matrix.Identity,
-        ];
-        Texture? sceneShadowMapTexture = null;
-
-        if (shadowMapTexture?.ShaderData is LightDirectionalShadowMapRenderer.ShaderData shaderData)
-        {
-            cascadeCount = Math.Min(Math.Min(shadowMapTexture.CascadeCount, shaderData.CascadeSplits.Length), worldToShadowCascadeUv.Length);
-            Array.Copy(shaderData.CascadeSplits, shadowCascadeSplits, cascadeCount);
-            Array.Copy(shaderData.WorldToShadowCascadeUV, worldToShadowCascadeUv, cascadeCount);
-            shadowBlendCascades = (shadowMapTexture.ShadowType & LightShadowType.BlendCascade) != 0 ? 1.0f : 0.0f;
-            sceneShadowDepthBias = shaderData.DepthBias;
-            sceneShadowMapTexture = shaderData.Texture;
-        }
-
-        BindDirectionalLightToEffect(bottomEffect?.Parameters, sceneSunDirection, sceneSunColor, cascadeCount, shadowBlendCascades, sceneShadowDepthBias, shadowCascadeSplits, worldToShadowCascadeUv, sceneShadowMapTexture);
-        BindDirectionalLightToEffect(surfaceEffect?.Parameters, sceneSunDirection, sceneSunColor, cascadeCount, shadowBlendCascades, sceneShadowDepthBias, shadowCascadeSplits, worldToShadowCascadeUv, sceneShadowMapTexture);
-    }
-
-    private static void BindDirectionalLightToEffect(
-        ParameterCollection? parameters,
-        Vector3 sceneSunDirection,
-        Vector3 sceneSunColor,
-        int cascadeCount,
-        float shadowBlendCascades,
-        float sceneShadowDepthBias,
-        float[] shadowCascadeSplits,
-        Matrix[] worldToShadowCascadeUv,
-        Texture? sceneShadowMapTexture)
-    {
-        if (parameters == null)
-        {
-            return;
-        }
-
-        parameters.Set(RiverStrideLightingKeys._SceneSunDirection, sceneSunDirection);
-        parameters.Set(RiverStrideLightingKeys._SceneSunColor, sceneSunColor);
-        parameters.Set(RiverStrideLightingKeys._SceneShadowCascadeCount, cascadeCount);
-        parameters.Set(RiverStrideLightingKeys._SceneShadowBlendCascades, shadowBlendCascades);
-        parameters.Set(RiverStrideLightingKeys._SceneShadowDepthBias, sceneShadowDepthBias);
-        parameters.Set(RiverStrideLightingKeys._SceneShadowCascadeSplits, shadowCascadeSplits);
-        parameters.Set(RiverStrideLightingKeys._SceneWorldToShadowCascadeUV, worldToShadowCascadeUv);
-        parameters.SetObject(RiverStrideLightingKeys.SceneShadowMapTexture, sceneShadowMapTexture);
-    }
-
-    private void BindEnvironmentFromScene(RenderLight? skyboxLight)
-    {
-        if (bottomEffect == null || surfaceEffect == null)
-        {
-            return;
-        }
-
-        Texture? bottomEnvironment = TryGetSceneEnvironmentTexture(skyboxLight);
-        Debug.Assert(bottomEnvironment != null, "River bottom requires a real scene skybox cubemap.");
-        if (bottomEnvironment == null)
-        {
-            throw new InvalidOperationException("River bottom requires a real scene skybox cubemap.");
-        }
-
-        Matrix skyMatrix = Matrix.Identity;
-        float intensity = 1.0f;
-        if (skyboxLight != null)
-        {
-            var rotation = Quaternion.RotationMatrix(skyboxLight.WorldMatrix);
-            skyMatrix = Matrix.Invert(Matrix.RotationQuaternion(rotation));
-            intensity = skyboxLight.Intensity;
-        }
-
-        BindEnvironmentToEffect(bottomEffect?.Parameters, bottomEnvironment, skyMatrix, intensity);
-        BindEnvironmentToEffect(surfaceEffect?.Parameters, bottomEnvironment, skyMatrix, intensity);
-    }
-
-    private static void BindEnvironmentToEffect(ParameterCollection? parameters, Texture? environmentTexture, Matrix skyMatrix, float intensity)
-    {
-        if (parameters == null)
-        {
-            return;
-        }
-
-        SetTexture(parameters, RiverStrideLightingKeys.EnvironmentMapTexture, environmentTexture);
-        parameters.Set(RiverStrideLightingKeys._EnvironmentSkyMatrix, skyMatrix);
-        parameters.Set(RiverStrideLightingKeys._EnvironmentIntensity, intensity);
-        parameters.Set(RiverStrideLightingKeys._EnvironmentMipCount, (float)Math.Max(environmentTexture?.MipLevelCount ?? 1, 1));
-    }
-
-    private static Texture? TryGetSceneEnvironmentTexture(RenderLight? skyboxLight)
-    {
-        if (skyboxLight?.Type is not LightSkybox lightSkybox)
-        {
-            return null;
-        }
-
-        return lightSkybox.Skybox?.SpecularLightingParameters.Get(SkyboxKeys.CubeMap);
-    }
-
     private static void ApplyBottomParameters(DynamicEffectInstance effect, RiverRenderObject riverObject, RiverRenderSettings settings)
     {
         effect.Parameters.Set(RiverBottomKeys._MapExtent, riverObject.MapExtent);
+        effect.Parameters.Set(RiverBottomKeys._WaterHeight, settings.SeaLevel);
         effect.Parameters.Set(RiverBottomKeys._TextureUvScale, settings.TextureUvScale);
         effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, settings.OceanFadeRate);
         effect.Parameters.Set(RiverBottomKeys._BankAmount, settings.BankAmount);
@@ -686,6 +419,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
     {
         effect.Parameters.Set(RiverSurfaceKeys._MapExtent, riverObject.MapExtent);
         effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterHeight, settings.SeaLevel);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, settings.FlowNormalUvScale);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalSpeed, settings.FlowNormalSpeed);
         effect.Parameters.Set(RiverSurfaceKeys._RiverFoamFactor, settings.RiverFoamFactor);
@@ -782,7 +516,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
             return;
         }
 
-        bottomEffect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);
         bottomEffect.Parameters.Set(RiverBottomKeys._WorldToMapUnitScale, 0.5f);
         bottomEffect.Parameters.Set(RiverBottomKeys.BottomTextureSampler, graphicsDevice.SamplerStates.LinearWrap);
         SetTexture(bottomEffect.Parameters, RiverBottomKeys.BottomDiffuseTexture, riverResources.BottomDiffuse);

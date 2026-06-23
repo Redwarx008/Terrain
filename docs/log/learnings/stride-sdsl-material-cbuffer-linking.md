@@ -30,3 +30,15 @@ Stride's material shader composition can alter automatic link naming for value p
 ## Verification
 
 Use RenderDoc on the target draw and read the relevant cbuffer. The fix is validated only when the GPU cbuffer values match the values set in C#.
+
+## Multi-Targeted Project Asset Targets
+
+`Terrain/Terrain.csproj` uses `TargetFrameworks`, so invoking Stride asset targets on the outer project can fail with `MSB4057` even though `Stride.Core.Assets.CompilerApp.targets` contains the target. Run the same Stride target against the inner TFM:
+
+```powershell
+dotnet msbuild Terrain\Terrain.csproj "/t:_StridePrepareAssetCompiler;StrideAssetUpdateGeneratedFiles" /p:Configuration=Debug /p:TargetFramework=net10.0-windows
+dotnet msbuild Terrain\Terrain.csproj /t:StrideCleanAsset /p:Configuration=Debug /p:TargetFramework=net10.0-windows
+dotnet msbuild Terrain\Terrain.csproj /t:StrideCompileAsset /p:Configuration=Debug /p:TargetFramework=net10.0-windows
+```
+
+If the outer command reports the target does not exist, do not assume the Stride package is missing. First check whether the project is multi-targeted and whether the target appears in the NuGet package targets for the selected TFM.

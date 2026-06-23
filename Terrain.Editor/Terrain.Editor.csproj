@@ -54,12 +54,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Effects\EditorTerrainBuildSplatMap.sdsl">
-      <LastGenOutput>EditorTerrainBuildSplatMap.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\BrushDecalShader.sdsl">
-      <LastGenOutput>BrushDecalShader.sdsl.cs</LastGenOutput>
-    </None>
+    <None Remove="Effects\**\*.sdsl" />
+    <None Remove="Effects\**\*.sdfx" />
+    <AdditionalFiles Include="Effects\**\*.sdsl" />
+    <AdditionalFiles Include="Effects\**\*.sdfx" />
   </ItemGroup>
 
   <!--<ItemGroup>
@@ -91,21 +89,10 @@
   </ItemGroup>-->
 
   <!--<ItemGroup>
-    <None Update="Effects\EditorTerrainDiffuse.sdsl">
-      <LastGenOutput>EditorTerrainDiffuse.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\EditorTerrainDisplacement.sdsl">
-      <LastGenOutput>EditorTerrainDisplacement.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\EditorTerrainForwardShadingEffect.sdfx">
-      <LastGenOutput>EditorTerrainForwardShadingEffect.sdfx.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\EditorTerrainHeightParameters.sdsl">
-      <LastGenOutput>EditorTerrainHeightParameters.sdsl.cs</LastGenOutput>
-    </None>
-    <None Update="Effects\EditorTerrainHeightStream.sdsl">
-      <LastGenOutput>EditorTerrainHeightStream.sdsl.cs</LastGenOutput>
-    </None>
+    <None Remove="Effects\**\*.sdsl" />
+    <None Remove="Effects\**\*.sdfx" />
+    <AdditionalFiles Include="Effects\**\*.sdsl" />
+    <AdditionalFiles Include="Effects\**\*.sdfx" />
   </ItemGroup>-->
 
 </Project>

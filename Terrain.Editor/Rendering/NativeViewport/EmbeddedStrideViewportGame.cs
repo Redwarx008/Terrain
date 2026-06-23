@@ -24,6 +24,7 @@ using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
 using Terrain.Editor.ViewModels;
 using Terrain.Rivers;
+using Terrain.Rendering.Ocean;
 using NumericsVector2 = System.Numerics.Vector2;
 using System.Collections.Generic;
 
@@ -61,6 +62,8 @@ public sealed class EmbeddedStrideViewportGame : Game
     private BrushDecalComponent? _brushDecalComponent;
     private Entity? _riverEntity;
     private RiverComponent? _riverComponent;
+    private Entity? _oceanEntity;
+    private OceanComponent? _oceanComponent;
 
     public EmbeddedStrideViewportGame()
     {
@@ -81,6 +84,8 @@ public sealed class EmbeddedStrideViewportGame : Game
     public TerrainManager? TerrainManager { get; private set; }
 
     public RiverRenderingService? RiverRenderingService { get; private set; }
+
+    public OceanRenderingService? OceanRenderingService { get; private set; }
 
     public RiverMeshService? RiverMeshService { get; private set; }
 
@@ -607,6 +612,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
         EnsureRiverRenderFeature(_graphicsCompositor);
+        EnsureOceanRenderFeature(_graphicsCompositor);
         EnsureBrushDecalRenderFeature(_graphicsCompositor);
         _modeController.Apply(_sceneViewMode, _graphicsCompositor);
         _riverWireframeModeController.Apply(_sceneViewMode, _graphicsCompositor);
@@ -679,6 +685,7 @@ public sealed class EmbeddedStrideViewportGame : Game
         _camera.Slot = _graphicsCompositor.Cameras[0].ToSlotId();
         EnsureEditorTerrainRenderFeature(_graphicsCompositor);
         EnsureRiverRenderFeature(_graphicsCompositor);
+        EnsureOceanRenderFeature(_graphicsCompositor);
         EnsureBrushDecalRenderFeature(_graphicsCompositor);
         _modeController.Apply(_sceneViewMode, _graphicsCompositor);
         _riverWireframeModeController.Apply(_sceneViewMode, _graphicsCompositor);
@@ -710,6 +717,13 @@ public sealed class EmbeddedStrideViewportGame : Game
 
         RiverRenderingService = new RiverRenderingService(GraphicsDevice, _scene!, _riverComponent);
         RiverMeshService = new RiverMeshService(TerrainManager);
+
+        _oceanEntity = new Entity("Ocean");
+        _oceanComponent = new OceanComponent();
+        _oceanEntity.Add(_oceanComponent);
+        _scene.Entities.Add(_oceanEntity);
+
+        OceanRenderingService = new OceanRenderingService(_oceanComponent);
     }
 
     private static void ConfigureEditorToneMap(GraphicsCompositor compositor)
@@ -861,6 +875,34 @@ public sealed class EmbeddedStrideViewportGame : Game
             RenderStage = transparentStage,
         });
         graphicsCompositor.RenderFeatures.Add(riverRenderFeature);
+    }
+
+    private static void EnsureOceanRenderFeature(GraphicsCompositor graphicsCompositor)
+    {
+        if (graphicsCompositor.RenderFeatures.OfType<OceanRenderFeature>().Any())
+        {
+            return;
+        }
+
+        var oceanRenderFeature = new OceanRenderFeature();
+        var transparentStage = graphicsCompositor.RenderStages.FirstOrDefault(stage =>
+            string.Equals(stage.Name, "Transparent", StringComparison.Ordinal));
+        if (transparentStage == null)
+        {
+            transparentStage = new RenderStage("OceanTransparent", "Main")
+            {
+                SortMode = new BackToFrontSortMode(),
+            };
+            graphicsCompositor.RenderStages.Add(transparentStage);
+        }
+
+        oceanRenderFeature.RenderStageSelectors.Add(new SimpleGroupToRenderStageSelector
+        {
+            EffectName = "OceanSurface",
+            RenderGroup = OceanRenderGroups.OceanRenderGroupMask,
+            RenderStage = transparentStage,
+        });
+        graphicsCompositor.RenderFeatures.Add(oceanRenderFeature);
     }
 
     private static void EnsureBrushDecalRenderFeature(GraphicsCompositor graphicsCompositor)
@@ -1018,6 +1060,15 @@ public sealed class EmbeddedStrideViewportGame : Game
         RiverRenderingService?.Dispose();
         RiverRenderingService = null;
         RiverMeshService = null;
+        OceanRenderingService = null;
+        if (_oceanEntity != null && _scene != null)
+        {
+            _scene.Entities.Remove(_oceanEntity);
+            _oceanEntity.Dispose();
+            _oceanEntity = null;
+            _oceanComponent = null;
+        }
+
         if (_riverEntity != null && _scene != null)
         {
             _scene.Entities.Remove(_riverEntity);
@@ -1046,6 +1097,7 @@ public sealed class EmbeddedStrideViewportGame : Game
                     bounds.Maximum.X,
                     bounds.Maximum.Z,
                     bounds.Maximum.Y);
+                OceanRenderingService?.SetMapWorldSize(bounds.Maximum.X, bounds.Maximum.Z);
             }
         }
 

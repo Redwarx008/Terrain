@@ -13,6 +13,7 @@ internal static class RiverShaderCompileTests
         TestHarness.Run("river bottom shader compiles through stride effect compiler", () => CompileShader("RiverBottom"));
         TestHarness.Run("river surface shader compiles through stride effect compiler", () => CompileShader("RiverSurface"));
         TestHarness.Run("river scene seed shader compiles through stride effect compiler", () => CompileShader("RiverSceneSeed"));
+        TestHarness.Run("ocean surface shader compiles through stride effect compiler", () => CompileShader("OceanSurface"));
     }
 
     private static void CompileShader(string shaderName)
@@ -46,6 +47,7 @@ internal static class RiverShaderCompileTests
     private static IEnumerable<string> EnumerateSourceDirectories(string repositoryRoot, string strideSourceRoot)
     {
         yield return Path.Combine(repositoryRoot, "Terrain", "Effects", "River");
+        yield return Path.Combine(repositoryRoot, "Terrain", "Effects", "Ocean");
         yield return Path.Combine(strideSourceRoot, "sources", "engine", "Stride.Graphics", "Shaders");
         yield return Path.Combine(strideSourceRoot, "sources", "engine", "Stride.Rendering", "Rendering", "Shaders");
         yield return Path.Combine(strideSourceRoot, "sources", "engine", "Stride.Rendering", "Rendering", "Core");

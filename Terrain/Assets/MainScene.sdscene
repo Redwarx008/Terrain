@@ -10,6 +10,8 @@ Hierarchy:
         - ref!! 5369f368-a858-4c5b-a2ce-287300ee54af
         - ref!! 8f3955bf-2df5-4fef-9967-03668d6360ac
         - ref!! 1cfe1131-cc2f-4a41-947d-3102b1f351dd
+        - ref!! 2fadc4ad-c3a6-4fdf-9a9d-5f13fef8a601
+        - ref!! 53f6c4d1-69a4-4b5a-b754-bde5f431fd0b
         - ref!! c8f8f226-3477-45ec-84d8-d8e8de365e1b
         - ref!! a68fec97-eeb3-44c6-8877-12e43d214e56
     Parts:
@@ -34,6 +36,39 @@ Hierarchy:
                         ToggleKey: D1
                         DebugTextPosition: {X: 20, Y: 20}
                         DebugLabel: Terrain Wireframe
+        -   Entity:
+                Id: 2fadc4ad-c3a6-4fdf-9a9d-5f13fef8a601
+                Name: MapSurface
+                Components:
+                    2fadc4adc3a64fdf9a9d5f13fef8a601: !TransformComponent
+                        Id: ee6234f5-e6f0-4c76-8f91-b6513e7b1ae2
+                        Position: {X: 0.0, Y: 0.0, Z: 0.0}
+                        Rotation: {X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
+                        Scale: {X: 1.0, Y: 1.0, Z: 1.0}
+                        Children: {}
+                    9d7f1324c8c54046b9fb0e312d58c0bb: !Terrain.MapSurface.MapSurfaceComponent,Terrain
+                        Id: 5b31111f-2d0b-42f5-a9ab-a2276ac34134
+                        TerrainEntity: ref!! 1cfe1131-cc2f-4a41-947d-3102b1f351dd
+                        RiverEntity: ref!! c8f8f226-3477-45ec-84d8-d8e8de365e1b
+                        OceanEntity: ref!! 53f6c4d1-69a4-4b5a-b754-bde5f431fd0b
+        -   Entity:
+                Id: 53f6c4d1-69a4-4b5a-b754-bde5f431fd0b
+                Name: Ocean
+                Components:
+                    a6e4a41f15a54cb4adf927ba4eb5a134: !TransformComponent
+                        Id: 017779ad-c974-4739-a929-1efcb6a9d5e1
+                        Position: {X: 0.0, Y: 0.0, Z: 0.0}
+                        Rotation: {X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
+                        Scale: {X: 1.0, Y: 1.0, Z: 1.0}
+                        Children: {}
+                    b0c8a7e2198347549f8bb11f5083be20: !Terrain.Rendering.Ocean.OceanComponent,Terrain
+                        Id: 4a201570-4168-403c-8af5-b8f3c9050d78
+                        Visible: true
+                        Material:
+                            ShallowColor: {R: 0.08, G: 0.32, B: 0.42}
+                            DeepColor: {R: 0.01, G: 0.08, B: 0.16}
+                            Roughness: 0.08
+                            WaveScale: 1.0
         -   Entity:
                 Id: 5369f368-a858-4c5b-a2ce-287300ee54af
                 Name: Directional light

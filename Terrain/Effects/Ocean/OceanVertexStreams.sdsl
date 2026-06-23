@@ -1,0 +1,7 @@
+namespace Terrain
+{
+    shader OceanVertexStreams
+    {
+        stage stream float2 OceanUV : TEXCOORD0;
+    };
+}
