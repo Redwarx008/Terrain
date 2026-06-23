@@ -539,10 +539,10 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             }
 
             var snapshot = terrainManager.CreateAuthoringSaveSnapshot(
-                Settings.RiverMaxVisibleCameraHeight,
-                Settings.SeaLevel,
-                progress,
-                dirtySnapshot);
+                riverMaxVisibleCameraHeight: Settings.RiverMaxVisibleCameraHeight,
+                progress: progress,
+                dirtySnapshot: dirtySnapshot,
+                seaLevel: Settings.SeaLevel);
             await Task.Run(() => terrainManager.SaveAuthoringResources(session, snapshot, progress));
             UpdateSaveProgress(AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, "Refreshing editor state..."));
             if (snapshot.DescriptorSlots != null)

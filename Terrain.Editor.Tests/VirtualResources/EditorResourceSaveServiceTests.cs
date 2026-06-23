@@ -12,6 +12,7 @@ internal static class EditorResourceSaveServiceTests
         TestHarness.Run("authoring save reports progress in expected order", AuthoringSaveReportsProgressInExpectedOrder);
         TestHarness.Run("authoring save persists river max visible camera height", AuthoringSavePersistsRiverMaxVisibleCameraHeight);
         TestHarness.Run("authoring save preserves loaded river max visible camera height by default", AuthoringSavePreservesLoadedRiverMaxVisibleCameraHeightByDefault);
+        TestHarness.Run("authoring save old overload preserves loaded sea level", AuthoringSaveOldOverloadPreservesLoadedSeaLevel);
         TestHarness.Run("authoring save persists sea level", AuthoringSavePersistsSeaLevel);
         TestHarness.Run("authoring save preserves loaded sea level by default", AuthoringSavePreservesLoadedSeaLevelByDefault);
         TestHarness.Run("authoring save writes only dirty heightmap resource", AuthoringSaveWritesOnlyDirtyHeightmapResource);
@@ -123,6 +124,28 @@ internal static class EditorResourceSaveServiceTests
         TestHarness.AssertEqual(875.0f, saved.RiverMaxVisibleCameraHeight, "save should preserve loaded river max visible camera height when caller omits the parameter");
     }
 
+    private static void AuthoringSaveOldOverloadPreservesLoadedSeaLevel()
+    {
+        SaveFixture fixture = CreatePopulatedSaveFixture(seaLevel: 9.25f);
+
+        EditorResourceSaveService.Save(
+            fixture.Session,
+            null,
+            0,
+            0,
+            null,
+            222.0f,
+            null,
+            null,
+            null,
+            null,
+            EditorDirtyResource.MapDefinition);
+
+        RuntimeMapDefinition saved = RuntimeMapDefinitionReader.ReadFrom(fixture.MapDefinitionPath);
+
+        TestHarness.AssertEqual(9.25f, saved.SeaLevel, "old save overload should preserve loaded sea level");
+    }
+
     private static void AuthoringSavePreservesLoadedSeaLevelByDefault()
     {
         SaveFixture fixture = CreatePopulatedSaveFixture(seaLevel: 9.25f);
@@ -163,6 +186,9 @@ internal static class EditorResourceSaveServiceTests
                 new EditorMaterialDescriptorSlot("grass", 0, "Grass", "grass.png", null, null),
             ],
             biomeSnapshot: new EditorBiomeSettingsSnapshot([], [], []),
+            progress: null,
+            riverMaxVisibleCameraHeight: null,
+            dirtyResources: EditorDirtyResource.All,
             seaLevel: 9.25f);
 
         RuntimeMapDefinition saved = RuntimeMapDefinitionReader.ReadFrom(fixture.MapDefinitionPath);

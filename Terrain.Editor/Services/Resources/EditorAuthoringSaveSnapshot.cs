@@ -8,6 +8,8 @@ namespace Terrain.Editor.Services.Resources;
 
 public sealed class EditorAuthoringSaveSnapshot
 {
+    private const float DefaultSeaLevel = 3.8f;
+
     public EditorAuthoringSaveSnapshot(
         ushort[]? heightData,
         int width,
@@ -15,7 +17,6 @@ public sealed class EditorAuthoringSaveSnapshot
         BiomeMask? biomeMask,
         float heightScale,
         float riverMaxVisibleCameraHeight,
-        float seaLevel,
         IReadOnlyList<EditorMaterialDescriptorSlot>? descriptorSlots,
         EditorBiomeSettingsSnapshot? biomeSnapshot,
         EditorDirtyResource dirtyResources = EditorDirtyResource.All)
@@ -26,10 +27,10 @@ public sealed class EditorAuthoringSaveSnapshot
             biomeMask,
             heightScale,
             riverMaxVisibleCameraHeight,
-            seaLevel,
             descriptorSlots,
             biomeSnapshot,
-            EditorDirtySnapshot.Unversioned(dirtyResources))
+            EditorDirtySnapshot.Unversioned(dirtyResources),
+            seaLevel: DefaultSeaLevel)
     {
     }
 
@@ -40,10 +41,59 @@ public sealed class EditorAuthoringSaveSnapshot
         BiomeMask? biomeMask,
         float heightScale,
         float riverMaxVisibleCameraHeight,
-        float seaLevel,
+        IReadOnlyList<EditorMaterialDescriptorSlot>? descriptorSlots,
+        EditorBiomeSettingsSnapshot? biomeSnapshot,
+        EditorDirtyResource dirtyResources,
+        float seaLevel)
+        : this(
+            heightData,
+            width,
+            height,
+            biomeMask,
+            heightScale,
+            riverMaxVisibleCameraHeight,
+            descriptorSlots,
+            biomeSnapshot,
+            EditorDirtySnapshot.Unversioned(dirtyResources),
+            seaLevel)
+    {
+    }
+
+    public EditorAuthoringSaveSnapshot(
+        ushort[]? heightData,
+        int width,
+        int height,
+        BiomeMask? biomeMask,
+        float heightScale,
+        float riverMaxVisibleCameraHeight,
         IReadOnlyList<EditorMaterialDescriptorSlot>? descriptorSlots,
         EditorBiomeSettingsSnapshot? biomeSnapshot,
         EditorDirtySnapshot dirtySnapshot)
+        : this(
+            heightData,
+            width,
+            height,
+            biomeMask,
+            heightScale,
+            riverMaxVisibleCameraHeight,
+            descriptorSlots,
+            biomeSnapshot,
+            dirtySnapshot,
+            seaLevel: DefaultSeaLevel)
+    {
+    }
+
+    public EditorAuthoringSaveSnapshot(
+        ushort[]? heightData,
+        int width,
+        int height,
+        BiomeMask? biomeMask,
+        float heightScale,
+        float riverMaxVisibleCameraHeight,
+        IReadOnlyList<EditorMaterialDescriptorSlot>? descriptorSlots,
+        EditorBiomeSettingsSnapshot? biomeSnapshot,
+        EditorDirtySnapshot dirtySnapshot,
+        float seaLevel)
     {
         HeightData = heightData;
         Width = width;

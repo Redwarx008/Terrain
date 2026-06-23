@@ -9,8 +9,41 @@ internal static class EditorAuthoringSaveSnapshotTests
 {
     public static void RunAll()
     {
+        TestHarness.Run("authoring save snapshot old constructor defaults sea level", AuthoringSaveSnapshotOldConstructorDefaultsSeaLevel);
+        TestHarness.Run("terrain manager old snapshot overload defaults sea level", TerrainManagerOldSnapshotOverloadDefaultsSeaLevel);
         TestHarness.Run("authoring map snapshot skips unrelated resource payloads", AuthoringMapSnapshotSkipsUnrelatedResourcePayloads);
         TestHarness.Run("authoring biome settings snapshot includes descriptor when material ids are generated", AuthoringBiomeSettingsSnapshotIncludesDescriptorWhenMaterialIdsAreGenerated);
+    }
+
+    private static void AuthoringSaveSnapshotOldConstructorDefaultsSeaLevel()
+    {
+        var snapshot = new EditorAuthoringSaveSnapshot(
+            null,
+            0,
+            0,
+            null,
+            100.0f,
+            875.0f,
+            null,
+            null,
+            EditorDirtyResource.MapDefinition);
+
+        TestHarness.AssertEqual(875.0f, snapshot.RiverMaxVisibleCameraHeight, "old constructor should preserve river camera height");
+        TestHarness.AssertEqual(3.8f, snapshot.SeaLevel, "old constructor should default sea level");
+    }
+
+    private static void TerrainManagerOldSnapshotOverloadDefaultsSeaLevel()
+    {
+        var manager = (TerrainManager)RuntimeHelpers.GetUninitializedObject(typeof(TerrainManager));
+
+        EditorAuthoringSaveSnapshot snapshot = manager.CreateAuthoringSaveSnapshot(
+            875.0f,
+            null,
+            EditorDirtyResource.MapDefinition);
+
+        TestHarness.AssertEqual(EditorDirtyResource.MapDefinition, snapshot.DirtyResources, "old overload should preserve dirty resources");
+        TestHarness.AssertEqual(875.0f, snapshot.RiverMaxVisibleCameraHeight, "old overload should preserve river camera height");
+        TestHarness.AssertEqual(3.8f, snapshot.SeaLevel, "old overload should default sea level");
     }
 
     private static void AuthoringMapSnapshotSkipsUnrelatedResourcePayloads()

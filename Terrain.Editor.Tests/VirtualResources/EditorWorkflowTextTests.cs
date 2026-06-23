@@ -222,7 +222,8 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(taskRun < refreshProgress, "Refresh progress should be reported after background writes");
         TestHarness.Assert(refreshProgress < completedProgress, "Completed progress should follow refresh");
 
-        string snapshotMethod = ExtractMethodBody(terrainManager, "EditorDirtySnapshot dirtySnapshot)");
+        string normalizedTerrainManager = terrainManager.Replace("\r\n", "\n");
+        string snapshotMethod = ExtractMethodBody(normalizedTerrainManager, "EditorDirtySnapshot dirtySnapshot,\n        float seaLevel)");
         TestHarness.Assert(snapshotMethod.Contains("heightDataCache.ToArray()", StringComparison.Ordinal), "snapshot should clone height data");
         TestHarness.Assert(snapshotMethod.Contains("Array.Copy(BiomeMask.GetRawData()", StringComparison.Ordinal), "snapshot should clone biome mask data");
         TestHarness.Assert(snapshotMethod.Contains("HasActiveSlotMissingMaterialId", StringComparison.Ordinal), "snapshot should include descriptor when biome settings need generated material ids");
