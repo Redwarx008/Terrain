@@ -12,7 +12,7 @@
 
 **关键原则：** 分离数据层、渲染层、编辑层
 
-**当前状态：** Core ✅ | Rendering ✅ | Editor ✅ | Vegetation 🚧 | Path/River ✅ | MapSurface/Ocean 🚧
+**当前状态：** Core ✅ | Rendering ✅ | Editor ✅ | Vegetation 🚧 | Path/River ✅ | MapSurface/Ocean ✅
 
 ---
 
@@ -36,7 +36,7 @@
 | **材质系统** | ✅ 已实现 | - |
 | **map TOML 规格** | ✅ 已记录 | [map-data-toml-formats](design/map-data-toml-formats.md)；2026-06-21 CK3 runtime cbuffer 对照确认 terrain `HeightScale=50.0`、`MaxHeight=50` refraction camera clamp 是两个不同常量。本项目默认 `height_scale=200` 可保留；2026-06-22 `debug2.rdc` 进一步证明 terrain `HeightScale` 也不能作为实际河面高度代理，河流 refraction clamp 现由 generated river mesh `Bounds.Maximum.Y` 推导为 `ceil(maxY + 1)`，shader 端继续用 `max(_, 50)` 保留 CK3 低地兜底。 |
 | **虚拟纹理** | 🚧 进行中 | HeightMap VT 的高度 mip 必须保留偶数对齐源样本，不能用 2x2 平均；相邻 LOD patch 的 crack snap 依赖跨 mip 共享边界高度一致。 |
-| **MapSurface 协调器** | 🚧 骨架 | Runtime `MainScene.sdscene` 持有 root `MapSurface` entity，引用现有 Terrain 与 RiverSystem；`MapSurfaceComponent` / `MapSurfaceProcessor` 负责统一 map surface 初始化入口：从 `GameRuntimeResourceBootstrap` 读取 map settings 与 runtime bundle，将 bundle 注入 terrain，并在 terrain 初始化且地图尺寸有效后保存包含 `SeaLevel` 的 runtime context；若 OceanEntity 已绑定 `OceanComponent`，只同步 `OceanRuntimeInput(SeaLevel, MapWorldSize)`；当 terrain context 不可用时会同时清理 stale ocean runtime input，避免旧海面继续参与绘制。Ocean water DDS 由 `OceanResourceLoader` 从 `game/map/water` 本地加载；`OceanSurface` shader 与 `OceanRenderFeature` 已存在，但仍不创建 ocean scene/compositor 资产，实际接入留给后续任务。 |
+| **MapSurface / Ocean 协调器** | ✅ 已接入 | Runtime `MainScene.sdscene` 持有 root `MapSurface` entity，引用现有 Terrain、RiverSystem 与 Ocean；`MapSurfaceComponent` / `MapSurfaceProcessor` 负责统一 map surface 初始化入口：从 `GameRuntimeResourceBootstrap` 读取 map settings 与 runtime bundle，将 bundle 注入 terrain，并在 terrain 初始化且地图尺寸有效后保存包含 `SeaLevel` 的 runtime context；OceanEntity 绑定 `OceanComponent` 后同步 `OceanRuntimeInput(SeaLevel, MapWorldSize)`；当 terrain context 不可用时会同时清理 stale ocean runtime input，避免旧海面继续参与绘制。Ocean water DDS 由 `OceanResourceLoader` 从 `game/map/water` 本地加载；`OceanSurface` shader 与 `OceanRenderFeature` 已注册到 runtime compositor，Editor fallback compositor 也会确保 OceanRenderFeature。 |
 
 ### 路径与河流层
 
@@ -50,7 +50,7 @@
 
 **2026-06-23 河流高度采样补充：** `C:\Users\Redwa\Desktop\debug.rdc` 中 EID 276/323 与 290/343 的 post-VS 河流 mesh 仍可见高度斜率突跳；源码复核确认 editor `IRiverTerrainHeightSource.SampleHeight` 通过 `TerrainManager.GetHeightAtPosition` 走整数 `Round` 采样。`RiverMeshService` 现在对 `IRiverTerrainHeightSource` 和 runtime `Func<int,int,float>` 两类离散高度源都在 mesh 服务内部做四点双线性重采样，避免真实 editor 高度源绕过此前只在测试 stub 中覆盖的双线性路径。`C:\Users\Redwa\Desktop\debug2.rdc` 随后证明 editor 中 `RiverMeshService` 会先于地形加载创建，构造期缓存的 `HeightmapWidth/HeightmapHeight` 仍为 0，导致河流 mesh 只落在 `SurfaceOffset` 高度；现在 `IRiverTerrainHeightSource` 路径在每次采样时读取当前宽高，避免延迟加载后继续使用 stale dimensions。`GetMapWorldSize` 同样对 height source 读取当前宽高，保证 reload 后 `MapWorldSize/MapExtent/Width` 与高度采样使用同一尺寸。新增回归测试 `curved river centerline bilinearly resamples nearest height source`、`river centerline uses height source dimensions loaded after mesh service construction` 和 `river mesh map extent uses reloaded height source dimensions` 锁定该行为。
 
-**2026-06-24 Ocean shader/render feature 补充：** Ocean 已新增 `OceanVertexStreams` / `OceanSurface` SDSL 和生成的 shader key 文件。`OceanSurface` 继承 `ShaderBase, TransformationWAndVP, OceanVertexStreams, RiverStrideLighting`，采样 `game/map/water` 的 water color、ambient normal、flowmap、flow normal、foam/foam ramp/map/noise，并通过 `RiverStrideComputeLighting` 使用 scene-driven light/shadow/skybox；禁止接入 province/border/fog-of-war/固定太阳等策略层 token。`OceanRenderFeature` 支持 `OceanRenderObject`，初始化 `DynamicEffectInstance("OceanSurface")`、`OceanResourceLoader`、`WaterSceneLightingBinder` 和单 pass pipeline，在 `Prepare` 中绑定 `OceanMaterialSettings.ShallowColor/DeepColor/Roughness/WaveScale` 及 sea level/map size，在 `Draw` 中绑定 camera/global time/view/world 矩阵、调用 shared water scene lighting binder 并绘制 ocean quad。当前仍不修改 `MainScene.sdscene` 或 `GraphicsCompositor.sdgfxcomp`；scene/compositor 接入留给 Task 9。
+**2026-06-24 Ocean shader/render feature 补充：** Ocean 已新增 `OceanVertexStreams` / `OceanSurface` SDSL 和生成的 shader key 文件。`OceanSurface` 继承 `ShaderBase, TransformationWAndVP, OceanVertexStreams, RiverStrideLighting`，采样 `game/map/water` 的 water color、ambient normal、flowmap、flow normal、foam/foam ramp/map/noise，并通过 `RiverStrideComputeLighting` 使用 scene-driven light/shadow/skybox；禁止接入 province/border/fog-of-war/固定太阳等策略层 token。`OceanRenderFeature` 支持 `OceanRenderObject`，初始化 `DynamicEffectInstance("OceanSurface")`、`OceanResourceLoader`、`WaterSceneLightingBinder` 和单 pass pipeline，在 `Prepare` 中绑定 `OceanMaterialSettings.ShallowColor/DeepColor/Roughness/WaveScale` 及 sea level/map size，在 `Draw` 中绑定 camera/global time/view/world 矩阵、调用 shared water scene lighting binder 并绘制 ocean quad。`MainScene.sdscene` 现在包含独立 Ocean entity，`GraphicsCompositor.sdgfxcomp` 注册 `OceanRenderFeature` 到 Transparent stage / Group1；Editor 侧 `OceanRenderingService` 在 terrain 加载后直接同步 map size/sea level，`Settings.SeaLevel` 同时驱动 ocean plane 与 river `_WaterHeight`。
 
 **2026-06-18 复核补充：** 旧 `debug.rdc` 显示 `RiverSceneSeed` 的 RGB 已压到 CK3 seed 类似范围，但 alpha 恒定为 near clip `0.1`；原因是 editor 路径使用 `commandList.DepthStencilBuffer` 时没有读到有效 scene depth。`RiverRenderFeature` 现明确使用 `GraphicsDevice.Presenter.DepthStencilBuffer` 作为窗口化 editor/runtime 的 scene seed depth；Presenter、depth 或尺寸一致性前置条件用直接 `Debug.Assert` 表达，不再保留 `SelectSceneDepthSource` 或 command-list depth fallback。2026-06-18 03:00 新 `debug.rdc` 复核确认 Presenter depth 绑定后 EID 248 seed alpha 已变为 `12.3984..24.4375`，不再是 near clip 常量；随后 `RiverSceneSeed` 进一步改为写 camera-relative distance payload。2026-06-18 03:16 新 `debug.rdc` 复核确认该新版路径已进入截帧：EID 248 shader 使用 `ProjectionInverse/ViewInverse/Eye` 重建 world position 并写 alpha `4.82031..8.66406`，pixel `(471,282)` 为 `5.23047`。离屏/render-target presenter 若没有 depth，需要后续显式提供 scene-depth source。
 
@@ -228,7 +228,8 @@
 | `Terrain.Editor/Services/Commands/HistoryManager.cs` | Undo/Redo 历史事务管理 |
 | `Terrain.Editor/Services/Commands/StrokeChunkTracker.cs` | 笔触 Chunk 跟踪与去重 |
 | `Terrain.Editor/Services/MaterialSlotManager.cs` | 材质槽位管理；保存成功后用 committed descriptor slots 回填 live `MaterialId`，但 snapshot 生成阶段不写 live slot；缺失 normal fallback 贴图上传每个 mip 时显式传入 mip-sized `ResourceRegion`，与 runtime fallback 路径一致，避免 D3D12 压缩 mip 上传使用 full-texture 默认 region |
-| `Terrain.Editor/Services/RiverRenderingService.cs` | 河流渲染 façade（mesh 同步、显隐控制、桥接编辑器与渲染组件） |
+| `Terrain.Editor/Services/RiverRenderingService.cs` | 河流渲染 façade（mesh 同步、显隐控制、sea level 同步、桥接编辑器与渲染组件） |
+| `Terrain.Editor/Services/OceanRenderingService.cs` | Ocean editor façade；缓存 ShowOcean/SeaLevel/MapWorldSize，并在 terrain 尺寸可用后写入 `OceanComponent.RuntimeInput` |
 | `Terrain.Editor/Services/EditorDirtyState.cs` | 编辑器 dirty 状态跟踪（不携带项目路径）；按作者态资源区分 `MapDefinition`、`Heightmap`、`BiomeMask`、`MaterialDescriptor`、`BiomeSettings`，并为每类资源维护 generation；dirty flags 与 generation 读写使用同一把锁，事件在锁外派发；Save 完成后只清理 snapshot 中 generation 未变化的资源，避免保存期间同一资源再次 dirty 被误清 |
 | `Terrain.Editor/Services/Resources/EditorBootstrapService.cs` | 启动时按 `TerrainWorkspaceRoot` / `Terrain` 程序集目录解析出的有效 app 目录旁 `LaunchSetting.json` 构建 Editor 资源会话 |
 | `Terrain.Editor/Services/Resources/EditorMaterialRecoveryService.cs` | descriptor + biome settings 的作者态材质恢复、缺失 `material_id` 补位与诊断聚合 |
@@ -246,11 +247,11 @@
 | `Terrain/Rendering/Ocean/OceanComponent.cs` | Ocean ECS 组件，只持有可见性、材质默认值和 runtime input，不暴露 SeaLevel；支持显式清理 runtime input |
 | `Terrain/Rendering/Ocean/OceanRenderObject.cs` | Ocean 全地图水平 quad CPU 构造与 GPU 顶点/索引缓冲骨架；bounds Y 方向有固定 padding |
 | `Terrain/Rendering/Ocean/OceanResourceLoader.cs` | Ocean water DDS 本地资源加载器；从 `game/map/water` 读取 water color、ambient normal、flowmap、flow normal、foam 等共享水体贴图，不通过 bundle roots |
-| `Terrain/Rendering/Ocean/OceanRenderFeature.cs` | Ocean 单 pass 渲染特性；绑定 `OceanSurface`、共享 water DDS、`WaterSceneLightingBinder` 和 Ocean material/runtime 参数；尚未注册到 compositor |
+| `Terrain/Rendering/Ocean/OceanRenderFeature.cs` | Ocean 单 pass 渲染特性；绑定 `OceanSurface`、共享 water DDS、`WaterSceneLightingBinder` 和 Ocean material/runtime 参数；runtime/editor compositor 均可注册到 Transparent stage |
 | `Terrain/Streaming/TerrainStreaming.cs` | Runtime height/detail VT streaming；height、DetailIndex、DetailWeight 均来自 `.terrain` v8 reader；CPU height page cache 随 GPU resident page 生命周期释放；顶层 fallback pages 在 preload 时 pinned，保证子页缺失或流式加载 churn 时仍可回退到粗 LOD；child residency 检查可 touch resident pages，防止候选子页等待 sibling 期间被 LRU 淘汰 |
 | `Terrain/Materials/RuntimeMaterialManager.cs` | Runtime descriptor-driven material texture array 管理；缺失 normal 贴图时生成 flat normal fallback，并对每个 mip 使用显式 `ResourceRegion` 上传，避免 D3D12 压缩 mip 默认 region 问题 |
 | `Terrain.Editor/Rendering/NativeViewport/NativeStrideViewportHost.cs` | 原生 Stride 视口宿主；`SetInputBlocked` 在 Save/Export 模态期间阻断视口输入并要求 Stride game flush 当前输入状态 |
-| `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem；Save/Export 模态期间响应输入阻断，释放相机/笔刷状态并 flush 鼠标锁定与笔触输入 |
+| `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流/Ocean RenderFeature 并创建编辑器侧 RiverSystem/Ocean；Save/Export 模态期间响应输入阻断，释放相机/笔刷状态并 flush 鼠标锁定与笔触输入 |
 | `Terrain.Editor/Brushes/` | 笔刷系统 |
 | `Terrain.Editor/Services/Export/IExporter.cs` | 导出器接口（可扩展） |
 | `Terrain.Editor/Services/Export/ExportManager.cs` | 导出管理器（注册、执行、错误回滚） |
@@ -266,6 +267,8 @@
 | `Terrain/Effects/River/RiverSurface.sdsl` | 水面 pass（flow normal、ambient normal、water-color、foam/foam ramp/foam map、reflection/specular、折射采样） |
 | `Terrain/Effects/River/RiverVertexStreams.sdsl` | 河流自定义顶点语义 |
 | `Terrain/Effects/River/RiverWaterCommon.sdsl` | 河流水体共用函数 |
+| `Terrain/Effects/Ocean/OceanSurface.sdsl` | Ocean surface pass；采样 CK3-style water DDS 并复用 `RiverStrideLighting` scene light/skybox |
+| `Terrain/Effects/Ocean/OceanVertexStreams.sdsl` | Ocean quad 自定义 UV stream |
 
 ---
 
