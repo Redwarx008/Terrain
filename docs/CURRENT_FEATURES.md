@@ -1,6 +1,6 @@
 # 当前功能清单
 
-**最后更新：** 2026-06-23
+**最后更新：** 2026-06-24
 **状态图例：** ✅ 完成 | 🚧 进行中 | 📋 规划中 | ❌ 未开始
 
 > **注意：** 2026-04-15 至 2026-05-14 期间有大量开发但无会话日志记录。以下功能状态基于当前代码库实际验证。
@@ -80,7 +80,7 @@
 |------|------|----------|----------|
 | Windows 图形 API | ✅ | `Terrain.Windows/Terrain.Windows.csproj`, `Directory.Packages.props`, `E:\WorkSpace\stride` local packages | 当前工作区 `Terrain.Windows` 显式设置 `<StrideGraphicsApi>Direct3D11</StrideGraphicsApi>`；本地 Stride 源码包版本保持 `4.3.0.2743`，但 `Stride.Graphics.4.3.0.2743.nupkg` 已用 `StrideGraphicsApis=Direct3D11` 重打。`dotnet restore/build Terrain.Windows` 后，输出目录 `Bin/Windows/Debug/win-x64/Stride.Graphics.dll` hash 已确认匹配 `lib/net10.0/Direct3D11/Stride.Graphics.dll`。Runtime 暂不启用 `GameDrawFPS` profiling overlay。 |
 | 地形加载 | ✅ | `Terrain/Core/TerrainProcessor.cs`, `Terrain/Resources/GameRuntimeResourceBootstrap.cs` | Runtime 从 `TerrainWorkspaceRoot` 元数据优先定位工作区 `game/` 根并读取 `.terrain`，不使用 Stride Game Studio 宿主进程的 `AppContext.BaseDirectory`，也不依赖 GameStudio 按字节加载项目程序集后不可靠的 `Assembly.Location`；忽略 `default.toml` 中的 `heightmap` 声明；Runtime 只要求 `.terrain` 和 material descriptor，`biome_mask.png` / `biome_settings.toml` 只作为 Editor Export authoring 输入；同配置失败后不逐帧重试 |
-| MapSurface 协调器骨架 | 🚧 | `Terrain/MapSurface/`, `Terrain/Core/TerrainComponent.cs`, `Terrain/Core/TerrainProcessor.cs` | `MapSurfaceComponent` 持有 Terrain/River/Ocean entity 引用但不暴露 `SeaLevel`；`MapSurfaceProcessor` 通过 `GameRuntimeResourceBootstrap` 加载一次 `TerrainRuntimeResourceBundle`，把 bundle 注入 `TerrainComponent`，等待 terrain 初始化和有效地图尺寸后保存包含 map settings sea level 的 runtime context。当前只驱动 terrain，不引用或调用未来 Ocean/River runtime API。 |
+| MapSurface 协调器骨架 | 🚧 | `Terrain/MapSurface/`, `Terrain/Assets/MainScene.sdscene`, `Terrain/Core/TerrainComponent.cs`, `Terrain/Core/TerrainProcessor.cs` | Runtime scene 已有 root `MapSurface` entity，引用现有 Terrain 与 RiverSystem，OceanEntity 暂为空。`MapSurfaceComponent` 持有 Terrain/River/Ocean entity 引用但不暴露 `SeaLevel`；`MapSurfaceProcessor` 通过 `GameRuntimeResourceBootstrap` 加载一次 `TerrainRuntimeResourceBundle`，把 bundle 注入 `TerrainComponent`，等待 terrain 初始化和有效地图尺寸后保存包含 map settings sea level 的 runtime context。bootstrap 失败会 latch 到 `MapSurfaceRuntimeState`，不在 `Update` 中逐帧抛异常或重试。当前只驱动 terrain，不引用或调用未来 Ocean/River runtime API。 |
 | Height/Detail VT 流式加载 | ✅ | `Terrain/Streaming/TerrainStreaming.cs` | Runtime 从 `.terrain` v8 流式读取 HeightMap、DetailIndex、DetailWeight pages；preload 的顶层 height/detail fallback pages 保持 pinned；quadtree 检查候选子节点 resident 时会 touch 对应 Height/Detail VT pages，避免候选子页等待 sibling 凑齐期间被 LRU 淘汰并造成漫游时低细节回退/闪烁 |
 | IndexMap 材质混合 | ✅ | `Terrain/Effects/Material/MaterialTerrainDiffuse.sdsl` | [streaming](log/2026/04/10/2026-04-10-1-runtime-indexmap-streaming.md) |
 | RuntimeMaterialManager | ✅ | `Terrain/Materials/RuntimeMaterialManager.cs` | descriptor 驱动；缺失 normal 贴图时生成 flat normal fallback。2026-06-23 D3D12 中断诊断后，fallback normal 的每个 mip 上传都显式传入 mip-sized `ResourceRegion`，避免 `BC3_UNorm` 等压缩格式在非 0 mip 走 full-texture 默认 region 时触发 `WriteToSubresource` 失败。 |

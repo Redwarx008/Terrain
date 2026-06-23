@@ -36,7 +36,7 @@
 | **材质系统** | ✅ 已实现 | - |
 | **map TOML 规格** | ✅ 已记录 | [map-data-toml-formats](design/map-data-toml-formats.md)；2026-06-21 CK3 runtime cbuffer 对照确认 terrain `HeightScale=50.0`、`MaxHeight=50` refraction camera clamp 是两个不同常量。本项目默认 `height_scale=200` 可保留；2026-06-22 `debug2.rdc` 进一步证明 terrain `HeightScale` 也不能作为实际河面高度代理，河流 refraction clamp 现由 generated river mesh `Bounds.Maximum.Y` 推导为 `ceil(maxY + 1)`，shader 端继续用 `max(_, 50)` 保留 CK3 低地兜底。 |
 | **虚拟纹理** | 🚧 进行中 | HeightMap VT 的高度 mip 必须保留偶数对齐源样本，不能用 2x2 平均；相邻 LOD patch 的 crack snap 依赖跨 mip 共享边界高度一致。 |
-| **MapSurface 协调器** | 🚧 骨架 | `MapSurfaceComponent` / `MapSurfaceProcessor` 负责统一 map surface 初始化入口：从 `GameRuntimeResourceBootstrap` 读取 map settings 与 runtime bundle，将 bundle 注入 terrain，并在 terrain 初始化且地图尺寸有效后保存包含 `SeaLevel` 的 runtime context；当前只驱动 terrain，不调用未来 ocean/river runtime API。 |
+| **MapSurface 协调器** | 🚧 骨架 | Runtime `MainScene.sdscene` 持有 root `MapSurface` entity，引用现有 Terrain 与 RiverSystem；`MapSurfaceComponent` / `MapSurfaceProcessor` 负责统一 map surface 初始化入口：从 `GameRuntimeResourceBootstrap` 读取 map settings 与 runtime bundle，将 bundle 注入 terrain，并在 terrain 初始化且地图尺寸有效后保存包含 `SeaLevel` 的 runtime context；当前只驱动 terrain，不调用未来 ocean/river runtime API。 |
 
 ### 路径与河流层
 
@@ -180,7 +180,7 @@
 **问题：** Runtime 依赖组件上的显式文件路径和旧 BiomeConfig TOML，无法表达 base + mod 覆盖顺序
 **方案：** Runtime 固定通过 `TerrainWorkspaceRoot` 元数据优先定位工作区 `game/` 资源根；如果元数据不可用，则回退到从 `Terrain` 程序集所在目录向上定位。如果起点本身已在目录名为 `game` 且包含 `map/` 的合法根，也会直接接受该根。随后从有效 app 目录旁的 `LaunchSetting.json` 读取或自动生成本地 mod 配置；base 作为隐式根，按启用 mod 顺序构建 `GameResourceResolver`，再通过 `GameRuntimeResourceBootstrap` 解析 `map/default.toml` 与固定 companion 资源
 **权衡：** 不保留旧路径兼容，迁移更直接但资源入口更统一
-**关键：** `TerrainComponent` 不再保存资源路径；`.terrain` 仍由 `bundle.TerrainDataPath` 直接读取；Runtime 会忽略 `default.toml` 中的 `heightmap` 声明，并直接从 `.terrain` v8 读取 HeightMap / DetailIndex / DetailWeight virtual texture payload。`biome_mask.png` 和 `biome_settings.toml` 只属于 Editor authoring/export，不再进入 Runtime bootstrap 或启动时 detail 构建。若 `terrain.terrain` 缺失或 `.terrain` payload/header 无效，`TerrainProcessor` 记录错误日志并保持 terrain 未初始化；同配置失败后不会逐帧重复重试。2026-06-23 起，`MapSurfaceProcessor` 可先加载同一 `TerrainRuntimeResourceBundle` 并通过 `TerrainComponent.ApplyRuntimeResourceBundle` 注入 terrain，作为后续 river/ocean 共享 map settings 的协调入口；`SeaLevel` 权威仍来自 map settings/runtime bundle，不在 `MapSurfaceComponent` 暴露。
+**关键：** `TerrainComponent` 不再保存资源路径；`.terrain` 仍由 `bundle.TerrainDataPath` 直接读取；Runtime 会忽略 `default.toml` 中的 `heightmap` 声明，并直接从 `.terrain` v8 读取 HeightMap / DetailIndex / DetailWeight virtual texture payload。`biome_mask.png` 和 `biome_settings.toml` 只属于 Editor authoring/export，不再进入 Runtime bootstrap 或启动时 detail 构建。若 `terrain.terrain` 缺失或 `.terrain` payload/header 无效，`TerrainProcessor` 记录错误日志并保持 terrain 未初始化；同配置失败后不会逐帧重复重试。2026-06-23 起，`MapSurfaceProcessor` 可先加载同一 `TerrainRuntimeResourceBundle` 并通过 `TerrainComponent.ApplyRuntimeResourceBundle` 注入 terrain，作为后续 river/ocean 共享 map settings 的协调入口；`SeaLevel` 权威仍来自 map settings/runtime bundle，不在 `MapSurfaceComponent` 暴露。2026-06-24 起，MapSurface bootstrap 失败会记录到 `MapSurfaceRuntimeState` 并停止重试，避免 coordinator 在 `Update` 中逐帧抛异常；terrain 自身未收到 coordinator bundle 时仍保留原 fallback 加载路径。
 
 ### 9. 河流渲染采用 RiverComponent → RiverProcessor → RiverRenderObject → RiverRenderFeature
 **问题：** 仅靠 editor service 或临时 `ModelComponent` 预览无法承载河流的独立 mesh 生命周期、双 pass 渲染和视口调试模式。
