@@ -27,6 +27,8 @@ public sealed class RiverMeshService
 
     private readonly IRiverTerrainHeightSource? heightSource;
     private readonly Func<int, int, float>? sampleHeight;
+    // Only the runtime delegate constructor owns these dimensions. Editor height sources can load
+    // or reload terrain after RiverMeshService is constructed, so read heightSource dimensions live.
     private readonly int heightmapWidth;
     private readonly int heightmapHeight;
     private readonly float heightScale;
@@ -34,9 +36,9 @@ public sealed class RiverMeshService
     public RiverMeshService(IRiverTerrainHeightSource? heightSource)
     {
         this.heightSource = heightSource;
-        heightmapWidth = heightSource?.HeightmapWidth ?? 0;
-        heightmapHeight = heightSource?.HeightmapHeight ?? 0;
-        heightScale = heightSource?.HeightScale ?? 0.0f;
+        heightmapWidth = 0;
+        heightmapHeight = 0;
+        heightScale = 0.0f;
     }
 
     public RiverMeshService(Func<int, int, float> sampleHeight, int heightmapWidth, int heightmapHeight, float heightScale)
@@ -439,8 +441,15 @@ public sealed class RiverMeshService
         if (sampleHeight != null && heightmapWidth > 0 && heightmapHeight > 0)
             return SampleDiscreteHeightBilinear(wx, wz);
 
-        if (heightSource == null || !heightSource.HasHeightData) return 0.0f;
-        return heightSource.SampleHeight(wx, wz);
+        if (heightSource != null && heightSource.HasHeightData)
+        {
+            int sourceWidth = heightSource.HeightmapWidth;
+            int sourceHeight = heightSource.HeightmapHeight;
+            if (sourceWidth > 0 && sourceHeight > 0)
+                return SampleHeightSourceBilinear(wx, wz, sourceWidth, sourceHeight);
+        }
+
+        return 0.0f;
     }
 
     private float SampleDiscreteHeightBilinear(float wx, float wz)
@@ -458,6 +467,26 @@ public sealed class RiverMeshService
         float h10 = sampleHeight(x1, z0);
         float h01 = sampleHeight(x0, z1);
         float h11 = sampleHeight(x1, z1);
+        float hx0 = h00 + (h10 - h00) * tx;
+        float hx1 = h01 + (h11 - h01) * tx;
+        return hx0 + (hx1 - hx0) * tz;
+    }
+
+    private float SampleHeightSourceBilinear(float wx, float wz, int sourceWidth, int sourceHeight)
+    {
+        float x = Math.Clamp(wx, 0.0f, sourceWidth - 1);
+        float z = Math.Clamp(wz, 0.0f, sourceHeight - 1);
+        int x0 = (int)MathF.Floor(x);
+        int z0 = (int)MathF.Floor(z);
+        int x1 = Math.Min(x0 + 1, sourceWidth - 1);
+        int z1 = Math.Min(z0 + 1, sourceHeight - 1);
+        float tx = x - x0;
+        float tz = z - z0;
+
+        float h00 = heightSource!.SampleHeight(x0, z0);
+        float h10 = heightSource.SampleHeight(x1, z0);
+        float h01 = heightSource.SampleHeight(x0, z1);
+        float h11 = heightSource.SampleHeight(x1, z1);
         float hx0 = h00 + (h10 - h00) * tx;
         float hx1 = h01 + (h11 - h01) * tx;
         return hx0 + (hx1 - hx0) * tz;
@@ -602,8 +631,22 @@ public sealed class RiverMeshService
 
     private Vector2 GetMapWorldSize()
     {
-        int width = heightmapWidth > 0 ? heightmapWidth : heightSource?.HeightmapWidth ?? 0;
-        int height = heightmapHeight > 0 ? heightmapHeight : heightSource?.HeightmapHeight ?? 0;
+        int width;
+        int height;
+        if (heightSource != null)
+        {
+            // Editor path: TerrainManager is mutable, so width/height must track the current load.
+            width = heightSource.HeightmapWidth;
+            height = heightSource.HeightmapHeight;
+        }
+        else
+        {
+            // Runtime path: sampleHeight is only a delegate, so the constructor-provided dimensions
+            // are the only authoritative map size available.
+            width = heightmapWidth;
+            height = heightmapHeight;
+        }
+
         if (width > 0 && height > 0)
         {
             return new Vector2(

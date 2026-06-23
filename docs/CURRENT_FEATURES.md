@@ -72,6 +72,8 @@
 | 原生 SDL 视口 | ✅ | `NativeStrideViewportHost.cs` | - |
 | 植被编辑 | 🚧 | - | [Phase 3](design/terrain-editor-design-phase-3.md) |
 
+**2026-06-23 河流高度采样补充：** 最新 `debug.rdc` 中河流 post-VS mesh 仍有高度斜率突跳，原因是 editor 的 `IRiverTerrainHeightSource.SampleHeight` 经 `TerrainManager.GetHeightAtPosition` 暴露最近邻整数采样。`RiverMeshService` 现在在服务内部对所有离散高度源执行四点双线性重采样，runtime `TerrainComponent.GetHeight(int,int)` 路径和 editor `IRiverTerrainHeightSource` 路径一致。后续 `debug2.rdc` 显示河流 `POSITION_WS.y=0.02`，确认 editor 服务构造早于地形加载时不能缓存高度图尺寸；当前实现改为采样时读取 `IRiverTerrainHeightSource` 的最新宽高，`GetMapWorldSize` 也使用当前宽高，避免 reload 后 shader 尺寸参数和高度采样不一致。新增 `curved river centerline bilinearly resamples nearest height source`、`river centerline uses height source dimensions loaded after mesh service construction` 和 `river mesh map extent uses reloaded height source dimensions` 回归测试。
+
 ## 运行时 (Runtime)
 
 | 功能 | 状态 | 关键文件 | 设计文档 |

@@ -16,9 +16,12 @@ internal static class RiverWorkspaceDiagnosticsTests
         TestHarness.Run("long straight river keeps coarse centerline sample budget", LongStraightRiverKeepsCoarseCenterlineSampleBudget);
         TestHarness.Run("long curved river keeps adaptive centerline sample budget", LongCurvedRiverKeepsAdaptiveCenterlineSampleBudget);
         TestHarness.Run("curved river centerline resamples terrain height after smoothing", CurvedRiverCenterlineResamplesTerrainHeightAfterSmoothing);
+        TestHarness.Run("curved river centerline bilinearly resamples nearest height source", CurvedRiverCenterlineBilinearlyResamplesNearestHeightSource);
+        TestHarness.Run("river centerline uses height source dimensions loaded after mesh service construction", RiverCenterlineUsesHeightSourceDimensionsLoadedAfterMeshServiceConstruction);
         TestHarness.Run("river centerline handles invalid height cache dimensions", RiverCenterlineHandlesInvalidHeightCacheDimensions);
         TestHarness.Run("river centerline handles overflowing height cache dimensions", RiverCenterlineHandlesOverflowingHeightCacheDimensions);
         TestHarness.Run("river mesh map extent uses world coordinate span", RiverMeshMapExtentUsesWorldCoordinateSpan);
+        TestHarness.Run("river mesh map extent uses reloaded height source dimensions", RiverMeshMapExtentUsesReloadedHeightSourceDimensions);
     }
 
     private static void TemporaryRiverMapParsesIntoRiverSegments()
@@ -257,6 +260,91 @@ internal static class RiverWorkspaceDiagnosticsTests
         static float HeightAtSample(int x, int y) => (x * x + y * y) * 0.5f;
     }
 
+    private static void CurvedRiverCenterlineBilinearlyResamplesNearestHeightSource()
+    {
+        var segment = new RiverSegment
+        {
+            Cells =
+            [
+                (0, 2),
+                (1, 2),
+                (2, 2),
+                (3, 2),
+                (3, 3),
+                (3, 4),
+                (4, 4),
+                (5, 4),
+                (6, 4),
+                (6, 3),
+                (6, 2),
+                (7, 2),
+                (8, 2),
+                (9, 2),
+            ],
+        };
+        const float heightScale = 1000.0f;
+        var terrainManager = CreateNearestTerrainManagerStub(24, 16, HeightAtSample, heightScale);
+        var meshService = new RiverMeshService(terrainManager);
+
+        meshService.BuildCenterlines([segment], 10, 7);
+
+        float maxError = 0.0f;
+        foreach (Vector3 point in segment.Centerline)
+        {
+            float expected = SampleBilinearEncodedTerrainHeight(point.X, point.Z, 24, 16, HeightAtSample, heightScale) + 0.02f;
+            maxError = MathF.Max(maxError, MathF.Abs(point.Y - expected));
+        }
+
+        TestHarness.Assert(
+            maxError <= 0.03f,
+            $"River centerline should bilinearly resample even when the source exposes nearest integer samples. Max height error: {maxError:0.000}");
+
+        static float HeightAtSample(int x, int y) => (x * x + y * y) * 0.5f;
+    }
+
+    private static void RiverCenterlineUsesHeightSourceDimensionsLoadedAfterMeshServiceConstruction()
+    {
+        var segment = new RiverSegment
+        {
+            Cells =
+            [
+                (0, 2),
+                (1, 2),
+                (2, 2),
+                (3, 2),
+                (3, 3),
+                (3, 4),
+                (4, 4),
+                (5, 4),
+                (6, 4),
+                (6, 3),
+                (6, 2),
+                (7, 2),
+                (8, 2),
+                (9, 2),
+            ],
+        };
+        const float heightScale = 1000.0f;
+        var terrainManager = new DelayedNearestRiverTerrainHeightSource();
+        var meshService = new RiverMeshService(terrainManager);
+        terrainManager.Load(24, 16, HeightAtSample, heightScale);
+
+        meshService.BuildCenterlines([segment], 10, 7);
+
+        float maxError = 0.0f;
+        foreach (Vector3 point in segment.Centerline)
+        {
+            float expected = SampleBilinearEncodedTerrainHeight(point.X, point.Z, 24, 16, HeightAtSample, heightScale) + 0.02f;
+            maxError = MathF.Max(maxError, MathF.Abs(point.Y - expected));
+        }
+
+        TestHarness.Assert(
+            maxError <= 0.03f,
+            $"River centerline should use current height source dimensions, not dimensions captured at service construction. Max height error: {maxError:0.000}");
+
+        static float HeightAtSample(int x, int y) => (x * x + y * y) * 0.5f;
+    }
+
     private static void RiverCenterlineHandlesInvalidHeightCacheDimensions()
     {
         var terrainManager = CreateInvalidTerrainManagerStub();
@@ -327,6 +415,21 @@ internal static class RiverWorkspaceDiagnosticsTests
         return new StubRiverTerrainHeightSource(heightData, width, height, heightScale);
     }
 
+    private static IRiverTerrainHeightSource CreateNearestTerrainManagerStub(int width, int height, Func<int, int, float> heightAtSample, float heightScale)
+    {
+        var heightData = new ushort[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                float normalizedHeight = Math.Clamp(heightAtSample(x, y) / heightScale, 0.0f, 1.0f);
+                heightData[y * width + x] = (ushort)MathF.Round(normalizedHeight * ushort.MaxValue);
+            }
+        }
+
+        return new NearestRiverTerrainHeightSource(heightData, width, height, heightScale);
+    }
+
     private static IRiverTerrainHeightSource CreateInvalidTerrainManagerStub()
         => CreateInvalidTerrainManagerStub(0, 0);
 
@@ -394,6 +497,32 @@ internal static class RiverWorkspaceDiagnosticsTests
         TestHarness.Assert(MathF.Abs(mesh.MapWorldSize.X - 2.0f) <= 0.0001f, "River mesh should keep the X-axis map-unit span separately for rectangular map UV normalization");
         TestHarness.Assert(MathF.Abs(mesh.MapWorldSize.Y - 4.0f) <= 0.0001f, "River mesh should keep the Y-axis map-unit span separately for rectangular map UV normalization");
         TestHarness.Assert(MathF.Abs(mesh.Vertices[0].Width - 0.5f) <= 0.0001f, "River vertex width should be normalized by map-unit extent, not heightmap sample count");
+    }
+
+    private static void RiverMeshMapExtentUsesReloadedHeightSourceDimensions()
+    {
+        var terrainManager = new DelayedNearestRiverTerrainHeightSource();
+        terrainManager.Load(5, 9, static (_, _) => 0.0f, 200.0f);
+        var meshService = new RiverMeshService(terrainManager);
+        terrainManager.Load(9, 17, static (_, _) => 0.0f, 200.0f);
+        var segment = new RiverSegment
+        {
+            SystemId = 7,
+            Centerline =
+            [
+                new Stride.Core.Mathematics.Vector3(0, 0, 0),
+                new Stride.Core.Mathematics.Vector3(2, 0, 0),
+            ],
+            WorldLength = 2,
+            AvgHalfWidth = 2.0f,
+        };
+
+        RiverMeshData mesh = meshService.BuildRiverMesh(segment, 1.0f);
+
+        TestHarness.Assert(MathF.Abs(mesh.MapExtent - 8.0f) <= 0.0001f, "River mesh map extent should use reloaded height source dimensions");
+        TestHarness.Assert(MathF.Abs(mesh.MapWorldSize.X - 4.0f) <= 0.0001f, "River mesh X map size should use current height source width");
+        TestHarness.Assert(MathF.Abs(mesh.MapWorldSize.Y - 8.0f) <= 0.0001f, "River mesh Y map size should use current height source height");
+        TestHarness.Assert(MathF.Abs(mesh.Vertices[0].Width - 0.25f) <= 0.0001f, "River vertex width should normalize by the current map extent after height source reload");
     }
 
     private static float MaxRiverBoundaryTurnAngle(IReadOnlyList<RiverVertex> vertices)
@@ -472,6 +601,72 @@ internal static class RiverWorkspaceDiagnosticsTests
             float hx0 = Lerp(h00, h10, tx);
             float hx1 = Lerp(h01, h11, tx);
             return Lerp(hx0, hx1, ty);
+        }
+    }
+
+    private sealed class NearestRiverTerrainHeightSource : IRiverTerrainHeightSource
+    {
+        private readonly ushort[] heightData;
+
+        public NearestRiverTerrainHeightSource(ushort[] heightData, int width, int height, float heightScale)
+        {
+            this.heightData = heightData;
+            HeightmapWidth = width;
+            HeightmapHeight = height;
+            HeightScale = heightScale;
+        }
+
+        public bool HasHeightData => true;
+        public int HeightmapWidth { get; }
+        public int HeightmapHeight { get; }
+        public float HeightScale { get; }
+
+        public float SampleHeight(float worldX, float worldZ)
+        {
+            int x = (int)MathF.Round(worldX);
+            int y = (int)MathF.Round(worldZ);
+            if (x < 0 || x >= HeightmapWidth || y < 0 || y >= HeightmapHeight)
+                return 0.0f;
+
+            return heightData[y * HeightmapWidth + x] * (1.0f / ushort.MaxValue) * HeightScale;
+        }
+    }
+
+    private sealed class DelayedNearestRiverTerrainHeightSource : IRiverTerrainHeightSource
+    {
+        private ushort[] heightData = [];
+
+        public bool HasHeightData { get; private set; }
+        public int HeightmapWidth { get; private set; }
+        public int HeightmapHeight { get; private set; }
+        public float HeightScale { get; private set; }
+
+        public void Load(int width, int height, Func<int, int, float> heightAtSample, float heightScale)
+        {
+            heightData = new ushort[width * height];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float normalizedHeight = Math.Clamp(heightAtSample(x, y) / heightScale, 0.0f, 1.0f);
+                    heightData[y * width + x] = (ushort)MathF.Round(normalizedHeight * ushort.MaxValue);
+                }
+            }
+
+            HeightmapWidth = width;
+            HeightmapHeight = height;
+            HeightScale = heightScale;
+            HasHeightData = true;
+        }
+
+        public float SampleHeight(float worldX, float worldZ)
+        {
+            int x = (int)MathF.Round(worldX);
+            int y = (int)MathF.Round(worldZ);
+            if (x < 0 || x >= HeightmapWidth || y < 0 || y >= HeightmapHeight)
+                return 0.0f;
+
+            return heightData[y * HeightmapWidth + x] * (1.0f / ushort.MaxValue) * HeightScale;
         }
     }
 }
