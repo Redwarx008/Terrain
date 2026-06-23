@@ -24,6 +24,7 @@ using Terrain.Editor.Services;
 using Terrain.Editor.Services.Commands;
 using Terrain.Editor.ViewModels;
 using Terrain.Rivers;
+using Terrain.Rendering;
 using Terrain.Rendering.Ocean;
 using NumericsVector2 = System.Numerics.Vector2;
 using System.Collections.Generic;
@@ -604,6 +605,7 @@ public sealed class EmbeddedStrideViewportGame : Game
 
         _cameraController.Camera = _camera;
         _graphicsCompositor = compositorAsset;
+        EnsureCustomForwardRenderers(_graphicsCompositor);
         ConfigureEditorToneMap(_graphicsCompositor);
         _graphicsCompositor.Game = new PresenterViewportSceneRenderer
         {
@@ -677,6 +679,7 @@ public sealed class EmbeddedStrideViewportGame : Game
             camera: _camera,
             clearColor: new Color4(0.40491876f, 0.41189542f, 0.43775f, 1.0f),
             graphicsProfile: GraphicsDevice.Features.CurrentProfile);
+        EnsureCustomForwardRenderers(_graphicsCompositor);
         ConfigureEditorToneMap(_graphicsCompositor);
         _graphicsCompositor.Game = new PresenterViewportSceneRenderer
         {
@@ -748,6 +751,8 @@ public sealed class EmbeddedStrideViewportGame : Game
         {
             case null:
                 return null;
+            case CustomForwardRenderer { PostEffects: PostProcessingEffects postEffects }:
+                return postEffects;
             case ForwardRenderer { PostEffects: PostProcessingEffects postEffects }:
                 return postEffects;
             case SceneCameraRenderer sceneCameraRenderer:
@@ -851,58 +856,222 @@ public sealed class EmbeddedStrideViewportGame : Game
 
     private static void EnsureRiverRenderFeature(GraphicsCompositor graphicsCompositor)
     {
-        if (graphicsCompositor.RenderFeatures.OfType<RiverRenderFeature>().Any())
+        var riverRenderFeature = graphicsCompositor.RenderFeatures.OfType<RiverRenderFeature>().FirstOrDefault();
+        if (riverRenderFeature == null)
         {
-            return;
+            riverRenderFeature = new RiverRenderFeature();
+            graphicsCompositor.RenderFeatures.Add(riverRenderFeature);
         }
 
-        var riverRenderFeature = new RiverRenderFeature();
-        var transparentStage = graphicsCompositor.RenderStages.FirstOrDefault(stage =>
-            string.Equals(stage.Name, "Transparent", StringComparison.Ordinal));
-        if (transparentStage == null)
+        var waterStage = EnsureWaterRenderStage(graphicsCompositor);
+        for (int index = riverRenderFeature.RenderStageSelectors.Count - 1; index >= 0; index--)
         {
-            transparentStage = new RenderStage("RiverTransparent", "Main")
+            if (riverRenderFeature.RenderStageSelectors[index] is SimpleGroupToRenderStageSelector selector
+                && string.Equals(selector.EffectName, "RiverSurface", StringComparison.Ordinal)
+                && !ReferenceEquals(selector.RenderStage, waterStage))
             {
-                SortMode = new BackToFrontSortMode(),
-            };
-            graphicsCompositor.RenderStages.Add(transparentStage);
+                riverRenderFeature.RenderStageSelectors.RemoveAt(index);
+            }
         }
 
-        riverRenderFeature.RenderStageSelectors.Add(new SimpleGroupToRenderStageSelector
+        bool hasWaterSelector = riverRenderFeature.RenderStageSelectors
+            .OfType<SimpleGroupToRenderStageSelector>()
+            .Any(selector =>
+                string.Equals(selector.EffectName, "RiverSurface", StringComparison.Ordinal)
+                && ReferenceEquals(selector.RenderStage, waterStage));
+        if (!hasWaterSelector)
         {
-            EffectName = "RiverSurface",
-            RenderGroup = RiverRenderGroups.RiverRenderGroupMask,
-            RenderStage = transparentStage,
-        });
-        graphicsCompositor.RenderFeatures.Add(riverRenderFeature);
+            riverRenderFeature.RenderStageSelectors.Add(new SimpleGroupToRenderStageSelector
+            {
+                EffectName = "RiverSurface",
+                RenderGroup = RiverRenderGroups.RiverRenderGroupMask,
+                RenderStage = waterStage,
+            });
+        }
+    }
+
+    private static void EnsureCustomForwardRenderers(GraphicsCompositor graphicsCompositor)
+    {
+        var opaqueStage = EnsureRenderStage(graphicsCompositor, "Opaque", () => new StateChangeSortMode());
+        var transparentStage = EnsureRenderStage(graphicsCompositor, "Transparent", () => new BackToFrontSortMode());
+        var waterStage = EnsureWaterRenderStage(graphicsCompositor);
+        var gBufferStage = EnsureRenderStage(graphicsCompositor, "GBuffer", () => new FrontToBackSortMode());
+
+        if (graphicsCompositor.Game != null)
+        {
+            graphicsCompositor.Game = EnsureCustomForwardRenderer(
+                graphicsCompositor.Game,
+                opaqueStage,
+                transparentStage,
+                waterStage,
+                gBufferStage);
+        }
+
+        if (graphicsCompositor.SingleView != null)
+        {
+            graphicsCompositor.SingleView = EnsureCustomForwardRenderer(
+                graphicsCompositor.SingleView,
+                opaqueStage,
+                transparentStage,
+                waterStage,
+                gBufferStage);
+        }
+
+        if (graphicsCompositor.Editor != null)
+        {
+            graphicsCompositor.Editor = EnsureCustomForwardRenderer(
+                graphicsCompositor.Editor,
+                opaqueStage,
+                transparentStage,
+                waterStage,
+                gBufferStage);
+        }
+    }
+
+    private static ISceneRenderer EnsureCustomForwardRenderer(
+        ISceneRenderer renderer,
+        RenderStage opaqueStage,
+        RenderStage transparentStage,
+        RenderStage waterStage,
+        RenderStage gBufferStage)
+    {
+        switch (renderer)
+        {
+            case CustomForwardRenderer customForwardRenderer:
+                ConfigureCustomForwardRenderer(customForwardRenderer, opaqueStage, transparentStage, waterStage, gBufferStage);
+                return customForwardRenderer;
+            case ForwardRenderer forwardRenderer:
+                return CreateCustomForwardRenderer(forwardRenderer, opaqueStage, transparentStage, waterStage, gBufferStage);
+            case PresenterViewportSceneRenderer presenterRenderer:
+                if (presenterRenderer.Child != null)
+                {
+                    presenterRenderer.Child = EnsureCustomForwardRenderer(presenterRenderer.Child, opaqueStage, transparentStage, waterStage, gBufferStage);
+                }
+
+                return presenterRenderer;
+            case SceneCameraRenderer sceneCameraRenderer:
+                if (sceneCameraRenderer.Child != null)
+                {
+                    sceneCameraRenderer.Child = EnsureCustomForwardRenderer(sceneCameraRenderer.Child, opaqueStage, transparentStage, waterStage, gBufferStage);
+                }
+
+                return sceneCameraRenderer;
+            case SceneRendererCollection sceneRendererCollection:
+                for (int index = 0; index < sceneRendererCollection.Children.Count; index++)
+                {
+                    sceneRendererCollection.Children[index] = EnsureCustomForwardRenderer(
+                        sceneRendererCollection.Children[index],
+                        opaqueStage,
+                        transparentStage,
+                        waterStage,
+                        gBufferStage);
+                }
+
+                return sceneRendererCollection;
+            default:
+                return renderer;
+        }
+    }
+
+    private static CustomForwardRenderer CreateCustomForwardRenderer(
+        ForwardRenderer forwardRenderer,
+        RenderStage opaqueStage,
+        RenderStage transparentStage,
+        RenderStage waterStage,
+        RenderStage gBufferStage)
+    {
+        var customForwardRenderer = new CustomForwardRenderer
+        {
+            Clear = forwardRenderer.Clear,
+            OpaqueRenderStage = forwardRenderer.OpaqueRenderStage ?? opaqueStage,
+            TransparentRenderStage = forwardRenderer.TransparentRenderStage ?? transparentStage,
+            WaterRenderStage = waterStage,
+            GBufferRenderStage = forwardRenderer.GBufferRenderStage ?? gBufferStage,
+            PostEffects = forwardRenderer.PostEffects,
+            BindDepthAsResourceDuringTransparentRendering = forwardRenderer.BindDepthAsResourceDuringTransparentRendering,
+            BindOpaqueAsResourceDuringTransparentRendering = forwardRenderer.BindOpaqueAsResourceDuringTransparentRendering,
+        };
+
+        foreach (var shadowMapRenderStage in forwardRenderer.ShadowMapRenderStages)
+        {
+            customForwardRenderer.ShadowMapRenderStages.Add(shadowMapRenderStage);
+        }
+
+        return customForwardRenderer;
+    }
+
+    private static void ConfigureCustomForwardRenderer(
+        CustomForwardRenderer renderer,
+        RenderStage opaqueStage,
+        RenderStage transparentStage,
+        RenderStage waterStage,
+        RenderStage gBufferStage)
+    {
+        renderer.OpaqueRenderStage ??= opaqueStage;
+        renderer.TransparentRenderStage ??= transparentStage;
+        renderer.WaterRenderStage = waterStage;
+        renderer.GBufferRenderStage ??= gBufferStage;
+    }
+
+    private static RenderStage EnsureWaterRenderStage(GraphicsCompositor graphicsCompositor)
+    {
+        return EnsureRenderStage(graphicsCompositor, "Water", () => new BackToFrontSortMode());
+    }
+
+    private static RenderStage EnsureRenderStage(
+        GraphicsCompositor graphicsCompositor,
+        string name,
+        Func<SortMode> createSortMode)
+    {
+        var renderStage = graphicsCompositor.RenderStages.FirstOrDefault(stage =>
+            string.Equals(stage.Name, name, StringComparison.Ordinal));
+        if (renderStage != null)
+        {
+            return renderStage;
+        }
+
+        renderStage = new RenderStage(name, "Main")
+        {
+            SortMode = createSortMode(),
+        };
+        graphicsCompositor.RenderStages.Add(renderStage);
+        return renderStage;
     }
 
     private static void EnsureOceanRenderFeature(GraphicsCompositor graphicsCompositor)
     {
-        if (graphicsCompositor.RenderFeatures.OfType<OceanRenderFeature>().Any())
+        var oceanRenderFeature = graphicsCompositor.RenderFeatures.OfType<OceanRenderFeature>().FirstOrDefault();
+        if (oceanRenderFeature == null)
         {
-            return;
+            oceanRenderFeature = new OceanRenderFeature();
+            graphicsCompositor.RenderFeatures.Add(oceanRenderFeature);
         }
 
-        var oceanRenderFeature = new OceanRenderFeature();
-        var transparentStage = graphicsCompositor.RenderStages.FirstOrDefault(stage =>
-            string.Equals(stage.Name, "Transparent", StringComparison.Ordinal));
-        if (transparentStage == null)
+        var waterStage = EnsureWaterRenderStage(graphicsCompositor);
+        for (int index = oceanRenderFeature.RenderStageSelectors.Count - 1; index >= 0; index--)
         {
-            transparentStage = new RenderStage("OceanTransparent", "Main")
+            if (oceanRenderFeature.RenderStageSelectors[index] is SimpleGroupToRenderStageSelector selector
+                && string.Equals(selector.EffectName, "OceanSurface", StringComparison.Ordinal)
+                && !ReferenceEquals(selector.RenderStage, waterStage))
             {
-                SortMode = new BackToFrontSortMode(),
-            };
-            graphicsCompositor.RenderStages.Add(transparentStage);
+                oceanRenderFeature.RenderStageSelectors.RemoveAt(index);
+            }
         }
 
-        oceanRenderFeature.RenderStageSelectors.Add(new SimpleGroupToRenderStageSelector
+        bool hasWaterSelector = oceanRenderFeature.RenderStageSelectors
+            .OfType<SimpleGroupToRenderStageSelector>()
+            .Any(selector =>
+                string.Equals(selector.EffectName, "OceanSurface", StringComparison.Ordinal)
+                && ReferenceEquals(selector.RenderStage, waterStage));
+        if (!hasWaterSelector)
         {
-            EffectName = "OceanSurface",
-            RenderGroup = OceanRenderGroups.OceanRenderGroupMask,
-            RenderStage = transparentStage,
-        });
-        graphicsCompositor.RenderFeatures.Add(oceanRenderFeature);
+            oceanRenderFeature.RenderStageSelectors.Add(new SimpleGroupToRenderStageSelector
+            {
+                EffectName = "OceanSurface",
+                RenderGroup = OceanRenderGroups.OceanRenderGroupMask,
+                RenderStage = waterStage,
+            });
+        }
     }
 
     private static void EnsureBrushDecalRenderFeature(GraphicsCompositor graphicsCompositor)

@@ -10,7 +10,6 @@ public sealed class RiverRenderResources : IDisposable
     public const PixelFormat RefractionFormat = PixelFormat.R16G16B16A16_Float;
     public const PixelFormat BottomDepthFormat = PixelFormat.D24_UNorm_S8_UInt;
 
-    public Texture? SceneSeedColor { get; private set; }
     public Texture? BottomColor { get; private set; }
     public Texture? BottomDepth { get; private set; }
     public int Width { get; private set; }
@@ -21,8 +20,16 @@ public sealed class RiverRenderResources : IDisposable
         ArgumentNullException.ThrowIfNull(graphicsDevice);
 
         var (width, height) = ComputeHalfResolutionSize(viewWidth, viewHeight);
-        if (SceneSeedColor != null
-            && BottomColor != null
+        EnsureResourcesForCaptureSize(graphicsDevice, width, height);
+    }
+
+    public void EnsureResourcesForCaptureSize(GraphicsDevice graphicsDevice, int captureWidth, int captureHeight)
+    {
+        ArgumentNullException.ThrowIfNull(graphicsDevice);
+
+        int width = Math.Max(1, captureWidth);
+        int height = Math.Max(1, captureHeight);
+        if (BottomColor != null
             && BottomDepth != null
             && Width == width
             && Height == height)
@@ -34,12 +41,6 @@ public sealed class RiverRenderResources : IDisposable
 
         Width = width;
         Height = height;
-        SceneSeedColor = Texture.New2D(
-            graphicsDevice,
-            width,
-            height,
-            RefractionFormat,
-            TextureFlags.RenderTarget | TextureFlags.ShaderResource);
         BottomColor = Texture.New2D(
             graphicsDevice,
             width,
@@ -56,9 +57,6 @@ public sealed class RiverRenderResources : IDisposable
 
     public void ReleaseResources()
     {
-        SceneSeedColor?.Dispose();
-        SceneSeedColor = null;
-
         BottomColor?.Dispose();
         BottomColor = null;
 

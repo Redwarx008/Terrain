@@ -30,8 +30,8 @@ internal static class RiverShaderTextTests
         TestHarness.Run("river surface shader follows target refraction and fade semantics", SurfaceShaderFollowsTargetRefractionAndFadeSemantics);
         TestHarness.Run("river surface shader uses target advanced alpha branch", SurfaceShaderUsesTargetAdvancedAlphaBranch);
         TestHarness.Run("river surface shader does not apply removed post wrapper", SurfaceShaderDoesNotApplyRemovedPostWrapper);
-        TestHarness.Run("river render feature separates scene seed from working refraction buffer", RenderFeatureSeparatesSceneSeedFromWorkingBuffer);
-        TestHarness.Run("river scene seed writes depth payload instead of clearing alpha", RenderFeatureSceneSeedWritesDepthPayload);
+        TestHarness.Run("river render feature copies shared capture into working refraction buffer", RenderFeatureCopiesSharedCaptureToWorkingBuffer);
+        TestHarness.Run("river shared refraction capture replaces scene seed path", RenderFeatureUsesSharedRefractionCapture);
         TestHarness.Run("river bottom shader packs refraction distance for surface see through", BottomShaderPacksRefractionDistanceForSurfaceSeeThrough);
         TestHarness.Run("river resource loader does not silently ignore missing textures", ResourceLoaderDoesNotSilentlyIgnoreMissingTextures);
     }
@@ -137,8 +137,8 @@ internal static class RiverShaderTextTests
         string viewportGame = ReadRepositoryText("Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs").Replace("\r\n", "\n");
 
         AssertContains(viewportGame, "EditorToneMapExposureEv = -2.0f", "Editor viewport should use a stable manual exposure near the no-terrain capture baseline");
-        AssertContains(viewportGame, "_graphicsCompositor = compositorAsset;\n        ConfigureEditorToneMap(_graphicsCompositor);", "Asset-loaded editor compositor should configure tonemap before rendering");
-        AssertContains(viewportGame, "graphicsProfile: GraphicsDevice.Features.CurrentProfile);\n        ConfigureEditorToneMap(_graphicsCompositor);", "Programmatic editor compositor should configure tonemap before rendering");
+        AssertContains(viewportGame, "_graphicsCompositor = compositorAsset;\n        EnsureCustomForwardRenderers(_graphicsCompositor);\n        ConfigureEditorToneMap(_graphicsCompositor);", "Asset-loaded editor compositor should configure tonemap before rendering");
+        AssertContains(viewportGame, "graphicsProfile: GraphicsDevice.Features.CurrentProfile);\n        EnsureCustomForwardRenderers(_graphicsCompositor);\n        ConfigureEditorToneMap(_graphicsCompositor);", "Programmatic editor compositor should configure tonemap before rendering");
         AssertContains(viewportGame, "FindPostProcessingEffects(compositor.Game)", "Editor tonemap should find post effects through the compositor renderer tree");
         AssertContains(viewportGame, "case ForwardRenderer { PostEffects: PostProcessingEffects postEffects }:", "Editor tonemap should read post effects from the forward renderer");
         AssertContains(viewportGame, "case PresenterViewportSceneRenderer presenterRenderer:", "Editor tonemap should tolerate the presenter wrapper around the compositor game renderer");
@@ -431,8 +431,7 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "return (riverObject.Source as RiverComponent)?.Settings;", "RiverRenderFeature should not depend on duplicated RiverRenderObject settings");
         AssertContains(feature, "float riverMaxVisibleCameraHeight = ResolveRiverMaxVisibleCameraHeight(renderViewStage, startIndex, endIndex);", "RiverRenderFeature should resolve the camera-height cutoff before river pass work");
         AssertContains(feature, "if (cameraWorldPosition.Y >= riverMaxVisibleCameraHeight)", "RiverRenderFeature should skip river rendering when the camera is at or above the cutoff");
-        AssertContains(feature, "Texture? sceneColor = commandList.RenderTargetCount > 0 ? commandList.RenderTargets[0] : null;", "RiverRenderFeature should resolve the actual scene color before allocating river refraction targets");
-        AssertContains(feature, "renderResources.EnsureResources(graphicsDevice, sceneColor.ViewWidth, sceneColor.ViewHeight);", "RiverRenderFeature should size river refraction targets from the actual scene color source");
+        AssertContains(feature, "renderResources.EnsureResourcesForCaptureSize(graphicsDevice, refractionWidth, refractionHeight);", "RiverRenderFeature should size river working targets from the shared refraction capture size without a second half-resolution step");
         AssertContains(feature, "private float ResolveRiverMaxVisibleCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)", "RiverRenderFeature should keep camera-height cutoff resolution explicit");
         AssertContains(feature, "maxVisibleCameraHeight = foundRiverObject", "RiverRenderFeature should resolve a stable draw-range camera-height cutoff instead of depending on sorted node order");
         AssertContains(feature, "? MathF.Max(maxVisibleCameraHeight, riverMaxVisibleCameraHeight)", "RiverRenderFeature should use the highest river camera-height cutoff across the draw range");
@@ -461,7 +460,7 @@ internal static class RiverShaderTextTests
         AssertNotContains(feature, "ApplySurfaceParameters(surfaceEffect, surfaceParametersSource);", "RiverRenderFeature should not bind full surface parameters in Draw");
         AssertNotContains(feature, "ApplySurfaceParameters(effect, riverObject);", "RiverRenderFeature should not unconditionally bind all surface parameters inside the per-object draw loop");
         AssertNotContains(feature, "ApplyBottomParameters(effect, riverObject);", "RiverRenderFeature should not unconditionally bind all bottom parameters inside the per-object draw loop");
-        AssertNotContains(feature, "effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, riverObject.RefractionMaxCameraHeight);", "RiverRenderFeature should not bind object-local refraction clamp while scene seed uses a draw-range clamp");
+        AssertNotContains(feature, "effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, riverObject.RefractionMaxCameraHeight);", "RiverRenderFeature should not bind object-local refraction clamp while shared capture uses a draw-range clamp");
         AssertNotContains(feature, "_BottomSpecularIntensity", "RiverRenderFeature should not bind river-local bottom specular intensity");
     }
 
@@ -621,18 +620,20 @@ internal static class RiverShaderTextTests
         AssertNotContains(feature, "FlatHeightmap", "RiverRenderFeature should not create a flat terrain-normal substitute");
     }
 
-    private static void RenderFeatureSeparatesSceneSeedFromWorkingBuffer()
+    private static void RenderFeatureCopiesSharedCaptureToWorkingBuffer()
     {
         string resources = ReadRepositoryText("Terrain/Rendering/River/RiverRenderResources.cs");
         string feature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
 
-        AssertContains(resources, "public Texture? SceneSeedColor { get; private set; }", "RiverRenderResources should allocate a dedicated scene seed buffer");
-        AssertContains(feature, "renderResources.SceneSeedColor", "RiverRenderFeature should use the dedicated scene seed texture");
-        AssertContains(feature, "seedEffect.SetOutput(seedTarget);", "RiverRenderFeature should seed scene color into SceneSeedColor first");
-        AssertContains(feature, "commandList.CopyRegion(renderResources.SceneSeedColor, 0, null, renderResources.BottomColor, 0);", "RiverRenderFeature should copy the scene seed into the working bottom/refraction buffer before the bottom pass");
+        AssertNotContains(resources, "SceneSeedColor", "RiverRenderResources should no longer allocate a dedicated river scene seed buffer");
+        AssertContains(resources, "public void EnsureResourcesForCaptureSize(GraphicsDevice graphicsDevice, int captureWidth, int captureHeight)", "RiverRenderResources should expose capture-size allocation for shared water refraction input");
+        AssertContains(feature, "internal void DrawWaterChain(", "RiverRenderFeature should expose a renderer-callable river water chain");
+        AssertContains(feature, "Texture sharedRefractionTexture", "RiverRenderFeature should receive the shared water refraction capture from the renderer");
+        AssertContains(feature, "CopyRefractionCaptureToBottomColor(commandList, sharedRefractionTexture);", "RiverRenderFeature should seed its working bottom/refraction buffer from the shared capture");
+        AssertContains(feature, "commandList.CopyRegion(sharedRefractionTexture, 0, null, renderResources.BottomColor, 0);", "RiverRenderFeature should copy the shared capture into the working bottom/refraction buffer before the bottom pass");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);", "RiverRenderFeature should sample refraction with the target linear clamp sampler");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys._RefractionTextureSize, new Vector2(renderResources.Width, renderResources.Height));", "RiverRenderFeature should bind the working refraction size for unfiltered payload reads");
-        AssertNotContains(feature, "Texture? refractionTexture)", "RiverRenderFeature should not pass the shared refraction texture into the per-object draw loop");
+        AssertNotContains(feature, "renderResources.EnsureResources(graphicsDevice, sharedRefractionTexture.ViewWidth", "RiverRenderFeature should not half the shared capture size again");
         AssertNotContains(feature, "effect.Parameters.Set(RiverSurfaceKeys.RefractionTexture, refractionTexture);", "RiverRenderFeature should not bind the shared refraction texture per river object");
         AssertNotContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._RefractionTextureSize, new Vector2(refractionTexture.Width, refractionTexture.Height));", "RiverRenderFeature should not refresh the shared refraction size per river object");
         AssertContains(feature, "blendState.RenderTargets[0].AlphaSourceBlend = Blend.SecondarySourceAlpha;", "RiverRenderFeature should match the target bottom pass alpha source factor");
@@ -640,30 +641,22 @@ internal static class RiverShaderTextTests
         AssertNotContains(feature, "RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.PointClamp", "RiverRenderFeature should not keep the previous point-clamp refraction sampler binding");
     }
 
-    private static void RenderFeatureSceneSeedWritesDepthPayload()
+    private static void RenderFeatureUsesSharedRefractionCapture()
     {
         string feature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
-        string shader = ReadRepositoryText("Terrain/Effects/River/RiverSceneSeed.sdsl");
+        string shader = ReadRepositoryText("Terrain/Effects/Water/WaterRefractionCapture.sdsl");
         string project = ReadRepositoryText("Terrain/Terrain.csproj");
+        string renderer = ReadRepositoryText("Terrain/Rendering/CustomForwardRenderer.cs");
 
-        AssertContains(feature, "new ImageEffectShader(\"RiverSceneSeed\", delaySetRenderTargets: true)", "RiverRenderFeature should use the dedicated river scene-seed shader");
-        AssertContains(feature, "GetPresenterSceneDepthSource(context.GraphicsDevice, seedSource)", "RiverRenderFeature should use the presenter scene depth explicitly for the current windowed editor/runtime path");
-        AssertContains(feature, "Debug.Assert(presenter != null", "RiverRenderFeature should assert when presenter depth is unavailable");
-        AssertContains(feature, "Debug.Assert(sceneDepth != null", "RiverRenderFeature should assert when presenter depth is unavailable");
-        AssertContains(feature, "must match scene color size", "RiverRenderFeature should reject depth buffers that do not match scene color size before resolving them");
-        AssertContains(feature, "context.Resolver.ResolveDepthStencil(sceneDepthSource)", "RiverRenderFeature should resolve the selected scene depth for the seed shader");
-        AssertContains(feature, "seedEffect.Parameters.Set(DepthBaseKeys.DepthStencil, sceneDepth)", "RiverRenderFeature should bind scene depth into RiverSceneSeed");
-        AssertContains(feature, "seedEffect.Parameters.Set(CameraKeys.ZProjection", "RiverRenderFeature should bind depth reconstruction parameters into RiverSceneSeed");
-        AssertContains(feature, "seedEffect.Parameters.Set(TransformationKeys.ViewInverse", "RiverRenderFeature should bind view inverse so RiverSceneSeed can reconstruct world position");
-        AssertContains(feature, "seedEffect.Parameters.Set(TransformationKeys.Eye", "RiverRenderFeature should bind camera position so RiverSceneSeed writes camera-distance alpha");
-        AssertContains(shader, "float ComputeSceneDistanceFromUV(float2 uv)", "RiverSceneSeed should compute camera-distance payload rather than raw view-space depth");
-        AssertContains(shader, "shader RiverSceneSeed : ImageEffectShader, DepthBase, Transformation, RiverCommon", "RiverSceneSeed should share the refraction distance packing helper");
-        AssertContains(shader, "RiverCompressWorldSpace(positionWS.xyz, Eye.xyz)", "RiverSceneSeed alpha should match the height-scale-aware refraction distance semantics");
-        AssertContains(feature, "seedEffect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, refractionMaxCameraHeight);", "RiverRenderFeature should bind the same refraction clamp plane into RiverSceneSeed");
-        AssertContains(shader, "return float4(seedColor, sceneDistance)", "RiverSceneSeed should preserve RGB and write scene distance payload alpha");
-        AssertContains(project, "<Compile Update=\"Effects\\River\\RiverSceneSeed.sdsl.cs\">", "Terrain.csproj should compile the generated RiverSceneSeed shader key file");
-        AssertNotContains(feature, "refractionSeedScaler.Color = new Color4(1.0f, 1.0f, 1.0f, 0.0f);", "River scene seed should not clear alpha to zero because the seed carries scene distance payload");
-        AssertNotContains(feature, "new ImageScaler(SamplingPattern.Linear, delaySetRenderTargets: true)", "RiverRenderFeature should not use ImageScaler for river seed once depth payload is required");
+        AssertNotContains(feature, "new ImageEffectShader(\"RiverSceneSeed", "RiverRenderFeature should not create the legacy river scene seed image effect");
+        AssertNotContains(feature, "GetPresenterSceneDepthSource", "RiverRenderFeature should not own presenter-depth selection for shared refraction capture");
+        AssertNotContains(feature, "SeedSceneColorFromScene", "RiverRenderFeature should not seed scene color itself after moving to shared capture");
+        AssertContains(renderer, "waterRefractionCapturePass.Capture(", "CustomForwardRenderer should create the shared water refraction capture before drawing river water");
+        AssertContains(renderer, "riverRenderFeature.GetRefractionMaxCameraHeight", "CustomForwardRenderer should ask RiverRenderFeature for the draw-range refraction clamp before capture");
+        AssertContains(renderer, "riverRenderFeature.DrawWaterChain(", "CustomForwardRenderer should invoke the renderer-callable River water chain");
+        AssertContains(shader, "shader WaterRefractionCapture : ImageEffectShader, DepthBase, Transformation, RiverCommon", "WaterRefractionCapture should own the shared depth payload writer");
+        AssertContains(shader, "RiverCompressWorldSpace(positionWS.xyz, Eye.xyz)", "WaterRefractionCapture alpha should match the height-scale-aware river refraction distance semantics");
+        AssertContains(project, "<Compile Update=\"Effects\\Water\\WaterRefractionCapture.sdsl.cs\">", "Terrain.csproj should compile the generated WaterRefractionCapture shader key file");
     }
 
     private static void BottomShaderPacksRefractionDistanceForSurfaceSeeThrough()

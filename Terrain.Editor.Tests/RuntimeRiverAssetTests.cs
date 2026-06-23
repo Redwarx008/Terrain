@@ -47,27 +47,39 @@ internal static class RuntimeRiverAssetTests
     {
         string compositor = Read("Terrain", "Assets", "GraphicsCompositor.sdgfxcomp");
         string? transparentStage = FindBlockContaining(compositor, ":", "Name: Transparent", requiredParentMarker: "RenderStages:");
-        TestHarness.Assert(
-            transparentStage != null,
-            "GraphicsCompositor should keep a Transparent render stage for river surface rendering.");
-
-        string transparentStageId = ReadField(transparentStage!, "Id:");
+        string? waterStage = FindBlockContaining(compositor, ":", "Name: Water", requiredParentMarker: "RenderStages:");
         string? riverFeature = FindBlockContaining(compositor, ":", "!Terrain.Rendering.River.RiverRenderFeature,Terrain", requiredParentMarker: "RenderFeatures:");
 
         TestHarness.Assert(
+            transparentStage != null,
+            "GraphicsCompositor should keep a Transparent render stage for generic transparent rendering.");
+        TestHarness.Assert(
+            waterStage != null,
+            "GraphicsCompositor should define a dedicated Water render stage for renderer-owned water ordering.");
+        TestHarness.Assert(
             riverFeature != null,
             "GraphicsCompositor.sdgfxcomp should register RiverRenderFeature from Terrain.");
+
+        string transparentStageId = ReadField(transparentStage!, "Id:");
+        string waterStageId = ReadField(waterStage!, "Id:");
         string? riverSurfaceSelector = FindBlockContaining(riverFeature!, ":", "EffectName: RiverSurface", requiredParentMarker: "RenderStageSelectors:");
+
         TestHarness.Assert(
             riverSurfaceSelector != null,
-            "RiverRenderFeature selector should target RiverSurface.");
+            "RiverRenderFeature should keep a selector so Stride collect/culling/sort produces Water-stage river ranges.");
         TestHarness.Assert(
             riverSurfaceSelector!.Contains("RenderGroup: Group1", StringComparison.Ordinal),
             "RiverRenderFeature selector should use Group1.");
         TestHarness.Assert(
-            riverSurfaceSelector.Contains($"RenderStage: ref!! {transparentStageId}", StringComparison.Ordinal) ||
-            riverSurfaceSelector.Contains($"TransparentRenderStage: ref!! {transparentStageId}", StringComparison.Ordinal),
-            "RiverRenderFeature selector should reference the Transparent render stage.");
+            riverSurfaceSelector.Contains($"RenderStage: ref!! {waterStageId}", StringComparison.Ordinal),
+            "RiverRenderFeature selector should reference the Water render stage.");
+        TestHarness.Assert(
+            !riverSurfaceSelector.Contains($"RenderStage: ref!! {transparentStageId}", StringComparison.Ordinal) &&
+            !riverSurfaceSelector.Contains($"TransparentRenderStage: ref!! {transparentStageId}", StringComparison.Ordinal),
+            "RiverRenderFeature selector should not route RiverSurface to the generic Transparent render stage.");
+        TestHarness.Assert(
+            compositor.Contains("!Terrain.Rendering.CustomForwardRenderer,Terrain", StringComparison.Ordinal),
+            "CustomForwardRenderer should own River water ordering and shared refraction capture.");
     }
 
     private static void RuntimeRiverShadersLiveInTerrainProject()

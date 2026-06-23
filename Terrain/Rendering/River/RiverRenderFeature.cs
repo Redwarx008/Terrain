@@ -9,8 +9,6 @@ using Stride.Core.Mathematics;
 using Stride.Core.Serialization.Contents;
 using Stride.Graphics;
 using Stride.Rendering;
-using Stride.Rendering.Compositing;
-using Stride.Rendering.Images;
 using Stride.Rendering.Lights;
 using Stride.Rendering.Shadows;
 using Terrain.Rendering.Water;
@@ -40,7 +38,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
     private DynamicEffectInstance? surfaceEffect;
     private MutablePipelineState? bottomPipelineState;
     private MutablePipelineState? surfacePipelineState;
-    private ImageEffectShader? sceneSeedEffect;
     private readonly RiverRenderResources renderResources = new();
     private readonly RiverResourceLoader riverResources = new();
     private ContentManager? contentManager;
@@ -65,8 +62,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
         bottomEffect.Initialize(Context.Services);
         surfaceEffect = new DynamicEffectInstance("RiverSurface");
         surfaceEffect.Initialize(Context.Services);
-        sceneSeedEffect = new ImageEffectShader("RiverSceneSeed", delaySetRenderTargets: true);
-        sceneSeedEffect.Initialize(Context);
 
         contentManager = Context.Services.GetSafeServiceAs<ContentManager>();
         try
@@ -112,8 +107,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
         bottomEffect = null;
         surfaceEffect?.Dispose();
         surfaceEffect = null;
-        sceneSeedEffect?.Dispose();
-        sceneSeedEffect = null;
         forwardLightingFeature = null;
         bottomShadowMapRenderer = null;
         sceneLightingBinder = null;
@@ -151,11 +144,30 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
     public override void Draw(RenderDrawContext context, RenderView renderView, RenderViewStage renderViewStage, int startIndex, int endIndex)
     {
+        // River is driven by CustomForwardRenderer so it can consume the shared
+        // water refraction capture. If a Transparent selector is accidentally
+        // left in a compositor, keep this callback inert to avoid a double draw.
+        return;
+    }
+
+    internal void DrawWaterChain(
+        RenderDrawContext context,
+        RenderView renderView,
+        RenderViewStage renderViewStage,
+        int startIndex,
+        int endIndex,
+        Texture sharedRefractionTexture,
+        int refractionWidth,
+        int refractionHeight)
+    {
         if (bottomEffect == null
             || surfaceEffect == null
             || bottomPipelineState == null
             || surfacePipelineState == null
-            || startIndex >= endIndex)
+            || startIndex >= endIndex
+            || sharedRefractionTexture == null
+            || refractionWidth <= 0
+            || refractionHeight <= 0)
         {
             return;
         }
@@ -170,14 +182,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
             return;
         }
 
-        Texture? sceneColor = commandList.RenderTargetCount > 0 ? commandList.RenderTargets[0] : null;
-        if (sceneColor == null)
-        {
-            return;
-        }
-
-        renderResources.EnsureResources(graphicsDevice, sceneColor.ViewWidth, sceneColor.ViewHeight);
-        if (renderResources.SceneSeedColor == null || renderResources.BottomColor == null || renderResources.BottomDepth == null)
+        renderResources.EnsureResourcesForCaptureSize(graphicsDevice, refractionWidth, refractionHeight);
+        if (renderResources.BottomColor == null || renderResources.BottomDepth == null)
         {
             return;
         }
@@ -195,12 +201,12 @@ public sealed class RiverRenderFeature : RootRenderFeature
         ApplyDebugRasterizerState(bottomPipelineState, isSurface: false, nearClipPlane: renderView.NearClipPlane);
         ApplyDebugRasterizerState(surfacePipelineState, isSurface: true, nearClipPlane: renderView.NearClipPlane);
 
+        CopyRefractionCaptureToBottomColor(commandList, sharedRefractionTexture);
+
         if (DebugMode != RiverRenderDebugMode.SurfaceOnly)
         {
             using (context.PushRenderTargetsAndRestore())
             {
-                SeedSceneColorFromScene(context, renderView, sceneColor, refractionMaxCameraHeight);
-                CopySceneSeedToBottomColor(commandList);
                 commandList.SetRenderTargetAndViewport(renderResources.BottomDepth, renderResources.BottomColor);
                 commandList.Clear(renderResources.BottomDepth, DepthStencilClearOptions.DepthBuffer);
                 DrawPass(context, renderView, renderViewStage, startIndex, endIndex, bottomEffect, bottomPipelineState);
@@ -297,14 +303,22 @@ public sealed class RiverRenderFeature : RootRenderFeature
             && sourceSettings.WaterColorDeep == candidateSettings.WaterColorDeep;
     }
 
+    internal float GetRefractionMaxCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)
+    {
+        return ResolveRefractionMaxCameraHeight(renderViewStage, startIndex, endIndex);
+    }
+
+    internal float GetRiverMaxVisibleCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)
+    {
+        return ResolveRiverMaxVisibleCameraHeight(renderViewStage, startIndex, endIndex);
+    }
+
     private float ResolveRefractionMaxCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)
     {
         float maxHeight = 50.0f;
         for (int index = startIndex; index < endIndex; index++)
         {
-            var renderNodeReference = renderViewStage.SortedRenderNodes[index].RenderNode;
-            var renderNode = GetRenderNode(renderNodeReference);
-            if (renderNode.RenderObject is RiverRenderObject riverObject && riverObject.Enabled)
+            if (renderViewStage.SortedRenderNodes[index].RenderObject is RiverRenderObject riverObject && riverObject.Enabled)
             {
                 maxHeight = MathF.Max(maxHeight, riverObject.RefractionMaxCameraHeight);
             }
@@ -319,9 +333,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
         bool foundRiverObject = false;
         for (int index = startIndex; index < endIndex; index++)
         {
-            var renderNodeReference = renderViewStage.SortedRenderNodes[index].RenderNode;
-            var renderNode = GetRenderNode(renderNodeReference);
-            if (renderNode.RenderObject is RiverRenderObject riverObject && riverObject.Enabled)
+            if (renderViewStage.SortedRenderNodes[index].RenderObject is RiverRenderObject riverObject && riverObject.Enabled)
             {
                 float riverMaxVisibleCameraHeight = GetRiverSettings(riverObject)?.RiverMaxVisibleCameraHeight ?? 3000.0f;
                 maxVisibleCameraHeight = foundRiverObject
@@ -334,69 +346,14 @@ public sealed class RiverRenderFeature : RootRenderFeature
         return maxVisibleCameraHeight;
     }
 
-    private void SeedSceneColorFromScene(RenderDrawContext context, RenderView renderView, Texture? sceneColor, float refractionMaxCameraHeight)
+    private void CopyRefractionCaptureToBottomColor(CommandList commandList, Texture sharedRefractionTexture)
     {
-        Debug.Assert(renderResources.SceneSeedColor != null, "River scene seed color target has not been allocated.");
-        Debug.Assert(sceneColor != null, "River scene seed requires a scene color render target.");
-        Debug.Assert(sceneSeedEffect != null, "River scene seed effect has not been initialized.");
-        Debug.Assert(!ReferenceEquals(sceneColor, renderResources.SceneSeedColor), "River scene seed input and output must be different textures.");
-
-        var seedTarget = renderResources.SceneSeedColor!;
-        var seedSource = sceneColor!;
-        var seedEffect = sceneSeedEffect!;
-
-        var sceneDepthSource = GetPresenterSceneDepthSource(context.GraphicsDevice, seedSource);
-        var sceneDepth = context.Resolver.ResolveDepthStencil(sceneDepthSource);
-        Debug.Assert(sceneDepth != null, "River scene seed requires a depth buffer that can be resolved as a shader resource.");
-
-        try
-        {
-            seedEffect.Parameters.Set(DepthBaseKeys.DepthStencil, sceneDepth);
-            seedEffect.Parameters.Set(CameraKeys.ViewSize, new Vector2(seedSource.Width, seedSource.Height));
-            seedEffect.Parameters.Set(CameraKeys.ZProjection, CameraKeys.ZProjectionACalculate(
-                renderView.NearClipPlane,
-                renderView.FarClipPlane));
-            seedEffect.Parameters.Set(CameraKeys.NearClipPlane, renderView.NearClipPlane);
-            seedEffect.Parameters.Set(CameraKeys.FarClipPlane, renderView.FarClipPlane);
-            var viewInverse = Matrix.Invert(renderView.View);
-            seedEffect.Parameters.Set(TransformationKeys.ViewInverse, ref viewInverse);
-            seedEffect.Parameters.Set(TransformationKeys.Eye, new Vector4(viewInverse.TranslationVector, 1.0f));
-            seedEffect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, refractionMaxCameraHeight);
-            Matrix.Invert(ref renderView.Projection, out var projectionInverse);
-            seedEffect.Parameters.Set(TransformationKeys.ProjectionInverse, ref projectionInverse);
-            seedEffect.Parameters.Set(TexturingKeys.Sampler, context.GraphicsDevice.SamplerStates.LinearClamp);
-            seedEffect.SetInput(0, seedSource);
-            seedEffect.SetOutput(seedTarget);
-            seedEffect.Draw(context, "River refraction scene seed");
-        }
-        finally
-        {
-            context.Resolver.ReleaseDepthStenctilAsShaderResource(sceneDepth);
-        }
-    }
-
-    private static Texture GetPresenterSceneDepthSource(GraphicsDevice graphicsDevice, Texture sceneColor)
-    {
-        var presenter = graphicsDevice.Presenter;
-        Debug.Assert(presenter != null, "River scene seed requires GraphicsDevice.Presenter. Offscreen river rendering must provide an explicit scene-depth source before enabling this pass.");
-
-        var sceneDepth = presenter?.DepthStencilBuffer;
-        Debug.Assert(sceneDepth != null, "River scene seed requires GraphicsDevice.Presenter.DepthStencilBuffer.");
-        Debug.Assert(
-            sceneDepth == null || (sceneDepth.ViewWidth == sceneColor.ViewWidth && sceneDepth.ViewHeight == sceneColor.ViewHeight),
-            $"River scene seed depth size {sceneDepth?.ViewWidth}x{sceneDepth?.ViewHeight} must match scene color size {sceneColor.ViewWidth}x{sceneColor.ViewHeight}.");
-
-        return sceneDepth!;
-    }
-
-    private void CopySceneSeedToBottomColor(CommandList commandList)
-    {
-        if (renderResources.SceneSeedColor == null || renderResources.BottomColor == null)
+        if (renderResources.BottomColor == null)
         {
             return;
         }
 
-        commandList.CopyRegion(renderResources.SceneSeedColor, 0, null, renderResources.BottomColor, 0);
+        commandList.CopyRegion(sharedRefractionTexture, 0, null, renderResources.BottomColor, 0);
     }
 
     private static void ApplyBottomParameters(DynamicEffectInstance effect, RiverRenderObject riverObject, RiverRenderSettings settings)
@@ -482,9 +439,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
         for (int index = startIndex; index < endIndex; index++)
         {
-            var renderNodeReference = renderViewStage.SortedRenderNodes[index].RenderNode;
-            var renderNode = GetRenderNode(renderNodeReference);
-            if (renderNode.RenderObject is not RiverRenderObject riverObject
+            if (renderViewStage.SortedRenderNodes[index].RenderObject is not RiverRenderObject riverObject
                 || !riverObject.Enabled
                 || riverObject.MeshDraw == null
                 || riverObject.IndexBuffer == null

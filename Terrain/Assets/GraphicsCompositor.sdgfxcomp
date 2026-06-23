@@ -18,6 +18,11 @@ RenderStages:
         Name: Transparent
         EffectSlotName: Main
         SortMode: !BackToFrontSortMode {}
+    0a8e2a70debe44f79f5ee5d6dbe7ec54:
+        Id: 6b596b72-f95b-4f48-9f75-bf73b61e9fe9
+        Name: Water
+        EffectSlotName: Main
+        SortMode: !BackToFrontSortMode {}
     554e52c061404d4684dd7c4c70f70e0e:
         Id: a80d69b6-c45c-47bf-ba40-de9b83a05996
         Name: ShadowMapCaster
@@ -123,7 +128,7 @@ RenderFeatures:
     8df249f89b144227972a4c6388f267e1: !Terrain.Rendering.River.RiverRenderFeature,Terrain
         RenderStageSelectors:
             13c8f5ded00f4bc39341f9ab3e4afe54: !Stride.Rendering.SimpleGroupToRenderStageSelector,Stride.Rendering
-                RenderStage: ref!! 0fbd7f2d-8037-4033-9616-14d59c88b1fd
+                RenderStage: ref!! 6b596b72-f95b-4f48-9f75-bf73b61e9fe9
                 EffectName: RiverSurface
                 RenderGroup: Group1
         PipelineProcessors: {}
@@ -131,58 +136,40 @@ RenderFeatures:
     1f59e8b7de05424383d188634ace8e95: !Terrain.Rendering.Ocean.OceanRenderFeature,Terrain
         RenderStageSelectors:
             758db40a79184b60b56bb5d9085f8d64: !Stride.Rendering.SimpleGroupToRenderStageSelector,Stride.Rendering
-                RenderStage: ref!! 0fbd7f2d-8037-4033-9616-14d59c88b1fd
+                RenderStage: ref!! 6b596b72-f95b-4f48-9f75-bf73b61e9fe9
                 EffectName: OceanSurface
                 RenderGroup: Group1
         PipelineProcessors: {}
         RenderFeatures: {}
 SharedRenderers:
-    60459475d3a3adaf2d1ba5d99913ca75: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine
+    60459475d3a3adaf2d1ba5d99913ca75: !Terrain.Rendering.CustomForwardRenderer,Terrain
         Id: 174f9875-9c7a-4234-a152-78ad10b332be
         Clear:
             Id: 4bc4b2ca-027e-4e4a-94cb-2912709bef5f
             Color: {R: 0.40491876, G: 0.41189542, B: 0.43775, A: 1.0}
-        LightProbes: true
         OpaqueRenderStage: ref!! 4ebaa158-a786-4eb4-846c-2aea544c933f
         TransparentRenderStage: ref!! 0fbd7f2d-8037-4033-9616-14d59c88b1fd
+        WaterRenderStage: ref!! 6b596b72-f95b-4f48-9f75-bf73b61e9fe9
         ShadowMapRenderStages:
             fc4d1e0de5c2b0bbc27bcf96e9a848fd: ref!! a80d69b6-c45c-47bf-ba40-de9b83a05996
             87ff1d9cdd52418daf76385176a0e316: ref!! 2261b90d-fb02-485f-9b42-85ee8412af51
             5e059d4cc2db4ee8a1f28a40f4ac3ae8: ref!! 950cf71b-8254-4f99-ba95-3dc6a3f7c3bd
         GBufferRenderStage: ref!! 8afeebe6-f878-4735-8557-9e5b04b7a005
         PostEffects: !PostProcessingEffects ref!! b88d8562-9b8b-4314-a583-3d42a668871e
-        LightShafts: null
-        VRSettings:
-            Enabled: false
-            RequiredApis: {}
-            Overlays: {}
-            RequestPassthrough: false
-        SubsurfaceScatteringBlurEffect: null
-        MSAALevel: None
-        MSAAResolver: {}
-    d5b2e71c088247e21556decdce138d96: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine
+    d5b2e71c088247e21556decdce138d96: !Terrain.Rendering.CustomForwardRenderer,Terrain
         Id: ec3bf6df-d300-4d54-b7cd-9426776ed609
         Clear:
             Id: 66a42307-1985-4316-871a-768449238c11
             Color: {R: 0.40491876, G: 0.41189542, B: 0.43775, A: 1.0}
-        LightProbes: true
         OpaqueRenderStage: ref!! 4ebaa158-a786-4eb4-846c-2aea544c933f
         TransparentRenderStage: ref!! 0fbd7f2d-8037-4033-9616-14d59c88b1fd
+        WaterRenderStage: ref!! 6b596b72-f95b-4f48-9f75-bf73b61e9fe9
         ShadowMapRenderStages:
             2323a99a8a983e182f318e55604659b0: ref!! a80d69b6-c45c-47bf-ba40-de9b83a05996
             61b557b74893400898c007d5ece5e87f: ref!! 2261b90d-fb02-485f-9b42-85ee8412af51
             5c382f66ee524c498d26d9aaf19fc9c3: ref!! 950cf71b-8254-4f99-ba95-3dc6a3f7c3bd
         GBufferRenderStage: ref!! 8afeebe6-f878-4735-8557-9e5b04b7a005
         PostEffects: null
-        LightShafts: null
-        VRSettings:
-            Enabled: false
-            RequiredApis: {}
-            Overlays: {}
-            RequestPassthrough: false
-        SubsurfaceScatteringBlurEffect: null
-        MSAALevel: None
-        MSAAResolver: {}
     34ecb9b2633eacfc439ba8744fe05102: !PostProcessingEffects
         Id: b88d8562-9b8b-4314-a583-3d42a668871e
         Outline:
@@ -233,9 +220,9 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
     Child: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
         Id: 82568e46-92e7-421a-8dca-114a74e0cd69
         Children:
-            d39c5ddbf8b7d5ca02bafb6496b1cc3c: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine ref!! 174f9875-9c7a-4234-a152-78ad10b332be
+            d39c5ddbf8b7d5ca02bafb6496b1cc3c: !Terrain.Rendering.CustomForwardRenderer,Terrain ref!! 174f9875-9c7a-4234-a152-78ad10b332be
             01d338078e9b21121ead0868932613dd: !Stride.Rendering.Compositing.DebugRenderer,Stride.Rendering ref!! c30876a8-691a-481c-b58f-55aaacb38dee
     RenderMask: All
-SingleView: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine ref!! ec3bf6df-d300-4d54-b7cd-9426776ed609
-Editor: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine ref!! 174f9875-9c7a-4234-a152-78ad10b332be
+SingleView: !Terrain.Rendering.CustomForwardRenderer,Terrain ref!! ec3bf6df-d300-4d54-b7cd-9426776ed609
+Editor: !Terrain.Rendering.CustomForwardRenderer,Terrain ref!! 174f9875-9c7a-4234-a152-78ad10b332be
 BlockPositions: {}

@@ -1,0 +1,32 @@
+namespace Terrain
+{
+    shader WaterRefractionCapture : ImageEffectShader, DepthBase, Transformation, RiverCommon
+    {
+        stage float _RefractionCaptureExposure = 1.0f;
+        stage float _RefractionCaptureColorScale = 1.5f;
+
+        float3 CompressRefractionCaptureColor(float3 color)
+        {
+            float3 hdrColor = max(color * _RefractionCaptureExposure, float3(0.0f, 0.0f, 0.0f));
+            return (hdrColor / (1.0f + hdrColor)) * _RefractionCaptureColorScale;
+        }
+
+        float ComputeRefractionCaptureDistanceFromUV(float2 uv)
+        {
+            float zProjDepth = GetZProjDepthFromUV(uv);
+            float4 positionClipSpace = float4((1.0f - uv * 2.0f) * float2(-1.0f, 1.0f), zProjDepth, 1.0f);
+            float4 positionVS = mul(positionClipSpace, ProjectionInverse);
+            positionVS.xyzw /= positionVS.w;
+            float4 positionWS = mul(positionVS, ViewInverse);
+            return RiverCompressWorldSpace(positionWS.xyz, Eye.xyz);
+        }
+
+        stage override float4 Shading()
+        {
+            float2 uv = streams.TexCoord;
+            float3 capturedColor = CompressRefractionCaptureColor(Texture0.Sample(LinearSampler, uv).rgb);
+            float sceneDistance = ComputeRefractionCaptureDistanceFromUV(uv);
+            return float4(capturedColor, sceneDistance);
+        }
+    };
+}

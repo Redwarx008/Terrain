@@ -100,15 +100,43 @@ public sealed class OceanRenderFeature : RootRenderFeature
 
     public override void Draw(RenderDrawContext context, RenderView renderView, RenderViewStage renderViewStage, int startIndex, int endIndex)
     {
+        // Ocean is driven by CustomForwardRenderer and the dedicated Water
+        // stage so it can consume the shared refraction capture. Keep this
+        // stage callback inert to avoid a selector residue double draw.
+        return;
+    }
+
+    internal void DrawWater(
+        RenderDrawContext context,
+        RenderView renderView,
+        RenderViewStage renderViewStage,
+        int startIndex,
+        int endIndex,
+        Texture sharedRefractionTexture,
+        int refractionWidth,
+        int refractionHeight,
+        float refractionMaxCameraHeight)
+    {
         if (oceanEffect == null || pipelineState == null || !oceanResources.IsLoaded || startIndex >= endIndex)
+        {
+            return;
+        }
+
+        if (sharedRefractionTexture == null || refractionWidth <= 0 || refractionHeight <= 0)
         {
             return;
         }
 
         Matrix.Invert(ref renderView.View, out var viewInverse);
         var cameraWorldPosition = viewInverse.TranslationVector;
+        float waterFlowTime = (float)context.RenderContext.Time.Total.TotalSeconds;
         oceanEffect.Parameters.Set(OceanSurfaceKeys._CameraWorldPosition, cameraWorldPosition);
-        oceanEffect.Parameters.Set(OceanSurfaceKeys._GlobalTime, (float)context.RenderContext.Time.Total.TotalSeconds);
+        oceanEffect.Parameters.Set(OceanSurfaceKeys._GlobalTime, waterFlowTime);
+        oceanEffect.Parameters.Set(OceanSurfaceKeys._WaterFlowTime, waterFlowTime);
+        oceanEffect.Parameters.Set(OceanSurfaceKeys.RefractionTexture, sharedRefractionTexture);
+        oceanEffect.Parameters.Set(OceanSurfaceKeys.RefractionSampler, context.GraphicsDevice.SamplerStates.LinearClamp);
+        oceanEffect.Parameters.Set(OceanSurfaceKeys._RefractionTextureSize, new Vector2(refractionWidth, refractionHeight));
+        oceanEffect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, refractionMaxCameraHeight);
         ApplyViewParameters(oceanEffect, renderView);
         sceneLightingBinder?.Bind(context, renderView, oceanEffect);
 
@@ -222,6 +250,8 @@ public sealed class OceanRenderFeature : RootRenderFeature
     {
         effect.Parameters.Set(TransformationKeys.ViewProjection, renderView.ViewProjection);
         effect.Parameters.Set(CameraKeys.ViewSize, renderView.ViewSize);
+        effect.Parameters.Set(OceanSurfaceKeys._ViewSize, renderView.ViewSize);
+        effect.Parameters.Set(OceanSurfaceKeys._ViewMatrix, renderView.View);
     }
 
     private void BindStaticResources(GraphicsDevice graphicsDevice)
@@ -236,6 +266,10 @@ public sealed class OceanRenderFeature : RootRenderFeature
         SetTexture(oceanEffect.Parameters, OceanSurfaceKeys.WaterColorTexture, oceanResources.WaterColor);
         SetTexture(oceanEffect.Parameters, OceanSurfaceKeys.AmbientNormalTexture, oceanResources.AmbientNormal);
         SetTexture(oceanEffect.Parameters, OceanSurfaceKeys.FlowMapTexture, oceanResources.FlowMap);
+        if (oceanResources.FlowMap != null)
+        {
+            oceanEffect.Parameters.Set(OceanSurfaceKeys._WaterFlowMapSize, new Vector2(oceanResources.FlowMap.ViewWidth, oceanResources.FlowMap.ViewHeight));
+        }
         SetTexture(oceanEffect.Parameters, OceanSurfaceKeys.FlowNormalTexture, oceanResources.FlowNormal);
         SetTexture(oceanEffect.Parameters, OceanSurfaceKeys.FoamTexture, oceanResources.Foam);
         SetTexture(oceanEffect.Parameters, OceanSurfaceKeys.FoamRampTexture, oceanResources.FoamRamp);
