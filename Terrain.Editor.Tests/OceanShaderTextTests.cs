@@ -13,7 +13,7 @@ internal static class OceanShaderTextTests
         TestHarness.Run("ocean shader uses shared river stride lighting", OceanShaderUsesSharedRiverStrideLighting);
         TestHarness.Run("ocean shader avoids strategy-only map tokens", OceanShaderAvoidsStrategyOnlyMapTokens);
         TestHarness.Run("ocean render feature binds resources and scene lighting", OceanRenderFeatureBindsResourcesAndSceneLighting);
-        TestHarness.Run("ocean render feature stays out of scene and compositor assets", OceanRenderFeatureStaysOutOfSceneAndCompositorAssets);
+        TestHarness.Run("ocean render feature does not mutate scene assets", OceanRenderFeatureDoesNotMutateSceneAssets);
         TestHarness.Run("terrain project registers ocean shader key files", TerrainProjectRegistersOceanShaderKeyFiles);
     }
 
@@ -136,17 +136,12 @@ internal static class OceanShaderTextTests
         AssertNotContains(feature, "FoamIntensity", "OceanRenderFeature should not bind a non-existent ocean material field");
     }
 
-    private static void OceanRenderFeatureStaysOutOfSceneAndCompositorAssets()
+    private static void OceanRenderFeatureDoesNotMutateSceneAssets()
     {
         string feature = ReadRepositoryText("Terrain/Rendering/Ocean/OceanRenderFeature.cs");
-        string compositor = ReadRepositoryText("Terrain/Assets/GraphicsCompositor.sdgfxcomp");
-        string mainScene = ReadRepositoryText("Terrain/Assets/MainScene.sdscene");
 
         AssertNotContains(feature, "GraphicsCompositor", "OceanRenderFeature should not mutate graphics compositor assets at runtime");
         AssertNotContains(feature, "MainScene", "OceanRenderFeature should not touch scene assets");
-        AssertNotContains(compositor, "OceanRenderFeature", "Task 8 should not register OceanRenderFeature in GraphicsCompositor");
-        AssertNotContains(mainScene, "OceanComponent", "Task 8 should not add an OceanComponent to MainScene");
-        AssertContains(mainScene, "OceanEntity: null", "MainScene should keep the existing no-ocean runtime placeholder for Task 9");
     }
 
     private static void TerrainProjectRegistersOceanShaderKeyFiles()

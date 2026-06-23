@@ -61,7 +61,7 @@ internal static class MapSurfaceCoordinatorTests
         TestHarness.Assert(scene.Contains("!Terrain.MapSurface.MapSurfaceComponent,Terrain", StringComparison.Ordinal), "MainScene should attach MapSurfaceComponent");
         TestHarness.Assert(scene.Contains("TerrainEntity: ref!! 1cfe1131-cc2f-4a41-947d-3102b1f351dd", StringComparison.Ordinal), "MapSurface should reference the existing Terrain entity");
         TestHarness.Assert(scene.Contains("RiverEntity: ref!! c8f8f226-3477-45ec-84d8-d8e8de365e1b", StringComparison.Ordinal), "MapSurface should reference the existing RiverSystem entity");
-        TestHarness.Assert(!scene.Contains("!Terrain.Rendering.Ocean.", StringComparison.Ordinal), "Task 3 should not introduce ocean runtime components");
+        TestHarness.Assert(scene.Contains("OceanEntity: ref!!", StringComparison.Ordinal), "MapSurface should reference an Ocean entity once ocean wiring is enabled");
     }
 
     private static void MapSurfaceResourceLoadFailureIsLatched()

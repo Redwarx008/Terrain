@@ -47,6 +47,7 @@ RiverViewModelAutoGenerationTests.RunAll();
 RiverWorkspaceDiagnosticsTests.RunAll();
 RiverRenderFeatureRuntimeTests.RunAll();
 RuntimeRiverAssetTests.RunAll();
+RuntimeOceanAssetTests.RunAll();
 MapSurfaceCoordinatorTests.RunAll();
 OceanRenderingTests.RunAll();
 OceanResourceTextTests.RunAll();

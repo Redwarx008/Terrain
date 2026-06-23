@@ -109,11 +109,20 @@ internal static class EditorWorkflowTextTests
     private static void SettingsExposesOceanVisibilityAndSeaLevel()
     {
         string window = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml"));
+        string viewModel = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs"));
+        string host = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "NativeStrideViewportHost.cs"));
+        string game = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Rendering", "NativeViewport", "EmbeddedStrideViewportGame.cs"));
+
         TestHarness.Assert(window.Contains("Show Ocean", StringComparison.Ordinal), "Settings inspector should expose ocean visibility");
         TestHarness.Assert(window.Contains("Sea Level", StringComparison.Ordinal), "Settings inspector should label the sea level control");
         TestHarness.Assert(window.Contains("IsChecked=\"{Binding Settings.ShowOcean}\"", StringComparison.Ordinal), "Settings inspector should bind ocean visibility");
         TestHarness.Assert(window.Contains("Value=\"{Binding Settings.SeaLevel}\"", StringComparison.Ordinal), "Settings inspector should bind sea level slider");
         TestHarness.Assert(window.Contains("Text=\"{Binding Settings.SeaLevel, StringFormat='{}{0:F1}'}\"", StringComparison.Ordinal), "Settings inspector should show formatted sea level");
+        TestHarness.Assert(host.Contains("public OceanRenderingService? OceanRenderingService", StringComparison.Ordinal), "Native viewport host should expose ocean rendering service");
+        TestHarness.Assert(game.Contains("EnsureOceanRenderFeature(_graphicsCompositor)", StringComparison.Ordinal), "Embedded viewport should ensure OceanRenderFeature in editor compositors");
+        TestHarness.Assert(viewModel.Contains("_viewportHost.OceanRenderingService?.SetVisible(Settings.ShowOcean)", StringComparison.Ordinal), "ShowOcean should drive the ocean rendering service");
+        TestHarness.Assert(viewModel.Contains("_viewportHost.OceanRenderingService?.SetSeaLevel(Settings.SeaLevel)", StringComparison.Ordinal), "SeaLevel should drive the ocean rendering service");
+        TestHarness.Assert(viewModel.Contains("_viewportHost.RiverRenderingService?.SetSeaLevel(Settings.SeaLevel)", StringComparison.Ordinal), "SeaLevel should drive river ocean fade");
     }
 
     private static void WiresRiverServicesBeforeLoadingWorkspaceSession()

@@ -63,6 +63,14 @@ public sealed class RiverRenderingService : IDisposable
         riverComponent.Settings.RiverMaxVisibleCameraHeight = value;
     }
 
+    public void SetSeaLevel(float value)
+    {
+        if (!float.IsFinite(value))
+            return;
+
+        riverComponent.Settings.SeaLevel = value;
+    }
+
     public void ClearMeshes()
     {
         riverComponent.Clear();

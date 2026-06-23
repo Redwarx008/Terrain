@@ -281,6 +281,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             AddConsole("Info", "Stride SDL viewport host now owns a Scene and TerrainManager.");
             EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
             TryWireRiverServices();
+            TryWireOceanServices();
             _ = LoadEditorResourceSessionAsync();
         }
         else
@@ -303,6 +304,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     {
         EnsureTerrainManagerSubscriptions(_viewportHost.TerrainManager);
         TryWireRiverServices();
+        TryWireOceanServices();
         if (_viewportHost.TerrainManager != null)
         {
             _viewportHost.TerrainManager.SetTerrainVisible(Settings.ShowTerrain);
@@ -384,6 +386,16 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             River.SetServices(_viewportHost.RiverRenderingService, _viewportHost.RiverMeshService);
             _viewportHost.RiverRenderingService.SetVisible(Settings.ShowRivers);
             _viewportHost.RiverRenderingService.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
+            _viewportHost.RiverRenderingService.SetSeaLevel(Settings.SeaLevel);
+        }
+    }
+
+    private void TryWireOceanServices()
+    {
+        if (_viewportHost.OceanRenderingService != null)
+        {
+            _viewportHost.OceanRenderingService.SetVisible(Settings.ShowOcean);
+            _viewportHost.OceanRenderingService.SetSeaLevel(Settings.SeaLevel);
         }
     }
 
@@ -1679,11 +1691,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
         else if (e.PropertyName == nameof(SettingsViewModel.ShowOcean))
         {
-            // Runtime ocean preview visibility will be wired when the ocean rendering service is introduced.
+            _viewportHost.OceanRenderingService?.SetVisible(Settings.ShowOcean);
         }
         else if (e.PropertyName == nameof(SettingsViewModel.SeaLevel))
         {
-            // Runtime sea-level preview will be wired when ocean/river sea-level services are introduced.
+            _viewportHost.OceanRenderingService?.SetSeaLevel(Settings.SeaLevel);
+            _viewportHost.RiverRenderingService?.SetSeaLevel(Settings.SeaLevel);
             EditorDirtyState.Instance.MarkDirty(EditorDirtyResource.MapDefinition);
         }
         else if (e.PropertyName == nameof(SettingsViewModel.RiverMaxVisibleCameraHeight))
@@ -1706,6 +1719,9 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             }
 
             _viewportHost.RiverRenderingService?.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
+            _viewportHost.RiverRenderingService?.SetSeaLevel(Settings.SeaLevel);
+            _viewportHost.OceanRenderingService?.SetSeaLevel(Settings.SeaLevel);
+            _viewportHost.OceanRenderingService?.SetVisible(Settings.ShowOcean);
         }
     }
 

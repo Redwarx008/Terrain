@@ -50,6 +50,8 @@ public sealed class NativeStrideViewportHost : IDisposable
 
     public RiverRenderingService? RiverRenderingService => _game?.RiverRenderingService;
 
+    public OceanRenderingService? OceanRenderingService => _game?.OceanRenderingService;
+
     public RiverMeshService? RiverMeshService => _game?.RiverMeshService;
 
     public SceneViewMode SceneViewMode => _sceneViewMode;
