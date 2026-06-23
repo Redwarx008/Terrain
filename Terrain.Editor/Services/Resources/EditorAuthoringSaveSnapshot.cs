@@ -15,6 +15,7 @@ public sealed class EditorAuthoringSaveSnapshot
         BiomeMask? biomeMask,
         float heightScale,
         float riverMaxVisibleCameraHeight,
+        float seaLevel,
         IReadOnlyList<EditorMaterialDescriptorSlot>? descriptorSlots,
         EditorBiomeSettingsSnapshot? biomeSnapshot,
         EditorDirtyResource dirtyResources = EditorDirtyResource.All)
@@ -25,6 +26,7 @@ public sealed class EditorAuthoringSaveSnapshot
             biomeMask,
             heightScale,
             riverMaxVisibleCameraHeight,
+            seaLevel,
             descriptorSlots,
             biomeSnapshot,
             EditorDirtySnapshot.Unversioned(dirtyResources))
@@ -38,6 +40,7 @@ public sealed class EditorAuthoringSaveSnapshot
         BiomeMask? biomeMask,
         float heightScale,
         float riverMaxVisibleCameraHeight,
+        float seaLevel,
         IReadOnlyList<EditorMaterialDescriptorSlot>? descriptorSlots,
         EditorBiomeSettingsSnapshot? biomeSnapshot,
         EditorDirtySnapshot dirtySnapshot)
@@ -48,6 +51,7 @@ public sealed class EditorAuthoringSaveSnapshot
         BiomeMask = biomeMask;
         HeightScale = heightScale;
         RiverMaxVisibleCameraHeight = riverMaxVisibleCameraHeight;
+        SeaLevel = seaLevel;
         DescriptorSlots = descriptorSlots;
         BiomeSnapshot = biomeSnapshot;
         DirtySnapshot = dirtySnapshot;
@@ -59,6 +63,7 @@ public sealed class EditorAuthoringSaveSnapshot
     public BiomeMask? BiomeMask { get; }
     public float HeightScale { get; }
     public float RiverMaxVisibleCameraHeight { get; }
+    public float SeaLevel { get; }
     public IReadOnlyList<EditorMaterialDescriptorSlot>? DescriptorSlots { get; }
     public EditorBiomeSettingsSnapshot? BiomeSnapshot { get; }
     public EditorDirtySnapshot DirtySnapshot { get; }

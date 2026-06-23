@@ -12,6 +12,7 @@ internal static class EditorResourceSaveServiceTests
         TestHarness.Run("authoring save reports progress in expected order", AuthoringSaveReportsProgressInExpectedOrder);
         TestHarness.Run("authoring save persists river max visible camera height", AuthoringSavePersistsRiverMaxVisibleCameraHeight);
         TestHarness.Run("authoring save preserves loaded river max visible camera height by default", AuthoringSavePreservesLoadedRiverMaxVisibleCameraHeightByDefault);
+        TestHarness.Run("authoring save persists sea level", AuthoringSavePersistsSeaLevel);
         TestHarness.Run("authoring save preserves loaded sea level by default", AuthoringSavePreservesLoadedSeaLevelByDefault);
         TestHarness.Run("authoring save writes only dirty heightmap resource", AuthoringSaveWritesOnlyDirtyHeightmapResource);
         TestHarness.Run("authoring save writes only dirty map definition resource", AuthoringSaveWritesOnlyDirtyMapDefinitionResource);
@@ -143,6 +144,30 @@ internal static class EditorResourceSaveServiceTests
         RuntimeMapDefinition saved = RuntimeMapDefinitionReader.ReadFrom(fixture.MapDefinitionPath);
 
         TestHarness.AssertEqual(9.25f, saved.SeaLevel, "save should preserve loaded sea level when caller omits the parameter");
+    }
+
+    private static void AuthoringSavePersistsSeaLevel()
+    {
+        SaveFixture fixture = CreatePopulatedSaveFixture();
+        var biomeMask = new BiomeMask(2, 2);
+
+        EditorResourceSaveService.Save(
+            fixture.Session,
+            [1, 2, 3, 4],
+            width: 2,
+            height: 2,
+            biomeMask,
+            heightScale: 222.0f,
+            descriptorSlots:
+            [
+                new EditorMaterialDescriptorSlot("grass", 0, "Grass", "grass.png", null, null),
+            ],
+            biomeSnapshot: new EditorBiomeSettingsSnapshot([], [], []),
+            seaLevel: 9.25f);
+
+        RuntimeMapDefinition saved = RuntimeMapDefinitionReader.ReadFrom(fixture.MapDefinitionPath);
+
+        TestHarness.AssertEqual(9.25f, saved.SeaLevel, "save should persist sea level");
     }
 
     private static void AuthoringSaveWritesOnlyDirtyHeightmapResource()

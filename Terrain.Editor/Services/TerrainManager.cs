@@ -360,23 +360,29 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
         if (session == null)
             throw new ArgumentNullException(nameof(session));
 
-        EditorAuthoringSaveSnapshot snapshot = CreateAuthoringSaveSnapshot(session.MapDefinitionModel.RiverMaxVisibleCameraHeight, progress);
+        EditorAuthoringSaveSnapshot snapshot = CreateAuthoringSaveSnapshot(
+            session.MapDefinitionModel.RiverMaxVisibleCameraHeight,
+            session.MapDefinitionModel.SeaLevel,
+            progress);
         SaveAuthoringResources(session, snapshot, progress);
     }
 
     public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(
         float riverMaxVisibleCameraHeight = 3000.0f,
+        float seaLevel = 3.8f,
         IProgress<AuthoringSaveProgress>? progress = null,
         EditorDirtyResource dirtyResources = EditorDirtyResource.All)
     {
         return CreateAuthoringSaveSnapshot(
             riverMaxVisibleCameraHeight,
+            seaLevel,
             progress,
             EditorDirtySnapshot.Unversioned(dirtyResources));
     }
 
     public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(
         float riverMaxVisibleCameraHeight,
+        float seaLevel,
         IProgress<AuthoringSaveProgress>? progress,
         EditorDirtySnapshot dirtySnapshot)
     {
@@ -437,6 +443,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             biomeMask,
             HeightScale,
             riverMaxVisibleCameraHeight,
+            seaLevel,
             descriptorSlots,
             biomeSnapshot,
             dirtySnapshot);
@@ -476,6 +483,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             snapshot.BiomeSnapshot,
             progress,
             snapshot.RiverMaxVisibleCameraHeight,
+            snapshot.SeaLevel,
             snapshot.DirtyResources);
     }
 

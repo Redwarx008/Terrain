@@ -15,6 +15,7 @@ internal static class EditorWorkflowTextTests
         TestHarness.Run("editor river inspector does not expose manual import or generate actions", RiverInspectorDoesNotExposeManualImportOrGenerateActions);
         TestHarness.Run("editor river inspector does not expose preview bindings", RiverInspectorDoesNotExposePreviewBindings);
         TestHarness.Run("editor settings exposes river camera height as slider", SettingsExposesRiverCameraHeightAsSlider);
+        TestHarness.Run("editor settings exposes ocean visibility and sea level", SettingsExposesOceanVisibilityAndSeaLevel);
         TestHarness.Run("editor wires river services before loading workspace session", WiresRiverServicesBeforeLoadingWorkspaceSession);
         TestHarness.Run("editor save exposes async modal progress state", SaveExposesAsyncModalProgressState);
         TestHarness.Run("editor save snapshots authoring state before background write", SaveSnapshotsAuthoringStateBeforeBackgroundWrite);
@@ -105,6 +106,16 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(!controlBlock.Contains("NumericUpDown", StringComparison.Ordinal), "river camera height should not use NumericUpDown");
     }
 
+    private static void SettingsExposesOceanVisibilityAndSeaLevel()
+    {
+        string window = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "Views", "MainWindow.axaml"));
+        TestHarness.Assert(window.Contains("Show Ocean", StringComparison.Ordinal), "Settings inspector should expose ocean visibility");
+        TestHarness.Assert(window.Contains("Sea Level", StringComparison.Ordinal), "Settings inspector should label the sea level control");
+        TestHarness.Assert(window.Contains("IsChecked=\"{Binding Settings.ShowOcean}\"", StringComparison.Ordinal), "Settings inspector should bind ocean visibility");
+        TestHarness.Assert(window.Contains("Value=\"{Binding Settings.SeaLevel}\"", StringComparison.Ordinal), "Settings inspector should bind sea level slider");
+        TestHarness.Assert(window.Contains("Text=\"{Binding Settings.SeaLevel, StringFormat='{}{0:F1}'}\"", StringComparison.Ordinal), "Settings inspector should show formatted sea level");
+    }
+
     private static void WiresRiverServicesBeforeLoadingWorkspaceSession()
     {
         string viewModelPath = Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs");
@@ -174,7 +185,8 @@ internal static class EditorWorkflowTextTests
         int generatedResources = saveBody.IndexOf("EditorGeneratedAuthoringResourceDetector.DetectMissingGeneratedResources", StringComparison.Ordinal);
         int dirtyResources = saveBody.IndexOf("EditorDirtyResource dirtyResources = dirtySnapshot.Resources", StringComparison.Ordinal);
         int noOpSave = saveBody.IndexOf("No dirty authoring resources to save.", StringComparison.Ordinal);
-        int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress, dirtySnapshot)", StringComparison.Ordinal);
+        int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(", StringComparison.Ordinal);
+        int snapshotSeaLevel = saveBody.IndexOf("Settings.SeaLevel", snapshot, StringComparison.Ordinal);
         int taskRun = saveBody.IndexOf("Task.Run(", StringComparison.Ordinal);
         int saveSnapshot = saveBody.IndexOf("terrainManager.SaveAuthoringResources(session, snapshot, progress)", StringComparison.Ordinal);
         int applyCommittedDescriptorIds = saveBody.IndexOf("_materialSlotManager.ApplyCommittedDescriptorIds(snapshot.DescriptorSlots)", StringComparison.Ordinal);
@@ -189,6 +201,7 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(dirtyResources >= 0, "Save should capture dirty resources before snapshot capture");
         TestHarness.Assert(noOpSave >= 0, "Save should skip authoring snapshot capture when no resources are dirty");
         TestHarness.Assert(snapshot >= 0, "Save should capture an authoring snapshot on the UI thread");
+        TestHarness.Assert(snapshotSeaLevel >= 0, "Save should include the current sea level in the authoring snapshot");
         TestHarness.Assert(taskRun >= 0, "Save should still run file writes in the background");
         TestHarness.Assert(saveSnapshot >= 0, "Save should pass only the snapshot to background file writes");
         TestHarness.Assert(applyCommittedDescriptorIds >= 0, "Save should apply committed descriptor ids to live slots only after writes succeed");

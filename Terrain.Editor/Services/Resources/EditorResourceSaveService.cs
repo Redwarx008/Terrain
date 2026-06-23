@@ -30,7 +30,8 @@ public static class EditorResourceSaveService
             descriptorSlots,
             biomeSnapshot,
             progress: null,
-            riverMaxVisibleCameraHeight: session.MapDefinitionModel.RiverMaxVisibleCameraHeight);
+            riverMaxVisibleCameraHeight: session.MapDefinitionModel.RiverMaxVisibleCameraHeight,
+            seaLevel: session.MapDefinitionModel.SeaLevel);
     }
 
     public static void Save(
@@ -44,6 +45,7 @@ public static class EditorResourceSaveService
         EditorBiomeSettingsSnapshot? biomeSnapshot,
         IProgress<AuthoringSaveProgress>? progress = null,
         float? riverMaxVisibleCameraHeight = null,
+        float? seaLevel = null,
         EditorDirtyResource dirtyResources = EditorDirtyResource.All)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -77,7 +79,7 @@ public static class EditorResourceSaveService
             RiverMinWidth = session.MapDefinitionModel.RiverMinWidth,
             RiverMaxWidth = session.MapDefinitionModel.RiverMaxWidth,
             RiverMaxVisibleCameraHeight = riverMaxVisibleCameraHeight ?? session.MapDefinitionModel.RiverMaxVisibleCameraHeight,
-            SeaLevel = session.MapDefinitionModel.SeaLevel,
+            SeaLevel = seaLevel ?? session.MapDefinitionModel.SeaLevel,
         };
 
         var mapDefinitionWriter = new MapDefinitionWriter();

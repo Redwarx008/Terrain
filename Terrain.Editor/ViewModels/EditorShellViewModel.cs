@@ -538,7 +538,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress, dirtySnapshot);
+            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(
+                Settings.RiverMaxVisibleCameraHeight,
+                Settings.SeaLevel,
+                progress,
+                dirtySnapshot);
             await Task.Run(() => terrainManager.SaveAuthoringResources(session, snapshot, progress));
             UpdateSaveProgress(AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, "Refreshing editor state..."));
             if (snapshot.DescriptorSlots != null)
@@ -1673,6 +1677,15 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             _viewportHost.RiverRenderingService?.SetVisible(Settings.ShowRivers);
         }
+        else if (e.PropertyName == nameof(SettingsViewModel.ShowOcean))
+        {
+            // Runtime ocean preview visibility will be wired when the ocean rendering service is introduced.
+        }
+        else if (e.PropertyName == nameof(SettingsViewModel.SeaLevel))
+        {
+            // Runtime sea-level preview will be wired when ocean/river sea-level services are introduced.
+            EditorDirtyState.Instance.MarkDirty(EditorDirtyResource.MapDefinition);
+        }
         else if (e.PropertyName == nameof(SettingsViewModel.RiverMaxVisibleCameraHeight))
         {
             _viewportHost.RiverRenderingService?.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
@@ -1689,6 +1702,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             if (_resourceSession != null)
             {
                 Settings.RiverMaxVisibleCameraHeight = _resourceSession.MapDefinitionModel.RiverMaxVisibleCameraHeight;
+                Settings.SeaLevel = _resourceSession.MapDefinitionModel.SeaLevel;
             }
 
             _viewportHost.RiverRenderingService?.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);

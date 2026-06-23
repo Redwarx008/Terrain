@@ -19,6 +19,7 @@ internal static class EditorAuthoringSaveSnapshotTests
 
         EditorAuthoringSaveSnapshot snapshot = manager.CreateAuthoringSaveSnapshot(
             riverMaxVisibleCameraHeight: 875.0f,
+            seaLevel: 9.25f,
             progress: null,
             dirtySnapshot: EditorDirtySnapshot.Unversioned(EditorDirtyResource.MapDefinition));
 
@@ -28,6 +29,7 @@ internal static class EditorAuthoringSaveSnapshotTests
         TestHarness.Assert(snapshot.DescriptorSlots == null, "map-only snapshot should not build material descriptor slots");
         TestHarness.Assert(snapshot.BiomeSnapshot == null, "map-only snapshot should not build biome settings");
         TestHarness.AssertEqual(875.0f, snapshot.RiverMaxVisibleCameraHeight, "snapshot should keep map camera visibility setting");
+        TestHarness.AssertEqual(9.25f, snapshot.SeaLevel, "snapshot should keep map sea level setting");
     }
 
     private static void AuthoringBiomeSettingsSnapshotIncludesDescriptorWhenMaterialIdsAreGenerated()
@@ -58,6 +60,7 @@ internal static class EditorAuthoringSaveSnapshotTests
 
             EditorAuthoringSaveSnapshot snapshot = terrainManager.CreateAuthoringSaveSnapshot(
                 riverMaxVisibleCameraHeight: 875.0f,
+                seaLevel: 9.25f,
                 progress: null,
                 dirtySnapshot: EditorDirtySnapshot.Unversioned(EditorDirtyResource.BiomeSettings));
 
