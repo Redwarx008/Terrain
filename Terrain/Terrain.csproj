@@ -83,6 +83,16 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
+    <Compile Update="Effects\Ocean\OceanVertexStreams.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
+    <Compile Update="Effects\Ocean\OceanSurface.sdsl.cs">
+      <DesignTime>True</DesignTime>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -109,6 +119,12 @@
     </None>
     <None Update="Effects\River\RiverStrideLighting.sdsl">
       <LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\Ocean\OceanVertexStreams.sdsl">
+      <LastGenOutput>OceanVertexStreams.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\Ocean\OceanSurface.sdsl">
+      <LastGenOutput>OceanSurface.sdsl.cs</LastGenOutput>
     </None>
   </ItemGroup>
 </Project>

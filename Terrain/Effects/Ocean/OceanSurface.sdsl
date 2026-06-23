@@ -1,0 +1,102 @@
+namespace Terrain
+{
+    shader OceanSurface : ShaderBase, TransformationWAndVP, OceanVertexStreams, RiverStrideLighting
+    {
+        stage float4 ShallowColor = float4(0.08f, 0.32f, 0.42f, 1.0f);
+        stage float4 DeepColor = float4(0.01f, 0.08f, 0.16f, 1.0f);
+        stage float _OceanRoughness = 0.08f;
+        stage float _WaveScale = 1.0f;
+        stage float _WaterHeight = 3.0f;
+        stage float2 _MapWorldSize = float2(4096.0f, 4096.0f);
+        stage float3 _CameraWorldPosition = float3(0.0f, 0.0f, 0.0f);
+        stage float _GlobalTime = 0.0f;
+
+        stage Texture2D<float4> WaterColorTexture;
+        stage Texture2D<float4> AmbientNormalTexture;
+        stage Texture2D<float4> FlowMapTexture;
+        stage Texture2D<float4> FlowNormalTexture;
+        stage Texture2D<float4> FoamTexture;
+        stage Texture2D<float4> FoamRampTexture;
+        stage Texture2D<float4> FoamMapTexture;
+        stage Texture2D<float4> FoamNoiseTexture;
+        stage SamplerState OceanTextureSampler;
+
+        float2 GetWorldUv(float3 worldPosition)
+        {
+            float2 worldUv = worldPosition.xz / max(_MapWorldSize, float2(1.0f, 1.0f));
+            worldUv.y = 1.0f - worldUv.y;
+            return worldUv;
+        }
+
+        float3 DecodeOceanNormal(float4 packedNormal)
+        {
+            return packedNormal.xyz * 2.0f - 1.0f;
+        }
+
+        float3 SampleAmbientNormal(float2 worldUv)
+        {
+            float waveScale = max(_WaveScale, 0.0001f);
+            float2 waveUv0 = worldUv * 16.0f * waveScale + float2(_GlobalTime * 0.010f, _GlobalTime * 0.006f);
+            float2 waveUv1 = worldUv * 4.0f * waveScale + float2(-_GlobalTime * 0.004f, _GlobalTime * 0.008f);
+            float3 normal0 = DecodeOceanNormal(AmbientNormalTexture.Sample(OceanTextureSampler, waveUv0)).xzy;
+            float3 normal1 = DecodeOceanNormal(AmbientNormalTexture.Sample(OceanTextureSampler, waveUv1)).xzy;
+            return normalize(normal0 + normal1 + float3(0.0f, 2.0f, 0.0f));
+        }
+
+        float3 SampleFlowNormal(float2 worldUv, float2 flowVector)
+        {
+            float waveScale = max(_WaveScale, 0.0001f);
+            float2 flowUv = worldUv * 8.0f * waveScale + flowVector * (_GlobalTime * 0.05f);
+            float3 flowNormal = DecodeOceanNormal(FlowNormalTexture.Sample(OceanTextureSampler, flowUv)).xzy;
+            return normalize(flowNormal + float3(0.0f, 1.0f, 0.0f));
+        }
+
+        float ComputeFoam(float2 worldUv, float3 waterNormal)
+        {
+            float2 foamUv = worldUv * max(_WaveScale, 0.0001f);
+            float foamMap = FoamMapTexture.Sample(OceanTextureSampler, worldUv).r;
+            float foamNoise = FoamNoiseTexture.Sample(OceanTextureSampler, foamUv * 12.0f + _GlobalTime * float2(0.015f, -0.01f)).r;
+            float foamMask = saturate(foamMap + foamNoise * 0.5f - 0.35f);
+            float foamRampU = clamp(foamMask, 0.5f / 256.0f, 1.0f - 0.5f / 256.0f);
+            float foamRamp = FoamRampTexture.SampleLevel(OceanTextureSampler, float2(foamRampU, 0.5f), 0.0f).r;
+            float3 foamPattern = FoamTexture.Sample(OceanTextureSampler, foamUv * 20.0f + waterNormal.xz * 0.08f).rgb;
+            return saturate(dot(foamPattern, float3(0.333333f, 0.333333f, 0.333333f)) * foamRamp);
+        }
+
+        stage override void PSMain()
+        {
+            float3 worldPosition = streams.PositionWS.xyz;
+            float2 worldUv = GetWorldUv(worldPosition);
+            float2 oceanUv = streams.OceanUV;
+
+            float4 waterColorSample = WaterColorTexture.Sample(OceanTextureSampler, worldUv);
+            float4 flowMapSample = FlowMapTexture.Sample(OceanTextureSampler, worldUv);
+            float2 flowVector = flowMapSample.rg * 2.0f - 1.0f;
+            float3 ambientNormal = SampleAmbientNormal(worldUv);
+            float3 flowNormal = SampleFlowNormal(oceanUv + worldUv, flowVector);
+            float3 waterNormal = normalize(ambientNormal + flowNormal + float3(0.0f, 2.0f, 0.0f));
+
+            float3 toCameraDir = normalize(_CameraWorldPosition - worldPosition);
+            float facing = 1.0f - saturate(dot(waterNormal, toCameraDir));
+            float depthBlend = saturate(waterColorSample.b + facing * 0.35f);
+            float3 baseWaterColor = lerp(ShallowColor.rgb, DeepColor.rgb, depthBlend);
+            baseWaterColor = lerp(baseWaterColor, waterColorSample.rgb, saturate(waterColorSample.a));
+
+            float foam = ComputeFoam(worldUv, waterNormal);
+            float glossiness = saturate(1.0f - _OceanRoughness);
+            float3 specularColor = float3(0.04f, 0.04f, 0.04f);
+            float3 lightDir = RiverStrideGetMainLightDirection();
+            float shadow = RiverStrideEvaluateSceneShadow(worldPosition, 0.0f, lightDir, streams.DepthVS);
+            float3 litColor = RiverStrideComputeLighting(
+                baseWaterColor + foam,
+                specularColor,
+                glossiness,
+                waterNormal,
+                toCameraDir,
+                shadow,
+                1.0f);
+
+            streams.ColorTarget = float4(litColor, 0.86f);
+        }
+    };
+}

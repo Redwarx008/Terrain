@@ -50,6 +50,7 @@ RuntimeRiverAssetTests.RunAll();
 MapSurfaceCoordinatorTests.RunAll();
 OceanRenderingTests.RunAll();
 OceanResourceTextTests.RunAll();
+OceanShaderTextTests.RunAll();
 RiverShaderTextTests.RunAll();
 RiverShaderCompileTests.RunAll();
 LaunchSettingsResolverTests.RunAll();
