@@ -30,7 +30,7 @@ internal static class EditorPendingResourceWorkflowTests
         int setError = pendingBranch.IndexOf("lastLoadError = $\"Terrain workspace heightmap is missing: {session.Heightmap.ResolvedPath}\";", StringComparison.Ordinal);
         int logError = pendingBranch.IndexOf("Log.Error(lastLoadError);", StringComparison.Ordinal);
         int pendingRiversBranch = pendingBranch.IndexOf("if (session.Rivers is { } pendingRivers)", StringComparison.Ordinal);
-        int loadPendingRivers = pendingBranch.IndexOf("LoadRiverMap(pendingRivers.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
+        int loadPendingRivers = pendingBranch.IndexOf("LoadRiverMap(pendingRivers.ResolvedPath);", StringComparison.Ordinal);
         int clearPendingRivers = pendingBranch.IndexOf("ClearRiverMap();", StringComparison.Ordinal);
         int texturesEvent = pendingBranch.IndexOf("MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);", StringComparison.Ordinal);
         int returnEmpty = pendingBranch.IndexOf("return new List<EditorTerrainEntity>();", StringComparison.Ordinal);
@@ -82,7 +82,7 @@ internal static class EditorPendingResourceWorkflowTests
         int noTerrainReturn = methodBody.IndexOf("if (entities.Count == 0)", StringComparison.Ordinal);
         int loadBiomeMask = methodBody.IndexOf("LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);", StringComparison.Ordinal);
         int riversBranch = methodBody.IndexOf("if (session.Rivers is { } rivers)", loadBiomeMask, StringComparison.Ordinal);
-        int loadRivers = methodBody.IndexOf("LoadRiverMap(rivers.ResolvedPath, markDirty: false);", loadBiomeMask, StringComparison.Ordinal);
+        int loadRivers = methodBody.IndexOf("LoadRiverMap(rivers.ResolvedPath);", loadBiomeMask, StringComparison.Ordinal);
         int clearRivers = methodBody.IndexOf("ClearRiverMap();", loadBiomeMask, StringComparison.Ordinal);
         int texturesEvent = methodBody.IndexOf("MaterialTexturesLoadRequired?.Invoke(this, EventArgs.Empty);", loadBiomeMask, StringComparison.Ordinal);
 

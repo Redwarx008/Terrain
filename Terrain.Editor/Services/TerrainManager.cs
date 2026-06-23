@@ -105,7 +105,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
         }
 
         TerrainSurfaceChanged?.Invoke(this, EventArgs.Empty);
-        EditorDirtyState.Instance.MarkDirty();
+        EditorDirtyState.Instance.MarkDirty(EditorDirtyResource.MapDefinition);
     }
 
     public event EventHandler<TerrainLoadedEventArgs>? TerrainLoaded;
@@ -310,7 +310,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             Log.Error(lastLoadError);
 
             if (session.Rivers is { } pendingRivers)
-                LoadRiverMap(pendingRivers.ResolvedPath, markDirty: false);
+                LoadRiverMap(pendingRivers.ResolvedPath);
             else
                 ClearRiverMap();
 
@@ -328,7 +328,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
 
         LoadBiomeMask(session.BiomeMask.ResolvedPath, markDirty: false);
         if (session.Rivers is { } rivers)
-            LoadRiverMap(rivers.ResolvedPath, markDirty: false);
+            LoadRiverMap(rivers.ResolvedPath);
         else
             ClearRiverMap();
 
@@ -366,25 +366,69 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
 
     public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(
         float riverMaxVisibleCameraHeight = 3000.0f,
-        IProgress<AuthoringSaveProgress>? progress = null)
+        IProgress<AuthoringSaveProgress>? progress = null,
+        EditorDirtyResource dirtyResources = EditorDirtyResource.All)
     {
-        if (heightDataCache == null || heightDataWidth <= 0 || heightDataHeight <= 0)
-            throw new InvalidOperationException("Heightmap data is not loaded.");
-        if (BiomeMask == null)
-            throw new InvalidOperationException("Biome mask data is not loaded.");
+        return CreateAuthoringSaveSnapshot(
+            riverMaxVisibleCameraHeight,
+            progress,
+            EditorDirtySnapshot.Unversioned(dirtyResources));
+    }
 
+    public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(
+        float riverMaxVisibleCameraHeight,
+        IProgress<AuthoringSaveProgress>? progress,
+        EditorDirtySnapshot dirtySnapshot)
+    {
         progress?.Report(AuthoringSaveProgress.Running(1, AuthoringSaveProgress.TotalSteps, "Preparing authoring data..."));
-        ushort[] heightData = heightDataCache.ToArray();
-        var biomeMask = new BiomeMask(BiomeMask.Width, BiomeMask.Height);
-        Array.Copy(BiomeMask.GetRawData(), biomeMask.GetRawData(), biomeMask.GetRawData().Length);
+        EditorDirtyResource dirtyResources = dirtySnapshot.Resources;
 
-        IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots =
-            EditorAuthoringResourceMapper.CreateMaterialDescriptorSlots(MaterialSlotManager.Instance.GetActiveSlots().ToArray());
-        var materialIdsByIndex = descriptorSlots.ToDictionary(
-            static slot => slot.Index,
-            static slot => slot.Id);
-        EditorBiomeSettingsSnapshot biomeSnapshot =
-            EditorAuthoringResourceMapper.CreateBiomeSettingsSnapshot(BiomeRuleService.Instance, materialIdsByIndex);
+        ushort[]? heightData = null;
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.Heightmap))
+        {
+            if (heightDataCache == null || heightDataWidth <= 0 || heightDataHeight <= 0)
+                throw new InvalidOperationException("Heightmap data is not loaded.");
+
+            heightData = heightDataCache.ToArray();
+        }
+
+        BiomeMask? biomeMask = null;
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.BiomeMask))
+        {
+            if (BiomeMask == null)
+                throw new InvalidOperationException("Biome mask data is not loaded.");
+
+            biomeMask = new BiomeMask(BiomeMask.Width, BiomeMask.Height);
+            Array.Copy(BiomeMask.GetRawData(), biomeMask.GetRawData(), biomeMask.GetRawData().Length);
+        }
+
+        IReadOnlyList<EditorMaterialDescriptorSlot>? descriptorSlots = null;
+        EditorBiomeSettingsSnapshot? biomeSnapshot = null;
+        MaterialSlot[]? activeMaterialSlots = null;
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.MaterialDescriptor)
+            || HasDirtyResource(dirtyResources, EditorDirtyResource.BiomeSettings))
+        {
+            activeMaterialSlots = MaterialSlotManager.Instance.GetActiveSlots().ToArray();
+            if (HasDirtyResource(dirtyResources, EditorDirtyResource.BiomeSettings)
+                && !HasDirtyResource(dirtyResources, EditorDirtyResource.MaterialDescriptor)
+                && HasActiveSlotMissingMaterialId(activeMaterialSlots))
+            {
+                dirtySnapshot = dirtySnapshot.WithAdditionalResources(EditorDirtyResource.MaterialDescriptor);
+                dirtyResources = dirtySnapshot.Resources;
+            }
+
+            descriptorSlots =
+                EditorAuthoringResourceMapper.CreateMaterialDescriptorSlots(activeMaterialSlots);
+        }
+
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.BiomeSettings))
+        {
+            var materialIdsByIndex = descriptorSlots!.ToDictionary(
+                static slot => slot.Index,
+                static slot => slot.Id);
+            biomeSnapshot =
+                EditorAuthoringResourceMapper.CreateBiomeSettingsSnapshot(BiomeRuleService.Instance, materialIdsByIndex);
+        }
 
         return new EditorAuthoringSaveSnapshot(
             heightData,
@@ -394,7 +438,21 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             HeightScale,
             riverMaxVisibleCameraHeight,
             descriptorSlots,
-            biomeSnapshot);
+            biomeSnapshot,
+            dirtySnapshot);
+    }
+
+    private static bool HasDirtyResource(EditorDirtyResource dirtyResources, EditorDirtyResource resource)
+    {
+        return (dirtyResources & resource) != 0;
+    }
+
+    private static bool HasActiveSlotMissingMaterialId(IEnumerable<MaterialSlot> activeSlots)
+    {
+        return activeSlots.Any(static slot =>
+            !slot.IsRuntimeFallbackPlaceholder
+            && !slot.IsEmpty
+            && string.IsNullOrWhiteSpace(slot.MaterialId));
     }
 
     public void SaveAuthoringResources(
@@ -417,7 +475,8 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             snapshot.DescriptorSlots,
             snapshot.BiomeSnapshot,
             progress,
-            snapshot.RiverMaxVisibleCameraHeight);
+            snapshot.RiverMaxVisibleCameraHeight,
+            snapshot.DirtyResources);
     }
 
     public BoundingBox GetTerrainBounds()
@@ -489,6 +548,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
         {
             terrainEntities[0].MarkBiomeSplatDirty(centerX, centerZ, radius);
             TerrainSurfaceChanged?.Invoke(this, EventArgs.Empty);
+            EditorDirtyState.Instance.MarkDirty(EditorDirtyResource.Heightmap);
         }
     }
 
@@ -639,13 +699,16 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             terrainEntity.MarkAllBiomeSplatDirty();
     }
 
-    public void MarkBiomeMaskDirty()
+    public void MarkBiomeMaskDirty(bool markAuthoringDirty = true)
     {
         foreach (var terrainEntity in terrainEntities)
         {
             terrainEntity.MarkBiomeMaskDirty();
             terrainEntity.MarkAllBiomeSplatDirty();
         }
+
+        if (markAuthoringDirty)
+            EditorDirtyState.Instance.MarkDirty(EditorDirtyResource.BiomeMask);
     }
 
     public string? ConsumePendingProjectNotification()
@@ -690,14 +753,12 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             }
         }
 
-        MarkBiomeMaskDirty();
+        MarkBiomeMaskDirty(markDirty);
         RegenerateMaterialIndices();
-        if (markDirty)
-            EditorDirtyState.Instance.MarkDirty();
         return true;
     }
 
-    public bool LoadRiverMap(string path, bool markDirty = true)
+    public bool LoadRiverMap(string path)
     {
         var service = new RiverMapService();
         service.Load(path); // Always load data; errors are reported but don't block
@@ -711,9 +772,6 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
         riverMap = service.Cells;
         currentRiverMapPath = path;
         RiverMapChanged?.Invoke(this, EventArgs.Empty);
-        if (markDirty)
-            EditorDirtyState.Instance.MarkDirty();
-
         if (service.Errors.Count > 0)
             Log.Warning($"River map loaded with {service.Errors.Count} validation issue(s): {string.Join("; ", service.Errors)}");
 

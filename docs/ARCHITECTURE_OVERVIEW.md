@@ -211,7 +211,7 @@
 ### 编辑器
 | 文件 | 职责 |
 |------|------|
-| `Terrain.Editor/ViewModels/EditorShellViewModel.cs` | 主窗口状态与命令；`Save` 使用 `AuthoringSaveProgress` 驱动模态进度，打开进度窗口后先让 UI 调度一次，再由 UI 线程捕获保存快照并在后台执行作者态资源写回；`Export Terrain` 使用 `ExportProgress` 驱动独立导出进度窗口；Save/Export 期间禁用可变更命令 |
+| `Terrain.Editor/ViewModels/EditorShellViewModel.cs` | 主窗口状态与命令；`Save` 使用 `AuthoringSaveProgress` 驱动模态进度，打开进度窗口后先让 UI 调度一次，再由 UI 线程捕获资源级 dirty generation snapshot，并合并缺失但可生成的作者态资源（当前为 `biome_mask.png`），且只为 dirty writer 克隆/构建所需作者态保存 payload，后台只写回 dirty 的作者态资源；无 dirty 资源且无缺失 generated 资源时跳过作者态快照捕获和后台写入；Save 异常会报告 terminal failed progress；`DirtyChanged` 可从非 UI 线程触发，订阅方会 marshal 回 Avalonia UI thread 后刷新 VM 状态；材质 albedo 导入或槽位清空这类可能改变 material id 的操作会同时标记 `MaterialDescriptor` 与 `BiomeSettings`，且 BiomeSettings-only 快照若需要生成新的 material id 会自动把 `MaterialDescriptor` 纳入本次保存；material id 生成只发生在保存快照/文件 payload 中，不写回 live slot，避免失败重试丢失 descriptor promotion，保存成功后才把 committed descriptor id 同步回 live slot；`Export Terrain` 使用 `ExportProgress` 驱动独立导出进度窗口；Save/Export 期间禁用可变更命令 |
 | `Terrain.Editor/Views/SaveProgressWindow.axaml` | Save 进度 owned top-level window；避免 Avalonia inline overlay 被嵌入式 Stride native child HWND 遮盖 |
 | `Terrain.Editor/Views/ExportProgressWindow.axaml` | Export Terrain 进度 owned top-level window；避免 Avalonia inline overlay 被嵌入式 Stride native child HWND 遮盖 |
 | `Terrain.Editor/Services/TerrainManager.cs` | 地形管理服务 |
@@ -222,13 +222,13 @@
 | `Terrain.Editor/Services/ClimateRuleService.cs` | 气候定义和规则栈管理 |
 | `Terrain.Editor/Services/Commands/HistoryManager.cs` | Undo/Redo 历史事务管理 |
 | `Terrain.Editor/Services/Commands/StrokeChunkTracker.cs` | 笔触 Chunk 跟踪与去重 |
-| `Terrain.Editor/Services/MaterialSlotManager.cs` | 材质槽位管理；缺失 normal fallback 贴图上传每个 mip 时显式传入 mip-sized `ResourceRegion`，与 runtime fallback 路径一致，避免 D3D12 压缩 mip 上传使用 full-texture 默认 region |
+| `Terrain.Editor/Services/MaterialSlotManager.cs` | 材质槽位管理；保存成功后用 committed descriptor slots 回填 live `MaterialId`，但 snapshot 生成阶段不写 live slot；缺失 normal fallback 贴图上传每个 mip 时显式传入 mip-sized `ResourceRegion`，与 runtime fallback 路径一致，避免 D3D12 压缩 mip 上传使用 full-texture 默认 region |
 | `Terrain.Editor/Services/RiverRenderingService.cs` | 河流渲染 façade（mesh 同步、显隐控制、桥接编辑器与渲染组件） |
-| `Terrain.Editor/Services/EditorDirtyState.cs` | 编辑器 dirty 状态跟踪（不携带项目路径） |
+| `Terrain.Editor/Services/EditorDirtyState.cs` | 编辑器 dirty 状态跟踪（不携带项目路径）；按作者态资源区分 `MapDefinition`、`Heightmap`、`BiomeMask`、`MaterialDescriptor`、`BiomeSettings`，并为每类资源维护 generation；dirty flags 与 generation 读写使用同一把锁，事件在锁外派发；Save 完成后只清理 snapshot 中 generation 未变化的资源，避免保存期间同一资源再次 dirty 被误清 |
 | `Terrain.Editor/Services/Resources/EditorBootstrapService.cs` | 启动时按 `TerrainWorkspaceRoot` / `Terrain` 程序集目录解析出的有效 app 目录旁 `LaunchSetting.json` 构建 Editor 资源会话 |
 | `Terrain.Editor/Services/Resources/EditorMaterialRecoveryService.cs` | descriptor + biome settings 的作者态材质恢复、缺失 `material_id` 补位与诊断聚合 |
 | `Terrain.Editor/Services/Resources/EditorResourceSession.cs` | 当前命中的虚拟资源实体路径与写回目标 |
-| `Terrain.Editor/Services/Resources/EditorAuthoringSaveSnapshot.cs` | 作者态保存的不可变快照，由 `TerrainManager.CreateAuthoringSaveSnapshot` 在 UI 线程捕获，后台保存只消费快照并写文件 |
+| `Terrain.Editor/Services/Resources/EditorAuthoringSaveSnapshot.cs` | 作者态保存的不可变快照，由 `TerrainManager.CreateAuthoringSaveSnapshot` 在 UI 线程捕获，包含本次保存的资源级 dirty generation snapshot；未 dirty 的大资源 payload 保持为空，后台保存只消费 dirty writer 需要的数据并写 dirty 文件 |
 | `Terrain.Editor/Services/Resources/AuthoringSaveProgress.cs` | 作者态保存进度报告，驱动 Save 模态进度覆盖层 |
 | `Terrain.Editor/Services/Resources/*Writer.cs` | 作者态资源写回到当前命中的实体文件 |
 | `Terrain/Resources/GameResourceRootLocator.cs` | 从 `TerrainWorkspaceRoot` 元数据优先定位工作区 `game/` 资源根，元数据不可用时回退 `Terrain` 程序集目录 |

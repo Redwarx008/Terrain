@@ -298,7 +298,7 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
             }
 
             SelectedLayer.NotifyMaterialPreviewChanged();
-            EditorDirtyState.Instance.MarkDirty();
+            EditorDirtyState.Instance.MarkDirty(EditorDirtyResource.BiomeSettings);
             OnPropertyChanged(nameof(SelectedLayerMaterialTitle));
             OnPropertyChanged(nameof(SelectedLayerMaterialDetail));
             _service.NotifyMutated();
@@ -559,7 +559,7 @@ public sealed partial class BiomeViewModel : ObservableObject, IDisposable
 
         SelectedLayer.MaterialSlotIndex = firstActiveSlotIndex;
         SelectedLayer.NotifyMaterialPreviewChanged();
-        EditorDirtyState.Instance.MarkDirty();
+        EditorDirtyState.Instance.MarkDirty(EditorDirtyResource.BiomeSettings);
         _service.NotifyMutated();
     }
 

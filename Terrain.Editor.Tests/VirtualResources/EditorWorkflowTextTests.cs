@@ -18,6 +18,7 @@ internal static class EditorWorkflowTextTests
         TestHarness.Run("editor wires river services before loading workspace session", WiresRiverServicesBeforeLoadingWorkspaceSession);
         TestHarness.Run("editor save exposes async modal progress state", SaveExposesAsyncModalProgressState);
         TestHarness.Run("editor save snapshots authoring state before background write", SaveSnapshotsAuthoringStateBeforeBackgroundWrite);
+        TestHarness.Run("editor material id changes mark biome settings dirty", MaterialIdChangesMarkBiomeSettingsDirty);
         TestHarness.Run("main window dims and disables during save", MainWindowDimsAndDisablesDuringSave);
         TestHarness.Run("viewport input can be blocked during modal save", ViewportInputCanBeBlockedDuringModalSave);
         TestHarness.Run("save progress uses owned top-level window", SaveProgressUsesOwnedTopLevelWindow);
@@ -139,6 +140,7 @@ internal static class EditorWorkflowTextTests
         TestHarness.Assert(saveBody.Contains("Progress<AuthoringSaveProgress>", StringComparison.Ordinal), "Save should report authoring save progress");
         TestHarness.Assert(saveBody.Contains("Task.Run(", StringComparison.Ordinal), "Save should run authoring writes off the UI thread");
         TestHarness.Assert(saveBody.Contains("SaveAuthoringResources", StringComparison.Ordinal), "Save should write authoring resources");
+        TestHarness.Assert(saveBody.Contains("AuthoringSaveProgress.Failed", StringComparison.Ordinal), "Save should report terminal failed progress when authoring save throws");
         TestHarness.Assert(
             saveBody.Contains("IsSaving = true", StringComparison.Ordinal) || saveBody.Contains("BeginSaveProgress()", StringComparison.Ordinal),
             "Save should enter saving state before authoring writes");
@@ -148,6 +150,11 @@ internal static class EditorWorkflowTextTests
 
         string savingChangedBody = ExtractMethodBody(viewModel, "partial void OnIsSavingChanged(bool value)");
         TestHarness.Assert(savingChangedBody.Contains("_viewportHost.SetInputBlocked(IsSaving || IsExporting)", StringComparison.Ordinal), "Save state changes should block viewport input while any modal operation is active");
+
+        string dirtyChangedBody = ExtractMethodBody(viewModel, "private void OnEditorDirtyChanged");
+        TestHarness.Assert(dirtyChangedBody.Contains("Dispatcher.UIThread.CheckAccess()", StringComparison.Ordinal), "DirtyChanged may be raised off the UI thread and should check dispatcher access");
+        TestHarness.Assert(dirtyChangedBody.Contains("Dispatcher.UIThread.Post", StringComparison.Ordinal), "DirtyChanged should marshal project state refresh back to the UI thread");
+        TestHarness.Assert(dirtyChangedBody.Contains("_isDisposed", StringComparison.Ordinal), "Posted dirty refresh should not update a disposed view model");
     }
 
     private static void SaveSnapshotsAuthoringStateBeforeBackgroundWrite()
@@ -163,33 +170,69 @@ internal static class EditorWorkflowTextTests
         int beginProgress = saveBody.IndexOf("BeginSaveProgress();", StringComparison.Ordinal);
         int yieldToUi = saveBody.IndexOf("await Task.Yield()", StringComparison.Ordinal);
         int createProgress = saveBody.IndexOf("new Progress<AuthoringSaveProgress>", StringComparison.Ordinal);
-        int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress)", StringComparison.Ordinal);
+        int dirtySnapshot = saveBody.IndexOf("EditorDirtySnapshot dirtySnapshot = _dirtyState.CaptureSnapshot()", StringComparison.Ordinal);
+        int generatedResources = saveBody.IndexOf("EditorGeneratedAuthoringResourceDetector.DetectMissingGeneratedResources", StringComparison.Ordinal);
+        int dirtyResources = saveBody.IndexOf("EditorDirtyResource dirtyResources = dirtySnapshot.Resources", StringComparison.Ordinal);
+        int noOpSave = saveBody.IndexOf("No dirty authoring resources to save.", StringComparison.Ordinal);
+        int snapshot = saveBody.IndexOf("terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress, dirtySnapshot)", StringComparison.Ordinal);
         int taskRun = saveBody.IndexOf("Task.Run(", StringComparison.Ordinal);
         int saveSnapshot = saveBody.IndexOf("terrainManager.SaveAuthoringResources(session, snapshot, progress)", StringComparison.Ordinal);
+        int applyCommittedDescriptorIds = saveBody.IndexOf("_materialSlotManager.ApplyCommittedDescriptorIds(snapshot.DescriptorSlots)", StringComparison.Ordinal);
+        int clearSavedDirtyResources = saveBody.IndexOf("EditorDirtyState.Instance.ClearDirty(snapshot.DirtySnapshot)", StringComparison.Ordinal);
         int refreshProgress = saveBody.IndexOf("AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, \"Refreshing editor state...\")", StringComparison.Ordinal);
-        int completedProgress = saveBody.IndexOf("AuthoringSaveProgress.Completed(AuthoringSaveProgress.TotalSteps, AuthoringSaveProgress.TotalSteps)", StringComparison.Ordinal);
+        int completedProgress = saveBody.LastIndexOf("AuthoringSaveProgress.Completed(AuthoringSaveProgress.TotalSteps, AuthoringSaveProgress.TotalSteps)", StringComparison.Ordinal);
 
         TestHarness.Assert(beginProgress >= 0, "Save should begin modal progress before snapshot capture");
         TestHarness.Assert(createProgress >= 0, "Save should create authoring progress before snapshot capture");
+        TestHarness.Assert(dirtySnapshot >= 0, "Save should capture dirty generations before authoring snapshot capture");
+        TestHarness.Assert(generatedResources >= 0, "Save should merge missing generated authoring resources before the no-op gate");
+        TestHarness.Assert(dirtyResources >= 0, "Save should capture dirty resources before snapshot capture");
+        TestHarness.Assert(noOpSave >= 0, "Save should skip authoring snapshot capture when no resources are dirty");
         TestHarness.Assert(snapshot >= 0, "Save should capture an authoring snapshot on the UI thread");
         TestHarness.Assert(taskRun >= 0, "Save should still run file writes in the background");
         TestHarness.Assert(saveSnapshot >= 0, "Save should pass only the snapshot to background file writes");
+        TestHarness.Assert(applyCommittedDescriptorIds >= 0, "Save should apply committed descriptor ids to live slots only after writes succeed");
+        TestHarness.Assert(clearSavedDirtyResources >= 0, "Save should clear only dirty generations captured into the snapshot");
         TestHarness.Assert(refreshProgress >= 0, "Save should report step 9 while refreshing editor state");
         TestHarness.Assert(completedProgress >= 0, "Save should report completed progress after refresh");
         TestHarness.Assert(beginProgress < createProgress, "Save should enter saving state before creating progress");
         TestHarness.Assert(yieldToUi > beginProgress, "Save should yield to the UI loop after opening progress before snapshot capture");
         TestHarness.Assert(yieldToUi < snapshot, "Save should let the progress window render before synchronous snapshot capture");
         TestHarness.Assert(createProgress < snapshot, "Save should have progress available for snapshot capture");
+        TestHarness.Assert(dirtySnapshot < generatedResources, "Generated authoring resources should be detected after the dirty snapshot is captured");
+        TestHarness.Assert(generatedResources < dirtyResources, "Dirty resources should include missing generated authoring resources");
+        TestHarness.Assert(dirtyResources < snapshot, "Dirty resources must be captured into the snapshot");
+        TestHarness.Assert(noOpSave < snapshot, "No-op branch must happen before authoring snapshot capture");
         TestHarness.Assert(snapshot < taskRun, "Snapshot capture must happen before Task.Run");
+        TestHarness.Assert(saveSnapshot < applyCommittedDescriptorIds, "Committed descriptor ids should update live slots only after background writes succeed");
+        TestHarness.Assert(saveSnapshot < clearSavedDirtyResources, "Save should clear captured dirty resources only after background writes");
         TestHarness.Assert(taskRun < refreshProgress, "Refresh progress should be reported after background writes");
         TestHarness.Assert(refreshProgress < completedProgress, "Completed progress should follow refresh");
 
-        string snapshotMethod = ExtractMethodBody(terrainManager, "public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot");
+        string snapshotMethod = ExtractMethodBody(terrainManager, "EditorDirtySnapshot dirtySnapshot)");
         TestHarness.Assert(snapshotMethod.Contains("heightDataCache.ToArray()", StringComparison.Ordinal), "snapshot should clone height data");
         TestHarness.Assert(snapshotMethod.Contains("Array.Copy(BiomeMask.GetRawData()", StringComparison.Ordinal), "snapshot should clone biome mask data");
+        TestHarness.Assert(snapshotMethod.Contains("HasActiveSlotMissingMaterialId", StringComparison.Ordinal), "snapshot should include descriptor when biome settings need generated material ids");
         string snapshotSaveBody = ExtractMethodBody(terrainManager, "EditorAuthoringSaveSnapshot snapshot,");
         TestHarness.Assert(snapshotSaveBody.Contains("snapshot.HeightData", StringComparison.Ordinal), "snapshot save overload should write cloned height data");
         TestHarness.Assert(snapshotSaveBody.Contains("snapshot.BiomeMask", StringComparison.Ordinal), "snapshot save overload should write cloned biome data");
+    }
+
+    private static void MaterialIdChangesMarkBiomeSettingsDirty()
+    {
+        string viewModel = File.ReadAllText(Path.Combine(RepositoryRoot, "Terrain.Editor", "ViewModels", "EditorShellViewModel.cs"));
+
+        string importAlbedoBody = ExtractMethodBody(viewModel, "private bool ImportAlbedoTexture");
+        string importNormalBody = ExtractMethodBody(viewModel, "private bool ImportNormalTexture");
+        string deleteAssetBody = ExtractMethodBody(viewModel, "private void DeleteAssetItem");
+        string clearSlotBody = ExtractMethodBody(viewModel, "private void ClearSelectedMaterialSlot");
+        string markHelperBody = ExtractMethodBody(viewModel, "private static void MarkMaterialDescriptorDirty");
+
+        TestHarness.Assert(importAlbedoBody.Contains("MarkMaterialDescriptorDirty(mayChangeMaterialIds: true)", StringComparison.Ordinal), "albedo import can create material ids and should save biome settings with descriptor");
+        TestHarness.Assert(deleteAssetBody.Contains("MarkMaterialDescriptorDirty(mayChangeMaterialIds: true)", StringComparison.Ordinal), "asset deletion can remove material ids and should save biome settings with descriptor");
+        TestHarness.Assert(clearSlotBody.Contains("MarkMaterialDescriptorDirty(mayChangeMaterialIds: true)", StringComparison.Ordinal), "slot clearing can remove material ids and should save biome settings with descriptor");
+        TestHarness.Assert(importNormalBody.Contains("MarkMaterialDescriptorDirty(mayChangeMaterialIds: false)", StringComparison.Ordinal), "normal import should only dirty the material descriptor");
+        TestHarness.Assert(markHelperBody.Contains("EditorDirtyResource.MaterialDescriptor | EditorDirtyResource.BiomeSettings", StringComparison.Ordinal), "material id changes should dirty descriptor and biome settings together");
     }
 
     private static void MainWindowDimsAndDisablesDuringSave()

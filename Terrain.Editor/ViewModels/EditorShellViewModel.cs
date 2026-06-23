@@ -12,6 +12,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SixLabors.ImageSharp.Formats.Png;
@@ -38,6 +39,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
     private readonly NativeStrideViewportHost _viewportHost;
     private readonly TerrainExporter _terrainExporter = new();
     private EditorResourceSession? _resourceSession;
+    private bool _isDisposed;
     private TerrainManager? _subscribedTerrainManager;
     private readonly HashSet<string> _thumbnailDiagnostics = new(StringComparer.Ordinal);
 
@@ -520,11 +522,29 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             await Task.Yield();
             var progress = new Progress<AuthoringSaveProgress>(UpdateSaveProgress);
-            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress);
+            EditorDirtySnapshot dirtySnapshot = _dirtyState.CaptureSnapshot();
+            EditorDirtyResource generatedResources = EditorGeneratedAuthoringResourceDetector.DetectMissingGeneratedResources(
+                session,
+                terrainManager.BiomeMask != null);
+            if (generatedResources != EditorDirtyResource.None)
+                dirtySnapshot = dirtySnapshot.WithAdditionalResources(generatedResources);
+
+            EditorDirtyResource dirtyResources = dirtySnapshot.Resources;
+            if (dirtyResources == EditorDirtyResource.None)
+            {
+                UpdateSaveProgress(AuthoringSaveProgress.Running(2, AuthoringSaveProgress.TotalSteps, "No dirty authoring resources to save."));
+                UpdateSaveProgress(AuthoringSaveProgress.Completed(AuthoringSaveProgress.TotalSteps, AuthoringSaveProgress.TotalSteps));
+                AddConsole("Info", "No authoring resource changes to save.");
+                return;
+            }
+
+            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress, dirtySnapshot);
             await Task.Run(() => terrainManager.SaveAuthoringResources(session, snapshot, progress));
             UpdateSaveProgress(AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, "Refreshing editor state..."));
+            if (snapshot.DescriptorSlots != null)
+                _materialSlotManager.ApplyCommittedDescriptorIds(snapshot.DescriptorSlots);
             _resourceSession = _bootstrapService.LoadCurrentSession();
-            EditorDirtyState.Instance.ClearDirty();
+            EditorDirtyState.Instance.ClearDirty(snapshot.DirtySnapshot);
             RefreshAssetItems();
             RefreshMaterialSlots();
             Biome.NotifyMaterialPreviewsChanged();
@@ -534,6 +554,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
         catch (Exception exception)
         {
+            UpdateSaveProgress(AuthoringSaveProgress.Failed(SaveProgressCurrent, SaveProgressTotal, $"Save failed: {exception.Message}"));
             AddConsole("Error", $"Save failed: {exception.Message}");
         }
         finally
@@ -761,7 +782,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             }
 
             _materialSlotManager.ClearSlot(item.MaterialSlotIndex, graphicsDevice, commandList);
-            EditorDirtyState.Instance.MarkDirty();
+            MarkMaterialDescriptorDirty(mayChangeMaterialIds: true);
             AddConsole("Info", $"Cleared slot {item.MaterialSlotIndex}.");
         }
     }
@@ -841,7 +862,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         _materialSlotManager.ClearSlot(SelectedMaterialSlot.Index, graphicsDevice, commandList);
-        EditorDirtyState.Instance.MarkDirty();
+        MarkMaterialDescriptorDirty(mayChangeMaterialIds: true);
         AddConsole("Info", $"Cleared slot {SelectedMaterialSlot.Index}.");
     }
 
@@ -856,6 +877,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _isDisposed = true;
         _editorState.EditorModeChanged -= OnEditorModeChanged;
         _editorState.HeightToolChanged -= OnToolChanged;
         _editorState.PaintToolChanged -= OnToolChanged;
@@ -1085,6 +1107,19 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
 
     private void OnEditorDirtyChanged(object? sender, EventArgs e)
     {
+        if (_isDisposed)
+            return;
+
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!_isDisposed)
+                    RefreshProjectState();
+            });
+            return;
+        }
+
         RefreshProjectState();
     }
 
@@ -1355,7 +1390,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        EditorDirtyState.Instance.MarkDirty();
+        MarkMaterialDescriptorDirty(mayChangeMaterialIds: true);
         _materialSlotManager.SelectedSlotIndex = slotIndex;
         SelectedMaterialSlotIndex = slotIndex;
         SelectedMode = EditorMode.Paint;
@@ -1385,7 +1420,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        EditorDirtyState.Instance.MarkDirty();
+        MarkMaterialDescriptorDirty(mayChangeMaterialIds: false);
         if (logSuccess)
         {
             AddConsole("Info", $"Imported normal map to slot {slotIndex}: {path}");
@@ -1396,6 +1431,14 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         }
 
         return true;
+    }
+
+    private static void MarkMaterialDescriptorDirty(bool mayChangeMaterialIds)
+    {
+        EditorDirtyResource dirtyResources = mayChangeMaterialIds
+            ? EditorDirtyResource.MaterialDescriptor | EditorDirtyResource.BiomeSettings
+            : EditorDirtyResource.MaterialDescriptor;
+        EditorDirtyState.Instance.MarkDirty(dirtyResources);
     }
 
     private string CopyTextureIntoMaterialDirectory(string sourcePath)
@@ -1633,7 +1676,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         else if (e.PropertyName == nameof(SettingsViewModel.RiverMaxVisibleCameraHeight))
         {
             _viewportHost.RiverRenderingService?.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
-            EditorDirtyState.Instance.MarkDirty();
+            EditorDirtyState.Instance.MarkDirty(EditorDirtyResource.MapDefinition);
         }
     }
 

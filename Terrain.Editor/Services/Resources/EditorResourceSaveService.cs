@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Terrain.Editor.Services;
 using Terrain.Resources;
 
 namespace Terrain.Editor.Services.Resources;
@@ -11,13 +12,13 @@ public static class EditorResourceSaveService
 {
     public static void Save(
         EditorResourceSession session,
-        ushort[] heightData,
+        ushort[]? heightData,
         int width,
         int height,
-        BiomeMask biomeMask,
+        BiomeMask? biomeMask,
         float heightScale,
-        IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots,
-        EditorBiomeSettingsSnapshot biomeSnapshot)
+        IReadOnlyList<EditorMaterialDescriptorSlot>? descriptorSlots,
+        EditorBiomeSettingsSnapshot? biomeSnapshot)
     {
         Save(
             session,
@@ -34,28 +35,37 @@ public static class EditorResourceSaveService
 
     public static void Save(
         EditorResourceSession session,
-        ushort[] heightData,
+        ushort[]? heightData,
         int width,
         int height,
-        BiomeMask biomeMask,
+        BiomeMask? biomeMask,
         float heightScale,
-        IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots,
-        EditorBiomeSettingsSnapshot biomeSnapshot,
+        IReadOnlyList<EditorMaterialDescriptorSlot>? descriptorSlots,
+        EditorBiomeSettingsSnapshot? biomeSnapshot,
         IProgress<AuthoringSaveProgress>? progress = null,
-        float? riverMaxVisibleCameraHeight = null)
+        float? riverMaxVisibleCameraHeight = null,
+        EditorDirtyResource dirtyResources = EditorDirtyResource.All)
     {
         ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(heightData);
-        ArgumentNullException.ThrowIfNull(biomeMask);
-        ArgumentNullException.ThrowIfNull(descriptorSlots);
-        ArgumentNullException.ThrowIfNull(biomeSnapshot);
+
+        if (dirtyResources == EditorDirtyResource.None)
+        {
+            progress?.Report(AuthoringSaveProgress.Completed(AuthoringSaveProgress.TotalSteps, AuthoringSaveProgress.TotalSteps, "No dirty authoring resources to save."));
+            return;
+        }
 
         progress?.Report(AuthoringSaveProgress.Running(2, AuthoringSaveProgress.TotalSteps, "Validating save targets..."));
-        EnsureWritable(session.MapDefinition, "Map definition");
-        EnsureWritable(session.Heightmap, "Heightmap");
-        EnsureWritable(session.BiomeMask, "Biome mask");
-        EnsureWritable(session.MaterialDescriptor, "Material descriptor");
-        EnsureWritable(session.BiomeSettings, "Biome settings");
+
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.MapDefinition))
+            EnsureWritable(session.MapDefinition, "Map definition");
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.Heightmap))
+            EnsureWritable(session.Heightmap, "Heightmap");
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.BiomeMask))
+            EnsureWritable(session.BiomeMask, "Biome mask");
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.MaterialDescriptor))
+            EnsureWritable(session.MaterialDescriptor, "Material descriptor");
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.BiomeSettings))
+            EnsureWritable(session.BiomeSettings, "Biome settings");
 
         var mapDefinition = new RuntimeMapDefinition
         {
@@ -76,25 +86,52 @@ public static class EditorResourceSaveService
         var biomeSettingsWriter = new BiomeSettingsWriter();
 
         using var transaction = new AtomicResourceWriteTransaction();
-        string stagedMapDefinition = transaction.CreateStagingPath(session.MapDefinition.ResolvedPath);
-        string stagedHeightmap = transaction.CreateStagingPath(session.Heightmap.ResolvedPath);
-        string stagedBiomeMask = transaction.CreateStagingPath(session.BiomeMask.ResolvedPath);
-        string stagedMaterialDescriptor = transaction.CreateStagingPath(session.MaterialDescriptor.ResolvedPath);
-        string stagedBiomeSettings = transaction.CreateStagingPath(session.BiomeSettings.ResolvedPath);
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.MapDefinition))
+        {
+            string stagedMapDefinition = transaction.CreateStagingPath(session.MapDefinition.ResolvedPath);
+            progress?.Report(AuthoringSaveProgress.Running(3, AuthoringSaveProgress.TotalSteps, "Writing map definition..."));
+            mapDefinitionWriter.Write(stagedMapDefinition, mapDefinition);
+        }
 
-        progress?.Report(AuthoringSaveProgress.Running(3, AuthoringSaveProgress.TotalSteps, "Writing map definition..."));
-        mapDefinitionWriter.Write(stagedMapDefinition, mapDefinition);
-        progress?.Report(AuthoringSaveProgress.Running(4, AuthoringSaveProgress.TotalSteps, "Writing heightmap PNG..."));
-        heightmapWriter.Write(stagedHeightmap, heightData, width, height);
-        progress?.Report(AuthoringSaveProgress.Running(5, AuthoringSaveProgress.TotalSteps, "Writing biome mask PNG..."));
-        biomeMaskWriter.Write(stagedBiomeMask, biomeMask);
-        progress?.Report(AuthoringSaveProgress.Running(6, AuthoringSaveProgress.TotalSteps, "Writing material descriptor..."));
-        materialDescriptorWriter.Write(stagedMaterialDescriptor, descriptorSlots);
-        progress?.Report(AuthoringSaveProgress.Running(7, AuthoringSaveProgress.TotalSteps, "Writing biome settings..."));
-        biomeSettingsWriter.Write(stagedBiomeSettings, biomeSnapshot.Biomes, biomeSnapshot.Layers, biomeSnapshot.Modifiers);
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.Heightmap))
+        {
+            ArgumentNullException.ThrowIfNull(heightData);
+            string stagedHeightmap = transaction.CreateStagingPath(session.Heightmap.ResolvedPath);
+            progress?.Report(AuthoringSaveProgress.Running(4, AuthoringSaveProgress.TotalSteps, "Writing heightmap PNG..."));
+            heightmapWriter.Write(stagedHeightmap, heightData, width, height);
+        }
+
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.BiomeMask))
+        {
+            ArgumentNullException.ThrowIfNull(biomeMask);
+            string stagedBiomeMask = transaction.CreateStagingPath(session.BiomeMask.ResolvedPath);
+            progress?.Report(AuthoringSaveProgress.Running(5, AuthoringSaveProgress.TotalSteps, "Writing biome mask PNG..."));
+            biomeMaskWriter.Write(stagedBiomeMask, biomeMask);
+        }
+
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.MaterialDescriptor))
+        {
+            ArgumentNullException.ThrowIfNull(descriptorSlots);
+            string stagedMaterialDescriptor = transaction.CreateStagingPath(session.MaterialDescriptor.ResolvedPath);
+            progress?.Report(AuthoringSaveProgress.Running(6, AuthoringSaveProgress.TotalSteps, "Writing material descriptor..."));
+            materialDescriptorWriter.Write(stagedMaterialDescriptor, descriptorSlots);
+        }
+
+        if (HasDirtyResource(dirtyResources, EditorDirtyResource.BiomeSettings))
+        {
+            ArgumentNullException.ThrowIfNull(biomeSnapshot);
+            string stagedBiomeSettings = transaction.CreateStagingPath(session.BiomeSettings.ResolvedPath);
+            progress?.Report(AuthoringSaveProgress.Running(7, AuthoringSaveProgress.TotalSteps, "Writing biome settings..."));
+            biomeSettingsWriter.Write(stagedBiomeSettings, biomeSnapshot.Biomes, biomeSnapshot.Layers, biomeSnapshot.Modifiers);
+        }
 
         progress?.Report(AuthoringSaveProgress.Running(8, AuthoringSaveProgress.TotalSteps, "Committing staged resources..."));
         transaction.Commit();
+    }
+
+    private static bool HasDirtyResource(EditorDirtyResource dirtyResources, EditorDirtyResource resource)
+    {
+        return (dirtyResources & resource) != 0;
     }
 
     private static void EnsureWritable(ResolvedGameResource resource, string displayName)

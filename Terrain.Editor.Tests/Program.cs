@@ -58,6 +58,8 @@ RuntimeMigrationTextTests.RunAll();
 EditorWorkflowTextTests.RunAll();
 ExportWorkflowTests.RunAll();
 BakedDetailTerrainFormatTests.RunAll();
+EditorDirtyStateTests.RunAll();
+EditorAuthoringSaveSnapshotTests.RunAll();
 EditorResourceWriterTests.RunAll();
 AtomicResourceWriteTransactionTests.RunAll();
 EditorResourceSaveServiceTests.RunAll();

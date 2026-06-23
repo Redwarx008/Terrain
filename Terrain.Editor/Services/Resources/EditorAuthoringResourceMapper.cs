@@ -31,14 +31,30 @@ public static class EditorAuthoringResourceMapper
     {
         ArgumentNullException.ThrowIfNull(slots);
 
+        MaterialSlot[] activeSlots = slots
+            .Where(static slot => !slot.IsEmpty && !slot.IsRuntimeFallbackPlaceholder)
+            .ToArray();
         var result = new List<EditorMaterialDescriptorSlot>();
         var usedIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MaterialSlot slot in slots)
+        var materialIdsBySlot = new Dictionary<MaterialSlot, string>();
+
+        foreach (MaterialSlot slot in activeSlots)
         {
-            if (slot.IsEmpty || slot.IsRuntimeFallbackPlaceholder)
+            if (string.IsNullOrWhiteSpace(slot.MaterialId))
                 continue;
 
-            string id = CreateUniqueMaterialId(slot, usedIds);
+            materialIdsBySlot[slot] = ReserveUniqueMaterialId(slot.MaterialId.Trim(), slot.Index, usedIds);
+        }
+
+        foreach (MaterialSlot slot in activeSlots)
+        {
+            if (!materialIdsBySlot.ContainsKey(slot))
+                materialIdsBySlot[slot] = CreateGeneratedMaterialId(slot, usedIds);
+        }
+
+        foreach (MaterialSlot slot in activeSlots)
+        {
+            string id = materialIdsBySlot[slot];
             result.Add(new EditorMaterialDescriptorSlot(
                 id,
                 slot.Index,
@@ -114,15 +130,8 @@ public static class EditorAuthoringResourceMapper
         return new EditorBiomeSettingsSnapshot(biomes, layers, modifiers);
     }
 
-    private static string CreateUniqueMaterialId(MaterialSlot slot, HashSet<string> usedIds)
+    private static string CreateGeneratedMaterialId(MaterialSlot slot, HashSet<string> usedIds)
     {
-        if (!string.IsNullOrWhiteSpace(slot.MaterialId))
-        {
-            string stableId = ReserveUniqueMaterialId(slot.MaterialId.Trim(), slot.Index, usedIds);
-            slot.MaterialId = stableId;
-            return stableId;
-        }
-
         string source = HasMeaningfulName(slot)
             ? slot.Name
             : Path.GetFileNameWithoutExtension(slot.AlbedoTexturePath) ?? string.Empty;
@@ -131,9 +140,7 @@ public static class EditorAuthoringResourceMapper
         if (baseId.Length == 0)
             baseId = $"material_{slot.Index}";
 
-        string generatedId = ReserveUniqueMaterialId(baseId, slot.Index, usedIds);
-        slot.MaterialId = generatedId;
-        return generatedId;
+        return ReserveUniqueMaterialId(baseId, slot.Index, usedIds);
     }
 
     private static string ReserveUniqueMaterialId(string baseId, int slotIndex, HashSet<string> usedIds)

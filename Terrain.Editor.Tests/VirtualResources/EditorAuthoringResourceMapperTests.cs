@@ -10,6 +10,9 @@ internal static class EditorAuthoringResourceMapperTests
     public static void RunAll()
     {
         TestHarness.Run("authoring mapper converts material slots to descriptor slots", ConvertsMaterialSlotsToDescriptorSlots);
+        TestHarness.Run("authoring mapper does not mutate material slots when generating ids", DoesNotMutateMaterialSlotsWhenGeneratingIds);
+        TestHarness.Run("committed descriptor ids update live material slots after save", CommittedDescriptorIdsUpdateLiveMaterialSlotsAfterSave);
+        TestHarness.Run("existing material ids win over generated duplicate names", ExistingMaterialIdsWinOverGeneratedDuplicateNames);
         TestHarness.Run("authoring mapper preserves existing material ids when slot names change", PreservesExistingMaterialIdsWhenSlotNamesChange);
         TestHarness.Run("authoring mapper converts biome layers to material ids", ConvertsBiomeLayersToMaterialIds);
         TestHarness.Run("thumbnail provider resolves short material paths from resource session", ThumbnailProviderResolvesShortMaterialPathsFromSession);
@@ -39,6 +42,77 @@ internal static class EditorAuthoringResourceMapperTests
         TestHarness.AssertEqual(5, descriptorSlots[0].Index, "material index");
         TestHarness.AssertEqual("grass.png", descriptorSlots[0].Albedo, "albedo path should be a file name");
         TestHarness.AssertEqual("grass_n.png", descriptorSlots[0].Normal, "normal path should be a file name");
+    }
+
+    private static void DoesNotMutateMaterialSlotsWhenGeneratingIds()
+    {
+        var slot = new MaterialSlot
+        {
+            Index = 5,
+            Name = "Soft Grass",
+            AlbedoTexturePath = "grass.png",
+        };
+
+        IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots = EditorAuthoringResourceMapper.CreateMaterialDescriptorSlots([slot]);
+
+        TestHarness.AssertEqual("soft_grass", descriptorSlots[0].Id, "generated material id");
+        TestHarness.Assert(slot.MaterialId == null, "descriptor mapping should not mutate live material slot ids");
+    }
+
+    private static void CommittedDescriptorIdsUpdateLiveMaterialSlotsAfterSave()
+    {
+        MaterialSlotManager manager = MaterialSlotManager.Instance;
+        manager.ClearAll();
+
+        try
+        {
+            manager[5].Name = "Soft Grass";
+            manager[5].AlbedoTexturePath = "grass.png";
+
+            IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots =
+                EditorAuthoringResourceMapper.CreateMaterialDescriptorSlots(manager.GetActiveSlots());
+
+            TestHarness.Assert(manager[5].MaterialId == null, "snapshot mapping should leave live id unset before save commits");
+
+            manager.ApplyCommittedDescriptorIds(descriptorSlots);
+
+            TestHarness.AssertEqual("soft_grass", manager[5].MaterialId, "committed descriptor id should update the live slot after save");
+        }
+        finally
+        {
+            manager.ClearAll();
+        }
+    }
+
+    private static void ExistingMaterialIdsWinOverGeneratedDuplicateNames()
+    {
+        MaterialSlotManager manager = MaterialSlotManager.Instance;
+        manager.ClearAll();
+
+        try
+        {
+            manager[5].Name = "Soft Grass";
+            manager[5].AlbedoTexturePath = "grass.png";
+            manager.ApplyCommittedDescriptorIds(
+            [
+                new EditorMaterialDescriptorSlot("soft_grass", 5, "Soft Grass", "grass.png", null, null),
+            ]);
+
+            manager[2].Name = "Soft Grass";
+            manager[2].AlbedoTexturePath = "grass_alt.png";
+
+            IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots =
+                EditorAuthoringResourceMapper.CreateMaterialDescriptorSlots(manager.GetActiveSlots());
+
+            EditorMaterialDescriptorSlot lowerSlot = descriptorSlots.Single(slot => slot.Index == 2);
+            EditorMaterialDescriptorSlot existingSlot = descriptorSlots.Single(slot => slot.Index == 5);
+            TestHarness.AssertEqual("soft_grass_2", lowerSlot.Id, "new duplicate name should receive a suffix");
+            TestHarness.AssertEqual("soft_grass", existingSlot.Id, "existing committed id should not drift");
+        }
+        finally
+        {
+            manager.ClearAll();
+        }
     }
 
     private static void ConvertsBiomeLayersToMaterialIds()

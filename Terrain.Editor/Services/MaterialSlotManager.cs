@@ -289,6 +289,32 @@ public sealed class MaterialSlotManager
         NotifySlotsChanged();
     }
 
+    public void ApplyCommittedDescriptorIds(IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots)
+    {
+        ArgumentNullException.ThrowIfNull(descriptorSlots);
+
+        bool changed = false;
+        foreach (EditorMaterialDescriptorSlot descriptorSlot in descriptorSlots)
+        {
+            if (descriptorSlot.Index < 0 || descriptorSlot.Index >= slots.Length)
+                continue;
+            if (string.IsNullOrWhiteSpace(descriptorSlot.Id))
+                continue;
+
+            MaterialSlot slot = slots[descriptorSlot.Index];
+            if (slot.IsEmpty || slot.IsRuntimeFallbackPlaceholder)
+                continue;
+            if (string.Equals(slot.MaterialId, descriptorSlot.Id, StringComparison.Ordinal))
+                continue;
+
+            slot.MaterialId = descriptorSlot.Id;
+            changed = true;
+        }
+
+        if (changed)
+            NotifySlotsChanged();
+    }
+
     public Texture? GetMaterialAlbedoArray()
     {
         return cachedMaterialAlbedoArray;

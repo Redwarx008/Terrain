@@ -16,4 +16,6 @@ Cache/
 .claude/settings.local.json
 .planning/config.json
 .worktrees/
+.superpowers/
+LaunchSetting.json
 /game/
