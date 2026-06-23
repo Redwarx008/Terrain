@@ -10,6 +10,7 @@ using Stride.Engine;
 using Stride.Engine.Design;
 using Stride.Graphics;
 using Stride.Rendering;
+using Terrain.Resources;
 
 namespace Terrain;
 
@@ -109,6 +110,15 @@ public sealed class TerrainComponent : ActivableEntityComponent
 
     [DataMemberIgnore]
     internal TerrainConfig FailedRuntimeLoadConfig;
+
+    [DataMemberIgnore]
+    public TerrainRuntimeResourceBundle? RuntimeResourceBundle { get; private set; }
+
+    public void ApplyRuntimeResourceBundle(TerrainRuntimeResourceBundle bundle)
+    {
+        ArgumentNullException.ThrowIfNull(bundle);
+        RuntimeResourceBundle = bundle;
+    }
 
     public float GetHeight(int sampleX, int sampleZ)
     {
