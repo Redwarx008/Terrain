@@ -224,7 +224,7 @@ public class TerrainExporter : IExporter
             height,
             DefaultTileSize,
             HeightMapPadding,
-            DownsampleHeights,
+            GenerateAlignedHeightMip,
             ct);
 
         progress?.Report(ExportProgress.Running(5, 6, "Writing DetailIndex VT data..."));
@@ -404,7 +404,7 @@ public class TerrainExporter : IExporter
         }
     }
 
-    private static ushort[] DownsampleHeights(ushort[] source, int width, int height)
+    internal static ushort[] GenerateAlignedHeightMip(ushort[] source, int width, int height)
     {
         int nextWidth = Math.Max(1, (width + 1) / 2);
         int nextHeight = Math.Max(1, (height + 1) / 2);
@@ -414,30 +414,9 @@ public class TerrainExporter : IExporter
         {
             for (int x = 0; x < nextWidth; x++)
             {
-                int sourceX = x * 2;
-                int sourceY = y * 2;
-                int sum = 0;
-                int count = 0;
-
-                for (int dy = 0; dy < 2; dy++)
-                {
-                    int yy = sourceY + dy;
-                    if (yy >= height)
-                        continue;
-
-                    int row = yy * width;
-                    for (int dx = 0; dx < 2; dx++)
-                    {
-                        int xx = sourceX + dx;
-                        if (xx >= width)
-                            continue;
-
-                        sum += source[row + xx];
-                        count++;
-                    }
-                }
-
-                destination[y * nextWidth + x] = (ushort)Math.Clamp((sum + count / 2) / Math.Max(1, count), 0, ushort.MaxValue);
+                int sourceX = Math.Min(x * 2, width - 1);
+                int sourceY = Math.Min(y * 2, height - 1);
+                destination[y * nextWidth + x] = source[sourceY * width + sourceX];
             }
         }
 
@@ -454,13 +433,13 @@ public class TerrainExporter : IExporter
         {
             levels.Add(current);
             if (mip + 1 < mipCount)
-                current = DownsampleDetailControl(current);
+                current = GenerateAggregatedDetailMip(current);
         }
 
         return levels.ToArray();
     }
 
-    private static DetailMipLevel DownsampleDetailControl(DetailMipLevel source)
+    private static DetailMipLevel GenerateAggregatedDetailMip(DetailMipLevel source)
     {
         int nextWidth = Math.Max(1, (source.Width + 1) / 2);
         int nextHeight = Math.Max(1, (source.Height + 1) / 2);
@@ -472,13 +451,13 @@ public class TerrainExporter : IExporter
             Parallel.For(
                 0,
                 nextHeight,
-                y => DownsampleDetailRow(source, destinationIndex, destinationWeight, nextWidth, y));
+                y => GenerateAggregatedDetailMipRow(source, destinationIndex, destinationWeight, nextWidth, y));
         }
         else
         {
             for (int y = 0; y < nextHeight; y++)
             {
-                DownsampleDetailRow(source, destinationIndex, destinationWeight, nextWidth, y);
+                GenerateAggregatedDetailMipRow(source, destinationIndex, destinationWeight, nextWidth, y);
             }
         }
 
@@ -491,7 +470,7 @@ public class TerrainExporter : IExporter
             && (long)width * height >= ParallelDetailMipTexelThreshold;
     }
 
-    private static void DownsampleDetailRow(
+    private static void GenerateAggregatedDetailMipRow(
         DetailMipLevel source,
         DetailControlPixel[] destinationIndex,
         DetailControlPixel[] destinationWeight,
@@ -500,14 +479,14 @@ public class TerrainExporter : IExporter
     {
         for (int x = 0; x < destinationWidth; x++)
         {
-            PackDownsampledDetailTexel(source, x * 2, y * 2, out DetailControlPixel index, out DetailControlPixel weight);
+            PackAggregatedDetailMipTexel(source, x * 2, y * 2, out DetailControlPixel index, out DetailControlPixel weight);
             int destinationOffset = y * destinationWidth + x;
             destinationIndex[destinationOffset] = index;
             destinationWeight[destinationOffset] = weight;
         }
     }
 
-    private static void PackDownsampledDetailTexel(
+    private static void PackAggregatedDetailMipTexel(
         DetailMipLevel source,
         int sourceX,
         int sourceY,

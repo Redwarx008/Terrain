@@ -35,7 +35,7 @@
 | **实例化渲染** | ✅ 已实现 | [instance-buffer-refactor](../plans/instance-buffer-refactor.md) |
 | **材质系统** | ✅ 已实现 | - |
 | **map TOML 规格** | ✅ 已记录 | [map-data-toml-formats](design/map-data-toml-formats.md)；2026-06-21 CK3 runtime cbuffer 对照确认 terrain `HeightScale=50.0`、`MaxHeight=50` refraction camera clamp 是两个不同常量。本项目默认 `height_scale=200` 可保留；2026-06-22 `debug2.rdc` 进一步证明 terrain `HeightScale` 也不能作为实际河面高度代理，河流 refraction clamp 现由 generated river mesh `Bounds.Maximum.Y` 推导为 `ceil(maxY + 1)`，shader 端继续用 `max(_, 50)` 保留 CK3 低地兜底。 |
-| **虚拟纹理** | 🚧 进行中 | - |
+| **虚拟纹理** | 🚧 进行中 | HeightMap VT 的高度 mip 必须保留偶数对齐源样本，不能用 2x2 平均；相邻 LOD patch 的 crack snap 依赖跨 mip 共享边界高度一致。 |
 
 ### 路径与河流层
 
@@ -173,7 +173,7 @@
 **问题：** 编辑器中的修改无法直接导出为运行时 .terrain 文件，需依赖独立的 TerrainPreProcessor
 **方案：** IExporter 接口 + ExportManager 单例，每种导出类型实现接口并注册；TerrainExporter 从内存状态直接导出
 **权衡：** 在 Editor 内重写导出逻辑 vs 引用 TerrainPreProcessor 库；选择重写以避免跨项目依赖
-**关键：** `.terrain` v8 写入 `HeightMap VT + DetailIndex VT + DetailWeight VT`。HeightMap 使用 padding=2；两个 detail stream 使用 padding=1、RGBA8 packed `DetailControlPixel`，由 Editor Export 读取作者态 `biome_mask.png` / `biome_settings.toml` 后 bake。2026-06-22 Export bake 热路径已移除逐 detail texel 的 `List`/`Dictionary`/LINQ top4 聚合，改为固定小缓冲以降低分配和排序开销，同时用行为测试锁定输出语义；大图 detail texel bake 与 detail mip 下采样现在按行并行，并以阈值避免小图并行调度开销。Exporter 先写同目录临时文件，完整成功后 replace/move 到目标，失败或取消时删除临时文件并保留旧目标。Export 期间 `EditorShellViewModel.IsExporting` 驱动模态进度 owned top-level window，并与 Save 共用可变更命令/视口输入阻断。
+**关键：** `.terrain` v8 写入 `HeightMap VT + DetailIndex VT + DetailWeight VT`。HeightMap 使用 padding=2；两个 detail stream 使用 padding=1、RGBA8 packed `DetailControlPixel`，由 Editor Export 读取作者态 `biome_mask.png` / `biome_settings.toml` 后 bake。2026-06-23 RenderDoc 复核确认地形接缝可由相邻 LOD 在同一世界 XZ 读取不同高度 mip 值触发；HeightMap mip 生成现在保留偶数对齐源样本，保证 crack-snap 后共享边界的高度跨 mip 一致。Detail mip 不能平均 RGBA 数值，当前解包 2x2 source detail index/weight、按 material id 聚合权重、选 top4 后重新归一化并打包。2026-06-22 Export bake 热路径已移除逐 detail texel 的 `List`/`Dictionary`/LINQ top4 聚合，改为固定小缓冲以降低分配和排序开销，同时用行为测试锁定输出语义；大图 detail texel bake 与 detail mip 聚合现在按行并行，并以阈值避免小图并行调度开销。Exporter 先写同目录临时文件，完整成功后 replace/move 到目标，失败或取消时删除临时文件并保留旧目标。Export 期间 `EditorShellViewModel.IsExporting` 驱动模态进度 owned top-level window，并与 Save 共用可变更命令/视口输入阻断。
 
 ### 8. 虚拟资源系统驱动 Runtime 地形加载
 **问题：** Runtime 依赖组件上的显式文件路径和旧 BiomeConfig TOML，无法表达 base + mod 覆盖顺序
