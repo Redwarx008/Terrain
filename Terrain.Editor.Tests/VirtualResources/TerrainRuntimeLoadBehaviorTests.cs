@@ -15,6 +15,10 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.Run("runtime height CPU cache follows terrain streaming residency", RuntimeHeightCpuCacheFollowsTerrainStreamingResidency);
         TestHarness.Run("runtime terrain startup does not build detail maps", RuntimeTerrainStartupDoesNotBuildDetailMaps);
         TestHarness.Run("runtime streaming reads baked detail pages from terrain reader", RuntimeStreamingReadsBakedDetailPagesFromTerrainReader);
+        TestHarness.Run("runtime streaming queues detail page when height page is already queued", RuntimeStreamingQueuesDetailPageWhenHeightPageIsAlreadyQueued);
+        TestHarness.Run("runtime streaming keeps top level fallback pages pinned", RuntimeStreamingKeepsTopLevelFallbackPagesPinned);
+        TestHarness.Run("runtime terrain selection touches resident child pages", RuntimeTerrainSelectionTouchesResidentChildPages);
+        TestHarness.Run("runtime terrain draw clears stale instances when selection is empty", RuntimeTerrainDrawClearsStaleInstancesWhenSelectionIsEmpty);
         TestHarness.Run("terrain component does not retain full runtime height data", TerrainComponentDoesNotRetainFullRuntimeHeightData);
     }
 
@@ -147,6 +151,82 @@ internal static class TerrainRuntimeLoadBehaviorTests
         TestHarness.AssertEqual(1, reader.DetailWeightPageReadCount, "detail weight page read count");
         TestHarness.AssertEqual(reader.DetailIndexPageReads[0], reader.DetailWeightPageReads[0], "detail index and weight page keys should match");
         TestHarness.AssertEqual(new TerrainPageKey(0, 0, 0), reader.DetailIndexPageReads[0], "first requested detail page key");
+    }
+
+    private static void RuntimeStreamingKeepsTopLevelFallbackPagesPinned()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string terrainStreamingSource = File.ReadAllText(Path.Combine(repositoryRoot, "Terrain", "Streaming", "TerrainStreaming.cs"));
+        string terrainProcessorSource = File.ReadAllText(Path.Combine(repositoryRoot, "Terrain", "Core", "TerrainProcessor.cs"));
+        int preloadStart = terrainStreamingSource.IndexOf("public void PreloadTopLevelChunks", StringComparison.Ordinal);
+        int processUploadsStart = terrainStreamingSource.IndexOf("public void ProcessPendingUploads", StringComparison.Ordinal);
+
+        TestHarness.Assert(preloadStart >= 0, "streaming manager should preload top-level fallback chunks");
+        TestHarness.Assert(processUploadsStart > preloadStart, "preload method should appear before upload processing");
+
+        string preloadBody = terrainStreamingSource[preloadStart..processUploadsStart];
+        TestHarness.Assert(
+            terrainProcessorSource.Contains("PreloadTopLevelChunks(commandList, loadedData.MinMaxErrorMaps[loadedData.MaxLod])", StringComparison.Ordinal),
+            "runtime initialization should preload the quadtree top-level fallback map");
+        TestHarness.Assert(
+            preloadBody.Contains("gpuHeightArray.UploadPage(commandList, pageKey, heightmapPageData.Memory.Span, pinned: true)", StringComparison.Ordinal),
+            "top-level height pages should be pinned so LRU streaming cannot remove the only guaranteed fallback while roaming");
+        TestHarness.Assert(
+            preloadBody.Contains("gpuDetailIndexArray.UploadPage(commandList, detailPageKey, detailMapPageData.Memory.Span, pinned: true)", StringComparison.Ordinal),
+            "top-level detail pages should stay in the same pinned fallback residency set as height pages");
+    }
+
+    private static void RuntimeStreamingQueuesDetailPageWhenHeightPageIsAlreadyQueued()
+    {
+        var reader = new FakeTerrainFileReader(width: 256, height: 64, tileSize: 129, detailTileSize: 33);
+        using var heightArray = new GpuVirtualTextureArray(null!, reader.HeightmapHeader.TileSize, reader.HeightmapHeader.Padding, maxResidentChunks: 8);
+        using var detailIndexArray = new GpuVirtualTextureArray(null!, reader.DetailIndexMapHeader.TileSize, reader.DetailIndexMapHeader.Padding, maxResidentChunks: 8);
+        using var streaming = new TerrainStreamingManager(
+            reader,
+            heightArray,
+            detailIndexArray,
+            detailWeightArray: null,
+            baseChunkSize: reader.Header.LeafNodeSize);
+
+        streaming.RequestChunk(new TerrainChunkKey(lodLevel: 0, chunkX: 0, chunkY: 0));
+        streaming.RequestChunk(new TerrainChunkKey(lodLevel: 0, chunkX: 2, chunkY: 0));
+
+        TestHarness.Assert(
+            WaitUntil(() => reader.DetailIndexPageReadCount == 2 && reader.DetailWeightPageReadCount == 2),
+            "a second chunk sharing the queued height page should still queue its distinct detail page");
+        TestHarness.AssertEqual(
+            1,
+            reader.HeightPageReadCount,
+            "chunks in the same height page should share one queued height request");
+        TestHarness.Assert(
+            reader.DetailIndexPageReads.Contains(new TerrainPageKey(0, 0, 0)),
+            "first chunk should queue its detail page");
+        TestHarness.Assert(
+            reader.DetailIndexPageReads.Contains(new TerrainPageKey(0, 1, 0)),
+            "second chunk should queue its distinct detail page even when height page is already queued");
+    }
+
+    private static void RuntimeTerrainSelectionTouchesResidentChildPages()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string quadTreeSource = File.ReadAllText(Path.Combine(repositoryRoot, "Terrain", "Rendering", "TerrainQuadTree.cs"));
+        string streamingSource = File.ReadAllText(Path.Combine(repositoryRoot, "Terrain", "Streaming", "TerrainStreaming.cs"));
+
+        TestHarness.Assert(quadTreeSource.Contains("IsChunkResident(childKeys[i], touchResidentPages: true)", StringComparison.Ordinal), "quadtree child residency checks should refresh resident pages in the replacement LRU");
+        TestHarness.Assert(streamingSource.Contains("public bool IsChunkResident(TerrainChunkKey chunkKey, bool touchResidentPages = false)", StringComparison.Ordinal), "streaming residency checks should support optional LRU refresh");
+        TestHarness.Assert(streamingSource.Contains("gpuHeightArray.TryGetResidentSlice(pageKey, out _)", StringComparison.Ordinal), "height candidate residency should touch the resident slice when requested");
+        TestHarness.Assert(streamingSource.Contains("gpuDetailIndexArray.TryGetResidentSlice(splatPageKey, out _)", StringComparison.Ordinal), "detail candidate residency should touch the resident slice when requested");
+    }
+
+    private static void RuntimeTerrainDrawClearsStaleInstancesWhenSelectionIsEmpty()
+    {
+        string renderFeatureSource = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Terrain", "Rendering", "TerrainRenderFeature.cs"));
+        int emptySelectionIndex = renderFeatureSource.IndexOf("if (nodeCount <= 0)", StringComparison.Ordinal);
+        int clearInstanceIndex = renderFeatureSource.IndexOf("renderObject.InstanceCount = 0;", emptySelectionIndex, StringComparison.Ordinal);
+        int returnIndex = renderFeatureSource.IndexOf("return;", emptySelectionIndex, StringComparison.Ordinal);
+
+        TestHarness.Assert(emptySelectionIndex >= 0, "terrain draw should explicitly handle empty selections");
+        TestHarness.Assert(clearInstanceIndex > emptySelectionIndex && clearInstanceIndex < returnIndex, "empty RenderView selections must clear InstanceCount before returning");
     }
 
     private static void TerrainComponentDoesNotRetainFullRuntimeHeightData()

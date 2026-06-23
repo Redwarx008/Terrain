@@ -654,6 +654,7 @@ public sealed class TerrainRenderFeature : RootEffectRenderFeature
             component.ChunkNodeData);
         if (nodeCount <= 0)
         {
+            renderObject.InstanceCount = 0;
             return;
         }
 

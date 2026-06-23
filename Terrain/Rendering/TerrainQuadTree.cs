@@ -181,7 +181,7 @@ internal sealed class TerrainQuadTree : IDisposable
         bool allChildrenResident = true;
         for (int i = 0; i < childKeys.Length; i++)
         {
-            if (childExists[i] && !streamingManager.IsChunkResident(childKeys[i]))
+            if (childExists[i] && !streamingManager.IsChunkResident(childKeys[i], touchResidentPages: true))
             {
                 allChildrenResident = false;
                 break;

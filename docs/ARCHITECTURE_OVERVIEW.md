@@ -24,8 +24,8 @@
 |------|------|------|
 | **地形组件** | ✅ 已实现 | [terrain-editor-design-phase-1](design/terrain-editor-design-phase-1.md) |
 | **高度数据** | ✅ 已实现 | [terrain-editor-design-phase-1](design/terrain-editor-design-phase-1.md) |
-| **流式加载** | ✅ 已实现 | [terrain-streaming-design](../plans/terrain-streaming-design.md) |
-| **LOD 系统** | ✅ 已实现 | [terrain-editor-design-phase-1](design/terrain-editor-design-phase-1.md) |
+| **流式加载** | ✅ 已实现 | [terrain-streaming-design](../plans/terrain-streaming-design.md)；runtime preload 的顶层 Height/Detail fallback pages 必须 pinned。Quadtree 检查候选子节点是否 resident 时会刷新对应 Height/Detail VT page 的 LRU recency，避免子节点等待 sibling 凑齐期间被页表淘汰，导致漫游时回退到低细节或闪烁。 |
+| **LOD 系统** | ✅ 已实现 | [terrain-editor-design-phase-1](design/terrain-editor-design-phase-1.md)；`LOD delta > 1` 是当前算法允许的拓扑，渲染路径必须支持；若某个 RenderView 选择不到节点，`TerrainRenderFeature` 必须清空 `InstanceCount`，避免 shadow/临时视图沿用上一轮 terrain 实例。 |
 
 ### 渲染层
 
@@ -191,7 +191,7 @@
 - 河流 shader 统一使用 `TransformationWAndVP` 生成 `PositionWS / PositionH / DepthVS`
 - `RiverResourceLoader` 负责从 `game/map/water` 直接加载 bottom diffuse/normal/properties/depth 与 water flow/foam/ambient/water-color 等 DDS 文件；这些 Bottom/Water 纹理不再通过 Stride `.sdtex`、`Terrain.Editor.sdpkg` `RootAssets` 或 `ContentManager` 管理，缺失本地文件时先写 `Terrain` 日志再让原始文件异常冒泡。`River/Environment/reflection-specular` 仍保持 Stride 内容资源；`RiverRenderFeature` 将这些资源绑定到 `RiverBottom` / `RiverSurface`
 - Runtime 河流也接入同一套 `Terrain.Rendering.River` core：`Terrain/Assets/MainScene.sdscene` 持有运行时 `RiverSystem` entity 和 `RiverComponent`，`Terrain/Assets/GraphicsCompositor.sdgfxcomp` 持有 `RiverRenderFeature` 注册。`RiverProcessor` 等待 runtime terrain height data 初始化后加载可选 `game/map/rivers.png`，通过 `RiverMapService` / `RiverMeshService` 生成 mesh 并写回 `RiverComponent`；`TerrainRuntimeResourceBundle` 只承载资源路径和宽度配置，不创建 scene object。
-- Runtime 不在 `TerrainComponent` 上常驻完整 `ushort[]` heightmap。`TerrainComponent` 只暴露离散 `GetHeight(int sampleX, int sampleZ)`；内部经 `TerrainQuadTree -> TerrainStreamingManager` 从 `.terrain` 按需读取对应 height tile。CPU height page cache 属于 streaming manager：height page 上传 GPU 后继续保留，直到对应 GPU resident page 因 `MaxResidentChunks` 淘汰时同步释放。Runtime detail VT 不再启动时生成：`TerrainStreamingManager` 直接从 `.terrain` reader 读取 `ReadDetailIndexPage` / `ReadDetailWeightPage`，并上传到两个 RGBA8 detail texture arrays。River 需要连续高度时自己对 4 个离散 sample 做双线性插值，Terrain 不承担 river-specific 插值策略。
+- Runtime 不在 `TerrainComponent` 上常驻完整 `ushort[]` heightmap。`TerrainComponent` 只暴露离散 `GetHeight(int sampleX, int sampleZ)`；内部经 `TerrainQuadTree -> TerrainStreamingManager` 从 `.terrain` 按需读取对应 height tile。CPU height page cache 属于 streaming manager：height page 上传 GPU 后继续保留，直到对应 GPU resident page 因 `MaxResidentChunks` 淘汰时同步释放。Runtime detail VT 不再启动时生成：`TerrainStreamingManager` 直接从 `.terrain` reader 读取 `ReadDetailIndexPage` / `ReadDetailWeightPage`，并上传到两个 RGBA8 detail texture arrays。顶层 Height/Detail fallback pages 在 preload 后常驻 pinned；quadtree child residency 检查会 touch 已 resident 的候选子节点页，避免这些页在 sibling 未全齐、尚未成为 render node 前被 LRU 当作冷页淘汰。River 需要连续高度时自己对 4 个离散 sample 做双线性插值，Terrain 不承担 river-specific 插值策略。
 - 河底 pass 使用 CK3-style dual-source blending：RT0 RGB 和 RT0 alpha 都按 `src1_alpha / inv_src1_alpha` 与目标折射缓冲混合，RT1 alpha 作为 coverage 权重；bottom 当前对齐到 CK3 这帧实际使用的 non-advanced 分支，`BottomDiffuse/Normal/Properties` 主采样使用 parallax 后的 `worldUv`，depth/profile 继续从 `tangentUv` 计算，steep parallax 使用固定 2/10 layer 与 CK3 插值公式，alpha 为 `fadeOut * connectionFade * saturate(depth * 13.0f)`；bottom lighting 绑定当前 `LightingView` 的 directional light/skybox、shadow cascade 数据、shadow atlas、scene cubemap intensity/rotation，shadow 路径使用 Stride cascade 选择叠加 CK3 bottom shadow 的投影/随机 disc kernel/bias/fade，旧 5x5 filter 与 normal-offset helper 已移除。Editor scene 会提供 CK3 warm sun 与 Jomini terrain sunny cubemap 作为实际 scene light 输入；当前 scene sun intensity 与 skybox intensity 都是 `20`，因此 bottom direct/IBL 的 scene-scale 比例保持 `1:1`。2026-06-18 已移除 `* 3.0f` final gain，并改用 CK3 material BRDF / dominant specular IBL，删除 `_BottomSpecularIntensity` river-local 参数链；`SceneSeedColor` 由 `RiverSceneSeed` image shader 写半分辨率场景种子，RGB 做 Reinhard 压缩，alpha 从 Presenter scene depth 重建 world position 后写 camera-relative distance payload；surface pass 读取折射缓冲并走 `CalcRiverAdvanced -> CalcWater`：单次 flow normal、三层 ambient water-wave normal、water-color、foam 与 cubemap reflection，water-color map UV 执行 CK3 Y 翻转并在 refraction world position 重采样，seed-only 边缘像素 `a <= 0` 会回退到当前水面 world position，`CalcRefraction` 先用 base refraction depth 计算 shore mask，再用最终 `waterNormal` 经 `_ViewMatrix` 转 view-space 后乘 `float2(-1/1920, 1/1080)`、CK3 refraction scale / shore mask / fade，offset 后用 `step(WorldSpacePos.y, OffsetRefractionWorldSpacePos.y)` 回退 base refraction；`WaterFade` 独立重采 base refraction 并使用 CK3 `min(InputDepth, RefractionDepth)` 公式；顶点流中的宽度是归一化 half-width，shader 给 CK3 depth / flow 使用前会还原为 full-width。2026-06-21 复核 CK3 `jomini_river_bottom.fxh` 后确认早期 RT0 alpha direct-write 是本地偏差；若后续再出现边缘 payload 混合问题，应优先修 pre-bottom/refraction payload writer，而不是改偏 bottom blend state。
 - 河流 mesh 顶点 basis 对齐 CK3：tangent 保留中心线 Y 坡度，normal 使用水平横向 side 与 sloped tangent 的正交 ribbon normal，不再用 terrain height 差分 normal 驱动 bottom lighting。
 **权衡：** 架构更复杂，但换来可维护的渲染生命周期、与 Stride render stage 的正确集成，以及后续扩展空间。
@@ -237,7 +237,7 @@
 | `Terrain/Rendering/River/RiverProcessor.cs` | 河流组件到渲染对象的同步处理器 |
 | `Terrain/Rendering/River/RiverRenderObject.cs` | 河流 GPU 顶点/索引缓冲与 bounds |
 | `Terrain/Rendering/River/RiverRenderFeature.cs` | 河流河底/水面双 pass 渲染特性 |
-| `Terrain/Streaming/TerrainStreaming.cs` | Runtime height/detail VT streaming；height、DetailIndex、DetailWeight 均来自 `.terrain` v8 reader；CPU height page cache 随 GPU resident page 生命周期释放 |
+| `Terrain/Streaming/TerrainStreaming.cs` | Runtime height/detail VT streaming；height、DetailIndex、DetailWeight 均来自 `.terrain` v8 reader；CPU height page cache 随 GPU resident page 生命周期释放；顶层 fallback pages 在 preload 时 pinned，保证子页缺失或流式加载 churn 时仍可回退到粗 LOD；child residency 检查可 touch resident pages，防止候选子页等待 sibling 期间被 LRU 淘汰 |
 | `Terrain/Materials/RuntimeMaterialManager.cs` | Runtime descriptor-driven material texture array 管理；缺失 normal 贴图时生成 flat normal fallback，并对每个 mip 使用显式 `ResourceRegion` 上传，避免 D3D12 压缩 mip 默认 region 问题 |
 | `Terrain.Editor/Rendering/NativeViewport/NativeStrideViewportHost.cs` | 原生 Stride 视口宿主；`SetInputBlocked` 在 Save/Export 模态期间阻断视口输入并要求 Stride game flush 当前输入状态 |
 | `Terrain.Editor/Rendering/NativeViewport/EmbeddedStrideViewportGame.cs` | 注册河流 RenderFeature 并创建编辑器侧 RiverSystem；Save/Export 模态期间响应输入阻断，释放相机/笔刷状态并 flush 鼠标锁定与笔触输入 |
@@ -250,7 +250,7 @@
 ### 着色器
 | 文件 | 职责 |
 |------|------|
-| `Terrain/Effects/Build/` | LOD 构建 |
+| `Terrain/Effects/Build/` | LOD 构建；`TerrainComputeDispatcher` 写当前帧节点、生成 `LodMap` 与 neighbor mask；`TerrainRenderFeature` 在空选择时清空实例数，避免非主视图复用 stale draw state |
 | `Terrain/Effects/Material/` | 材质着色器 |
 | `Terrain/Effects/River/RiverBottom.sdsl` | 河底 pass（底部 diffuse/normal/properties/depth 采样、dual-source alpha、折射缓冲底色） |
 | `Terrain/Effects/River/RiverSurface.sdsl` | 水面 pass（flow normal、ambient normal、water-color、foam/foam ramp/foam map、reflection/specular、折射采样） |

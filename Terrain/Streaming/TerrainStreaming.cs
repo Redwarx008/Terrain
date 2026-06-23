@@ -980,7 +980,7 @@ internal sealed class TerrainStreamingManager : IDisposable
 
                     fileReader.ReadHeightPage(pageKey, heightmapPageData.Memory.Span);
                     CacheHeightPage(pageKey, heightmapPageData.Memory.Span, isGpuResident: true);
-                    gpuHeightArray.UploadPage(commandList, pageKey, heightmapPageData.Memory.Span, pinned: false);
+                    gpuHeightArray.UploadPage(commandList, pageKey, heightmapPageData.Memory.Span, pinned: true);
 
                     if (detailMapPageData != null && gpuDetailIndexArray != null && detailWeightArray != null)
                     {
@@ -988,7 +988,7 @@ internal sealed class TerrainStreamingManager : IDisposable
                         if (!gpuDetailIndexArray.IsPageResident(detailPageKey))
                         {
                             fileReader.ReadDetailIndexPage(detailPageKey, detailMapPageData.Memory.Span);
-                            gpuDetailIndexArray.UploadPage(commandList, detailPageKey, detailMapPageData.Memory.Span, pinned: false);
+                            gpuDetailIndexArray.UploadPage(commandList, detailPageKey, detailMapPageData.Memory.Span, pinned: true);
                             if (gpuDetailIndexArray.TryGetResidentSlice(detailPageKey, out int sliceIndex))
                             {
                                 using IMemoryOwner<byte> weightPageData = detailMapBufferPool!.Rent();
@@ -1167,16 +1167,22 @@ internal sealed class TerrainStreamingManager : IDisposable
         }
     }
 
-    public bool IsChunkResident(TerrainChunkKey chunkKey)
+    public bool IsChunkResident(TerrainChunkKey chunkKey, bool touchResidentPages = false)
     {
         TerrainPageKey pageKey = GetPageKey(chunkKey, out _, out _, out _);
-        if (!gpuHeightArray.IsPageResident(pageKey))
+        bool heightResident = touchResidentPages
+            ? gpuHeightArray.TryGetResidentSlice(pageKey, out _)
+            : gpuHeightArray.IsPageResident(pageKey);
+        if (!heightResident)
             return false;
 
         if (gpuDetailIndexArray != null)
         {
             TerrainPageKey splatPageKey = GetDetailMapPageKey(chunkKey, out _, out _, out _);
-            if (!gpuDetailIndexArray.IsPageResident(splatPageKey))
+            bool detailResident = touchResidentPages
+                ? gpuDetailIndexArray.TryGetResidentSlice(splatPageKey, out _)
+                : gpuDetailIndexArray.IsPageResident(splatPageKey);
+            if (!detailResident)
                 return false;
         }
 
@@ -1210,32 +1216,32 @@ internal sealed class TerrainStreamingManager : IDisposable
 
         if (!heightResident)
         {
-            if (!queuedKeys.TryAdd((pageKey, false), 0))
-                return;
-
-            if (!heightmapBufferPool.TryRent(out IMemoryOwner<byte>? heightmapBuffer) || heightmapBuffer == null)
+            if (queuedKeys.TryAdd((pageKey, false), 0))
             {
-                queuedKeys.TryRemove((pageKey, false), out _);
-                if (!hasLoggedBufferPoolExhaustion)
+                if (!heightmapBufferPool.TryRent(out IMemoryOwner<byte>? heightmapBuffer) || heightmapBuffer == null)
                 {
-                    Log.Warning("Terrain streaming buffer pool is exhausted; deferring page request until a buffer is returned.");
-                    hasLoggedBufferPoolExhaustion = true;
+                    queuedKeys.TryRemove((pageKey, false), out _);
+                    if (!hasLoggedBufferPoolExhaustion)
+                    {
+                        Log.Warning("Terrain streaming buffer pool is exhausted; deferring page request until a buffer is returned.");
+                        hasLoggedBufferPoolExhaustion = true;
+                    }
                 }
+                else
+                {
+                    hasLoggedBufferPoolExhaustion = false;
 
-                return;
-            }
-
-            hasLoggedBufferPoolExhaustion = false;
-
-            try
-            {
-                pendingRequests.Add(new StreamingRequest(pageKey, heightmapBuffer, null, pinned, isDetailMap: false));
-            }
-            catch
-            {
-                queuedKeys.TryRemove((pageKey, false), out _);
-                heightmapBuffer.Dispose();
-                throw;
+                    try
+                    {
+                        pendingRequests.Add(new StreamingRequest(pageKey, heightmapBuffer, null, pinned, isDetailMap: false));
+                    }
+                    catch
+                    {
+                        queuedKeys.TryRemove((pageKey, false), out _);
+                        heightmapBuffer.Dispose();
+                        throw;
+                    }
+                }
             }
         }
 

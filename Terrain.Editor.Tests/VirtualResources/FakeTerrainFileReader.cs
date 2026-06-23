@@ -12,7 +12,13 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
     private readonly int width;
     private readonly int height;
 
-    public FakeTerrainFileReader(int width = 4, int height = 4, ushort[]? heightData = null, int? tileSize = null)
+    public FakeTerrainFileReader(
+        int width = 4,
+        int height = 4,
+        ushort[]? heightData = null,
+        int? tileSize = null,
+        int detailTileSize = 2,
+        int detailMapResolutionRatio = 2)
     {
         var map = new TerrainMinMaxErrorMap(1, 1);
         map.Set(0, 0, 10.0f, 20.0f, 0.5f);
@@ -28,7 +34,7 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
             Height = height,
             DetailMapFormat = 0,
             DetailMapMipLevels = 1,
-            DetailMapResolutionRatio = 2,
+            DetailMapResolutionRatio = detailMapResolutionRatio,
         };
         HeightmapHeader = new TerrainVirtualTextureHeader
         {
@@ -37,6 +43,15 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
             TileSize = tileSize ?? width,
             Padding = 1,
             BytesPerPixel = sizeof(ushort),
+            Mipmaps = 1,
+        };
+        DetailIndexMapHeader = new TerrainVirtualTextureHeader
+        {
+            Width = Math.Max(1, (width + detailMapResolutionRatio - 1) / detailMapResolutionRatio),
+            Height = Math.Max(1, (height + detailMapResolutionRatio - 1) / detailMapResolutionRatio),
+            TileSize = detailTileSize,
+            Padding = 1,
+            BytesPerPixel = 4,
             Mipmaps = 1,
         };
     }
@@ -53,19 +68,11 @@ internal sealed class FakeTerrainFileReader : ITerrainFileReader
 
     public TerrainVirtualTextureHeader HeightmapHeader { get; }
 
-    public TerrainVirtualTextureHeader DetailIndexMapHeader { get; } = new()
-    {
-        Width = 2,
-        Height = 2,
-        TileSize = 2,
-        Padding = 1,
-        BytesPerPixel = 4,
-        Mipmaps = 1,
-    };
+    public TerrainVirtualTextureHeader DetailIndexMapHeader { get; }
 
     public TerrainVirtualTextureHeader DetailWeightMapHeader => DetailIndexMapHeader;
 
-    public int DetailMapResolutionRatio => 2;
+    public int DetailMapResolutionRatio => Header.DetailMapResolutionRatio;
 
     public int DetailMapMipCount => 1;
 
