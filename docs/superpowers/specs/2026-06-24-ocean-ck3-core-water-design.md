@@ -193,7 +193,7 @@ The shared refraction capture implementation can start as a small water renderin
 
 ```text
 WaterRefractionCaptureResources
-WaterRefractionCaptureRenderer
+WaterRefractionCapturePass
 CustomForwardRenderer
 WaterRefractionCapture.sdsl
 ```

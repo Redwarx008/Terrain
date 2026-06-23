@@ -54,7 +54,7 @@ Do implement:
   - Insert the water chain after opaque scene color exists.
 - Create `Terrain/Rendering/Water/WaterRefractionCaptureResources.cs`
   - Owns the shared refraction capture render target.
-- Create `Terrain/Rendering/Water/WaterRefractionCaptureRenderer.cs`
+- Create `Terrain/Rendering/Water/WaterRefractionCapturePass.cs`
   - Captures scene color + presenter depth into the water refraction payload.
   - Uses renderer-owned lifetime/cache, not a global provider.
 - Create `Terrain/Effects/Water/WaterRefractionCapture.sdsl`
@@ -130,11 +130,11 @@ Files:
 - [ ] Add nullable fields for water feature lookup:
   - `OceanRenderFeature? oceanRenderFeature`
   - `RiverRenderFeature? riverRenderFeature`
-  - `WaterRefractionCaptureRenderer? waterRefractionCaptureRenderer`
+  - `WaterRefractionCapturePass? waterRefractionCapturePass`
 - [ ] In `InitializeCore`, locate `OceanRenderFeature` and `RiverRenderFeature` from `Context.RenderSystem.RenderFeatures`.
 - [ ] In `DrawView`, after opaque draw and before generic transparent draw:
   - resolve current scene color from `CommandList.RenderTargets[0]`
-  - ask `WaterRefractionCaptureRenderer` to create the refraction capture
+  - ask `WaterRefractionCapturePass` to create the refraction capture
   - call Ocean draw with the capture
   - call River bottom/surface chain with the same capture
 - [ ] Prevent double drawing in the generic transparent stage:
@@ -156,7 +156,7 @@ dotnet run --project Terrain.Editor.Tests\Terrain.Editor.Tests.csproj --no-resto
 Files:
 
 - create `Terrain/Rendering/Water/WaterRefractionCaptureResources.cs`
-- create `Terrain/Rendering/Water/WaterRefractionCaptureRenderer.cs`
+- create `Terrain/Rendering/Water/WaterRefractionCapturePass.cs`
 - create `Terrain/Effects/Water/WaterRefractionCapture.sdsl`
 - modify `Terrain/Terrain.csproj`
 
@@ -167,8 +167,8 @@ Files:
   - presenter depth used as scene depth source
   - `_RefractionMaxCameraHeight` retained
 - [ ] `WaterRefractionCaptureResources` owns the `R16G16B16A16_Float` capture target and half-resolution dimensions matching current river behavior.
-- [ ] `WaterRefractionCaptureRenderer` owns the `ImageEffectShader("WaterRefractionCapture")`.
-- [ ] `WaterRefractionCaptureRenderer.Capture(...)` receives:
+- [ ] `WaterRefractionCapturePass` owns the `ImageEffectShader("WaterRefractionCapture")`.
+- [ ] `WaterRefractionCapturePass.Capture(...)` receives:
   - `RenderDrawContext`
   - `RenderView`
   - scene color texture
