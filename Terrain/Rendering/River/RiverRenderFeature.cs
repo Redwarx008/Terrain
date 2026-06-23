@@ -274,6 +274,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
             && sourceSettings.TextureUvScale == candidateSettings.TextureUvScale
             && sourceSettings.FlowNormalUvScale == candidateSettings.FlowNormalUvScale
             && sourceSettings.RiverMaxVisibleCameraHeight == candidateSettings.RiverMaxVisibleCameraHeight
+            && sourceSettings.SeaLevel == candidateSettings.SeaLevel
             && sourceSettings.FlowNormalSpeed == candidateSettings.FlowNormalSpeed
             && sourceSettings.RiverFoamFactor == candidateSettings.RiverFoamFactor
             && sourceSettings.NoiseScale == candidateSettings.NoiseScale
@@ -670,6 +671,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
     private static void ApplyBottomParameters(DynamicEffectInstance effect, RiverRenderObject riverObject, RiverRenderSettings settings)
     {
         effect.Parameters.Set(RiverBottomKeys._MapExtent, riverObject.MapExtent);
+        effect.Parameters.Set(RiverBottomKeys._WaterHeight, settings.SeaLevel);
         effect.Parameters.Set(RiverBottomKeys._TextureUvScale, settings.TextureUvScale);
         effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, settings.OceanFadeRate);
         effect.Parameters.Set(RiverBottomKeys._BankAmount, settings.BankAmount);
@@ -686,6 +688,7 @@ public sealed class RiverRenderFeature : RootRenderFeature
     {
         effect.Parameters.Set(RiverSurfaceKeys._MapExtent, riverObject.MapExtent);
         effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterHeight, settings.SeaLevel);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, settings.FlowNormalUvScale);
         effect.Parameters.Set(RiverSurfaceKeys._FlowNormalSpeed, settings.FlowNormalSpeed);
         effect.Parameters.Set(RiverSurfaceKeys._RiverFoamFactor, settings.RiverFoamFactor);
@@ -782,7 +785,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
             return;
         }
 
-        bottomEffect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);
         bottomEffect.Parameters.Set(RiverBottomKeys._WorldToMapUnitScale, 0.5f);
         bottomEffect.Parameters.Set(RiverBottomKeys.BottomTextureSampler, graphicsDevice.SamplerStates.LinearWrap);
         SetTexture(bottomEffect.Parameters, RiverBottomKeys.BottomDiffuseTexture, riverResources.BottomDiffuse);

@@ -91,6 +91,8 @@
 | Runtime 河流渲染 | ✅ | `Terrain/Rendering/River/`, `Terrain/Rivers/`, `Terrain/Assets/MainScene.sdscene`, `Terrain/Assets/GraphicsCompositor.sdgfxcomp` | Runtime scene asset 持有 `RiverSystem` / `RiverComponent`，GraphicsCompositor asset 持有 `RiverRenderFeature`；`RiverProcessor` 在地形初始化后加载可选 `rivers.png`，按 `river_min_width` / `river_max_width` 生成 mesh。`TerrainComponent` 只暴露离散 `GetHeight(int,int)`，缺 tile 时经 `TerrainStreamingManager` 按需读取 `.terrain` height page；CPU height page 上传 GPU 后保留，直到对应 GPU resident page 因 `MaxResidentChunks` 淘汰时释放。River 自己对离散 sample 做双线性插值，不让 Runtime 常驻完整 heightmap。缺少 `rivers.png` 时只禁用河流，不阻断地形加载。 |
 | 半分辨率 DetailIndex/DetailWeight VT | ✅ | Editor Export + Runtime streaming | `.terrain` v8 runtime detail control contract |
 
+**2026-06-24 Runtime 河流海平面补充：** `RiverProcessor` 从 `TerrainRuntimeResourceBundle.SeaLevel` 写入 `RiverRenderSettings.SeaLevel`，`RiverRenderFeature` 通过 shared settings 同时绑定 bottom/surface `_WaterHeight`，用于 river bottom ocean fade 与 surface 水体参数。SDSL 默认 `_WaterHeight=3.0f` 只作为 fallback；运行时不再写死 3.0，也不通过 `MapSurfaceComponent` 传播。
+
 ## 规划中 (Planned)
 
 | 功能 | 优先级 | 设计文档 |

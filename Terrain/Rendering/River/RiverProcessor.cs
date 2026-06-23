@@ -165,6 +165,9 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
             Log.Warning(diagnostic);
         }
 
+        component.Settings.RiverMaxVisibleCameraHeight = bundle.RiverMaxVisibleCameraHeight;
+        component.Settings.SeaLevel = bundle.SeaLevel;
+
         if (bundle.RiversPath == null)
         {
             component.MarkRuntimeNoRiverResource();
@@ -201,7 +204,6 @@ public sealed class RiverProcessor : EntityProcessor<RiverComponent, RiverProces
                 .Where(mesh => mesh.Vertices.Length > 0 && mesh.Indices.Length > 0)
                 .ToArray();
 
-            component.Settings.RiverMaxVisibleCameraHeight = bundle.RiverMaxVisibleCameraHeight;
             component.SetMeshes(meshes);
             component.MarkRuntimeLoadSuccess();
         }

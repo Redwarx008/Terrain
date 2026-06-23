@@ -217,7 +217,7 @@ internal static class RiverShaderTextTests
     {
         string shader = ReadRepositoryText("Terrain/Effects/River/RiverBottom.sdsl");
 
-        AssertContains(shader, "stage float _WaterHeight = 3.0f;", "RiverBottom should expose water height for ocean fade");
+        AssertContains(shader, "stage float _WaterHeight", "RiverBottom should expose water height for ocean fade");
         AssertContains(shader, "float underOceanFade = 1.0f - saturate((_WaterHeight - streams.PositionWS.y) * _OceanFadeRate);", "RiverBottom should compute underwater fade from water height and river surface height");
         AssertContains(shader, "float fadeOut = min(underOceanFade, saturate(streams.RiverTransparency));", "RiverBottom should use a dedicated fadeOut term for bottom blending");
         AssertContains(shader, "float edgeFade1 = smoothstep(0.0f, max(_BankFade, 0.0001f), riverUv.y);", "RiverBottom advanced alpha should use the bank-fade edge term on one side");
@@ -400,6 +400,7 @@ internal static class RiverShaderTextTests
         AssertContains(settings, "public float BottomNormalStrength { get; set; } = 1.0f;", "RiverRenderSettings should expose bottom normal strength for bottom lighting");
         AssertContains(settings, "public float BottomEnvironmentIntensity { get; set; }", "RiverRenderSettings should expose bottom environment intensity");
         AssertContains(settings, "public float RiverMaxVisibleCameraHeight { get; set; } = 3000.0f;", "RiverRenderSettings should expose the camera-height river visibility cutoff");
+        AssertContains(settings, "public float SeaLevel { get; set; } = 3.8f;", "RiverRenderSettings should expose runtime map sea level for river water height");
         AssertNotContains(renderObject, "ApplySettings", "RiverRenderObject should not copy shared RiverRenderSettings per object every frame");
         AssertNotContains(renderObject, "settings.", "RiverRenderObject should not cache pass-wide RiverRenderSettings fields");
         AssertContains(renderObject, "public Vector2 MapWorldSize { get; private set; } = new(4096.0f, 4096.0f);", "RiverRenderObject should cache per-axis map world size for rectangular map UV normalization");
@@ -414,6 +415,7 @@ internal static class RiverShaderTextTests
         AssertNotContains(processor, "renderObject.ApplySettings(component.Settings);", "RiverProcessor should not push pass-wide settings into every render object each frame");
         AssertContains(processor, "renderObject.World = entity.Transform.WorldMatrix;", "RiverProcessor should still update per-object transform state each frame");
         AssertContains(processor, "component.Settings.RiverMaxVisibleCameraHeight = bundle.RiverMaxVisibleCameraHeight;", "RiverProcessor should copy runtime TOML camera-height cutoff into render settings");
+        AssertContains(processor, "component.Settings.SeaLevel = bundle.SeaLevel;", "RiverProcessor should copy runtime TOML sea level into render settings");
         AssertContains(feature, "private static RiverRenderSettings? GetRiverSettings(RiverRenderObject riverObject)", "RiverRenderFeature should read pass-wide settings from the render object's source component");
         AssertContains(feature, "return (riverObject.Source as RiverComponent)?.Settings;", "RiverRenderFeature should not depend on duplicated RiverRenderObject settings");
         AssertContains(feature, "float riverMaxVisibleCameraHeight = ResolveRiverMaxVisibleCameraHeight(renderViewStage, startIndex, endIndex);", "RiverRenderFeature should resolve the camera-height cutoff before river pass work");
@@ -423,7 +425,10 @@ internal static class RiverShaderTextTests
         AssertContains(feature, "private float ResolveRiverMaxVisibleCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)", "RiverRenderFeature should keep camera-height cutoff resolution explicit");
         AssertContains(feature, "maxVisibleCameraHeight = foundRiverObject", "RiverRenderFeature should resolve a stable draw-range camera-height cutoff instead of depending on sorted node order");
         AssertContains(feature, "? MathF.Max(maxVisibleCameraHeight, riverMaxVisibleCameraHeight)", "RiverRenderFeature should use the highest river camera-height cutoff across the draw range");
-        AssertContains(feature, "bottomEffect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);", "RiverRenderFeature should bind static water height for bottom ocean fade");
+        AssertNotContains(feature, "bottomEffect.Parameters.Set(RiverBottomKeys._WaterHeight, 3.0f);", "RiverRenderFeature should not bind a static water height for bottom ocean fade");
+        AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._WaterHeight, settings.SeaLevel);", "RiverRenderFeature should bind bottom water height from shared river settings");
+        AssertContains(feature, "effect.Parameters.Set(RiverSurfaceKeys._WaterHeight, settings.SeaLevel);", "RiverRenderFeature should bind surface water height from shared river settings");
+        AssertContains(feature, "&& sourceSettings.SeaLevel == candidateSettings.SeaLevel", "RiverRenderFeature should include sea level in the shared-parameter invariant");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._TextureUvScale, settings.TextureUvScale);", "RiverRenderFeature should continue binding texture UV scale for available shader variants");
         AssertContains(feature, "effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, settings.OceanFadeRate);", "RiverRenderFeature should bind bottom ocean fade rate from shared settings");
         AssertContains(feature, "bottomEffect.Parameters.Set(RiverBottomKeys._WorldToMapUnitScale, 0.5f);", "RiverRenderFeature should bind the static local world-to-map-unit conversion for world-UV bottom sampling");

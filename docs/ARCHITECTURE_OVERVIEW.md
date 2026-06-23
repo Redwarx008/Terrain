@@ -50,6 +50,8 @@
 
 **2026-06-23 河流高度采样补充：** `C:\Users\Redwa\Desktop\debug.rdc` 中 EID 276/323 与 290/343 的 post-VS 河流 mesh 仍可见高度斜率突跳；源码复核确认 editor `IRiverTerrainHeightSource.SampleHeight` 通过 `TerrainManager.GetHeightAtPosition` 走整数 `Round` 采样。`RiverMeshService` 现在对 `IRiverTerrainHeightSource` 和 runtime `Func<int,int,float>` 两类离散高度源都在 mesh 服务内部做四点双线性重采样，避免真实 editor 高度源绕过此前只在测试 stub 中覆盖的双线性路径。`C:\Users\Redwa\Desktop\debug2.rdc` 随后证明 editor 中 `RiverMeshService` 会先于地形加载创建，构造期缓存的 `HeightmapWidth/HeightmapHeight` 仍为 0，导致河流 mesh 只落在 `SurfaceOffset` 高度；现在 `IRiverTerrainHeightSource` 路径在每次采样时读取当前宽高，避免延迟加载后继续使用 stale dimensions。`GetMapWorldSize` 同样对 height source 读取当前宽高，保证 reload 后 `MapWorldSize/MapExtent/Width` 与高度采样使用同一尺寸。新增回归测试 `curved river centerline bilinearly resamples nearest height source`、`river centerline uses height source dimensions loaded after mesh service construction` 和 `river mesh map extent uses reloaded height source dimensions` 锁定该行为。
 
+**2026-06-24 河流水面高度补充：** Runtime `RiverProcessor` 现在从 `TerrainRuntimeResourceBundle.SeaLevel` 同步到 `RiverRenderSettings.SeaLevel`，`RiverRenderFeature.Prepare` 再用 shared settings 同时绑定 `RiverBottomKeys._WaterHeight` 和 `RiverSurfaceKeys._WaterHeight`。SDSL `_WaterHeight` 默认值仍只作为 shader fallback；运行时不再在 `RiverRenderFeature` 中写死 `_WaterHeight = 3.0f`。`SeaLevel` 继续属于 map settings / runtime bundle，不暴露到 `MapSurfaceComponent`，也不引入 Ocean shader 或组件。
+
 **2026-06-18 复核补充：** 旧 `debug.rdc` 显示 `RiverSceneSeed` 的 RGB 已压到 CK3 seed 类似范围，但 alpha 恒定为 near clip `0.1`；原因是 editor 路径使用 `commandList.DepthStencilBuffer` 时没有读到有效 scene depth。`RiverRenderFeature` 现明确使用 `GraphicsDevice.Presenter.DepthStencilBuffer` 作为窗口化 editor/runtime 的 scene seed depth；Presenter、depth 或尺寸一致性前置条件用直接 `Debug.Assert` 表达，不再保留 `SelectSceneDepthSource` 或 command-list depth fallback。2026-06-18 03:00 新 `debug.rdc` 复核确认 Presenter depth 绑定后 EID 248 seed alpha 已变为 `12.3984..24.4375`，不再是 near clip 常量；随后 `RiverSceneSeed` 进一步改为写 camera-relative distance payload。2026-06-18 03:16 新 `debug.rdc` 复核确认该新版路径已进入截帧：EID 248 shader 使用 `ProjectionInverse/ViewInverse/Eye` 重建 world position 并写 alpha `4.82031..8.66406`，pixel `(471,282)` 为 `5.23047`。离屏/render-target presenter 若没有 depth，需要后续显式提供 scene-depth source。
 
 **2026-06-23 1x1 scene color 保护补充：** `RiverRenderFeature` 的 seed pass 现在以实际 `commandList.RenderTargets[0]` 尺寸分配半分辨率 `SceneSeedColor/BottomColor`，并在 scene color 只有 `1x1` 时跳过整条 river pass。该尺寸常见于启动、窗口最小化或嵌入式 viewport 临时 0 尺寸被 swapchain/backbuffer clamp；如果继续执行，半分辨率目标也会是 `1x1`，Stride `ImageMultiScaler` 会因输入输出尺寸相同而抛出 `Input and output texture cannot have same size [(1,1,1)]`。
@@ -304,5 +306,5 @@
 
 ---
 
-*最后更新: 2026-06-23*
+*最后更新: 2026-06-24*
 *状态: 反映当前实现状态*
