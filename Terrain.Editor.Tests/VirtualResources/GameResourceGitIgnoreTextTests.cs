@@ -7,7 +7,7 @@ internal static class GameResourceGitIgnoreTextTests
     public static void RunAll()
     {
         TestHarness.Run("repository gitignore excludes game directory", RepositoryGitignoreExcludesGameDirectory);
-        TestHarness.Run("repository does not track any game files", RepositoryDoesNotTrackAnyGameFiles);
+        TestHarness.Run("repository only tracks allowed game files", RepositoryOnlyTracksAllowedGameFiles);
         TestHarness.Run("repository gitignore preserves adjacent rules", RepositoryGitignorePreservesAdjacentRules);
         TestHarness.Run("git command failures surface stderr", GitCommandFailuresSurfaceStderr);
     }
@@ -23,11 +23,15 @@ internal static class GameResourceGitIgnoreTextTests
             $"git check-ignore should report the /game/ rule. stdout: {ignoredGame.StandardOutput}");
     }
 
-    private static void RepositoryDoesNotTrackAnyGameFiles()
+    private static void RepositoryOnlyTracksAllowedGameFiles()
     {
         GitCommandResult trackedFiles = RunGit("ls-files game");
         TestHarness.AssertEqual(0, trackedFiles.ExitCode, $"git ls-files should succeed in the repository root. stderr: {trackedFiles.StandardError}");
-        TestHarness.AssertEqual(string.Empty, trackedFiles.StandardOutput.Trim(), "git should not track any files under game/");
+
+        string[] allowedGameFiles = ["game/map/water/flowmap.dds"];
+        string[] actual = trackedFiles.StandardOutput
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        TestHarness.AssertEqual(string.Join(Environment.NewLine, allowedGameFiles), string.Join(Environment.NewLine, actual), "git should only track explicitly allowed files under game/");
     }
 
     private static void RepositoryGitignorePreservesAdjacentRules()

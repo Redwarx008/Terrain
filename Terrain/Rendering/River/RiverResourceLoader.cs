@@ -18,6 +18,7 @@ public sealed class RiverResourceLoader : IDisposable
     private const string BottomPropertiesFileName = "bottom_properties.dds";
     private const string BottomDepthFileName = "bottom_depth.dds";
     private const string AmbientNormalFileName = "ambient_normal.dds";
+    private const string FlowMapFileName = "flowmap.dds";
     private const string FlowNormalFileName = "flow_normal.dds";
     private const string FoamFileName = "foam.dds";
     private const string FoamRampFileName = "foam_ramp.dds";
@@ -31,6 +32,7 @@ public sealed class RiverResourceLoader : IDisposable
     public Texture? BottomProperties { get; private set; }
     public Texture? BottomDepth { get; private set; }
     public Texture? AmbientNormal { get; private set; }
+    public Texture? FlowMap { get; private set; }
     public Texture? FlowNormal { get; private set; }
     public Texture? Foam { get; private set; }
     public Texture? FoamRamp { get; private set; }
@@ -52,6 +54,7 @@ public sealed class RiverResourceLoader : IDisposable
         BottomProperties = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, BottomPropertiesFileName, loadAsSrgb: false);
         BottomDepth = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, BottomDepthFileName, loadAsSrgb: false);
         AmbientNormal = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, AmbientNormalFileName, loadAsSrgb: false);
+        FlowMap = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FlowMapFileName, loadAsSrgb: false);
         FlowNormal = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FlowNormalFileName, loadAsSrgb: false);
         Foam = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamFileName, loadAsSrgb: false);
         FoamRamp = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamRampFileName, loadAsSrgb: false);
@@ -70,6 +73,7 @@ public sealed class RiverResourceLoader : IDisposable
         DisposeLocalTexture(BottomProperties);
         DisposeLocalTexture(BottomDepth);
         DisposeLocalTexture(AmbientNormal);
+        DisposeLocalTexture(FlowMap);
         DisposeLocalTexture(FlowNormal);
         DisposeLocalTexture(Foam);
         DisposeLocalTexture(FoamRamp);
@@ -87,6 +91,7 @@ public sealed class RiverResourceLoader : IDisposable
         BottomProperties = null;
         BottomDepth = null;
         AmbientNormal = null;
+        FlowMap = null;
         FlowNormal = null;
         Foam = null;
         FoamRamp = null;

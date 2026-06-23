@@ -45,6 +45,7 @@ internal static class RiverShaderTextTests
             "bottom_properties.dds",
             "bottom_depth.dds",
             "ambient_normal.dds",
+            "flowmap.dds",
             "flow_normal.dds",
             "foam.dds",
             "foam_ramp.dds",
