@@ -93,6 +93,8 @@ internal static class OceanShaderTextTests
         AssertContains(feature, "SortKey = 180;", "OceanRenderFeature should sort slightly before RiverRenderFeature");
         AssertContains(feature, "new DynamicEffectInstance(\"OceanSurface\")", "OceanRenderFeature should initialize the OceanSurface shader");
         AssertContains(feature, "private readonly OceanResourceLoader oceanResources = new();", "OceanRenderFeature should own the ocean resource loader");
+        AssertContains(feature, "if (oceanEffect == null || !oceanResources.IsLoaded)", "OceanRenderFeature should skip Prepare when required ocean textures are missing");
+        AssertContains(feature, "if (oceanEffect == null || pipelineState == null || !oceanResources.IsLoaded || startIndex >= endIndex)", "OceanRenderFeature should skip Draw when required ocean textures are missing");
         AssertContains(feature, "private WaterSceneLightingBinder? sceneLightingBinder;", "OceanRenderFeature should reuse the shared water scene lighting binder");
         AssertContains(feature, "sceneLightingBinder = new WaterSceneLightingBinder(this, forwardLightingFeature, shadowMapRenderer);", "OceanRenderFeature should initialize the shared lighting binder");
         AssertContains(feature, "sceneLightingBinder?.Bind(context, renderView, oceanEffect);", "OceanRenderFeature should bind scene lighting before drawing");

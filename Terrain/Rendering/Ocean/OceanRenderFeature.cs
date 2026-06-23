@@ -77,7 +77,7 @@ public sealed class OceanRenderFeature : RootRenderFeature
     {
         base.Prepare(context);
 
-        if (oceanEffect == null)
+        if (oceanEffect == null || !oceanResources.IsLoaded)
         {
             return;
         }
@@ -100,7 +100,7 @@ public sealed class OceanRenderFeature : RootRenderFeature
 
     public override void Draw(RenderDrawContext context, RenderView renderView, RenderViewStage renderViewStage, int startIndex, int endIndex)
     {
-        if (oceanEffect == null || pipelineState == null || startIndex >= endIndex)
+        if (oceanEffect == null || pipelineState == null || !oceanResources.IsLoaded || startIndex >= endIndex)
         {
             return;
         }
