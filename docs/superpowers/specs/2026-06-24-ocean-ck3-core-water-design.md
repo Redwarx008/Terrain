@@ -56,17 +56,21 @@ The important conclusion is that geometry is not the gap. Both paths are sea-lev
 
 Keep the existing Ocean entity, component, processor, render object, and full-map quad.
 
-Extract the current river-only refraction seed into a shared water refraction seed path:
+Introduce a project-owned forward renderer, following the pattern in `E:\WorkSpace\StrideStreamingTerrain\StrideTerrain\Rendering\CustomForwardRenderer.cs`, and use it to make the water pass order explicit:
 
 ```text
-Scene color + presenter depth
+opaque scene color + presenter depth
   -> shared Water refraction seed texture
-      -> OceanSurface draw
-      -> River bottom seed copy
-      -> River bottom/surface chain
+  -> OceanSurface draw
+  -> River bottom seed copy
+  -> River bottom pass
+  -> River surface pass
+  -> remaining transparent draws
 ```
 
-This is not just a duplicated implementation. River and Ocean should consume the same seed texture for a given frame/view whenever both features draw against the same scene color/depth. CK3 event `1061` supports this model: ocean samples the same class of `RefractionTexture` payload that the water path uses elsewhere, rather than generating an ocean-only refraction source.
+This is not just a duplicated implementation. River and Ocean should consume the same seed texture for a given frame/view whenever both draw against the same scene color/depth. CK3 event `1061` supports this model: ocean samples the same class of `RefractionTexture` payload that the water path uses elsewhere, rather than generating an ocean-only refraction source.
+
+The renderer-level ordering is intentional. The current project has Ocean and River both selected into the same `Transparent` stage / `Group1`, so relying on `SortKey` and two independent `RootRenderFeature.Draw` methods makes the refraction seed dependency implicit. A custom forward renderer can draw the normal opaque stage first, create the shared water seed exactly once from that opaque result, then invoke the water chain in CK3-like order.
 
 The shared seed texture keeps the current river payload semantics:
 
@@ -166,26 +170,35 @@ Ocean core water should output opaque alpha for normal ocean pixels. The current
 
 ## C# Binding and Render Feature Changes
 
+`CustomForwardRenderer` should:
+
+- be registered in `GraphicsCompositor.sdgfxcomp` in place of the main/editor `ForwardRenderer`, following the reference project's `CustomForwardRenderer` asset pattern
+- keep Stride's normal opaque, depth, shadow, transparent, and post-processing behavior unless a change is directly required for water ordering
+- generate the shared water refraction seed after opaque scene color is available and before Ocean/River water draws
+- draw Ocean before River bottom/surface, because Ocean samples the shared seed directly while River mutates a private `BottomColor` copy
+- keep remaining non-water transparent rendering after the explicit water chain, or document and test if water is intentionally the whole transparent stage
+
 `OceanRenderFeature` should:
 
-- request or generate the shared water refraction seed for the active scene color/depth
+- expose a renderer-callable water draw path or consume a renderer-bound per-view seed
 - bind the shared seed texture to `OceanSurface`
 - bind `_RefractionTextureSize`, `_ViewSize`, `_ViewMatrix`, `_CameraWorldPosition`, `_GlobalTime`, `_MapWorldSize`, and `_WaterHeight`
 - bind existing water textures from `OceanResourceLoader`
 - bind reflection cubemap/scene lighting through the existing water lighting path
 - use a depth state consistent with CK3-style water overlay: depth enabled, no depth write, strict `Less` if depth bias is required to avoid terrain z-fighting
 
-`RiverRenderFeature` should be adjusted to request the same shared seed before its bottom pass. Its `CopySceneSeedToBottomColor` step becomes a copy from the shared water seed into the river-specific `BottomColor` target.
+`RiverRenderFeature` should be adjusted so its bottom/surface chain can be driven by the custom forward renderer. Its `CopySceneSeedToBottomColor` step becomes a copy from the renderer-created shared water seed into the river-specific `BottomColor` target.
 
-The shared seed implementation can start as a small water rendering helper owned under `Terrain/Rendering/Water`, for example:
+The shared seed implementation can start as a small water rendering helper owned by the custom renderer under `Terrain/Rendering/Water`, for example:
 
 ```text
 WaterRefractionSeedResources
 WaterRefractionSeedRenderer
+CustomForwardRenderer
 WaterSceneSeed.sdsl or renamed RiverSceneSeed.sdsl
 ```
 
-The helper must cache per active scene color/depth dimensions and avoid generating the same seed twice for Ocean and River in one frame/view. If cache invalidation cannot be proven in the first implementation, correctness is more important than avoiding a duplicate draw, but the two features must still use the same payload encoding and one shared helper API.
+The renderer should generate the seed once per active scene color/depth/view pass. Since the custom renderer controls the water chain, it does not need a global static provider to coordinate two independent `RootRenderFeature` instances. If a helper cache is introduced, it should be owned by the renderer instance and invalidated by scene color/depth identity and dimensions.
 
 The implementation should prefer extracting shared helpers from river only when it reduces duplicated shader code and preserves behavior. A separate `WaterCore.sdsl` mixin is acceptable if it keeps river and ocean from diverging.
 
@@ -215,7 +228,9 @@ Automated tests should focus on deterministic contracts:
 - `OceanSurface.sdsl` does not output a hard-coded alpha `0.86`.
 - `OceanSurface.sdsl` contains CK3 core water tokens: water fade, see-through, refraction shore mask, foam shore mask, fresnel/reflection.
 - Shared water refraction seed code exists outside `RiverRenderFeature`.
-- `OceanRenderFeature` requests/binds the shared refraction seed texture.
+- A custom forward renderer exists and is registered in the graphics compositor for the main/editor path.
+- The custom forward renderer creates the shared refraction seed before Ocean/River water draws.
+- `OceanRenderFeature` binds or receives the shared refraction seed texture.
 - `RiverRenderFeature` seeds `BottomColor` from the shared refraction seed instead of generating a river-private seed.
 - `OceanRenderFeature` binds `_RefractionTextureSize`, `_ViewSize`, `_ViewMatrix`, `_CameraWorldPosition`, `_GlobalTime`, `_WaterHeight`, and `_MapWorldSize`.
 - `OceanRenderFeature` uses the Stride shader asset workflow generated keys for new shader parameters.
@@ -258,7 +273,8 @@ After implementation, capture a new project frame and compare:
 ## Risks
 
 - Sharing the current river refraction seed may expose assumptions about half-resolution payloads and alpha filtering. Ocean should match the existing payload decoder rather than inventing a full-resolution variant.
-- Coordinating a shared seed across two render features needs careful frame/view cache invalidation. If this is mishandled, Ocean and River could accidentally read stale scene payloads.
+- Replacing the stock `ForwardRenderer` with a custom renderer can accidentally regress shadows, depth SRV binding, opaque-as-SRV binding, post effects, MSAA resolve, or editor/single-view compositor behavior. The first implementation should copy the Stride/reference renderer structure closely and change only the water ordering points.
+- If water draws are pulled out of the generic transparent stage, non-water transparent objects must still render correctly and must not accidentally draw twice.
 - The current scene color before Ocean may still be overbright relative to CK3; refraction and water fade should reduce the water error, but terrain exposure may remain a separate issue.
 - Extracting a shared water core can destabilize river if done too aggressively. Keep river behavior unchanged unless tests and RenderDoc prove parity.
 - Depth bias and strict depth compare may need tuning for ocean shore overlap with terrain.
@@ -268,6 +284,7 @@ After implementation, capture a new project frame and compare:
 
 - The current simplified Ocean color path is replaced by a CK3-style core water path.
 - Ocean uses refraction scene payload instead of only direct scene lighting.
+- A custom forward renderer explicitly orders shared seed creation, Ocean, River bottom, and River surface.
 - Strategy-layer CK3 overlays remain absent by design.
 - SDSL generated keys and Stride asset compile are refreshed successfully.
 - Automated tests and solution build pass.
