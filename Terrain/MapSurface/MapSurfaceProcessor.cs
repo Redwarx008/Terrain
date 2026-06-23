@@ -31,6 +31,8 @@ public sealed class MapSurfaceProcessor : EntityProcessor<MapSurfaceComponent>
         MapSurfaceRuntimeState state = component.RuntimeState;
         if (component.TerrainEntity?.Get<TerrainComponent>() is not { } terrain)
         {
+            ClearRuntimeContext(state);
+            ClearOceanRuntimeInputIfPresent(component);
             LogMissingReferencesOnce(state);
             return;
         }
@@ -41,6 +43,8 @@ public sealed class MapSurfaceProcessor : EntityProcessor<MapSurfaceComponent>
             message => Log.Warning(message),
             out TerrainRuntimeResourceBundle? resources))
         {
+            ClearRuntimeContext(state);
+            ClearOceanRuntimeInputIfPresent(component);
             return;
         }
 
@@ -48,8 +52,8 @@ public sealed class MapSurfaceProcessor : EntityProcessor<MapSurfaceComponent>
 
         if (!terrain.IsInitialized || terrain.HeightmapWidth <= 0 || terrain.HeightmapHeight <= 0)
         {
-            state.ContextApplied = false;
-            state.Context = null;
+            ClearRuntimeContext(state);
+            ClearOceanRuntimeInputIfPresent(component);
             return;
         }
 
@@ -61,6 +65,17 @@ public sealed class MapSurfaceProcessor : EntityProcessor<MapSurfaceComponent>
         {
             ocean.ApplyRuntimeInput(new OceanRuntimeInput(resources.SeaLevel, mapWorldSize));
         }
+    }
+
+    private static void ClearRuntimeContext(MapSurfaceRuntimeState state)
+    {
+        state.ContextApplied = false;
+        state.Context = null;
+    }
+
+    private static void ClearOceanRuntimeInputIfPresent(MapSurfaceComponent component)
+    {
+        component.OceanEntity?.Get<OceanComponent>()?.ClearRuntimeInput();
     }
 
     private static void LogMissingReferencesOnce(MapSurfaceRuntimeState state)

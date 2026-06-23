@@ -10,6 +10,8 @@ namespace Terrain.Rendering.Ocean;
 
 public sealed class OceanRenderObject : RenderObject, IDisposable
 {
+    internal const float BoundsVerticalPadding = 8.0f;
+
     public Buffer? VertexBuffer { get; private set; }
     public Buffer? IndexBuffer { get; private set; }
     public MeshDraw? MeshDraw { get; private set; }
@@ -74,8 +76,8 @@ public sealed class OceanRenderObject : RenderObject, IDisposable
         };
         int[] indices = [0, 1, 2, 0, 2, 3];
         var bounds = new BoundingBox(
-            new Vector3(0.0f, seaLevel, 0.0f),
-            new Vector3(width, seaLevel, height));
+            new Vector3(0.0f, seaLevel - BoundsVerticalPadding, 0.0f),
+            new Vector3(width, seaLevel + BoundsVerticalPadding, height));
 
         return new OceanQuadData(vertices, indices, bounds, BoundingSphere.FromBox(bounds));
     }

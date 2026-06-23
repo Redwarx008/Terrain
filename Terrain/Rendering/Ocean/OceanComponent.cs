@@ -27,4 +27,9 @@ public sealed class OceanComponent : ActivableEntityComponent
 
         RuntimeInput = input;
     }
+
+    public void ClearRuntimeInput()
+    {
+        RuntimeInput = null;
+    }
 }

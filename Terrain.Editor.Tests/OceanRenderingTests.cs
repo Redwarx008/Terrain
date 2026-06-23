@@ -13,8 +13,10 @@ internal static class OceanRenderingTests
     {
         TestHarness.Run("ocean component uses ocean processor renderer", OceanComponentUsesOceanProcessorRenderer);
         TestHarness.Run("ocean component does not expose sea level property", OceanComponentDoesNotExposeSeaLevelProperty);
+        TestHarness.Run("ocean component clears runtime input", OceanComponentClearsRuntimeInput);
         TestHarness.Run("ocean vertex layout exposes position and uv", OceanVertexLayoutExposesPositionAndUv);
         TestHarness.Run("map surface applies ocean runtime input", MapSurfaceAppliesOceanRuntimeInput);
+        TestHarness.Run("map surface clears ocean runtime input when context unavailable", MapSurfaceClearsOceanRuntimeInputWhenContextUnavailable);
         TestHarness.Run("ocean render object builds full map quad data", OceanRenderObjectBuildsFullMapQuadData);
     }
 
@@ -38,6 +40,16 @@ internal static class OceanRenderingTests
         TestHarness.Assert(seaLevel == null, "SeaLevel should stay in map settings/runtime input, not OceanComponent public API");
     }
 
+    private static void OceanComponentClearsRuntimeInput()
+    {
+        var component = new OceanComponent();
+
+        component.ApplyRuntimeInput(new OceanRuntimeInput(7.5f, new Vector2(128.0f, 64.0f)));
+        component.ClearRuntimeInput();
+
+        TestHarness.Assert(component.RuntimeInput == null, "Ocean runtime input should be null after ClearRuntimeInput");
+    }
+
     private static void OceanVertexLayoutExposesPositionAndUv()
     {
         var elements = OceanVertex.Layout.VertexElements;
@@ -56,6 +68,15 @@ internal static class OceanRenderingTests
         TestHarness.Assert(source.Contains("ApplyRuntimeInput(new OceanRuntimeInput(resources.SeaLevel, mapWorldSize))", StringComparison.Ordinal), "MapSurfaceProcessor should apply sea level and map size to OceanRuntimeInput");
     }
 
+    private static void MapSurfaceClearsOceanRuntimeInputWhenContextUnavailable()
+    {
+        string source = ReadRepositoryText("Terrain/MapSurface/MapSurfaceProcessor.cs");
+
+        TestHarness.Assert(source.Contains("ClearRuntimeContext(state);", StringComparison.Ordinal), "MapSurfaceProcessor should clear stale terrain context when unavailable");
+        TestHarness.Assert(source.Contains("ClearOceanRuntimeInputIfPresent(component);", StringComparison.Ordinal), "MapSurfaceProcessor should clear stale ocean input when terrain context is unavailable");
+        TestHarness.Assert(source.Contains("component.OceanEntity?.Get<OceanComponent>()?.ClearRuntimeInput();", StringComparison.Ordinal), "MapSurfaceProcessor should clear ocean input without warning when OceanEntity is missing");
+    }
+
     private static void OceanRenderObjectBuildsFullMapQuadData()
     {
         var input = new OceanRuntimeInput(7.5f, new Vector2(128.0f, 64.0f));
@@ -66,9 +87,18 @@ internal static class OceanRenderingTests
 
         TestHarness.AssertEqual(4, quad.Vertices.Length, "Ocean quad vertex count");
         TestHarness.AssertEqual(6, quad.Indices.Length, "Ocean quad index count");
+        TestHarness.Assert(quad.Indices.SequenceEqual(new[] { 0, 1, 2, 0, 2, 3 }), "Ocean quad index order should stay stable");
         TestHarness.AssertEqual(new Vector4(0.0f, 7.5f, 0.0f, 1.0f), quad.Vertices[0].Position, "Ocean quad first corner");
+        TestHarness.AssertEqual(new Vector4(128.0f, 7.5f, 0.0f, 1.0f), quad.Vertices[1].Position, "Ocean quad second corner");
         TestHarness.AssertEqual(new Vector4(128.0f, 7.5f, 64.0f, 1.0f), quad.Vertices[2].Position, "Ocean quad opposite corner");
+        TestHarness.AssertEqual(new Vector4(0.0f, 7.5f, 64.0f, 1.0f), quad.Vertices[3].Position, "Ocean quad fourth corner");
         TestHarness.AssertEqual(new Vector2(1.0f, 1.0f), quad.Vertices[2].UV, "Ocean quad uv opposite corner");
+        Vector3 edgeA = quad.Vertices[1].Position.XYZ() - quad.Vertices[0].Position.XYZ();
+        Vector3 edgeB = quad.Vertices[2].Position.XYZ() - quad.Vertices[0].Position.XYZ();
+        TestHarness.Assert(Vector3.Cross(edgeA, edgeB).Y < 0.0f, "Ocean quad first triangle winding should stay stable");
+        TestHarness.AssertEqual(7.5f - OceanRenderObject.BoundsVerticalPadding, quad.BoundingBox.Minimum.Y, "Ocean bounds minimum y padding");
+        TestHarness.AssertEqual(7.5f + OceanRenderObject.BoundsVerticalPadding, quad.BoundingBox.Maximum.Y, "Ocean bounds maximum y padding");
+        TestHarness.Assert(quad.BoundingBox.Maximum.Y > quad.BoundingBox.Minimum.Y, "Ocean bounds should have non-zero Y thickness");
         TestHarness.AssertEqual(7.5f, renderObject.SeaLevel, "OceanRenderObject stores sea level");
         TestHarness.AssertEqual(new Vector2(128.0f, 64.0f), renderObject.MapWorldSize, "OceanRenderObject stores map size");
         TestHarness.AssertEqual(6, renderObject.IndexCount, "OceanRenderObject stores index count");
