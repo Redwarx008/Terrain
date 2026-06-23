@@ -37,6 +37,7 @@ public sealed class EditorMapDataScaffoldService
                 RiverMinWidth = 1.0f,
                 RiverMaxWidth = 4.0f,
                 RiverMaxVisibleCameraHeight = 3000.0f,
+                SeaLevel = 3.8f,
             });
     }
 

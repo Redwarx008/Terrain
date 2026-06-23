@@ -73,6 +73,10 @@ internal static class EditorResourceWriterTests
         TestHarness.Run("map definition reader defaults river camera visibility height", MapDefinitionReaderDefaultsRiverCameraVisibilityHeight);
         TestHarness.Run("map definition reader reads explicit river camera visibility height", MapDefinitionReaderReadsExplicitRiverCameraVisibilityHeight);
         TestHarness.Run("map definition reader rejects invalid river camera visibility height", MapDefinitionReaderRejectsInvalidRiverCameraVisibilityHeight);
+        TestHarness.Run("map definition reader defaults sea level", MapDefinitionReaderDefaultsSeaLevel);
+        TestHarness.Run("map definition reader reads explicit sea level", MapDefinitionReaderReadsExplicitSeaLevel);
+        TestHarness.Run("map definition reader rejects invalid sea level", MapDefinitionReaderRejectsInvalidSeaLevel);
+        TestHarness.Run("map definition writer rejects invalid sea level", MapDefinitionWriterRejectsInvalidSeaLevel);
         TestHarness.Run("map definition reader rejects invalid river width range", MapDefinitionReaderRejectsInvalidRiverWidthRange);
         TestHarness.Run("map definition reader rejects non-finite river width range", MapDefinitionReaderRejectsNonFiniteRiverWidthRange);
         TestHarness.Run("map definition writer rejects non-finite river width range", MapDefinitionWriterRejectsNonFiniteRiverWidthRange);
@@ -218,6 +222,7 @@ internal static class EditorResourceWriterTests
             RiverMinWidth = 2.0f,
             RiverMaxWidth = 6.0f,
             RiverMaxVisibleCameraHeight = 750.0f,
+            SeaLevel = 12.5f,
         });
 
         string text = File.ReadAllText(output);
@@ -233,6 +238,7 @@ internal static class EditorResourceWriterTests
         TestHarness.AssertEqual(2.0f, map.RiverMinWidth, "river min full width");
         TestHarness.AssertEqual(6.0f, map.RiverMaxWidth, "river max full width");
         TestHarness.AssertEqual(750.0f, map.RiverMaxVisibleCameraHeight, "river max visible camera height");
+        TestHarness.AssertEqual(12.5f, map.SeaLevel, "sea level");
     }
 
     private static void MapDefinitionWriterRewritesExistingHeaderWithFixedTemplate()
@@ -369,6 +375,68 @@ river_max_visible_camera_height = 0
             "non-positive river_max_visible_camera_height should be rejected");
     }
 
+    private static void MapDefinitionReaderDefaultsSeaLevel()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+""");
+
+        RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(output);
+
+        TestHarness.AssertEqual(3.8f, map.SeaLevel, "default sea level");
+    }
+
+    private static void MapDefinitionReaderReadsExplicitSeaLevel()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+sea_level = 12.5
+""");
+
+        RuntimeMapDefinition map = RuntimeMapDefinitionReader.ReadFrom(output);
+
+        TestHarness.AssertEqual(12.5f, map.SeaLevel, "explicit sea level");
+    }
+
+    private static void MapDefinitionReaderRejectsInvalidSeaLevel()
+    {
+        string root = CreateWorkspace();
+        string output = Path.Combine(root, "mod", "map", "default.toml");
+        WriteExistingFile(output, """
+version = 1
+
+[terrain]
+heightmap = "heightmap.png"
+terrain_data = "terrain.terrain"
+
+[settings]
+height_scale = 200
+sea_level = nan
+""");
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => RuntimeMapDefinitionReader.ReadFrom(output),
+            "non-finite sea_level should be rejected");
+    }
+
     private static void MapDefinitionReaderRejectsInvalidRiverWidthRange()
     {
         string root = CreateWorkspace();
@@ -485,6 +553,23 @@ river_max_width = inf
                 RiverMaxVisibleCameraHeight = 0.0f,
             }),
             "non-positive river_max_visible_camera_height should be rejected by writer");
+    }
+
+    private static void MapDefinitionWriterRejectsInvalidSeaLevel()
+    {
+        string root = CreateWorkspace();
+        var session = CreateSession(root);
+        var writer = new MapDefinitionWriter();
+
+        TestHarness.AssertThrows<InvalidDataException>(
+            () => writer.Write(session, new RuntimeMapDefinition
+            {
+                HeightmapPath = "heightmap.png",
+                TerrainDataPath = "terrain.terrain",
+                HeightScale = 200.0f,
+                SeaLevel = float.PositiveInfinity,
+            }),
+            "infinite sea_level should be rejected by writer");
     }
 
     private static void BiomeSettingsWriterPersistsMaterialIdReferences()

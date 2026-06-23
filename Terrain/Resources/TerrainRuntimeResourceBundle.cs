@@ -15,6 +15,7 @@ public sealed class TerrainRuntimeResourceBundle
     public float RiverMinWidth { get; init; } = 1.0f;
     public float RiverMaxWidth { get; init; } = 4.0f;
     public float RiverMaxVisibleCameraHeight { get; init; } = 3000.0f;
+    public float SeaLevel { get; init; } = 3.8f;
     public RuntimeMaterialDescriptor MaterialDescriptor { get; init; } = new();
     public List<RuntimeMaterialTextureSlot> MaterialTextureSlots { get; init; } = new();
     public List<string> Diagnostics { get; init; } = new();

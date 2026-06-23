@@ -19,7 +19,7 @@ public static class RuntimeMapDefinitionReader
         TomlNode terrain = RequireTable(root, "terrain", filePath);
         TomlNode settings = RequireTable(root, "settings", filePath);
         ValidateTableKeys(terrain, filePath, "terrain", "heightmap", "terrain_data", "rivers", "provinces");
-        ValidateTableKeys(settings, filePath, "settings", "height_scale", "river_min_width", "river_max_width", "river_max_visible_camera_height");
+        ValidateTableKeys(settings, filePath, "settings", "height_scale", "river_min_width", "river_max_width", "river_max_visible_camera_height", "sea_level");
 
         string heightmap = requireHeightmap
             ? RequireRelativePath(terrain, "heightmap", filePath)
@@ -33,6 +33,8 @@ public static class RuntimeMapDefinitionReader
         ValidateRiverWidthRange(riverMinWidth, riverMaxWidth, filePath);
         float riverMaxVisibleCameraHeight = ReadOptionalFloat(settings, "river_max_visible_camera_height", filePath, 3000.0f);
         ValidateRiverMaxVisibleCameraHeight(riverMaxVisibleCameraHeight, filePath);
+        float seaLevel = ReadOptionalFloat(settings, "sea_level", filePath, 3.8f);
+        ValidateSeaLevel(seaLevel, filePath);
 
         return new RuntimeMapDefinition
         {
@@ -44,6 +46,7 @@ public static class RuntimeMapDefinitionReader
             RiverMinWidth = riverMinWidth,
             RiverMaxWidth = riverMaxWidth,
             RiverMaxVisibleCameraHeight = riverMaxVisibleCameraHeight,
+            SeaLevel = seaLevel,
         };
     }
 
@@ -185,5 +188,11 @@ public static class RuntimeMapDefinitionReader
             throw new InvalidDataException($"river_max_visible_camera_height must be finite: {filePath}");
         if (value <= 0.0f)
             throw new InvalidDataException($"river_max_visible_camera_height must be greater than 0: {filePath}");
+    }
+
+    private static void ValidateSeaLevel(float value, string filePath)
+    {
+        if (!float.IsFinite(value))
+            throw new InvalidDataException($"sea_level must be finite: {filePath}");
     }
 }

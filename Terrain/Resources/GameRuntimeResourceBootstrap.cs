@@ -61,6 +61,7 @@ public sealed class GameRuntimeResourceBootstrap
             RiverMinWidth = mapDefinition.RiverMinWidth,
             RiverMaxWidth = mapDefinition.RiverMaxWidth,
             RiverMaxVisibleCameraHeight = mapDefinition.RiverMaxVisibleCameraHeight,
+            SeaLevel = mapDefinition.SeaLevel,
             MaterialDescriptor = materialDescriptor,
             MaterialTextureSlots = materialTextureSlots,
             Diagnostics = diagnostics,
