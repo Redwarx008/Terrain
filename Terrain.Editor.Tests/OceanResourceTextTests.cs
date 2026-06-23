@@ -9,6 +9,7 @@ internal static class OceanResourceTextTests
     public static void RunAll()
     {
         TestHarness.Run("ocean resource loader declares required water files", RequiredFileNamesIncludeSharedWaterFiles);
+        TestHarness.Run("ocean resource loader disposes textures before reload", OceanResourceLoaderDisposesTexturesBeforeReload);
         TestHarness.Run("ocean flowmap exists in local game resources", FlowmapExistsInLocalGameResources);
         TestHarness.Run("river resource loader keeps shared flowmap lifecycle", RiverResourceLoaderKeepsSharedFlowmapLifecycle);
         TestHarness.Run("ocean water textures are not bundle roots", OceanWaterTexturesAreNotBundleRoots);
@@ -32,6 +33,20 @@ internal static class OceanResourceTextTests
             TestHarness.Assert(OceanResourceLoader.RequiredFileNames.Contains(fileName), $"OceanResourceLoader.RequiredFileNames should include {fileName}");
 
         TestHarness.AssertEqual(expected.Length, OceanResourceLoader.RequiredFileNames.Count, "OceanResourceLoader.RequiredFileNames should only list the shared water files");
+    }
+
+    private static void OceanResourceLoaderDisposesTexturesBeforeReload()
+    {
+        string loader = ReadRepositoryText("Terrain/Rendering/Ocean/OceanResourceLoader.cs");
+
+        int loadStart = loader.IndexOf("public void Load(GraphicsDevice graphicsDevice)", StringComparison.Ordinal);
+        int disposeCall = loader.IndexOf("Dispose();", loadStart, StringComparison.Ordinal);
+        int firstTextureLoad = loader.IndexOf("WaterColor = LoadRequiredLocalTexture", loadStart, StringComparison.Ordinal);
+
+        TestHarness.Assert(loadStart >= 0, "OceanResourceLoader should expose Load(GraphicsDevice)");
+        TestHarness.Assert(disposeCall >= 0, "OceanResourceLoader.Load should dispose previous textures before reload");
+        TestHarness.Assert(firstTextureLoad >= 0, "OceanResourceLoader.Load should load water textures");
+        TestHarness.Assert(disposeCall < firstTextureLoad, "OceanResourceLoader.Load should dispose previous textures before loading replacements");
     }
 
     private static void FlowmapExistsInLocalGameResources()

@@ -56,6 +56,7 @@ public sealed class OceanResourceLoader : IDisposable
     public void Load(GraphicsDevice graphicsDevice)
     {
         ArgumentNullException.ThrowIfNull(graphicsDevice);
+        Dispose();
 
         string gameRoot = GameResourceRootLocator.FindFromTerrainAssembly();
         string waterDirectory = Path.Combine(gameRoot, "map", "water");
