@@ -56,22 +56,27 @@ The important conclusion is that geometry is not the gap. Both paths are sea-lev
 
 Keep the existing Ocean entity, component, processor, render object, and full-map quad.
 
-Extend `OceanRenderFeature` into a two-step water pass:
+Extract the current river-only refraction seed into a shared water refraction seed path:
 
 ```text
 Scene color + presenter depth
-  -> Ocean refraction seed texture
-  -> OceanSurface draw
-  -> main transparent/scene RT
+  -> shared Water refraction seed texture
+      -> OceanSurface draw
+      -> River bottom seed copy
+      -> River bottom/surface chain
 ```
 
-The seed texture mirrors the river refraction seed idea:
+This is not just a duplicated implementation. River and Ocean should consume the same seed texture for a given frame/view whenever both features draw against the same scene color/depth. CK3 event `1061` supports this model: ocean samples the same class of `RefractionTexture` payload that the water path uses elsewhere, rather than generating an ocean-only refraction source.
+
+The shared seed texture keeps the current river payload semantics:
 
 - RGB starts from current scene color.
 - Alpha stores camera-relative world-distance payload reconstructed from presenter depth.
-- Resolution can start at full scene size for correctness; half resolution can be introduced later only if the output is stable.
+- Resolution and packing must match the existing river surface decoder. The current river path uses a half-resolution `R16G16B16A16_FLOAT` payload and point/load alpha reads; Ocean must not introduce a second encoding.
 
-`OceanSurface.sdsl` should use the refraction seed plus current water textures to implement a CK3-style core water function. This function may reuse or extract logic from `RiverSurface.sdsl`, because river already contains much of the target CK3 water behavior.
+`OceanSurface.sdsl` should use the shared refraction seed plus current water textures to implement a CK3-style core water function. This function may reuse or extract logic from `RiverSurface.sdsl`, because river already contains much of the target CK3 water behavior.
+
+The River bottom chain still needs its own mutable `BottomColor` target because bottom writes river-bed color over the seed before river surface samples it. That target should be seeded from the shared water refraction seed, not from a river-private seed generation pass.
 
 ## Shader Design
 
@@ -163,14 +168,24 @@ Ocean core water should output opaque alpha for normal ocean pixels. The current
 
 `OceanRenderFeature` should:
 
-- allocate and maintain an Ocean refraction seed texture sized to the active scene color
-- resolve presenter depth as a shader resource, using the same assumptions and asserts as the river seed path
-- run a seed image effect before drawing Ocean
-- bind the seed texture to `OceanSurface`
+- request or generate the shared water refraction seed for the active scene color/depth
+- bind the shared seed texture to `OceanSurface`
 - bind `_RefractionTextureSize`, `_ViewSize`, `_ViewMatrix`, `_CameraWorldPosition`, `_GlobalTime`, `_MapWorldSize`, and `_WaterHeight`
 - bind existing water textures from `OceanResourceLoader`
 - bind reflection cubemap/scene lighting through the existing water lighting path
 - use a depth state consistent with CK3-style water overlay: depth enabled, no depth write, strict `Less` if depth bias is required to avoid terrain z-fighting
+
+`RiverRenderFeature` should be adjusted to request the same shared seed before its bottom pass. Its `CopySceneSeedToBottomColor` step becomes a copy from the shared water seed into the river-specific `BottomColor` target.
+
+The shared seed implementation can start as a small water rendering helper owned under `Terrain/Rendering/Water`, for example:
+
+```text
+WaterRefractionSeedResources
+WaterRefractionSeedRenderer
+WaterSceneSeed.sdsl or renamed RiverSceneSeed.sdsl
+```
+
+The helper must cache per active scene color/depth dimensions and avoid generating the same seed twice for Ocean and River in one frame/view. If cache invalidation cannot be proven in the first implementation, correctness is more important than avoiding a duplicate draw, but the two features must still use the same payload encoding and one shared helper API.
 
 The implementation should prefer extracting shared helpers from river only when it reduces duplicated shader code and preserves behavior. A separate `WaterCore.sdsl` mixin is acceptable if it keeps river and ocean from diverging.
 
@@ -199,7 +214,9 @@ Automated tests should focus on deterministic contracts:
 - `OceanSurface.sdsl` does not contain `ProvinceColor`, `BorderDistanceField`, `FogOfWar`, or `FlatMap`.
 - `OceanSurface.sdsl` does not output a hard-coded alpha `0.86`.
 - `OceanSurface.sdsl` contains CK3 core water tokens: water fade, see-through, refraction shore mask, foam shore mask, fresnel/reflection.
-- `OceanRenderFeature` allocates/binds a refraction seed texture.
+- Shared water refraction seed code exists outside `RiverRenderFeature`.
+- `OceanRenderFeature` requests/binds the shared refraction seed texture.
+- `RiverRenderFeature` seeds `BottomColor` from the shared refraction seed instead of generating a river-private seed.
 - `OceanRenderFeature` binds `_RefractionTextureSize`, `_ViewSize`, `_ViewMatrix`, `_CameraWorldPosition`, `_GlobalTime`, `_WaterHeight`, and `_MapWorldSize`.
 - `OceanRenderFeature` uses the Stride shader asset workflow generated keys for new shader parameters.
 
@@ -240,7 +257,8 @@ After implementation, capture a new project frame and compare:
 
 ## Risks
 
-- Reusing river refraction seed code may expose assumptions about half-resolution payloads and alpha filtering; Ocean should start with correctness over resolution optimization.
+- Sharing the current river refraction seed may expose assumptions about half-resolution payloads and alpha filtering. Ocean should match the existing payload decoder rather than inventing a full-resolution variant.
+- Coordinating a shared seed across two render features needs careful frame/view cache invalidation. If this is mishandled, Ocean and River could accidentally read stale scene payloads.
 - The current scene color before Ocean may still be overbright relative to CK3; refraction and water fade should reduce the water error, but terrain exposure may remain a separate issue.
 - Extracting a shared water core can destabilize river if done too aggressively. Keep river behavior unchanged unless tests and RenderDoc prove parity.
 - Depth bias and strict depth compare may need tuning for ocean shore overlap with terrain.
