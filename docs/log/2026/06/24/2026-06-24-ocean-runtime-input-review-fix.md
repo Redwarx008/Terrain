@@ -118,4 +118,3 @@
 
 **Gotchas for Next Session:**
 - Do not add ocean shader/render feature/resources/scene as part of this follow-up.
-
