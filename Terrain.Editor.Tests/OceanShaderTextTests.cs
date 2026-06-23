@@ -150,10 +150,12 @@ internal static class OceanShaderTextTests
 
         AssertContains(project, "<Compile Update=\"Effects\\Ocean\\OceanVertexStreams.sdsl.cs\">", "Terrain.csproj should compile generated OceanVertexStreams keys");
         AssertContains(project, "<Compile Update=\"Effects\\Ocean\\OceanSurface.sdsl.cs\">", "Terrain.csproj should compile generated OceanSurface keys");
-        AssertContains(project, "<None Update=\"Effects\\Ocean\\OceanVertexStreams.sdsl\">", "Terrain.csproj should register OceanVertexStreams for key generation");
-        AssertContains(project, "<None Update=\"Effects\\Ocean\\OceanSurface.sdsl\">", "Terrain.csproj should register OceanSurface for key generation");
-        AssertContains(project, "<LastGenOutput>OceanVertexStreams.sdsl.cs</LastGenOutput>", "Terrain.csproj should map OceanVertexStreams generated output");
-        AssertContains(project, "<LastGenOutput>OceanSurface.sdsl.cs</LastGenOutput>", "Terrain.csproj should map OceanSurface generated output");
+        AssertContains(project, "<None Remove=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should remove shader sources from the legacy None item type");
+        AssertContains(project, "<AdditionalFiles Include=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should include all SDSL files as Stride shader inputs");
+        AssertNotContains(project, "<None Update=\"Effects\\Ocean\\OceanVertexStreams.sdsl\">", "Terrain.csproj should not use the legacy None shader item type for OceanVertexStreams");
+        AssertNotContains(project, "<None Update=\"Effects\\Ocean\\OceanSurface.sdsl\">", "Terrain.csproj should not use the legacy None shader item type for OceanSurface");
+        AssertNotContains(project, "<LastGenOutput>OceanVertexStreams.sdsl.cs</LastGenOutput>", "Terrain.csproj should not use legacy LastGenOutput metadata for OceanVertexStreams");
+        AssertNotContains(project, "<LastGenOutput>OceanSurface.sdsl.cs</LastGenOutput>", "Terrain.csproj should not use legacy LastGenOutput metadata for OceanSurface");
     }
 
     private static string ReadRepositoryText(string relativePath)

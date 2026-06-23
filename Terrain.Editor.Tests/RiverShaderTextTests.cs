@@ -378,8 +378,10 @@ internal static class RiverShaderTextTests
 
         AssertContains(package, "!dir Effects", "Terrain.sdpkg should include the Effects folder that contains RiverStrideLighting.sdsl");
         AssertContains(project, "<Compile Update=\"Effects\\River\\RiverStrideLighting.sdsl.cs\">", "Terrain.csproj should compile generated RiverStrideLighting shader keys");
-        AssertContains(project, "<None Update=\"Effects\\River\\RiverStrideLighting.sdsl\">", "Terrain.csproj should register RiverStrideLighting for shader key generation metadata");
-        AssertContains(project, "<LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>", "Terrain.csproj should name the generated RiverStrideLighting key file");
+        AssertContains(project, "<None Remove=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should remove shader sources from the legacy None item type");
+        AssertContains(project, "<AdditionalFiles Include=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should include RiverStrideLighting as a Stride shader input through the Effects wildcard");
+        AssertNotContains(project, "<None Update=\"Effects\\River\\RiverStrideLighting.sdsl\">", "Terrain.csproj should not use the legacy None shader item type for RiverStrideLighting");
+        AssertNotContains(project, "<LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>", "Terrain.csproj should not use legacy LastGenOutput metadata for RiverStrideLighting");
     }
 
     private static void BottomShaderDoesNotApplyGlobalLightingEnergyBoost()
