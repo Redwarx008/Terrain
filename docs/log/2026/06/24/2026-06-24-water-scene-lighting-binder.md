@@ -112,4 +112,3 @@
 **Gotchas for Next Session:**
 - Do not modify river/ocean shaders just to reuse this binder.
 - If ocean gets separate lighting keys later, decide whether to generalize the binder key contract then.
-
