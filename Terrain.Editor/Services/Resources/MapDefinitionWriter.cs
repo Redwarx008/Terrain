@@ -37,6 +37,7 @@ public sealed class MapDefinitionWriter
         if (!float.IsFinite(mapDefinition.HeightScale) || mapDefinition.HeightScale <= 0.0f)
             throw new InvalidDataException("Map definition height_scale must be greater than 0.");
         ValidateRiverWidthRange(mapDefinition);
+        ValidateRiverMaxVisibleCameraHeight(mapDefinition.RiverMaxVisibleCameraHeight);
 
         var terrain = new TomlTable
         {
@@ -56,6 +57,7 @@ public sealed class MapDefinitionWriter
                 ["height_scale"] = mapDefinition.HeightScale,
                 ["river_min_width"] = mapDefinition.RiverMinWidth,
                 ["river_max_width"] = mapDefinition.RiverMaxWidth,
+                ["river_max_visible_camera_height"] = mapDefinition.RiverMaxVisibleCameraHeight,
             },
         };
 
@@ -72,6 +74,14 @@ public sealed class MapDefinitionWriter
             throw new InvalidDataException("Map definition river_min_width must be greater than 0.");
         if (mapDefinition.RiverMaxWidth < mapDefinition.RiverMinWidth)
             throw new InvalidDataException("Map definition river_max_width must be greater than or equal to river_min_width.");
+    }
+
+    private static void ValidateRiverMaxVisibleCameraHeight(float value)
+    {
+        if (!float.IsFinite(value))
+            throw new InvalidDataException("Map definition river_max_visible_camera_height must be finite.");
+        if (value <= 0.0f)
+            throw new InvalidDataException("Map definition river_max_visible_camera_height must be greater than 0.");
     }
 
     private static void AddOptionalPath(TomlTable table, string key, string? path)

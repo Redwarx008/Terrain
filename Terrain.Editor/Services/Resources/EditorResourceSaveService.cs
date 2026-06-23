@@ -28,7 +28,8 @@ public static class EditorResourceSaveService
             heightScale,
             descriptorSlots,
             biomeSnapshot,
-            progress: null);
+            progress: null,
+            riverMaxVisibleCameraHeight: session.MapDefinitionModel.RiverMaxVisibleCameraHeight);
     }
 
     public static void Save(
@@ -40,7 +41,8 @@ public static class EditorResourceSaveService
         float heightScale,
         IReadOnlyList<EditorMaterialDescriptorSlot> descriptorSlots,
         EditorBiomeSettingsSnapshot biomeSnapshot,
-        IProgress<AuthoringSaveProgress>? progress)
+        IProgress<AuthoringSaveProgress>? progress = null,
+        float? riverMaxVisibleCameraHeight = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(heightData);
@@ -64,6 +66,7 @@ public static class EditorResourceSaveService
             HeightScale = heightScale,
             RiverMinWidth = session.MapDefinitionModel.RiverMinWidth,
             RiverMaxWidth = session.MapDefinitionModel.RiverMaxWidth,
+            RiverMaxVisibleCameraHeight = riverMaxVisibleCameraHeight ?? session.MapDefinitionModel.RiverMaxVisibleCameraHeight,
         };
 
         var mapDefinitionWriter = new MapDefinitionWriter();

@@ -7,6 +7,7 @@
     <OutputType>WinExe</OutputType>
     <RootNamespace>Terrain</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <StrideGraphicsApi>Direct3D11</StrideGraphicsApi>
 
     <OutputPath>..\Bin\Windows\$(Configuration)\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

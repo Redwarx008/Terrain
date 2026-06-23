@@ -29,18 +29,11 @@ Hierarchy:
                         MaxScreenSpaceErrorPixels: 8.0
                         DefaultDiffuseTexture: 4ecb1370-7ee3-41d3-a06f-17ca7336ae72:Grid Gray 128x128
                         BaseColor: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}
-        -   Entity:
-                Id: c8f8f226-3477-45ec-84d8-d8e8de365e1b
-                Name: RiverSystem
-                Components:
-                    1e60bd75c1fd45a98b5f89b08207e4f7: !TransformComponent
-                        Id: 599af9e2-1c2b-4230-8c24-9f37111e5e55
-                        Position: {X: 0.0, Y: 0.0, Z: 0.0}
-                        Rotation: {X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
-                        Scale: {X: 1.0, Y: 1.0, Z: 1.0}
-                        Children: {}
-                    17d6e522e35445b2aa1dbed5dddb62db: !Terrain.Rendering.River.RiverComponent,Terrain
-                        Id: 764d8cb4-27be-4ed3-935f-3ed571bdc62e
+                    4d5de52bf26c840e156f1c8439ac01a7: !Terrain.TerrainWireframeModeController,Terrain
+                        Id: a877166d-6cb5-4ead-9c41-fd48ef94a0d5
+                        ToggleKey: D1
+                        DebugTextPosition: {X: 20, Y: 20}
+                        DebugLabel: Terrain Wireframe
         -   Entity:
                 Id: 5369f368-a858-4c5b-a2ce-287300ee54af
                 Name: Directional light
@@ -103,7 +96,7 @@ Hierarchy:
                 Components:
                     bd9dd2b12b569d51cfcbb31b7320e857: !TransformComponent
                         Id: dcf89739-6339-45d2-bf50-ede939802364
-                        Position: {X: 128.0, Y: 78.0, Z: -96.0}
+                        Position: {X: 4300.0, Y: 300.0, Z: -200.0}
                         Rotation: {X: -0.12059, Y: 0.898811, Z: 0.294469, W: 0.301606}
                         Scale: {X: 1.0, Y: 1.0, Z: 1.0}
                         Children: {}
@@ -124,3 +117,42 @@ Hierarchy:
                         KeyboardRotationSpeed: {X: 3.0, Y: 3.0}
                         MouseRotationSpeed: {X: 1.0, Y: 1.0}
                         TouchRotationSpeed: {X: 1.0, Y: 0.7}
+        -   Entity:
+                Id: c8f8f226-3477-45ec-84d8-d8e8de365e1b
+                Name: RiverSystem
+                Components:
+                    1e60bd75c1fd45a98b5f89b08207e4f7: !TransformComponent
+                        Id: 599af9e2-1c2b-4230-8c24-9f37111e5e55
+                        Position: {X: 0.0, Y: 0.0, Z: 0.0}
+                        Rotation: {X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
+                        Scale: {X: 1.0, Y: 1.0, Z: 1.0}
+                        Children: {}
+                    17d6e522e35445b2aa1dbed5dddb62db: !Terrain.Rendering.River.RiverComponent,Terrain
+                        Id: 764d8cb4-27be-4ed3-935f-3ed571bdc62e
+                        Settings:
+                            Visible: true
+                            ShowBottom: true
+                            ShowSurface: true
+                            TextureUvScale: 1.0
+                            FlowNormalUvScale: 0.4
+                            FlowNormalSpeed: 0.075
+                            RiverFoamFactor: 0.5
+                            NoiseScale: 0.25
+                            NoiseSpeed: 2.0
+                            FlattenMultiplier: 1.0
+                            OceanFadeRate: 0.8
+                            BankAmount: 0.0
+                            BankFade: 0.025
+                            Depth: 0.15
+                            DepthWidthPower: 2.0
+                            DepthFakeFactor: 2.0
+                            ParallaxIterations: 10
+                            BottomNormalStrength: 1.0
+                            BottomEnvironmentIntensity: 1.0
+                            FlatMapLerp: 0.0
+                            WaterRefractionScale: 500.0
+                            WaterRefractionShoreMaskDepth: 3.0
+                            WaterRefractionShoreMaskSharpness: 1.0
+                            WaterRefractionFade: 1.0
+                            WaterColorShallow: {X: 0.0055146287, Y: 0.0078107193, Z: 0.012086502, W: 1.0}
+                            WaterColorDeep: {X: 0.0001385075, Y: 0.0001974951, Z: 0.0002262951, W: 1.0}

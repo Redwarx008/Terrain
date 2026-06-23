@@ -520,6 +520,15 @@
                     <TextBlock Classes="sectionLabel" Text="TERRAIN" />
                     <CheckBox Content="Show Terrain" IsChecked="{Binding Settings.ShowTerrain}" />
                     <CheckBox Content="Show Rivers" IsChecked="{Binding Settings.ShowRivers}" />
+                    <Grid ColumnDefinitions="*,72" ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Classes="fieldLabel" Text="River Max Camera Height" />
+                        <Slider Minimum="1" Maximum="10000" Value="{Binding Settings.RiverMaxVisibleCameraHeight}" />
+                      </StackPanel>
+                      <TextBox Grid.Column="1" Classes="valueBox" IsReadOnly="True"
+                               Text="{Binding Settings.RiverMaxVisibleCameraHeight, StringFormat='{}{0:F0}'}"
+                               VerticalAlignment="Bottom" />
+                    </Grid>
                     <Grid ColumnDefinitions="*,48" ColumnSpacing="8">
                       <StackPanel Spacing="2">
                         <TextBlock Classes="fieldLabel" Text="Height Scale" />

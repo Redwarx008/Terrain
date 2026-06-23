@@ -381,6 +381,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             River.SetServices(_viewportHost.RiverRenderingService, _viewportHost.RiverMeshService);
             _viewportHost.RiverRenderingService.SetVisible(Settings.ShowRivers);
+            _viewportHost.RiverRenderingService.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
         }
     }
 
@@ -519,7 +520,7 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             await Task.Yield();
             var progress = new Progress<AuthoringSaveProgress>(UpdateSaveProgress);
-            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(progress);
+            var snapshot = terrainManager.CreateAuthoringSaveSnapshot(Settings.RiverMaxVisibleCameraHeight, progress);
             await Task.Run(() => terrainManager.SaveAuthoringResources(session, snapshot, progress));
             UpdateSaveProgress(AuthoringSaveProgress.Running(9, AuthoringSaveProgress.TotalSteps, "Refreshing editor state..."));
             _resourceSession = _bootstrapService.LoadCurrentSession();
@@ -1629,6 +1630,11 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             _viewportHost.RiverRenderingService?.SetVisible(Settings.ShowRivers);
         }
+        else if (e.PropertyName == nameof(SettingsViewModel.RiverMaxVisibleCameraHeight))
+        {
+            _viewportHost.RiverRenderingService?.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
+            EditorDirtyState.Instance.MarkDirty();
+        }
     }
 
     private void SyncSettingsFromTerrainManager()
@@ -1637,6 +1643,12 @@ public sealed partial class EditorShellViewModel : ObservableObject, IDisposable
         {
             Settings.ShowTerrain = manager.TerrainVisible;
             Settings.HeightScale = manager.HeightScale;
+            if (_resourceSession != null)
+            {
+                Settings.RiverMaxVisibleCameraHeight = _resourceSession.MapDefinitionModel.RiverMaxVisibleCameraHeight;
+            }
+
+            _viewportHost.RiverRenderingService?.SetMaxVisibleCameraHeight(Settings.RiverMaxVisibleCameraHeight);
         }
     }
 

@@ -360,11 +360,13 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
         if (session == null)
             throw new ArgumentNullException(nameof(session));
 
-        EditorAuthoringSaveSnapshot snapshot = CreateAuthoringSaveSnapshot(progress);
+        EditorAuthoringSaveSnapshot snapshot = CreateAuthoringSaveSnapshot(session.MapDefinitionModel.RiverMaxVisibleCameraHeight, progress);
         SaveAuthoringResources(session, snapshot, progress);
     }
 
-    public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(IProgress<AuthoringSaveProgress>? progress = null)
+    public EditorAuthoringSaveSnapshot CreateAuthoringSaveSnapshot(
+        float riverMaxVisibleCameraHeight = 3000.0f,
+        IProgress<AuthoringSaveProgress>? progress = null)
     {
         if (heightDataCache == null || heightDataWidth <= 0 || heightDataHeight <= 0)
             throw new InvalidOperationException("Heightmap data is not loaded.");
@@ -390,6 +392,7 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             heightDataHeight,
             biomeMask,
             HeightScale,
+            riverMaxVisibleCameraHeight,
             descriptorSlots,
             biomeSnapshot);
     }
@@ -413,7 +416,8 @@ public sealed class TerrainManager : IDisposable, IRiverMapSource, IRiverTerrain
             snapshot.HeightScale,
             snapshot.DescriptorSlots,
             snapshot.BiomeSnapshot,
-            progress);
+            progress,
+            snapshot.RiverMaxVisibleCameraHeight);
     }
 
     public BoundingBox GetTerrainBounds()

@@ -3,14 +3,14 @@
 ## Goal
 
 Add a configurable river visibility cutoff based on camera world height.
-When the active render camera reaches or exceeds the configured height, river rendering is skipped. The default cutoff is `1000.0`.
+When the active render camera reaches or exceeds the configured height, river rendering is skipped. The default cutoff is `3000.0`.
 
 ## User-Facing Contract
 
 `map/default.toml` gains a `[settings]` field:
 
 ```toml
-river_max_visible_camera_height = 1000.0
+river_max_visible_camera_height = 3000.0
 ```
 
 Meaning:
@@ -27,7 +27,7 @@ The cutoff belongs to river render settings, not river mesh generation or shader
 Data flow:
 
 1. `RuntimeMapDefinitionReader` reads `river_max_visible_camera_height` from `[settings]`.
-2. Missing legacy TOML fields fall back to `1000.0f`.
+2. Missing legacy TOML fields fall back to `3000.0f`.
 3. `RuntimeMapDefinition` carries `RiverMaxVisibleCameraHeight`.
 4. Editor resource loading syncs the value into `SettingsViewModel`.
 5. Editor settings changes sync into `RiverComponent.Settings`.
@@ -40,12 +40,12 @@ The render skip should happen before river seed, bottom, refraction, and surface
 
 ### Configuration Model
 
-Add `RuntimeMapDefinition.RiverMaxVisibleCameraHeight` with default `1000.0f`.
+Add `RuntimeMapDefinition.RiverMaxVisibleCameraHeight` with default `3000.0f`.
 
 `RuntimeMapDefinitionReader`:
 
 - Allows `river_max_visible_camera_height` in `[settings]`.
-- Reads it as an optional numeric field with fallback `1000.0f`.
+- Reads it as an optional numeric field with fallback `3000.0f`.
 - Rejects non-finite values and values below or equal to zero.
 
 `MapDefinitionWriter`:
@@ -59,7 +59,7 @@ Add `RuntimeMapDefinition.RiverMaxVisibleCameraHeight` with default `1000.0f`.
 
 ### Editor Settings
 
-Add `SettingsViewModel.RiverMaxVisibleCameraHeight`, defaulting to `1000.0f`.
+Add `SettingsViewModel.RiverMaxVisibleCameraHeight`, defaulting to `3000.0f`.
 
 Expose it in the Settings panel near `Show Rivers`, using a numeric editor suitable for heights greater than current terrain scale. The control should not be read-only.
 
@@ -86,13 +86,13 @@ If multiple river render objects are visible, all must agree on shared render se
 
 Invalid TOML values fail resource loading with a clear `InvalidDataException`, matching existing behavior for `height_scale`, `river_min_width`, and `river_max_width`.
 
-Missing values in old projects are accepted and default to `1000.0f`.
+Missing values in old projects are accepted and default to `3000.0f`.
 
 ## Testing
 
 Use deterministic tests for configuration and render wiring:
 
-- Reader accepts missing `river_max_visible_camera_height` and returns `1000.0f`.
+- Reader accepts missing `river_max_visible_camera_height` and returns `3000.0f`.
 - Reader reads an explicit value.
 - Reader rejects non-finite or non-positive values.
 - Writer writes the field and round-trips it.
@@ -108,4 +108,3 @@ Shader compile tests remain useful as smoke tests, but no shader changes are int
 - No river mesh regeneration when the cutoff changes.
 - No change to `rivers.png` parsing.
 - No CK3 shader semantic changes.
-

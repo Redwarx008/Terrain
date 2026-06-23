@@ -694,14 +694,14 @@ void TestRiverComponentVersioning()
 void RiverComponentRecordsRuntimeLoadFailureConfig()
 {
     var component = new Terrain.Rendering.River.RiverComponent();
-    var config = new Terrain.Rendering.River.RiverRuntimeLoadConfig("map/rivers.png", 1.0f, 4.0f, 200.0f, 4096, 2048);
+    var config = new Terrain.Rendering.River.RiverRuntimeLoadConfig("map/rivers.png", 1.0f, 4.0f, 1000.0f, 200.0f, 4096, 2048);
 
     component.MarkRuntimeLoadFailure(config);
 
     AssertEqual(Terrain.Rendering.River.RiverRuntimeLoadState.Failed, component.RuntimeLoadState, "runtime river state");
     Assert(!component.ShouldAttemptRuntimeLoad(config), "same failed config should not retry");
 
-    var changed = new Terrain.Rendering.River.RiverRuntimeLoadConfig("map/rivers.png", 2.0f, 4.0f, 200.0f, 4096, 2048);
+    var changed = new Terrain.Rendering.River.RiverRuntimeLoadConfig("map/rivers.png", 2.0f, 4.0f, 1000.0f, 200.0f, 4096, 2048);
     Assert(component.ShouldAttemptRuntimeLoad(changed), "changed failed config should retry");
 }
 

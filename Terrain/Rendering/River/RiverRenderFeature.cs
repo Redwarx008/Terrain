@@ -139,9 +139,15 @@ public sealed class RiverRenderFeature : RootRenderFeature
             return;
         }
 
-        DebugAssertPreparedRiverParametersMatch(riverParametersSource);
-        ApplyBottomParameters(bottomEffect, riverParametersSource);
-        ApplySurfaceParameters(surfaceEffect, riverParametersSource);
+        var riverSettings = GetRiverSettings(riverParametersSource);
+        if (riverSettings == null)
+        {
+            return;
+        }
+
+        DebugAssertPreparedRiverParametersMatch(riverParametersSource, riverSettings);
+        ApplyBottomParameters(bottomEffect, riverParametersSource, riverSettings);
+        ApplySurfaceParameters(surfaceEffect, riverParametersSource, riverSettings);
     }
 
     public override void Draw(RenderDrawContext context, RenderView renderView, RenderViewStage renderViewStage, int startIndex, int endIndex)
@@ -157,17 +163,26 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
         var graphicsDevice = context.GraphicsDevice;
         var commandList = context.CommandList;
-        int viewWidth = Math.Max(1, (int)renderView.ViewSize.X);
-        int viewHeight = Math.Max(1, (int)renderView.ViewSize.Y);
-        renderResources.EnsureResources(graphicsDevice, viewWidth, viewHeight);
+        Matrix.Invert(ref renderView.View, out var viewInverse);
+        var cameraWorldPosition = viewInverse.TranslationVector;
+        float riverMaxVisibleCameraHeight = ResolveRiverMaxVisibleCameraHeight(renderViewStage, startIndex, endIndex);
+        if (cameraWorldPosition.Y >= riverMaxVisibleCameraHeight)
+        {
+            return;
+        }
+
+        Texture? sceneColor = commandList.RenderTargetCount > 0 ? commandList.RenderTargets[0] : null;
+        if (sceneColor == null)
+        {
+            return;
+        }
+
+        renderResources.EnsureResources(graphicsDevice, sceneColor.ViewWidth, sceneColor.ViewHeight);
         if (renderResources.SceneSeedColor == null || renderResources.BottomColor == null || renderResources.BottomDepth == null)
         {
             return;
         }
-        Texture? sceneColor = commandList.RenderTargetCount > 0 ? commandList.RenderTargets[0] : null;
 
-        Matrix.Invert(ref renderView.View, out var viewInverse);
-        var cameraWorldPosition = viewInverse.TranslationVector;
         bottomEffect.Parameters.Set(RiverBottomKeys._CameraWorldPosition, cameraWorldPosition);
         surfaceEffect.Parameters.Set(RiverSurfaceKeys._CameraWorldPosition, cameraWorldPosition);
         float refractionMaxCameraHeight = ResolveRefractionMaxCameraHeight(renderViewStage, startIndex, endIndex);
@@ -221,8 +236,13 @@ public sealed class RiverRenderFeature : RootRenderFeature
         return null;
     }
 
+    private static RiverRenderSettings? GetRiverSettings(RiverRenderObject riverObject)
+    {
+        return (riverObject.Source as RiverComponent)?.Settings;
+    }
+
     [Conditional("DEBUG")]
-    private void DebugAssertPreparedRiverParametersMatch(RiverRenderObject source)
+    private void DebugAssertPreparedRiverParametersMatch(RiverRenderObject source, RiverRenderSettings sourceSettings)
     {
         foreach (var renderObject in RenderObjects)
         {
@@ -236,39 +256,45 @@ public sealed class RiverRenderFeature : RootRenderFeature
                 continue;
             }
 
+            var candidateSettings = GetRiverSettings(riverObject);
             Debug.Assert(
-                RiverParametersMatch(source, riverObject),
+                candidateSettings != null && RiverParametersMatch(source, sourceSettings, riverObject, candidateSettings),
                 "RiverRenderFeature binds non-frame river shader parameters once during Prepare; all drawable river objects must share those parameters.");
         }
     }
 
-    private static bool RiverParametersMatch(RiverRenderObject source, RiverRenderObject candidate)
+    private static bool RiverParametersMatch(
+        RiverRenderObject source,
+        RiverRenderSettings sourceSettings,
+        RiverRenderObject candidate,
+        RiverRenderSettings candidateSettings)
     {
         return source.MapExtent == candidate.MapExtent
             && source.MapWorldSize == candidate.MapWorldSize
-            && source.TextureUvScale == candidate.TextureUvScale
-            && source.FlowNormalUvScale == candidate.FlowNormalUvScale
-            && source.FlowNormalSpeed == candidate.FlowNormalSpeed
-            && source.RiverFoamFactor == candidate.RiverFoamFactor
-            && source.NoiseScale == candidate.NoiseScale
-            && source.NoiseSpeed == candidate.NoiseSpeed
-            && source.FlattenMultiplier == candidate.FlattenMultiplier
-            && source.OceanFadeRate == candidate.OceanFadeRate
-            && source.BankAmount == candidate.BankAmount
-            && source.BankFade == candidate.BankFade
-            && source.Depth == candidate.Depth
-            && source.DepthWidthPower == candidate.DepthWidthPower
-            && source.DepthFakeFactor == candidate.DepthFakeFactor
-            && source.ParallaxIterations == candidate.ParallaxIterations
-            && source.BottomNormalStrength == candidate.BottomNormalStrength
-            && source.BottomEnvironmentIntensity == candidate.BottomEnvironmentIntensity
-            && source.FlatMapLerp == candidate.FlatMapLerp
-            && source.WaterRefractionScale == candidate.WaterRefractionScale
-            && source.WaterRefractionShoreMaskDepth == candidate.WaterRefractionShoreMaskDepth
-            && source.WaterRefractionShoreMaskSharpness == candidate.WaterRefractionShoreMaskSharpness
-            && source.WaterRefractionFade == candidate.WaterRefractionFade
-            && source.WaterColorShallow == candidate.WaterColorShallow
-            && source.WaterColorDeep == candidate.WaterColorDeep;
+            && sourceSettings.TextureUvScale == candidateSettings.TextureUvScale
+            && sourceSettings.FlowNormalUvScale == candidateSettings.FlowNormalUvScale
+            && sourceSettings.RiverMaxVisibleCameraHeight == candidateSettings.RiverMaxVisibleCameraHeight
+            && sourceSettings.FlowNormalSpeed == candidateSettings.FlowNormalSpeed
+            && sourceSettings.RiverFoamFactor == candidateSettings.RiverFoamFactor
+            && sourceSettings.NoiseScale == candidateSettings.NoiseScale
+            && sourceSettings.NoiseSpeed == candidateSettings.NoiseSpeed
+            && sourceSettings.FlattenMultiplier == candidateSettings.FlattenMultiplier
+            && sourceSettings.OceanFadeRate == candidateSettings.OceanFadeRate
+            && sourceSettings.BankAmount == candidateSettings.BankAmount
+            && sourceSettings.BankFade == candidateSettings.BankFade
+            && sourceSettings.Depth == candidateSettings.Depth
+            && sourceSettings.DepthWidthPower == candidateSettings.DepthWidthPower
+            && sourceSettings.DepthFakeFactor == candidateSettings.DepthFakeFactor
+            && sourceSettings.ParallaxIterations == candidateSettings.ParallaxIterations
+            && sourceSettings.BottomNormalStrength == candidateSettings.BottomNormalStrength
+            && sourceSettings.BottomEnvironmentIntensity == candidateSettings.BottomEnvironmentIntensity
+            && sourceSettings.FlatMapLerp == candidateSettings.FlatMapLerp
+            && sourceSettings.WaterRefractionScale == candidateSettings.WaterRefractionScale
+            && sourceSettings.WaterRefractionShoreMaskDepth == candidateSettings.WaterRefractionShoreMaskDepth
+            && sourceSettings.WaterRefractionShoreMaskSharpness == candidateSettings.WaterRefractionShoreMaskSharpness
+            && sourceSettings.WaterRefractionFade == candidateSettings.WaterRefractionFade
+            && sourceSettings.WaterColorShallow == candidateSettings.WaterColorShallow
+            && sourceSettings.WaterColorDeep == candidateSettings.WaterColorDeep;
     }
 
     private float ResolveRefractionMaxCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)
@@ -285,6 +311,27 @@ public sealed class RiverRenderFeature : RootRenderFeature
         }
 
         return maxHeight;
+    }
+
+    private float ResolveRiverMaxVisibleCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)
+    {
+        float maxVisibleCameraHeight = 3000.0f;
+        bool foundRiverObject = false;
+        for (int index = startIndex; index < endIndex; index++)
+        {
+            var renderNodeReference = renderViewStage.SortedRenderNodes[index].RenderNode;
+            var renderNode = GetRenderNode(renderNodeReference);
+            if (renderNode.RenderObject is RiverRenderObject riverObject && riverObject.Enabled)
+            {
+                float riverMaxVisibleCameraHeight = GetRiverSettings(riverObject)?.RiverMaxVisibleCameraHeight ?? 3000.0f;
+                maxVisibleCameraHeight = foundRiverObject
+                    ? MathF.Max(maxVisibleCameraHeight, riverMaxVisibleCameraHeight)
+                    : riverMaxVisibleCameraHeight;
+                foundRiverObject = true;
+            }
+        }
+
+        return maxVisibleCameraHeight;
     }
 
     private void SeedSceneColorFromScene(RenderDrawContext context, RenderView renderView, Texture? sceneColor, float refractionMaxCameraHeight)
@@ -620,41 +667,41 @@ public sealed class RiverRenderFeature : RootRenderFeature
         return lightSkybox.Skybox?.SpecularLightingParameters.Get(SkyboxKeys.CubeMap);
     }
 
-    private static void ApplyBottomParameters(DynamicEffectInstance effect, RiverRenderObject riverObject)
+    private static void ApplyBottomParameters(DynamicEffectInstance effect, RiverRenderObject riverObject, RiverRenderSettings settings)
     {
         effect.Parameters.Set(RiverBottomKeys._MapExtent, riverObject.MapExtent);
-        effect.Parameters.Set(RiverBottomKeys._TextureUvScale, riverObject.TextureUvScale);
-        effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, riverObject.OceanFadeRate);
-        effect.Parameters.Set(RiverBottomKeys._BankAmount, riverObject.BankAmount);
-        effect.Parameters.Set(RiverBottomKeys._BankFade, riverObject.BankFade);
-        effect.Parameters.Set(RiverBottomKeys._Depth, riverObject.Depth);
-        effect.Parameters.Set(RiverBottomKeys._DepthWidthPower, riverObject.DepthWidthPower);
-        effect.Parameters.Set(RiverBottomKeys._DepthFakeFactor, riverObject.DepthFakeFactor);
-        effect.Parameters.Set(RiverBottomKeys._ParallaxIterations, riverObject.ParallaxIterations);
-        effect.Parameters.Set(RiverBottomKeys._BottomNormalStrength, riverObject.BottomNormalStrength);
-        effect.Parameters.Set(RiverBottomKeys._BottomEnvironmentIntensity, riverObject.BottomEnvironmentIntensity);
+        effect.Parameters.Set(RiverBottomKeys._TextureUvScale, settings.TextureUvScale);
+        effect.Parameters.Set(RiverBottomKeys._OceanFadeRate, settings.OceanFadeRate);
+        effect.Parameters.Set(RiverBottomKeys._BankAmount, settings.BankAmount);
+        effect.Parameters.Set(RiverBottomKeys._BankFade, settings.BankFade);
+        effect.Parameters.Set(RiverBottomKeys._Depth, settings.Depth);
+        effect.Parameters.Set(RiverBottomKeys._DepthWidthPower, settings.DepthWidthPower);
+        effect.Parameters.Set(RiverBottomKeys._DepthFakeFactor, settings.DepthFakeFactor);
+        effect.Parameters.Set(RiverBottomKeys._ParallaxIterations, settings.ParallaxIterations);
+        effect.Parameters.Set(RiverBottomKeys._BottomNormalStrength, settings.BottomNormalStrength);
+        effect.Parameters.Set(RiverBottomKeys._BottomEnvironmentIntensity, settings.BottomEnvironmentIntensity);
     }
 
-    private static void ApplySurfaceParameters(DynamicEffectInstance effect, RiverRenderObject riverObject)
+    private static void ApplySurfaceParameters(DynamicEffectInstance effect, RiverRenderObject riverObject, RiverRenderSettings settings)
     {
         effect.Parameters.Set(RiverSurfaceKeys._MapExtent, riverObject.MapExtent);
         effect.Parameters.Set(RiverSurfaceKeys._MapWorldSize, riverObject.MapWorldSize);
-        effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, riverObject.FlowNormalUvScale);
-        effect.Parameters.Set(RiverSurfaceKeys._FlowNormalSpeed, riverObject.FlowNormalSpeed);
-        effect.Parameters.Set(RiverSurfaceKeys._RiverFoamFactor, riverObject.RiverFoamFactor);
-        effect.Parameters.Set(RiverSurfaceKeys._NoiseScale, riverObject.NoiseScale);
-        effect.Parameters.Set(RiverSurfaceKeys._NoiseSpeed, riverObject.NoiseSpeed);
-        effect.Parameters.Set(RiverSurfaceKeys._FlattenMult, riverObject.FlattenMultiplier);
-        effect.Parameters.Set(RiverSurfaceKeys._Depth, riverObject.Depth);
-        effect.Parameters.Set(RiverSurfaceKeys._DepthWidthPower, riverObject.DepthWidthPower);
-        effect.Parameters.Set(RiverSurfaceKeys._BankFade, riverObject.BankFade);
-        effect.Parameters.Set(RiverSurfaceKeys._FlatMapLerp, riverObject.FlatMapLerp);
-        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionScale, riverObject.WaterRefractionScale);
-        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionShoreMaskDepth, riverObject.WaterRefractionShoreMaskDepth);
-        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionShoreMaskSharpness, riverObject.WaterRefractionShoreMaskSharpness);
-        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionFade, riverObject.WaterRefractionFade);
-        effect.Parameters.Set(RiverSurfaceKeys.WaterColorShallow, riverObject.WaterColorShallow);
-        effect.Parameters.Set(RiverSurfaceKeys.WaterColorDeep, riverObject.WaterColorDeep);
+        effect.Parameters.Set(RiverSurfaceKeys._FlowNormalUvScale, settings.FlowNormalUvScale);
+        effect.Parameters.Set(RiverSurfaceKeys._FlowNormalSpeed, settings.FlowNormalSpeed);
+        effect.Parameters.Set(RiverSurfaceKeys._RiverFoamFactor, settings.RiverFoamFactor);
+        effect.Parameters.Set(RiverSurfaceKeys._NoiseScale, settings.NoiseScale);
+        effect.Parameters.Set(RiverSurfaceKeys._NoiseSpeed, settings.NoiseSpeed);
+        effect.Parameters.Set(RiverSurfaceKeys._FlattenMult, settings.FlattenMultiplier);
+        effect.Parameters.Set(RiverSurfaceKeys._Depth, settings.Depth);
+        effect.Parameters.Set(RiverSurfaceKeys._DepthWidthPower, settings.DepthWidthPower);
+        effect.Parameters.Set(RiverSurfaceKeys._BankFade, settings.BankFade);
+        effect.Parameters.Set(RiverSurfaceKeys._FlatMapLerp, settings.FlatMapLerp);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionScale, settings.WaterRefractionScale);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionShoreMaskDepth, settings.WaterRefractionShoreMaskDepth);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionShoreMaskSharpness, settings.WaterRefractionShoreMaskSharpness);
+        effect.Parameters.Set(RiverSurfaceKeys._WaterRefractionFade, settings.WaterRefractionFade);
+        effect.Parameters.Set(RiverSurfaceKeys.WaterColorShallow, settings.WaterColorShallow);
+        effect.Parameters.Set(RiverSurfaceKeys.WaterColorDeep, settings.WaterColorDeep);
     }
 
     private static void ApplyViewParameters(DynamicEffectInstance effect, RenderView renderView)
