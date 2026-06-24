@@ -65,8 +65,8 @@ Hierarchy:
                         Id: 4a201570-4168-403c-8af5-b8f3c9050d78
                         Visible: true
                         Material:
-                            ShallowColor: {R: 0.08, G: 0.32, B: 0.42}
-                            DeepColor: {R: 0.01, G: 0.08, B: 0.16}
+                            ShallowColor: {R: 0.035, G: 0.09, B: 0.11}
+                            DeepColor: {R: 0.006, G: 0.024, B: 0.034}
                             Roughness: 0.08
                             WaveScale: 1.0
         -   Entity:

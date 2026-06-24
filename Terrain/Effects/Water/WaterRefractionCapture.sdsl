@@ -2,15 +2,6 @@ namespace Terrain
 {
     shader WaterRefractionCapture : ImageEffectShader, DepthBase, Transformation, RiverCommon
     {
-        stage float _RefractionCaptureExposure = 1.0f;
-        stage float _RefractionCaptureColorScale = 1.5f;
-
-        float3 CompressRefractionCaptureColor(float3 color)
-        {
-            float3 hdrColor = max(color * _RefractionCaptureExposure, float3(0.0f, 0.0f, 0.0f));
-            return (hdrColor / (1.0f + hdrColor)) * _RefractionCaptureColorScale;
-        }
-
         float ComputeRefractionCaptureDistanceFromUV(float2 uv)
         {
             float zProjDepth = GetZProjDepthFromUV(uv);
@@ -24,7 +15,7 @@ namespace Terrain
         stage override float4 Shading()
         {
             float2 uv = streams.TexCoord;
-            float3 capturedColor = CompressRefractionCaptureColor(Texture0.Sample(LinearSampler, uv).rgb);
+            float3 capturedColor = Texture0.Sample(LinearSampler, uv).rgb;
             float sceneDistance = ComputeRefractionCaptureDistanceFromUV(uv);
             return float4(capturedColor, sceneDistance);
         }

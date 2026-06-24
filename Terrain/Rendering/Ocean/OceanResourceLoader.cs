@@ -61,14 +61,14 @@ public sealed class OceanResourceLoader : IDisposable
         string gameRoot = GameResourceRootLocator.FindFromTerrainAssembly();
         string waterDirectory = Path.Combine(gameRoot, "map", "water");
 
-        WaterColor = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, WaterColorFileName);
-        AmbientNormal = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, AmbientNormalFileName);
-        FlowMap = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FlowMapFileName);
-        FlowNormal = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FlowNormalFileName);
-        Foam = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamFileName);
-        FoamRamp = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamRampFileName);
-        FoamMap = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamMapFileName);
-        FoamNoise = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamNoiseFileName);
+        WaterColor = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, WaterColorFileName, loadAsSrgb: true);
+        AmbientNormal = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, AmbientNormalFileName, loadAsSrgb: false);
+        FlowMap = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FlowMapFileName, loadAsSrgb: false);
+        FlowNormal = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FlowNormalFileName, loadAsSrgb: false);
+        Foam = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamFileName, loadAsSrgb: true);
+        FoamRamp = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamRampFileName, loadAsSrgb: true);
+        FoamMap = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamMapFileName, loadAsSrgb: false);
+        FoamNoise = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamNoiseFileName, loadAsSrgb: false);
     }
 
     public void Dispose()
@@ -92,7 +92,7 @@ public sealed class OceanResourceLoader : IDisposable
         FoamNoise = null;
     }
 
-    private static Texture LoadRequiredLocalTexture(GraphicsDevice graphicsDevice, string directory, string fileName)
+    private static Texture LoadRequiredLocalTexture(GraphicsDevice graphicsDevice, string directory, string fileName, bool loadAsSrgb)
     {
         string path = Path.Combine(directory, fileName);
         if (!File.Exists(path))
@@ -106,7 +106,7 @@ public sealed class OceanResourceLoader : IDisposable
             stream,
             TextureFlags.ShaderResource,
             GraphicsResourceUsage.Immutable,
-            loadAsSrgb: false);
+            loadAsSrgb: loadAsSrgb);
     }
 
 }

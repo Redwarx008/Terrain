@@ -62,8 +62,6 @@ public sealed class WaterRefractionCapturePass : IDisposable
             effect.Parameters.Set(TransformationKeys.ViewInverse, ref viewInverse);
             effect.Parameters.Set(TransformationKeys.Eye, new Vector4(viewInverse.TranslationVector, 1.0f));
             effect.Parameters.Set(RiverCommonKeys._RefractionMaxCameraHeight, refractionMaxCameraHeight);
-            effect.Parameters.Set(WaterRefractionCaptureKeys._RefractionCaptureExposure, 1.0f);
-            effect.Parameters.Set(WaterRefractionCaptureKeys._RefractionCaptureColorScale, 1.5f);
             Matrix.Invert(ref renderView.Projection, out var projectionInverse);
             effect.Parameters.Set(TransformationKeys.ProjectionInverse, ref projectionInverse);
             effect.Parameters.Set(TexturingKeys.Sampler, context.GraphicsDevice.SamplerStates.LinearClamp);

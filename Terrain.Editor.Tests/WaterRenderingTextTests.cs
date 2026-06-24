@@ -67,6 +67,8 @@ internal static class WaterRenderingTextTests
         AssertContains(pass, "context.Resolver.ResolveDepthStencil(sceneDepthSource)", "WaterRefractionCapturePass should resolve the renderer supplied depth source.");
         AssertNotContains(pass, "GraphicsDevice.Presenter.DepthStencilBuffer", "WaterRefractionCapturePass should not infer scene depth from the presenter.");
         AssertNotContains(pass, "GetPresenterSceneDepthSource", "WaterRefractionCapturePass should not use a presenter-depth fallback.");
+        AssertNotContains(pass, "_RefractionCaptureExposure", "WaterRefractionCapturePass should not bind non-CK3 scene color exposure.");
+        AssertNotContains(pass, "_RefractionCaptureColorScale", "WaterRefractionCapturePass should not bind non-CK3 scene color scaling.");
     }
 
     private static void WaterRefractionCaptureResourcesUseHalfFloatTarget()
@@ -87,6 +89,10 @@ internal static class WaterRenderingTextTests
         string shader = File.ReadAllText(shaderPath);
         AssertContains(shader, "shader WaterRefractionCapture : ImageEffectShader, DepthBase, Transformation, RiverCommon", "WaterRefractionCapture shader should inherit the target image/depth/river helpers.");
         AssertContains(shader, "RiverCompressWorldSpace(positionWS.xyz, Eye.xyz)", "WaterRefractionCapture shader should pack camera-relative river world space.");
+        AssertContains(shader, "float3 capturedColor = Texture0.Sample(LinearSampler, uv).rgb;", "WaterRefractionCapture should pass scene color RGB through like CK3.");
+        AssertNotContains(shader, "hdrColor / (1.0f + hdrColor)", "WaterRefractionCapture should not tone-map scene color RGB.");
+        AssertNotContains(shader, "_RefractionCaptureColorScale", "WaterRefractionCapture should not scale compressed scene color RGB.");
+        AssertNotContains(shader, "CompressRefractionCaptureColor", "WaterRefractionCapture should not keep a non-CK3 scene color compression helper.");
     }
 
     private static void WaterRefractionCaptureUsesCurrentRendererDepth()

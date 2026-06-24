@@ -9,10 +9,10 @@ namespace Terrain.Rendering.Ocean;
 public sealed class OceanMaterialSettings
 {
     [DataMember(10)]
-    public Color3 ShallowColor { get; set; } = new(0.08f, 0.32f, 0.42f);
+    public Color3 ShallowColor { get; set; } = new(0.035f, 0.09f, 0.11f);
 
     [DataMember(20)]
-    public Color3 DeepColor { get; set; } = new(0.01f, 0.08f, 0.16f);
+    public Color3 DeepColor { get; set; } = new(0.006f, 0.024f, 0.034f);
 
     [DataMember(30)]
     public float Roughness { get; set; } = 0.08f;

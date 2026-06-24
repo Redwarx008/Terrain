@@ -18,8 +18,8 @@ namespace Terrain
 {
     public static partial class OceanSurfaceKeys
     {
-        public static readonly ValueParameterKey<Vector4> ShallowColor = ParameterKeys.NewValue<Vector4>(new Vector4(0.08f,0.32f,0.42f,1.0f));
-        public static readonly ValueParameterKey<Vector4> DeepColor = ParameterKeys.NewValue<Vector4>(new Vector4(0.01f,0.08f,0.16f,1.0f));
+        public static readonly ValueParameterKey<Vector4> ShallowColor = ParameterKeys.NewValue<Vector4>(new Vector4(0.035f,0.09f,0.11f,1.0f));
+        public static readonly ValueParameterKey<Vector4> DeepColor = ParameterKeys.NewValue<Vector4>(new Vector4(0.006f,0.024f,0.034f,1.0f));
         public static readonly ValueParameterKey<float> _OceanRoughness = ParameterKeys.NewValue<float>(0.08f);
         public static readonly ValueParameterKey<float> _WaveScale = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _WaterHeight = ParameterKeys.NewValue<float>(3.0f);
@@ -51,10 +51,11 @@ namespace Terrain
         public static readonly ValueParameterKey<float> _WaterWave3Speed = ParameterKeys.NewValue<float>(0.005f);
         public static readonly ValueParameterKey<float> _WaterWave3NormalFlatten = ParameterKeys.NewValue<float>(1.5f);
         public static readonly ValueParameterKey<float> _WaterAmbientNormalFlatten = ParameterKeys.NewValue<float>(1.0f);
-        public static readonly ValueParameterKey<float> _WaterFlowNormalScale = ParameterKeys.NewValue<float>(8.0f);
+        public static readonly ValueParameterKey<float> _OceanWaveSpeedScale = ParameterKeys.NewValue<float>(0.2f);
+        public static readonly ValueParameterKey<float> _OceanFlowSpeedScale = ParameterKeys.NewValue<float>(0.2f);
+        public static readonly ValueParameterKey<float> _WaterFlowNormalScale = ParameterKeys.NewValue<float>(0.025f);
         public static readonly ValueParameterKey<float> _WaterFlowNormalFlatten = ParameterKeys.NewValue<float>(1.5f);
         public static readonly ValueParameterKey<Vector2> _WaterFlowMapSize = ParameterKeys.NewValue<Vector2>(new Vector2(256.0f,256.0f));
-        public static readonly ValueParameterKey<float> _WaterFlowNormalSpeed = ParameterKeys.NewValue<float>(0.05f);
         public static readonly ValueParameterKey<float> _WaterFoamScale = ParameterKeys.NewValue<float>(0.3f);
         public static readonly ValueParameterKey<float> _WaterFoamDistortFactor = ParameterKeys.NewValue<float>(0.1f);
         public static readonly ValueParameterKey<float> _WaterFoamNoiseScale = ParameterKeys.NewValue<float>(0.005f);
@@ -63,10 +64,21 @@ namespace Terrain
         public static readonly ValueParameterKey<float> _WaterFresnelBias = ParameterKeys.NewValue<float>(0.01f);
         public static readonly ValueParameterKey<float> _WaterFresnelPow = ParameterKeys.NewValue<float>(4.3f);
         public static readonly ValueParameterKey<float> _WaterReflectionNormalFlatten = ParameterKeys.NewValue<float>(3.0f);
-        public static readonly ValueParameterKey<float> _WaterReflectionIntensity = ParameterKeys.NewValue<float>(1.0f);
-        public static readonly ValueParameterKey<float> _WaterSpecular = ParameterKeys.NewValue<float>(0.05f);
-        public static readonly ValueParameterKey<float> _WaterGlossBase = ParameterKeys.NewValue<float>(0.7f);
-        public static readonly ValueParameterKey<float> _WaterGlossScale = ParameterKeys.NewValue<float>(1.0f);
+        public static readonly ValueParameterKey<float> _WaterReflectionIntensity = ParameterKeys.NewValue<float>(0.10f);
+        public static readonly ValueParameterKey<float> _WaterSpecular = ParameterKeys.NewValue<float>(0.01f);
+        public static readonly ValueParameterKey<float> _WaterGlossBase = ParameterKeys.NewValue<float>(1.15f);
+        public static readonly ValueParameterKey<float> _WaterGlossScale = ParameterKeys.NewValue<float>(0.1f);
+        public static readonly ValueParameterKey<float> _WaterDiffuseMultiplier = ParameterKeys.NewValue<float>(0.20f);
+        public static readonly ValueParameterKey<float> _OceanSceneLightingScale = ParameterKeys.NewValue<float>(0.18f);
+        public static readonly ValueParameterKey<float> _OceanRefractionColorScale = ParameterKeys.NewValue<float>(0.30f);
+        public static readonly ValueParameterKey<float> _OceanWaterColorTextureInfluence = ParameterKeys.NewValue<float>(0.20f);
+        public static readonly ValueParameterKey<Vector3> _OceanDisplayDeepBase = ParameterKeys.NewValue<Vector3>(new Vector3(0.115f,0.185f,0.213f));
+        public static readonly ValueParameterKey<Vector3> _OceanDisplayDeepReference = ParameterKeys.NewValue<Vector3>(new Vector3(0.065f,0.128f,0.146f));
+        public static readonly ValueParameterKey<float> _OceanDisplayDeepDetailGain = ParameterKeys.NewValue<float>(2.0f);
+        public static readonly ValueParameterKey<float> _OceanDisplayShallowGain = ParameterKeys.NewValue<float>(0.8f);
+        public static readonly ValueParameterKey<Vector3> _OceanDisplayShallowBias = ParameterKeys.NewValue<Vector3>(new Vector3(0.16f,0.22f,0.20f));
+        public static readonly ValueParameterKey<float> _OceanDisplayShallowDepth = ParameterKeys.NewValue<float>(6.0f);
+        public static readonly ValueParameterKey<float> _OceanDisplayResponseStrength = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ObjectParameterKey<Texture> WaterColorTexture = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<Texture> AmbientNormalTexture = ParameterKeys.NewObject<Texture>();
         public static readonly ObjectParameterKey<Texture> FlowMapTexture = ParameterKeys.NewObject<Texture>();

@@ -2,8 +2,8 @@ namespace Terrain
 {
     shader OceanSurface : ShaderBase, TransformationWAndVP, OceanVertexStreams, RiverStrideLighting
     {
-        stage float4 ShallowColor = float4(0.08f, 0.32f, 0.42f, 1.0f);
-        stage float4 DeepColor = float4(0.01f, 0.08f, 0.16f, 1.0f);
+        stage float4 ShallowColor = float4(0.035f, 0.09f, 0.11f, 1.0f);
+        stage float4 DeepColor = float4(0.006f, 0.024f, 0.034f, 1.0f);
         stage float _OceanRoughness = 0.08f;
         stage float _WaveScale = 1.0f;
         stage float _WaterHeight = 3.0f;
@@ -37,11 +37,12 @@ namespace Terrain
         stage float _WaterWave3Speed = 0.005f;
         stage float _WaterWave3NormalFlatten = 1.5f;
         stage float _WaterAmbientNormalFlatten = 1.0f;
+        stage float _OceanWaveSpeedScale = 0.2f;
+        stage float _OceanFlowSpeedScale = 0.2f;
 
-        stage float _WaterFlowNormalScale = 8.0f;
+        stage float _WaterFlowNormalScale = 0.025f;
         stage float _WaterFlowNormalFlatten = 1.5f;
         stage float2 _WaterFlowMapSize = float2(256.0f, 256.0f);
-        stage float _WaterFlowNormalSpeed = 0.05f;
 
         stage float _WaterFoamScale = 0.3f;
         stage float _WaterFoamDistortFactor = 0.1f;
@@ -52,10 +53,21 @@ namespace Terrain
         stage float _WaterFresnelBias = 0.01f;
         stage float _WaterFresnelPow = 4.3f;
         stage float _WaterReflectionNormalFlatten = 3.0f;
-        stage float _WaterReflectionIntensity = 1.0f;
-        stage float _WaterSpecular = 0.05f;
-        stage float _WaterGlossBase = 0.7f;
-        stage float _WaterGlossScale = 1.0f;
+        stage float _WaterReflectionIntensity = 0.10f;
+        stage float _WaterSpecular = 0.01f;
+        stage float _WaterGlossBase = 1.15f;
+        stage float _WaterGlossScale = 0.1f;
+        stage float _WaterDiffuseMultiplier = 0.20f;
+        stage float _OceanSceneLightingScale = 0.18f;
+        stage float _OceanRefractionColorScale = 0.30f;
+        stage float _OceanWaterColorTextureInfluence = 0.20f;
+        stage float3 _OceanDisplayDeepBase = float3(0.115f, 0.185f, 0.213f);
+        stage float3 _OceanDisplayDeepReference = float3(0.065f, 0.128f, 0.146f);
+        stage float _OceanDisplayDeepDetailGain = 2.0f;
+        stage float _OceanDisplayShallowGain = 0.8f;
+        stage float3 _OceanDisplayShallowBias = float3(0.16f, 0.22f, 0.20f);
+        stage float _OceanDisplayShallowDepth = 6.0f;
+        stage float _OceanDisplayResponseStrength = 1.0f;
 
         stage Texture2D<float4> WaterColorTexture;
         stage Texture2D<float4> AmbientNormalTexture;
@@ -159,8 +171,8 @@ namespace Terrain
             float refractionDepth = WorldSpacePos.y - refractionWorldPosition.y;
 
             float2 refractionWorldUv = ComputeMapWorldUv(refractionWorldPosition);
-            float3 refractionWaterColorMap = lerp(WaterColor, WaterColorTexture.Sample(OceanTextureSampler, refractionWorldUv).rgb, 0.5f);
-            return CalcTerrainUnderwaterSeeThrough(refractionDepth, refractionWorldPosition, refractionWaterColorMap, refractionSample.rgb);
+            float3 refractionWaterColorMap = lerp(WaterColor, WaterColorTexture.Sample(OceanTextureSampler, refractionWorldUv).rgb, _OceanWaterColorTextureInfluence);
+            return CalcTerrainUnderwaterSeeThrough(refractionDepth, refractionWorldPosition, refractionWaterColorMap, refractionSample.rgb * _OceanRefractionColorScale);
         }
 
         float3 DecodeWaterNormal(float4 packedNormal)
@@ -187,55 +199,75 @@ namespace Terrain
         {
             float waveScale = max(_WaveScale, 0.0001f);
             float2 uvCoord = worldUv * float2(1.0f, -1.0f) * waveScale;
-            float3 normalMap1 = SampleNormalMapTexture(AmbientNormalTexture, uvCoord, _WaterWave1Scale, _WaterWave1Rotation, _GlobalTime * _WaterWave1Speed, _WaterWave1NormalFlatten * _WaterAmbientNormalFlatten);
-            float3 normalMap2 = SampleNormalMapTexture(AmbientNormalTexture, uvCoord, _WaterWave2Scale, _WaterWave2Rotation, _GlobalTime * _WaterWave2Speed, _WaterWave2NormalFlatten * _WaterAmbientNormalFlatten);
-            float3 normalMap3 = SampleNormalMapTexture(AmbientNormalTexture, uvCoord, _WaterWave3Scale, _WaterWave3Rotation, _GlobalTime * _WaterWave3Speed, _WaterWave3NormalFlatten * _WaterAmbientNormalFlatten);
+            float waveTime = _GlobalTime * _OceanWaveSpeedScale;
+            float3 normalMap1 = SampleNormalMapTexture(AmbientNormalTexture, uvCoord, _WaterWave1Scale, _WaterWave1Rotation, waveTime * _WaterWave1Speed, _WaterWave1NormalFlatten * _WaterAmbientNormalFlatten);
+            float3 normalMap2 = SampleNormalMapTexture(AmbientNormalTexture, uvCoord, _WaterWave2Scale, _WaterWave2Rotation, waveTime * _WaterWave2Speed, _WaterWave2NormalFlatten * _WaterAmbientNormalFlatten);
+            float3 normalMap3 = SampleNormalMapTexture(AmbientNormalTexture, uvCoord, _WaterWave3Scale, _WaterWave3Rotation, waveTime * _WaterWave3Speed, _WaterWave3NormalFlatten * _WaterAmbientNormalFlatten);
             return normalMap1 + normalMap2 + normalMap3;
         }
 
-        float4 LoadFlowMapCell(float2 cellCoord)
+        float2 MulFlowMatrix(float2 row0, float2 row1, float2 value)
         {
-            float2 maxCoord = max(_WaterFlowMapSize - float2(1.0f, 1.0f), float2(0.0f, 0.0f));
-            return FlowMapTexture.Load(int3(int2(clamp(cellCoord, float2(0.0f, 0.0f), maxCoord)), 0));
+            return float2(dot(row0, value), dot(row1, value));
         }
 
-        float3 SampleFlowNormalFromCell(float2 worldUv, float4 flowCell)
+        float4 SampleFlowTexture(float2 flowCoord, float2 normalCoord, float2 offset, float2 ddxValue, float2 ddyValue)
         {
-            float2 flowVector = flowCell.rg * 2.0f - 1.0f;
-            float2 flowUv = worldUv * max(_WaterFlowNormalScale, 0.0001f) + flowVector * (_WaterFlowTime * _WaterFlowNormalSpeed);
-            float3 flowNormal = DecodeWaterNormal(FlowNormalTexture.Sample(OceanTextureSampler, flowUv)).xzy;
-            flowNormal.y *= _WaterFlowNormalFlatten;
-            return normalize(flowNormal);
+            float3 flowMap = FlowMapTexture.SampleLevel(OceanTextureSampler, flowCoord, 0.0f).rgb;
+            float2 flowDir = flowMap.xy * 2.0f - 1.0f;
+            flowDir = flowDir / (length(flowDir) + 0.000001f);
+
+            float2 flowRotRow0 = float2(-flowDir.y, flowDir.x);
+            float2 flowRotRow1 = float2(-flowDir.x, -flowDir.y);
+            float2 flowInvRotRow0 = float2(-flowDir.y, -flowDir.x);
+            float2 flowInvRotRow1 = float2(flowDir.x, -flowDir.y);
+
+            // CK3 computes gradients from NormalCoord before applying the flow inverse rotation.
+            float2 normalUv = MulFlowMatrix(flowInvRotRow0, flowInvRotRow1, normalCoord) - offset * flowMap.b;
+            float4 packedNormal = FlowNormalTexture.SampleGrad(OceanTextureSampler, normalUv, ddxValue, ddyValue);
+            float3 normal = DecodeWaterNormal(packedNormal).xzy;
+            normal.y *= 1.0f / max(0.01f, flowMap.b);
+            normal.xz = MulFlowMatrix(flowRotRow0, flowRotRow1, normal.xz);
+
+            return float4(normal, packedNormal.a * flowMap.b);
         }
 
-        SFlowNormalSample SampleFlowNormal(float2 worldUv)
+        SFlowNormalSample SampleFlowNormal(float2 flowMapUv, float2 normalMapUv)
         {
-            float2 flowTexel = saturate(worldUv) * max(_WaterFlowMapSize, float2(1.0f, 1.0f)) - float2(0.5f, 0.5f);
-            float2 flowCell = floor(flowTexel);
-            float2 flowCellFrac = frac(flowTexel);
+            float flowMapScale = 1.5f;
+            float2 flowCoordScale = max(_WaterFlowMapSize * flowMapScale, float2(1.0f, 1.0f));
+            float2 flowCoord = flowMapUv * flowCoordScale;
+            float2 blendFactor = abs(2.0f * frac(flowCoord) - 1.0f) - 0.5f;
+            blendFactor = 0.5f - 4.0f * blendFactor * blendFactor * blendFactor;
 
-            float4 flow00 = LoadFlowMapCell(flowCell + float2(0.0f, 0.0f));
-            float4 flow10 = LoadFlowMapCell(flowCell + float2(1.0f, 0.0f));
-            float4 flow01 = LoadFlowMapCell(flowCell + float2(0.0f, 1.0f));
-            float4 flow11 = LoadFlowMapCell(flowCell + float2(1.0f, 1.0f));
+            float2 normalCoord = normalMapUv * _WaterFlowNormalScale;
+            float2 ddxValue = ddx(normalCoord);
+            float2 ddyValue = ddy(normalCoord);
+            float2 offset = float2(0.0f, -_WaterFlowTime * _OceanFlowSpeedScale);
 
-            float3 normal00 = SampleFlowNormalFromCell(worldUv, flow00);
-            float3 normal10 = SampleFlowNormalFromCell(worldUv, flow10);
-            float3 normal01 = SampleFlowNormalFromCell(worldUv, flow01);
-            float3 normal11 = SampleFlowNormalFromCell(worldUv, flow11);
+            float4 sample1 = SampleFlowTexture(floor(flowCoord) / flowCoordScale, normalCoord, offset, ddxValue, ddyValue);
+            float4 sample2 = SampleFlowTexture(floor(flowCoord + float2(0.5f, 0.0f)) / flowCoordScale, normalCoord, offset, ddxValue, ddyValue);
+            float4 sample3 = SampleFlowTexture(floor(flowCoord + float2(0.0f, 0.5f)) / flowCoordScale, normalCoord, offset, ddxValue, ddyValue);
+            float4 sample4 = SampleFlowTexture(floor(flowCoord + float2(0.5f, 0.5f)) / flowCoordScale, normalCoord, offset, ddxValue, ddyValue);
+
+            float4 sample12 = lerp(sample2, sample1, blendFactor.x);
+            float4 sample34 = lerp(sample4, sample3, blendFactor.x);
+            float4 sample = lerp(sample34, sample12, blendFactor.y);
+            sample.y *= _WaterFlowNormalFlatten;
 
             SFlowNormalSample result;
-            result.Normal = normalize(lerp(lerp(normal00, normal10, flowCellFrac.x), lerp(normal01, normal11, flowCellFrac.x), flowCellFrac.y));
-            result.FoamMask = lerp(lerp(flow00.a, flow10.a, flowCellFrac.x), lerp(flow01.a, flow11.a, flowCellFrac.x), flowCellFrac.y);
+            result.Normal = normalize(sample.xyz);
+            result.FoamMask = sample.a;
             return result;
         }
 
         float CalcFoamFactor(float2 worldUv, float2 worldSpacePosXZ, float depth, float flowFoamMask, float3 flowNormal)
         {
             float2 noiseUv = worldSpacePosXZ * _WaterFoamNoiseScale;
-            float foamNoise1 = FoamNoiseTexture.Sample(OceanTextureSampler, noiseUv + float2(1.0f, 1.0f) * _GlobalTime * _WaterFoamNoiseSpeed).r * 0.75f;
-            float foamNoise2 = (FoamNoiseTexture.Sample(OceanTextureSampler, noiseUv * 3.0f + float2(1.0f, -1.0f) * _GlobalTime * _WaterFoamNoiseSpeed).r - 0.5f) * 0.5f;
-            float foamNoise3 = (FoamNoiseTexture.Sample(OceanTextureSampler, noiseUv * 5.0f + float2(-1.0f, 0.0f) * _GlobalTime * _WaterFoamNoiseSpeed).r - 0.5f) * 0.25f;
+            float foamTime = _GlobalTime * _OceanWaveSpeedScale;
+            float foamNoise1 = FoamNoiseTexture.Sample(OceanTextureSampler, noiseUv + float2(1.0f, 1.0f) * foamTime * _WaterFoamNoiseSpeed).r * 0.75f;
+            float foamNoise2 = (FoamNoiseTexture.Sample(OceanTextureSampler, noiseUv * 3.0f + float2(1.0f, -1.0f) * foamTime * _WaterFoamNoiseSpeed).r - 0.5f) * 0.5f;
+            float foamNoise3 = (FoamNoiseTexture.Sample(OceanTextureSampler, noiseUv * 5.0f + float2(-1.0f, 0.0f) * foamTime * _WaterFoamNoiseSpeed).r - 0.5f) * 0.25f;
             float foamNoise = foamNoise1 + foamNoise2 + foamNoise3;
 
             float foamMap = 1.0f - FoamMapTexture.Sample(OceanTextureSampler, worldUv).r;
@@ -260,6 +292,28 @@ namespace Terrain
             return EnvironmentMapTexture.SampleLevel(EnvironmentMapSampler, sampleDirection, 0.0f).rgb * _EnvironmentIntensity * _WaterReflectionIntensity;
         }
 
+        float3 ComputeOceanLighting(float3 diffuseColor, float3 specularColor, float glossiness, float3 normal, float3 viewDir, float shadow)
+        {
+            normal = normalize(normal);
+            viewDir = normalize(viewDir);
+            float3 lightDir = RiverStrideGetMainLightDirection();
+            float3 scaledLightColorNdotL = RiverStrideGetMainLightColorNdotL(normal, shadow) * _OceanSceneLightingScale;
+            float3 directDiffuse = RiverStrideComputeDirectDiffuse(diffuseColor, scaledLightColorNdotL);
+            float3 directSpecular = RiverStrideComputeDirectSpecular(specularColor, glossiness, normal, viewDir, lightDir, scaledLightColorNdotL);
+            float3 environmentDiffuse = RiverStrideComputeEnvironmentDiffuse(diffuseColor, normal, _OceanSceneLightingScale);
+            float3 environmentSpecular = RiverStrideComputeEnvironmentSpecular(specularColor, glossiness, normal, viewDir, _OceanSceneLightingScale);
+            return directDiffuse + directSpecular + environmentDiffuse + environmentSpecular;
+        }
+
+        float3 ApplyOceanDisplayResponse(float3 finalColor, float baseRefractionDepth)
+        {
+            float shallowMask = saturate(1.0f - baseRefractionDepth / max(_OceanDisplayShallowDepth, 0.0001f));
+            float3 deepColor = _OceanDisplayDeepBase + (finalColor - _OceanDisplayDeepReference) * _OceanDisplayDeepDetailGain;
+            float3 shallowColor = finalColor * _OceanDisplayShallowGain + _OceanDisplayShallowBias;
+            float3 displayColor = max(lerp(deepColor, shallowColor, shallowMask), float3(0.0f, 0.0f, 0.0f));
+            return lerp(finalColor, displayColor, saturate(_OceanDisplayResponseStrength));
+        }
+
         stage override void PSMain()
         {
             float3 worldPosition = streams.PositionWS.xyz;
@@ -268,9 +322,9 @@ namespace Terrain
 
             float4 waterColorAndSpec = WaterColorTexture.Sample(OceanTextureSampler, worldUv);
             float3 textureWaterColor = lerp(ShallowColor.rgb, DeepColor.rgb, saturate(waterColorAndSpec.b));
-            textureWaterColor = lerp(textureWaterColor, waterColorAndSpec.rgb, saturate(waterColorAndSpec.a));
+            textureWaterColor = lerp(textureWaterColor, waterColorAndSpec.rgb, saturate(waterColorAndSpec.a * _OceanWaterColorTextureInfluence));
 
-            SFlowNormalSample flowNormal = SampleFlowNormal(worldUv);
+            SFlowNormalSample flowNormal = SampleFlowNormal(worldUv, worldPosition.xz);
             float3 ambientNormal = SampleAmbientNormal(worldUv);
             float3 waterNormal = normalize(ambientNormal + flowNormal.Normal);
 
@@ -280,20 +334,20 @@ namespace Terrain
 
             float3 toCameraDir = normalize(_CameraWorldPosition - worldPosition);
             float facing = 1.0f - max(dot(waterNormal, toCameraDir), 0.0f);
-            float glossiness = saturate((1.0f - _OceanRoughness) * _WaterGlossScale + _WaterGlossBase * waterColorAndSpec.a);
-            float3 waterDiffuse = lerp(DeepColor.rgb, ShallowColor.rgb, facing) * textureWaterColor;
+            float mappedGlossiness = max(_WaterGlossBase, waterColorAndSpec.a);
+            float glossiness = saturate(mappedGlossiness * _WaterGlossScale * saturate(1.0f - _OceanRoughness));
+            float3 waterDiffuse = textureWaterColor * _WaterDiffuseMultiplier;
 
             float3 lightDir = RiverStrideGetMainLightDirection();
             float shadow = RiverStrideEvaluateSceneShadow(worldPosition, 0.0f, lightDir, streams.DepthVS);
             float3 waterSpecularColor = float3(_WaterSpecular, _WaterSpecular, _WaterSpecular);
-            float3 litWater = RiverStrideComputeLighting(
+            float3 litWater = ComputeOceanLighting(
                 waterDiffuse + foam,
                 waterSpecularColor,
                 glossiness,
                 waterNormal,
                 toCameraDir,
-                shadow,
-                1.0f);
+                shadow);
 
             float3 refractionColor = CalcRefraction(worldPosition, waterNormal, streams.ShadingPosition.xy, textureWaterColor, baseRefractionDepth);
             float3 reflectionColor = CalcReflection(waterNormal, toCameraDir);
@@ -301,6 +355,7 @@ namespace Terrain
 
             float3 finalColor = litWater * waterFade;
             finalColor += lerp(refractionColor, reflectionColor, fresnel);
+            finalColor = ApplyOceanDisplayResponse(finalColor, baseRefractionDepth);
             streams.ColorTarget = float4(finalColor, 1.0f);
         }
     };

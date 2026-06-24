@@ -49,8 +49,8 @@ internal static class OceanShaderTextTests
 
         AssertContains(shader, "WaterColorTexture.Sample", "OceanSurface should sample WaterColorTexture");
         AssertContains(shader, "SampleNormalMapTexture(AmbientNormalTexture", "OceanSurface should sample AmbientNormalTexture through the ambient normal helper");
-        AssertContains(shader, "FlowMapTexture.Load", "OceanSurface should load four flowmap cells for unfiltered interpolation");
-        AssertContains(shader, "FlowNormalTexture.Sample", "OceanSurface should sample FlowNormalTexture");
+        AssertContains(shader, "FlowMapTexture.SampleLevel", "OceanSurface should sample FlowMapTexture through the CK3 flow normal path");
+        AssertContains(shader, "FlowNormalTexture.SampleGrad", "OceanSurface should sample FlowNormalTexture with explicit derivatives");
         AssertContains(shader, "FoamTexture.Sample", "OceanSurface should sample FoamTexture");
         AssertContains(shader, "FoamRampTexture.SampleLevel", "OceanSurface should sample FoamRampTexture");
         AssertContains(shader, "FoamMapTexture.Sample", "OceanSurface should sample FoamMapTexture");
@@ -87,13 +87,25 @@ internal static class OceanShaderTextTests
             "stage float2 _WaterWave1Scale",
             "stage float2 _WaterWave2Scale",
             "stage float2 _WaterWave3Scale",
+            "stage float _OceanWaveSpeedScale",
             "stage float _WaterFlowNormalScale",
             "stage float _WaterFlowNormalFlatten",
+            "stage float _OceanFlowSpeedScale",
             "stage float _WaterFlowTime",
             "stage float2 _WaterFlowMapSize",
             "stage float _WaterFresnelBias",
             "stage float _WaterFresnelPow",
             "stage float _WaterReflectionIntensity",
+            "stage float _OceanSceneLightingScale",
+            "stage float _OceanRefractionColorScale",
+            "stage float _OceanWaterColorTextureInfluence",
+            "stage float3 _OceanDisplayDeepBase",
+            "stage float3 _OceanDisplayDeepReference",
+            "stage float _OceanDisplayDeepDetailGain",
+            "stage float _OceanDisplayShallowGain",
+            "stage float3 _OceanDisplayShallowBias",
+            "stage float _OceanDisplayShallowDepth",
+            "stage float _OceanDisplayResponseStrength",
         ];
 
         foreach (string parameter in stageParameters)
@@ -119,15 +131,58 @@ internal static class OceanShaderTextTests
         AssertContains(shader, "FoamRampTexture.SampleLevel", "OceanSurface should sample foam ramp without mip/filter drift");
         AssertContains(shader, "0.5f / 256.0f", "OceanSurface should clamp foam ramp U by half a texel");
         AssertContains(shader, "1.0f - 0.5f / 256.0f", "OceanSurface should clamp foam ramp upper bound by half a texel");
-        AssertContains(shader, "float4 flow00", "OceanSurface should sample the first neighboring flowmap cell");
-        AssertContains(shader, "float4 flow10", "OceanSurface should sample the second neighboring flowmap cell");
-        AssertContains(shader, "float4 flow01", "OceanSurface should sample the third neighboring flowmap cell");
-        AssertContains(shader, "float4 flow11", "OceanSurface should sample the fourth neighboring flowmap cell");
-        AssertContains(shader, "lerp(lerp(normal00, normal10", "OceanSurface should interpolate the four flow normals");
+        AssertContains(shader, "float flowMapScale = 1.5f;", "OceanSurface should use CK3's flow map upscale before blending cells");
+        AssertContains(shader, "blendFactor = 0.5f - 4.0f * blendFactor * blendFactor * blendFactor;", "OceanSurface should use CK3's cubic flow blend factor");
+        AssertContains(shader, "float4 sample1 = SampleFlowTexture(floor(flowCoord) / flowCoordScale", "OceanSurface should sample the first CK3 flow phase");
+        AssertContains(shader, "float4 sample2 = SampleFlowTexture(floor(flowCoord + float2(0.5f, 0.0f)) / flowCoordScale", "OceanSurface should sample the second CK3 flow phase");
+        AssertContains(shader, "float4 sample3 = SampleFlowTexture(floor(flowCoord + float2(0.0f, 0.5f)) / flowCoordScale", "OceanSurface should sample the third CK3 flow phase");
+        AssertContains(shader, "float4 sample4 = SampleFlowTexture(floor(flowCoord + float2(0.5f, 0.5f)) / flowCoordScale", "OceanSurface should sample the fourth CK3 flow phase");
+        AssertContains(shader, "float4 sample12 = lerp(sample2, sample1, blendFactor.x);", "OceanSurface should blend the first two CK3 flow phases");
+        AssertContains(shader, "float4 sample = lerp(sample34, sample12, blendFactor.y);", "OceanSurface should blend CK3 flow phases by Y");
+        AssertContains(shader, "normal.xz = MulFlowMatrix(flowRotRow0, flowRotRow1, normal.xz);", "OceanSurface should rotate flow normals back into world flow space");
+        AssertContains(shader, "CK3 computes gradients from NormalCoord before applying the flow inverse rotation.", "OceanSurface should document the CK3 SampleGrad gradient convention");
+        AssertContains(shader, "FlowNormalTexture.SampleGrad(OceanTextureSampler, normalUv, ddxValue, ddyValue);", "OceanSurface should preserve CK3's explicit unrotated flow-normal gradients");
         AssertContains(shader, "normalMap1 + normalMap2 + normalMap3", "OceanSurface should combine three ambient normal layers");
         AssertContains(shader, "CalcReflection", "OceanSurface should keep reflection in a named helper");
         AssertContains(shader, "EnvironmentMapTexture.SampleLevel", "OceanSurface should sample the shared environment map for reflection");
+        AssertContains(shader, "stage float _WaterFlowNormalScale = 0.025f;", "OceanSurface should use the CK3 ocean flow-normal scale captured at EID 1061");
+        AssertContains(shader, "stage float _WaterDiffuseMultiplier = 0.20f;", "OceanSurface should keep a low diffuse term instead of copying CK3's zero diffuse");
+        AssertContains(shader, "stage float _WaterSpecular = 0.01f;", "OceanSurface should default to the captured conservative water specular factor");
+        AssertContains(shader, "stage float _WaterGlossBase = 1.15f;", "OceanSurface should default to the captured CK3 water gloss base");
+        AssertContains(shader, "stage float _WaterGlossScale = 0.1f;", "OceanSurface should default to the captured CK3 water gloss scale");
+        AssertContains(shader, "stage float _WaterReflectionIntensity = 0.10f;", "OceanSurface should keep reflection lower than the earlier bright cyan pass");
+        AssertContains(shader, "stage float _OceanSceneLightingScale = 0.18f;", "OceanSurface should apply Ocean-only direct and environment lighting energy scaling");
+        AssertContains(shader, "stage float _OceanRefractionColorScale = 0.30f;", "OceanSurface should apply Ocean-only refraction RGB scaling without crushing to CK3's black capture value");
+        AssertContains(shader, "stage float _OceanWaterColorTextureInfluence = 0.20f;", "OceanSurface should limit CK3 water color texture dominance under Stride lighting");
+        AssertContains(shader, "stage float3 _OceanDisplayDeepBase = float3(0.115f, 0.185f, 0.213f);", "OceanSurface should keep deep-water mean in the CK3 final-display range");
+        AssertContains(shader, "stage float3 _OceanDisplayDeepReference = float3(0.065f, 0.128f, 0.146f);", "OceanSurface should amplify deep-water detail around the measured pre-display response");
+        AssertContains(shader, "stage float _OceanDisplayDeepDetailGain = 2.0f;", "OceanSurface should restore visible deep-water variation without changing shared refraction");
+        AssertContains(shader, "stage float _OceanDisplayShallowGain = 0.8f;", "OceanSurface should keep shallow response based on the original Ocean composition");
+        AssertContains(shader, "stage float3 _OceanDisplayShallowBias = float3(0.16f, 0.22f, 0.20f);", "OceanSurface should use a separate shallow-water bias calibrated by RenderDoc hot replacement");
+        AssertContains(shader, "stage float _OceanDisplayShallowDepth = 6.0f;", "OceanSurface should avoid applying shallow color response to open water");
+        AssertContains(shader, "stage float _OceanDisplayResponseStrength = 1.0f;", "OceanSurface should fully apply the Ocean-only display response by default");
+        AssertContains(shader, "stage float _OceanWaveSpeedScale = 0.2f;", "OceanSurface should expose an Ocean-only wave animation speed scale");
+        AssertContains(shader, "stage float _OceanFlowSpeedScale = 0.2f;", "OceanSurface should expose an Ocean-only flow animation speed scale");
+        AssertContains(shader, "float mappedGlossiness = max(_WaterGlossBase, waterColorAndSpec.a);", "OceanSurface should keep the water gloss base active while reading the water color/spec map alpha");
+        AssertContains(shader, "float glossiness = saturate(mappedGlossiness * _WaterGlossScale * saturate(1.0f - _OceanRoughness));", "OceanSurface roughness should remain an active material control");
+        AssertContains(shader, "float3 waterDiffuse = textureWaterColor * _WaterDiffuseMultiplier;", "OceanSurface should light the water texture with a low Stride-calibrated diffuse term");
+        AssertContains(shader, "float3 scaledLightColorNdotL = RiverStrideGetMainLightColorNdotL(normal, shadow) * _OceanSceneLightingScale;", "OceanSurface should scale direct sun lighting inside the Ocean pass");
+        AssertContains(shader, "RiverStrideComputeEnvironmentDiffuse(diffuseColor, normal, _OceanSceneLightingScale)", "OceanSurface should scale environment diffuse with the same Ocean lighting scale");
+        AssertContains(shader, "RiverStrideComputeEnvironmentSpecular(specularColor, glossiness, normal, viewDir, _OceanSceneLightingScale)", "OceanSurface should scale environment specular with the same Ocean lighting scale");
+        AssertContains(shader, "float waveTime = _GlobalTime * _OceanWaveSpeedScale;", "OceanSurface should slow ambient wave animation without changing global time");
+        AssertContains(shader, "float2 offset = float2(0.0f, -_WaterFlowTime * _OceanFlowSpeedScale);", "OceanSurface should slow flow-normal animation without changing CPU time binding");
+        AssertContains(shader, "float foamTime = _GlobalTime * _OceanWaveSpeedScale;", "OceanSurface should slow foam animation with the same Ocean-only scale");
+        AssertContains(shader, "refractionSample.rgb * _OceanRefractionColorScale", "OceanSurface should scale refraction RGB locally without mutating shared capture");
+        AssertContains(shader, "float3 litWater = ComputeOceanLighting(", "OceanSurface should use an Ocean-local lighting wrapper so direct sun is scaled");
+        AssertContains(shader, "float3 ApplyOceanDisplayResponse(float3 finalColor, float baseRefractionDepth)", "OceanSurface should keep the final-color compensation isolated to the Ocean pass");
+        AssertContains(shader, "float shallowMask = saturate(1.0f - baseRefractionDepth / max(_OceanDisplayShallowDepth, 0.0001f));", "OceanSurface should blend deep and shallow display targets from the unmodified base refraction depth");
+        AssertContains(shader, "float3 deepColor = _OceanDisplayDeepBase + (finalColor - _OceanDisplayDeepReference) * _OceanDisplayDeepDetailGain;", "OceanSurface should preserve deep-water variation instead of replacing it with a flat target");
+        AssertContains(shader, "float3 shallowColor = finalColor * _OceanDisplayShallowGain + _OceanDisplayShallowBias;", "OceanSurface should keep shallow response tied to original refraction and lighting");
+        AssertContains(shader, "max(lerp(deepColor, shallowColor, shallowMask), float3(0.0f, 0.0f, 0.0f))", "OceanSurface should blend the RenderDoc-calibrated deep and shallow responses");
+        AssertContains(shader, "lerp(finalColor, displayColor, saturate(_OceanDisplayResponseStrength))", "OceanSurface should expose a strength control for the display response");
+        AssertContains(shader, "finalColor = ApplyOceanDisplayResponse(finalColor, baseRefractionDepth);", "OceanSurface should apply the display response after lighting, refraction, and reflection composition");
         AssertContains(shader, "streams.ColorTarget = float4(finalColor, 1.0f);", "OceanSurface should output opaque normal ocean pixels");
+        AssertNotContains(shader, "_WaterFlowNormalSpeed", "OceanSurface should use CK3's flow time directly, not an extra flow-normal speed multiplier");
         AssertNotContains(shader, "0.86f", "OceanSurface should not keep the old hardcoded translucent alpha");
         AssertNotContains(shader, "1920.0f", "OceanSurface should not hard-code desktop viewport width in refraction offset");
         AssertNotContains(shader, "1080.0f", "OceanSurface should not hard-code desktop viewport height in refraction offset");
@@ -138,7 +193,10 @@ internal static class OceanShaderTextTests
         string shader = ReadRepositoryText("Terrain/Effects/Ocean/OceanSurface.sdsl");
 
         AssertContains(shader, "RiverStrideLighting", "OceanSurface should inherit the shared water scene lighting mixin");
-        AssertContains(shader, "RiverStrideComputeLighting(", "OceanSurface should use the shared Stride-style lighting helper");
+        AssertContains(shader, "RiverStrideComputeDirectDiffuse(", "OceanSurface should reuse the shared Stride-style direct diffuse helper");
+        AssertContains(shader, "RiverStrideComputeDirectSpecular(", "OceanSurface should reuse the shared Stride-style direct specular helper");
+        AssertContains(shader, "RiverStrideComputeEnvironmentDiffuse(", "OceanSurface should reuse the shared Stride-style environment diffuse helper");
+        AssertContains(shader, "RiverStrideComputeEnvironmentSpecular(", "OceanSurface should reuse the shared Stride-style environment specular helper");
         AssertContains(shader, "RiverStrideEvaluateSceneShadow(", "OceanSurface should use scene shadow inputs supplied by WaterSceneLightingBinder");
         AssertContains(shader, "RiverStrideGetMainLightDirection()", "OceanSurface should derive sun direction from scene lighting");
     }

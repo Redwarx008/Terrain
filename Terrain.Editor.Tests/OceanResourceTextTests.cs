@@ -10,6 +10,7 @@ internal static class OceanResourceTextTests
     {
         TestHarness.Run("ocean resource loader declares required water files", RequiredFileNamesIncludeSharedWaterFiles);
         TestHarness.Run("ocean resource loader disposes textures before reload", OceanResourceLoaderDisposesTexturesBeforeReload);
+        TestHarness.Run("ocean resource loader matches CK3 water DDS color spaces", OceanResourceLoaderMatchesCk3WaterDdsColorSpaces);
         TestHarness.Run("ocean flowmap exists in local game resources", FlowmapExistsInLocalGameResources);
         TestHarness.Run("river resource loader keeps shared flowmap lifecycle", RiverResourceLoaderKeepsSharedFlowmapLifecycle);
         TestHarness.Run("ocean water textures are not bundle roots", OceanWaterTexturesAreNotBundleRoots);
@@ -47,6 +48,21 @@ internal static class OceanResourceTextTests
         TestHarness.Assert(disposeCall >= 0, "OceanResourceLoader.Load should dispose previous textures before reload");
         TestHarness.Assert(firstTextureLoad >= 0, "OceanResourceLoader.Load should load water textures");
         TestHarness.Assert(disposeCall < firstTextureLoad, "OceanResourceLoader.Load should dispose previous textures before loading replacements");
+    }
+
+    private static void OceanResourceLoaderMatchesCk3WaterDdsColorSpaces()
+    {
+        string loader = ReadRepositoryText("Terrain/Rendering/Ocean/OceanResourceLoader.cs");
+
+        AssertContains(loader, "WaterColor = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, WaterColorFileName, loadAsSrgb: true);", "OceanResourceLoader should load CK3 water_color.dds as sRGB.");
+        AssertContains(loader, "Foam = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamFileName, loadAsSrgb: true);", "OceanResourceLoader should load CK3 foam.dds as sRGB.");
+        AssertContains(loader, "FoamRamp = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamRampFileName, loadAsSrgb: true);", "OceanResourceLoader should load CK3 foam_ramp.dds as sRGB.");
+        AssertContains(loader, "AmbientNormal = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, AmbientNormalFileName, loadAsSrgb: false);", "OceanResourceLoader should keep ambient normal DDS linear.");
+        AssertContains(loader, "FlowMap = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FlowMapFileName, loadAsSrgb: false);", "OceanResourceLoader should keep flowmap DDS linear.");
+        AssertContains(loader, "FlowNormal = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FlowNormalFileName, loadAsSrgb: false);", "OceanResourceLoader should keep flow normal DDS linear.");
+        AssertContains(loader, "FoamMap = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamMapFileName, loadAsSrgb: false);", "OceanResourceLoader should keep foam map DDS linear.");
+        AssertContains(loader, "FoamNoise = LoadRequiredLocalTexture(graphicsDevice, waterDirectory, FoamNoiseFileName, loadAsSrgb: false);", "OceanResourceLoader should keep foam noise DDS linear.");
+        AssertContains(loader, "loadAsSrgb: loadAsSrgb", "OceanResourceLoader should pass the per-texture color-space decision into Texture.Load.");
     }
 
     private static void FlowmapExistsInLocalGameResources()
