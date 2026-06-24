@@ -105,6 +105,8 @@ internal static class OceanShaderTextTests
         AssertContains(shader, "DecodeRefractionWorldPosition", "OceanSurface should decode shared refraction payloads");
         AssertContains(shader, "RiverDecompressWorldSpace", "OceanSurface should reuse the river payload decompressor");
         AssertContains(shader, "CalcRefraction", "OceanSurface should keep refraction composition in a named helper");
+        AssertContains(shader, "float2 inverseViewSize = 1.0f / max(_ViewSize, float2(1.0f, 1.0f));", "OceanSurface should scale refraction offset by the active view size");
+        AssertContains(shader, "float2 refractionOffset = viewNormal * float2(-inverseViewSize.x, inverseViewSize.y);", "OceanSurface should not hard-code a 1080p refraction offset");
         AssertContains(shader, "float4 baseRefractionSample", "OceanSurface should keep base refraction RGB separate");
         AssertContains(shader, "float unfilteredBasePayload", "OceanSurface should read unfiltered base payload");
         AssertContains(shader, "float4 offsetRefractionSample", "OceanSurface should keep offset refraction RGB separate");
@@ -127,6 +129,8 @@ internal static class OceanShaderTextTests
         AssertContains(shader, "EnvironmentMapTexture.SampleLevel", "OceanSurface should sample the shared environment map for reflection");
         AssertContains(shader, "streams.ColorTarget = float4(finalColor, 1.0f);", "OceanSurface should output opaque normal ocean pixels");
         AssertNotContains(shader, "0.86f", "OceanSurface should not keep the old hardcoded translucent alpha");
+        AssertNotContains(shader, "1920.0f", "OceanSurface should not hard-code desktop viewport width in refraction offset");
+        AssertNotContains(shader, "1080.0f", "OceanSurface should not hard-code desktop viewport height in refraction offset");
     }
 
     private static void OceanShaderUsesSharedRiverStrideLighting()

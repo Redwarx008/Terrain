@@ -301,6 +301,7 @@ public sealed class OceanRenderFeature : RootRenderFeature
         blendState.RenderTargets[0].ColorDestinationBlend = Blend.InverseSourceAlpha;
         blendState.RenderTargets[0].AlphaSourceBlend = Blend.One;
         blendState.RenderTargets[0].AlphaDestinationBlend = Blend.Zero;
+        blendState.RenderTargets[0].ColorWriteChannels = ColorWriteChannels.Red | ColorWriteChannels.Green | ColorWriteChannels.Blue;
         return blendState;
     }
 
@@ -308,7 +309,7 @@ public sealed class OceanRenderFeature : RootRenderFeature
     {
         return new DepthStencilStateDescription(depthEnable: true, depthWriteEnable: false)
         {
-            DepthBufferFunction = CompareFunction.LessEqual,
+            DepthBufferFunction = CompareFunction.Less,
         };
     }
 

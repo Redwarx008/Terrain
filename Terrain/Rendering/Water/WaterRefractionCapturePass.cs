@@ -26,18 +26,23 @@ public sealed class WaterRefractionCapturePass : IDisposable
         RenderDrawContext context,
         RenderView renderView,
         Texture sceneColor,
+        Texture sceneDepthSource,
         float refractionMaxCameraHeight)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(renderView);
         ArgumentNullException.ThrowIfNull(sceneColor);
+        ArgumentNullException.ThrowIfNull(sceneDepthSource);
 
         resources.EnsureResources(context.GraphicsDevice, sceneColor.ViewWidth, sceneColor.ViewHeight);
         Debug.Assert(resources.RefractionTexture != null, "Water refraction capture target has not been allocated.");
         Debug.Assert(!ReferenceEquals(sceneColor, resources.RefractionTexture), "Water refraction capture input and output must be different textures.");
+        if (sceneDepthSource.ViewWidth != sceneColor.ViewWidth || sceneDepthSource.ViewHeight != sceneColor.ViewHeight)
+        {
+            throw new InvalidOperationException($"Water refraction capture depth size {sceneDepthSource.ViewWidth}x{sceneDepthSource.ViewHeight} must match scene color size {sceneColor.ViewWidth}x{sceneColor.ViewHeight}.");
+        }
 
         var captureTarget = resources.RefractionTexture!;
-        var sceneDepthSource = GetPresenterSceneDepthSource(context.GraphicsDevice, sceneColor);
         var sceneDepth = context.Resolver.ResolveDepthStencil(sceneDepthSource);
         if (sceneDepth == null)
         {
@@ -86,28 +91,6 @@ public sealed class WaterRefractionCapturePass : IDisposable
     {
         effect.Dispose();
         resources.Dispose();
-    }
-
-    private static Texture GetPresenterSceneDepthSource(GraphicsDevice graphicsDevice, Texture sceneColor)
-    {
-        var presenter = graphicsDevice.Presenter;
-        if (presenter == null)
-        {
-            throw new InvalidOperationException("Water refraction capture requires GraphicsDevice.Presenter. Offscreen water rendering must provide an explicit scene-depth source before enabling this pass.");
-        }
-
-        var sceneDepth = presenter.DepthStencilBuffer;
-        if (sceneDepth == null)
-        {
-            throw new InvalidOperationException("Water refraction capture requires GraphicsDevice.Presenter.DepthStencilBuffer.");
-        }
-
-        if (sceneDepth.ViewWidth != sceneColor.ViewWidth || sceneDepth.ViewHeight != sceneColor.ViewHeight)
-        {
-            throw new InvalidOperationException($"Water refraction capture depth size {sceneDepth.ViewWidth}x{sceneDepth.ViewHeight} must match scene color size {sceneColor.ViewWidth}x{sceneColor.ViewHeight}.");
-        }
-
-        return sceneDepth;
     }
 }
 

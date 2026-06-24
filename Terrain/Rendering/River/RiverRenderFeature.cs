@@ -158,7 +158,8 @@ public sealed class RiverRenderFeature : RootRenderFeature
         int endIndex,
         Texture sharedRefractionTexture,
         int refractionWidth,
-        int refractionHeight)
+        int refractionHeight,
+        float refractionMaxCameraHeight)
     {
         if (bottomEffect == null
             || surfaceEffect == null
@@ -190,7 +191,6 @@ public sealed class RiverRenderFeature : RootRenderFeature
 
         bottomEffect.Parameters.Set(RiverBottomKeys._CameraWorldPosition, cameraWorldPosition);
         surfaceEffect.Parameters.Set(RiverSurfaceKeys._CameraWorldPosition, cameraWorldPosition);
-        float refractionMaxCameraHeight = ResolveRefractionMaxCameraHeight(renderViewStage, startIndex, endIndex);
         ApplyViewParameters(bottomEffect, renderView);
         ApplyViewParameters(surfaceEffect, renderView);
         ApplySurfaceFrameParameters(surfaceEffect, renderView.ViewSize, renderView.View, (float)context.RenderContext.Time.Total.TotalSeconds);

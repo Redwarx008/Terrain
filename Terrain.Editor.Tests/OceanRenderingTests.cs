@@ -3,6 +3,7 @@
 using System.Reflection;
 using Stride.Core.Mathematics;
 using Stride.Engine.Design;
+using Stride.Graphics;
 using Terrain.Rendering.Ocean;
 
 namespace Terrain.Editor.Tests;
@@ -18,6 +19,8 @@ internal static class OceanRenderingTests
         TestHarness.Run("map surface applies ocean runtime input", MapSurfaceAppliesOceanRuntimeInput);
         TestHarness.Run("map surface clears ocean runtime input when context unavailable", MapSurfaceClearsOceanRuntimeInputWhenContextUnavailable);
         TestHarness.Run("ocean render object builds full map quad data", OceanRenderObjectBuildsFullMapQuadData);
+        TestHarness.Run("ocean water pass uses strict depth read", OceanWaterPassUsesStrictDepthRead);
+        TestHarness.Run("ocean water pass preserves render target alpha", OceanWaterPassPreservesRenderTargetAlpha);
     }
 
     private static void OceanComponentUsesOceanProcessorRenderer()
@@ -103,6 +106,35 @@ internal static class OceanRenderingTests
         TestHarness.AssertEqual(new Vector2(128.0f, 64.0f), renderObject.MapWorldSize, "OceanRenderObject stores map size");
         TestHarness.AssertEqual(6, renderObject.IndexCount, "OceanRenderObject stores index count");
         TestHarness.Assert(renderObject.Matches(input), "OceanRenderObject should match the input used to build it");
+    }
+
+    private static void OceanWaterPassUsesStrictDepthRead()
+    {
+        MethodInfo? createDepthStencilState = typeof(OceanRenderFeature).GetMethod("CreateDepthStencilState", BindingFlags.NonPublic | BindingFlags.Static);
+        TestHarness.Assert(createDepthStencilState != null, "OceanRenderFeature should keep a dedicated depth-stencil-state factory");
+
+        object? result = createDepthStencilState!.Invoke(null, null);
+        TestHarness.Assert(result is DepthStencilStateDescription, "Ocean depth-state factory should return a DepthStencilStateDescription");
+
+        var state = (DepthStencilStateDescription)result!;
+        TestHarness.Assert(state.DepthBufferEnable, "Ocean pass should keep depth testing enabled");
+        TestHarness.Assert(!state.DepthBufferWriteEnable, "Ocean pass should not write scene depth");
+        TestHarness.AssertEqual(CompareFunction.Less, state.DepthBufferFunction, "Ocean pass should reject equal-depth fragments like the validated water path");
+    }
+
+    private static void OceanWaterPassPreservesRenderTargetAlpha()
+    {
+        MethodInfo? createBlendState = typeof(OceanRenderFeature).GetMethod("CreateBlendState", BindingFlags.NonPublic | BindingFlags.Static);
+        TestHarness.Assert(createBlendState != null, "OceanRenderFeature should keep a dedicated blend-state factory");
+
+        object? result = createBlendState!.Invoke(null, null);
+        TestHarness.Assert(result is BlendStateDescription, "Ocean blend-state factory should return a BlendStateDescription");
+
+        var blendState = (BlendStateDescription)result!;
+        TestHarness.Assert(blendState.RenderTargets[0].BlendEnable, "Ocean pass should keep color blending enabled");
+        TestHarness.AssertEqual(Blend.SourceAlpha, blendState.RenderTargets[0].ColorSourceBlend, "Ocean pass should use non-premultiplied source alpha");
+        TestHarness.AssertEqual(Blend.InverseSourceAlpha, blendState.RenderTargets[0].ColorDestinationBlend, "Ocean pass should preserve destination RGB by inverse source alpha");
+        TestHarness.AssertEqual(ColorWriteChannels.Red | ColorWriteChannels.Green | ColorWriteChannels.Blue, blendState.RenderTargets[0].ColorWriteChannels, "Ocean pass should not overwrite scene alpha");
     }
 
     private static string ReadRepositoryText(string relativePath)

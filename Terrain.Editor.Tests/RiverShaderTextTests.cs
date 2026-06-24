@@ -628,6 +628,7 @@ internal static class RiverShaderTextTests
         AssertContains(resources, "public void EnsureResourcesForCaptureSize(GraphicsDevice graphicsDevice, int captureWidth, int captureHeight)", "RiverRenderResources should expose capture-size allocation for shared water refraction input");
         AssertContains(feature, "internal void DrawWaterChain(", "RiverRenderFeature should expose a renderer-callable river water chain");
         AssertContains(feature, "Texture sharedRefractionTexture", "RiverRenderFeature should receive the shared water refraction capture from the renderer");
+        AssertContains(feature, "float refractionMaxCameraHeight", "RiverRenderFeature should receive the shared capture clamp from the renderer");
         AssertContains(feature, "CopyRefractionCaptureToBottomColor(commandList, sharedRefractionTexture);", "RiverRenderFeature should seed its working bottom/refraction buffer from the shared capture");
         AssertContains(feature, "commandList.CopyRegion(sharedRefractionTexture, 0, null, renderResources.BottomColor, 0);", "RiverRenderFeature should copy the shared capture into the working bottom/refraction buffer before the bottom pass");
         AssertContains(feature, "surfaceEffect.Parameters.Set(RiverSurfaceKeys.RefractionSampler, graphicsDevice.SamplerStates.LinearClamp);", "RiverRenderFeature should sample refraction with the target linear clamp sampler");
@@ -652,7 +653,11 @@ internal static class RiverShaderTextTests
         AssertNotContains(feature, "SeedSceneColorFromScene", "RiverRenderFeature should not seed scene color itself after moving to shared capture");
         AssertContains(renderer, "waterRefractionCapturePass.Capture(", "CustomForwardRenderer should create the shared water refraction capture before drawing river water");
         AssertContains(renderer, "riverRenderFeature.GetRefractionMaxCameraHeight", "CustomForwardRenderer should ask RiverRenderFeature for the draw-range refraction clamp before capture");
+        AssertContains(renderer, "float refractionMaxCameraHeight = capture.RefractionMaxCameraHeight;", "CustomForwardRenderer should reuse the capture clamp for River and Ocean decode");
         AssertContains(renderer, "riverRenderFeature.DrawWaterChain(", "CustomForwardRenderer should invoke the renderer-callable River water chain");
+        AssertContains(renderer, "refractionMaxCameraHeight);", "CustomForwardRenderer should pass the capture clamp into RiverRenderFeature.DrawWaterChain");
+        AssertContains(feature, "BindRefractionMaxCameraHeight(bottomEffect, refractionMaxCameraHeight);", "River bottom should bind the same clamp used by the shared capture writer");
+        AssertContains(feature, "BindRefractionMaxCameraHeight(surfaceEffect, refractionMaxCameraHeight);", "River surface should bind the same clamp used by the shared capture writer");
         AssertContains(shader, "shader WaterRefractionCapture : ImageEffectShader, DepthBase, Transformation, RiverCommon", "WaterRefractionCapture should own the shared depth payload writer");
         AssertContains(shader, "RiverCompressWorldSpace(positionWS.xyz, Eye.xyz)", "WaterRefractionCapture alpha should match the height-scale-aware river refraction distance semantics");
         AssertContains(project, "<Compile Update=\"Effects\\Water\\WaterRefractionCapture.sdsl.cs\">", "Terrain.csproj should compile the generated WaterRefractionCapture shader key file");

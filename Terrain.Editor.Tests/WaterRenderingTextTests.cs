@@ -10,9 +10,11 @@ internal static class WaterRenderingTextTests
         TestHarness.Run("water refraction capture pass uses canonical image shader", WaterRefractionCapturePassUsesCanonicalImageShader);
         TestHarness.Run("water refraction capture resources use half float target", WaterRefractionCaptureResourcesUseHalfFloatTarget);
         TestHarness.Run("water refraction capture shader packs river world space", WaterRefractionCaptureShaderPacksRiverWorldSpace);
+        TestHarness.Run("water refraction capture uses current renderer depth", WaterRefractionCaptureUsesCurrentRendererDepth);
         TestHarness.Run("runtime compositor uses custom forward renderer", RuntimeCompositorUsesCustomForwardRenderer);
         TestHarness.Run("runtime compositor routes water stage through custom renderer", RuntimeCompositorRoutesWaterStageThroughCustomRenderer);
         TestHarness.Run("water rendering architecture avoids obsolete renderer names", WaterRenderingArchitectureAvoidsObsoleteRendererNames);
+        TestHarness.Run("custom forward renderer rejects unsupported msaa outputs", CustomForwardRendererRejectsUnsupportedMsaaOutputs);
         TestHarness.Run("ocean render feature exposes renderer callable water draw", OceanRenderFeatureExposesRendererCallableWaterDraw);
         TestHarness.Run("river render feature exposes renderer callable water chain", RiverRenderFeatureExposesRendererCallableWaterChain);
     }
@@ -35,6 +37,8 @@ internal static class WaterRenderingTextTests
         AssertContains(renderer, "if (cameraWorldY >= riverMaxVisibleCameraHeight)", "CustomForwardRenderer should skip shared refraction capture when the camera is above every River range cutoff.");
         AssertContains(renderer, "if (oceanWaterRanges.Count == 0 && !hasVisibleRiverWater)", "CustomForwardRenderer should skip capture only when no Ocean exists and River is not visible.");
         AssertContains(renderer, "oceanRenderFeature.DrawWater(", "CustomForwardRenderer should invoke the renderer-callable Ocean draw path.");
+        AssertContains(renderer, "Texture? sceneDepth = drawContext.CommandList.DepthStencilBuffer ?? currentDepthStencil;", "CustomForwardRenderer should pass the current renderer depth into shared capture.");
+        AssertContains(renderer, "float refractionMaxCameraHeight = capture.RefractionMaxCameraHeight;", "CustomForwardRenderer should reuse the capture clamp for water readers.");
         AssertOccursBefore(
             renderer,
             "DrawOceanWater(context, drawContext, waterCapture);",
@@ -58,6 +62,10 @@ internal static class WaterRenderingTextTests
         AssertContains(pass, "public sealed class WaterRefractionCapturePass", "WaterRefractionCapturePass should use the canonical helper name.");
         AssertContains(pass, "ImageEffectShader(\"WaterRefractionCapture", "WaterRefractionCapturePass should bind the WaterRefractionCapture image shader.");
         AssertContains(pass, "using (context.PushRenderTargetsAndRestore())", "WaterRefractionCapturePass should restore the active scene render target after capture.");
+        AssertContains(pass, "Texture sceneDepthSource", "WaterRefractionCapturePass should receive an explicit scene depth source from the renderer.");
+        AssertContains(pass, "context.Resolver.ResolveDepthStencil(sceneDepthSource)", "WaterRefractionCapturePass should resolve the renderer supplied depth source.");
+        AssertNotContains(pass, "GraphicsDevice.Presenter.DepthStencilBuffer", "WaterRefractionCapturePass should not infer scene depth from the presenter.");
+        AssertNotContains(pass, "GetPresenterSceneDepthSource", "WaterRefractionCapturePass should not use a presenter-depth fallback.");
     }
 
     private static void WaterRefractionCaptureResourcesUseHalfFloatTarget()
@@ -78,6 +86,16 @@ internal static class WaterRenderingTextTests
         string shader = File.ReadAllText(shaderPath);
         AssertContains(shader, "shader WaterRefractionCapture : ImageEffectShader, DepthBase, Transformation, RiverCommon", "WaterRefractionCapture shader should inherit the target image/depth/river helpers.");
         AssertContains(shader, "RiverCompressWorldSpace(positionWS.xyz, Eye.xyz)", "WaterRefractionCapture shader should pack camera-relative river world space.");
+    }
+
+    private static void WaterRefractionCaptureUsesCurrentRendererDepth()
+    {
+        string renderer = ReadRepositoryText("Terrain/Rendering/CustomForwardRenderer.cs");
+        string pass = ReadRepositoryText("Terrain/Rendering/Water/WaterRefractionCapturePass.cs");
+
+        AssertContains(renderer, "sceneDepth,", "CustomForwardRenderer should pass the current scene depth into WaterRefractionCapturePass.Capture.");
+        AssertContains(pass, "sceneDepthSource.ViewWidth != sceneColor.ViewWidth", "WaterRefractionCapturePass should validate depth/color size compatibility.");
+        AssertContains(pass, "Water refraction capture depth size", "WaterRefractionCapturePass should fail with a clear size mismatch message.");
     }
 
     private static void RuntimeCompositorUsesCustomForwardRenderer()
@@ -132,6 +150,17 @@ internal static class WaterRenderingTextTests
         }
     }
 
+    private static void CustomForwardRendererRejectsUnsupportedMsaaOutputs()
+    {
+        string renderer = ReadRepositoryText("Terrain/Rendering/CustomForwardRenderer.cs");
+
+        AssertContains(renderer, "viewOutputTarget != null && viewOutputTarget.MultisampleCount != MultisampleCount.None", "CustomForwardRenderer should explicitly detect unsupported non-null MSAA color outputs.");
+        AssertContains(renderer, "viewDepthStencil != null && viewDepthStencil.MultisampleCount != MultisampleCount.None", "CustomForwardRenderer should explicitly detect unsupported non-null MSAA depth outputs.");
+        AssertNotContains(renderer, "viewOutputTarget?.MultisampleCount != MultisampleCount.None", "CustomForwardRenderer should not treat a missing color target as unsupported MSAA.");
+        AssertNotContains(renderer, "viewDepthStencil?.MultisampleCount != MultisampleCount.None", "CustomForwardRenderer should not treat a missing depth target as unsupported MSAA.");
+        AssertContains(renderer, "CustomForwardRenderer does not support MSAA output targets", "CustomForwardRenderer should fail fast instead of silently dropping MSAA output.");
+    }
+
     private static void OceanRenderFeatureExposesRendererCallableWaterDraw()
     {
         string oceanFeature = ReadRepositoryText("Terrain/Rendering/Ocean/OceanRenderFeature.cs");
@@ -146,6 +175,9 @@ internal static class WaterRenderingTextTests
         string riverFeature = ReadRepositoryText("Terrain/Rendering/River/RiverRenderFeature.cs");
 
         AssertContains(riverFeature, "DrawWaterChain(", "RiverRenderFeature should expose a renderer-callable DrawWaterChain method.");
+        AssertContains(riverFeature, "float refractionMaxCameraHeight", "RiverRenderFeature.DrawWaterChain should receive the shared capture clamp.");
+        AssertContains(riverFeature, "BindRefractionMaxCameraHeight(bottomEffect, refractionMaxCameraHeight);", "River bottom should decode with the shared capture clamp.");
+        AssertContains(riverFeature, "BindRefractionMaxCameraHeight(surfaceEffect, refractionMaxCameraHeight);", "River surface should decode with the shared capture clamp.");
         AssertContains(riverFeature, "internal float GetRiverMaxVisibleCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)", "RiverRenderFeature should expose the draw-range camera visibility cutoff to the renderer.");
         AssertNotContains(riverFeature, "new ImageEffectShader(\"RiverSceneSeed", "RiverRenderFeature should no longer create the legacy RiverSceneSeed image effect directly.");
     }

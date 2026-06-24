@@ -265,7 +265,8 @@ public partial class CustomForwardRenderer : SceneRendererBase, ISharedRenderer
         Texture? sceneColor = drawContext.CommandList.RenderTargetCount > 0
             ? drawContext.CommandList.RenderTargets[0]
             : null;
-        if (sceneColor == null)
+        Texture? sceneDepth = drawContext.CommandList.DepthStencilBuffer ?? currentDepthStencil;
+        if (sceneColor == null || sceneDepth == null)
         {
             return null;
         }
@@ -310,6 +311,7 @@ public partial class CustomForwardRenderer : SceneRendererBase, ISharedRenderer
             drawContext,
             context.RenderView,
             sceneColor,
+            sceneDepth,
             refractionMaxCameraHeight);
     }
 
@@ -351,6 +353,7 @@ public partial class CustomForwardRenderer : SceneRendererBase, ISharedRenderer
         }
 
         var capture = waterCapture.Value;
+        float refractionMaxCameraHeight = capture.RefractionMaxCameraHeight;
         foreach (var range in riverWaterRanges)
         {
             riverRenderFeature.DrawWaterChain(
@@ -361,7 +364,8 @@ public partial class CustomForwardRenderer : SceneRendererBase, ISharedRenderer
                 range.EndIndex,
                 capture.Texture,
                 capture.Width,
-                capture.Height);
+                capture.Height,
+                refractionMaxCameraHeight);
         }
     }
 
@@ -598,6 +602,12 @@ public partial class CustomForwardRenderer : SceneRendererBase, ISharedRenderer
         if (drawContext.CommandList.RenderTargetCount == 0)
             viewOutputTarget = null;
         viewDepthStencil = drawContext.CommandList.DepthStencilBuffer;
+
+        if ((viewOutputTarget != null && viewOutputTarget.MultisampleCount != MultisampleCount.None)
+            || (viewDepthStencil != null && viewDepthStencil.MultisampleCount != MultisampleCount.None))
+        {
+            throw new InvalidOperationException("CustomForwardRenderer does not support MSAA output targets. Disable MSAA for this compositor or implement the full MSAA resolve/copy-back path before enabling it.");
+        }
 
         if (viewOutputTarget == null || viewOutputTarget.MultisampleCount != MultisampleCount.None)
         {
