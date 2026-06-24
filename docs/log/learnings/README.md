@@ -36,6 +36,7 @@
 | [stride-river-rendering-patterns](stride-river-rendering-patterns.md) | Stride 河流渲染分层、标准变换链与常见反模式 | 2026-06-06 |
 | [stride-sdsl-material-cbuffer-linking](stride-sdsl-material-cbuffer-linking.md) | Stride SDSL 参数绑定与 multi-target asset target 陷阱 | 2026-06-24 |
 | [stride-shader-additionalfiles-build-system](stride-shader-additionalfiles-build-system.md) | 当前 Stride SDSL/SDFX 项目项必须使用 AdditionalFiles，不能使用旧 None/LastGenOutput/Generator 元数据 | 2026-06-24 |
+| [ocean-ck3-renderdoc-validation](ocean-ck3-renderdoc-validation.md) | Ocean 与 CK3 海面视觉对齐必须先拆分源分量与 mapface/post 链路，避免 Ocean-only 色彩补偿 | 2026-06-25 |
 | [native-viewport-airspace-overlays](native-viewport-airspace-overlays.md) | Avalonia 覆盖层与 NativeControlHost/SDL child HWND 的 airspace 限制 | 2026-06-15 |
 
 ### 引擎与框架调研
@@ -47,4 +48,4 @@
 
 ---
 
-*最后更新: 2026-06-24*
+*最后更新: 2026-06-25*

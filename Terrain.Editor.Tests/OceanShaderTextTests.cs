@@ -82,6 +82,8 @@ internal static class OceanShaderTextTests
             "stage float _WaterRefractionShoreMaskSharpness",
             "stage float _WaterFadeShoreMaskDepth",
             "stage float _WaterFadeShoreMaskSharpness",
+            "stage float _WaterSeeThroughShoreMaskDepth",
+            "stage float _WaterSeeThroughShoreMaskSharpness",
             "stage float _WaterFoamShoreMaskDepth",
             "stage float _WaterFoamShoreMaskSharpness",
             "stage float2 _WaterWave1Scale",
@@ -95,10 +97,14 @@ internal static class OceanShaderTextTests
             "stage float2 _WaterFlowMapSize",
             "stage float _WaterFresnelBias",
             "stage float _WaterFresnelPow",
+            "stage float _WaterReflectionNormalFlatten",
             "stage float _WaterReflectionIntensity",
+            "stage float _WaterSpecular",
+            "stage float _WaterGlossScale",
             "stage float _OceanSceneLightingScale",
             "stage float _OceanRefractionColorScale",
-            "stage float _OceanWaterColorTextureInfluence",
+            "stage float3 _WaterColorMapTint",
+            "stage float _WaterColorMapTintFactor",
             "stage float3 _OceanDisplayDeepBase",
             "stage float3 _OceanDisplayDeepReference",
             "stage float _OceanDisplayDeepDetailGain",
@@ -106,6 +112,12 @@ internal static class OceanShaderTextTests
             "stage float3 _OceanDisplayShallowBias",
             "stage float _OceanDisplayShallowDepth",
             "stage float _OceanDisplayResponseStrength",
+            "stage float3 _OceanCloseWaterColorBase",
+            "stage float3 _OceanCloseWaterColorScale",
+            "stage float3 _OceanCloseWaterColorShallowBoost",
+            "stage float _OceanCloseWaterColorShallowDepth",
+            "stage float _OceanCloseWaterColorDetailStrength",
+            "stage float _OceanCloseWaterColorResponseStrength",
         ];
 
         foreach (string parameter in stageParameters)
@@ -116,6 +128,9 @@ internal static class OceanShaderTextTests
         AssertContains(shader, "RefractionTexture.Load", "OceanSurface should read refraction alpha payload with Texture2D.Load");
         AssertContains(shader, "DecodeRefractionWorldPosition", "OceanSurface should decode shared refraction payloads");
         AssertContains(shader, "RiverDecompressWorldSpace", "OceanSurface should reuse the river payload decompressor");
+        AssertContains(shader, "The local water_color asset already matches Terrain world-Z orientation.", "OceanSurface should document why its water_color UV does not copy CK3's north/south flip");
+        AssertContains(shader, "return worldPosition.xz / max(_MapWorldSize, float2(1.0f, 1.0f));", "OceanSurface should sample water_color in Terrain world-Z orientation");
+        AssertNotContains(shader, "worldUv.y = 1.0f - worldUv.y;", "OceanSurface should not invert water_color north/south");
         AssertContains(shader, "CalcRefraction", "OceanSurface should keep refraction composition in a named helper");
         AssertContains(shader, "float2 inverseViewSize = 1.0f / max(_ViewSize, float2(1.0f, 1.0f));", "OceanSurface should scale refraction offset by the active view size");
         AssertContains(shader, "float2 refractionOffset = viewNormal * float2(-inverseViewSize.x, inverseViewSize.y);", "OceanSurface should not hard-code a 1080p refraction offset");
@@ -128,6 +143,8 @@ internal static class OceanShaderTextTests
         AssertContains(shader, "ComputeRefractionShoreMask", "OceanSurface should compute a refraction shore mask");
         AssertContains(shader, "CalcTerrainUnderwaterSeeThrough", "OceanSurface should apply see-through attenuation");
         AssertContains(shader, "exp(-_WaterSeeThroughDensity", "OceanSurface should attenuate see-through by density");
+        AssertContains(shader, "float shoreMask = 1.0f - saturate((_WaterSeeThroughShoreMaskDepth - refractionDepth) * _WaterSeeThroughShoreMaskSharpness);", "OceanSurface should include CK3's see-through shore mask");
+        AssertContains(shader, "return lerp(color, waterColorMap, shoreMask);", "OceanSurface should fade see-through back to water map by shore mask");
         AssertContains(shader, "FoamRampTexture.SampleLevel", "OceanSurface should sample foam ramp without mip/filter drift");
         AssertContains(shader, "0.5f / 256.0f", "OceanSurface should clamp foam ramp U by half a texel");
         AssertContains(shader, "1.0f - 0.5f / 256.0f", "OceanSurface should clamp foam ramp upper bound by half a texel");
@@ -147,25 +164,59 @@ internal static class OceanShaderTextTests
         AssertContains(shader, "EnvironmentMapTexture.SampleLevel", "OceanSurface should sample the shared environment map for reflection");
         AssertContains(shader, "stage float _WaterFlowNormalScale = 0.025f;", "OceanSurface should use the CK3 ocean flow-normal scale captured at EID 1061");
         AssertContains(shader, "stage float _WaterDiffuseMultiplier = 0.20f;", "OceanSurface should keep a low diffuse term instead of copying CK3's zero diffuse");
-        AssertContains(shader, "stage float _WaterSpecular = 0.01f;", "OceanSurface should default to the captured conservative water specular factor");
+        AssertContains(shader, "stage float _WaterReflectionNormalFlatten = 0.6f;", "OceanSurface should use the RenderDoc-validated reflection normal detail flattening");
+        AssertContains(shader, "stage float _WaterSpecular = 0.02f;", "OceanSurface should use the RenderDoc-validated source-path specular detail factor");
         AssertContains(shader, "stage float _WaterGlossBase = 1.15f;", "OceanSurface should default to the captured CK3 water gloss base");
-        AssertContains(shader, "stage float _WaterGlossScale = 0.1f;", "OceanSurface should default to the captured CK3 water gloss scale");
-        AssertContains(shader, "stage float _WaterReflectionIntensity = 0.10f;", "OceanSurface should keep reflection lower than the earlier bright cyan pass");
+        AssertContains(shader, "stage float _WaterGlossScale = 0.4f;", "OceanSurface should use the RenderDoc-validated gloss scale for visible wave highlights");
+        AssertContains(shader, "stage float _WaterReflectionIntensity = 0.25f;", "OceanSurface should use the RenderDoc-validated reflection intensity without changing the color baseline");
         AssertContains(shader, "stage float _OceanSceneLightingScale = 0.18f;", "OceanSurface should apply Ocean-only direct and environment lighting energy scaling");
         AssertContains(shader, "stage float _OceanRefractionColorScale = 0.30f;", "OceanSurface should apply Ocean-only refraction RGB scaling without crushing to CK3's black capture value");
-        AssertContains(shader, "stage float _OceanWaterColorTextureInfluence = 0.20f;", "OceanSurface should limit CK3 water color texture dominance under Stride lighting");
+        AssertContains(shader, "stage float _WaterSeeThroughShoreMaskDepth = 0.0f;", "OceanSurface should default CK3 see-through shore depth to the captured ocean setting");
+        AssertContains(shader, "stage float _WaterSeeThroughShoreMaskSharpness = 1.0f;", "OceanSurface should expose CK3 see-through shore sharpness");
+        AssertContains(shader, "stage float _OceanZoomedOutStartHeight = 650.0f;", "OceanSurface should start blending toward the CK3 far-map water path only after close camera heights");
+        AssertContains(shader, "stage float _OceanZoomedOutEndHeight = 2500.0f;", "OceanSurface should fully enter the CK3 far-map water path at strategic zoom heights");
+        AssertContains(shader, "stage float _OceanZoomedOutWaterColorTextureInfluence = 1.0f;", "OceanSurface should let the map-space water color dominate at far zoom");
+        AssertContains(shader, "stage float _OceanZoomedOutRefractionInfluence = 0.0f;", "OceanSurface should fade refraction out in the far-map water path like CK3's zoomed-out draw");
+        AssertContains(shader, "stage float3 _WaterColorMapTint = float3(0.8324021f, 0.7931101f, 1.0f);", "OceanSurface should expose the CK3 water color map tint captured from the far-map draw");
+        AssertContains(shader, "stage float _WaterColorMapTintFactor = 0.05f;", "OceanSurface should keep CK3's water color map tint as a subtle pre-display adjustment");
         AssertContains(shader, "stage float3 _OceanDisplayDeepBase = float3(0.115f, 0.185f, 0.213f);", "OceanSurface should keep deep-water mean in the CK3 final-display range");
         AssertContains(shader, "stage float3 _OceanDisplayDeepReference = float3(0.065f, 0.128f, 0.146f);", "OceanSurface should amplify deep-water detail around the measured pre-display response");
         AssertContains(shader, "stage float _OceanDisplayDeepDetailGain = 2.0f;", "OceanSurface should restore visible deep-water variation without changing shared refraction");
+        AssertContains(shader, "stage float _OceanZoomedOutDisplayDetailGain = 1.0f;", "OceanSurface should avoid over-darkening far-map water below the deep reference response");
         AssertContains(shader, "stage float _OceanDisplayShallowGain = 0.8f;", "OceanSurface should keep shallow response based on the original Ocean composition");
         AssertContains(shader, "stage float3 _OceanDisplayShallowBias = float3(0.16f, 0.22f, 0.20f);", "OceanSurface should use a separate shallow-water bias calibrated by RenderDoc hot replacement");
         AssertContains(shader, "stage float _OceanDisplayShallowDepth = 6.0f;", "OceanSurface should avoid applying shallow color response to open water");
         AssertContains(shader, "stage float _OceanDisplayResponseStrength = 1.0f;", "OceanSurface should fully apply the Ocean-only display response by default");
+        AssertContains(shader, "stage float3 _OceanCloseWaterColorBase = float3(0.14f, 0.20f, 0.22f);", "OceanSurface should expose the RenderDoc-calibrated close water-color response base");
+        AssertContains(shader, "stage float3 _OceanCloseWaterColorScale = float3(2.0f, 2.4f, 2.3f);", "OceanSurface should expose the RenderDoc-calibrated close water-color response scale");
+        AssertContains(shader, "stage float3 _OceanCloseWaterColorShallowBoost = float3(0.055f, 0.055f, 0.025f);", "OceanSurface should brighten broad close shallow water without a global close-mapface constant");
+        AssertContains(shader, "stage float _OceanCloseWaterColorShallowDepth = 16.0f;", "OceanSurface should use the RenderDoc-validated broader close shallow-water response depth");
+        AssertContains(shader, "stage float _OceanCloseWaterColorDetailStrength = 1.0f;", "OceanSurface should keep the original Ocean lighting/reflection detail over the close water-color response");
+        AssertContains(shader, "stage float _OceanCloseWaterColorResponseStrength = 0.70f;", "OceanSurface should apply close water-color as a weighted color offset instead of replacing surface detail");
+        AssertContains(shader, "stage float3 _OceanFarMapWaterBase = float3(0.10f, 0.135f, 0.15f);", "OceanSurface should expose the RenderDoc-calibrated far-map water response base");
+        AssertContains(shader, "stage float3 _OceanFarMapWaterScale = float3(1.0f, 1.25f, 1.45f);", "OceanSurface should expose the RenderDoc-calibrated far-map water response scale");
+        AssertContains(shader, "stage float _OceanFarMapDetailStrength = 0.35f;", "OceanSurface should preserve only positive lighting/reflection detail over the far-map water response");
+        AssertContains(shader, "stage float _OceanFarMapResponseStrength = 1.0f;", "OceanSurface should fully apply the CK3-like far-map water response at strategic zoom");
         AssertContains(shader, "stage float _OceanWaveSpeedScale = 0.2f;", "OceanSurface should expose an Ocean-only wave animation speed scale");
         AssertContains(shader, "stage float _OceanFlowSpeedScale = 0.2f;", "OceanSurface should expose an Ocean-only flow animation speed scale");
         AssertContains(shader, "float mappedGlossiness = max(_WaterGlossBase, waterColorAndSpec.a);", "OceanSurface should keep the water gloss base active while reading the water color/spec map alpha");
         AssertContains(shader, "float glossiness = saturate(mappedGlossiness * _WaterGlossScale * saturate(1.0f - _OceanRoughness));", "OceanSurface roughness should remain an active material control");
         AssertContains(shader, "float3 waterDiffuse = textureWaterColor * _WaterDiffuseMultiplier;", "OceanSurface should light the water texture with a low Stride-calibrated diffuse term");
+        AssertContains(shader, "float3 ApplyOceanWaterColorMapTint(float3 waterColorMap)", "OceanSurface should apply CK3-style water color map tint before display response");
+        AssertContains(shader, "return lerp(waterColorMap, _WaterColorMapTint, saturate(_WaterColorMapTintFactor));", "OceanSurface should keep water color map tint subtle and parameterized");
+        AssertContains(shader, "float ComputeOceanZoomedOutFactor()", "OceanSurface should derive a CK3-like far-map water blend from camera height");
+        AssertContains(shader, "float cameraHeight = max(_CameraWorldPosition.y - _WaterHeight, 0.0f);", "OceanSurface should base far-map water blending on height above the ocean plane");
+        AssertContains(shader, "return saturate((cameraHeight - _OceanZoomedOutStartHeight) / heightRange);", "OceanSurface should clamp the far-map water blend across a configurable height range");
+        AssertContains(shader, "float ComputeOceanWaterColorTextureInfluence(float zoomedOutFactor)", "OceanSurface should separate close shallow/deep water color from far-map dominance");
+        AssertContains(shader, "float nearInfluence = 0.0f;", "OceanSurface should keep close zoom diffuse on shallow/deep water color like CK3");
+        AssertContains(shader, "return lerp(nearInfluence, zoomedOutInfluence, saturate(zoomedOutFactor));", "OceanSurface should increase water_color influence with the far-map blend");
+        AssertContains(shader, "float3 CalcOceanWaterColor(float4 waterColorAndSpec, float facing, float zoomedOutFactor)", "OceanSurface should compute water map contribution before lighting and refraction");
+        AssertContains(shader, "float3 baseWaterColor = lerp(DeepColor.rgb, ShallowColor.rgb, saturate(facing));", "OceanSurface should use CK3-style facing-based shallow/deep base water color");
+        AssertContains(shader, "float3 waterColorMap = ApplyOceanWaterColorMapTint(waterColorAndSpec.rgb);", "OceanSurface should tint the water color texture before mixing it into water color");
+        AssertContains(shader, "return lerp(baseWaterColor, waterColorMap, ComputeOceanWaterColorTextureInfluence(zoomedOutFactor));", "OceanSurface should use water_color texture for the far-map water path, not close diffuse color");
+        AssertContains(shader, "float zoomedOutFactor = ComputeOceanZoomedOutFactor();", "OceanSurface should evaluate the far-map water factor once per pixel");
+        AssertContains(shader, "float3 textureWaterColor = CalcOceanWaterColor(waterColorAndSpec, facing, zoomedOutFactor);", "OceanSurface should calculate texture water color after facing and far-map factor are known");
+        AssertContains(shader, "float3 refractionColor = CalcRefraction(worldPosition, waterNormal, streams.ShadingPosition.xy, waterColorMap, baseRefractionDepth, zoomedOutFactor);", "OceanSurface should feed map-space water color into CK3-style refraction");
         AssertContains(shader, "float3 scaledLightColorNdotL = RiverStrideGetMainLightColorNdotL(normal, shadow) * _OceanSceneLightingScale;", "OceanSurface should scale direct sun lighting inside the Ocean pass");
         AssertContains(shader, "RiverStrideComputeEnvironmentDiffuse(diffuseColor, normal, _OceanSceneLightingScale)", "OceanSurface should scale environment diffuse with the same Ocean lighting scale");
         AssertContains(shader, "RiverStrideComputeEnvironmentSpecular(specularColor, glossiness, normal, viewDir, _OceanSceneLightingScale)", "OceanSurface should scale environment specular with the same Ocean lighting scale");
@@ -173,15 +224,40 @@ internal static class OceanShaderTextTests
         AssertContains(shader, "float2 offset = float2(0.0f, -_WaterFlowTime * _OceanFlowSpeedScale);", "OceanSurface should slow flow-normal animation without changing CPU time binding");
         AssertContains(shader, "float foamTime = _GlobalTime * _OceanWaveSpeedScale;", "OceanSurface should slow foam animation with the same Ocean-only scale");
         AssertContains(shader, "refractionSample.rgb * _OceanRefractionColorScale", "OceanSurface should scale refraction RGB locally without mutating shared capture");
+        AssertContains(shader, "float refractionZoomBlend = 1.0f - pow(1.0f - saturate(zoomedOutFactor), 2.0f);", "OceanSurface should match CK3's squared zoom refraction fade");
+        AssertContains(shader, "float refractionInfluence = lerp(", "OceanSurface should fade refraction out in the CK3-like far-map path");
+        AssertContains(shader, "float2 refractionOffset = ComputeRefractionOffset(Normal, refractionShoreMask) * refractionInfluence;", "OceanSurface should reduce refraction offset at far zoom instead of changing the shared capture");
+        AssertContains(shader, "return lerp(refractionWaterColorMap, refractedColor, refractionInfluence);", "OceanSurface should use the refraction-space water color map as the far-zoom fallback");
         AssertContains(shader, "float3 litWater = ComputeOceanLighting(", "OceanSurface should use an Ocean-local lighting wrapper so direct sun is scaled");
-        AssertContains(shader, "float3 ApplyOceanDisplayResponse(float3 finalColor, float baseRefractionDepth)", "OceanSurface should keep the final-color compensation isolated to the Ocean pass");
+        AssertContains(shader, "float3 ApplyOceanDisplayResponse(float3 finalColor, float baseRefractionDepth, float zoomedOutFactor)", "OceanSurface should keep the final-color compensation isolated to the Ocean pass");
         AssertContains(shader, "float shallowMask = saturate(1.0f - baseRefractionDepth / max(_OceanDisplayShallowDepth, 0.0001f));", "OceanSurface should blend deep and shallow display targets from the unmodified base refraction depth");
-        AssertContains(shader, "float3 deepColor = _OceanDisplayDeepBase + (finalColor - _OceanDisplayDeepReference) * _OceanDisplayDeepDetailGain;", "OceanSurface should preserve deep-water variation instead of replacing it with a flat target");
+        AssertContains(shader, "float deepDetailGain = lerp(_OceanDisplayDeepDetailGain, _OceanZoomedOutDisplayDetailGain, saturate(zoomedOutFactor));", "OceanSurface should use a softer deep response for the far-map water path");
+        AssertContains(shader, "float3 deepColor = _OceanDisplayDeepBase + (finalColor - _OceanDisplayDeepReference) * deepDetailGain;", "OceanSurface should preserve deep-water variation instead of replacing it with a flat target");
         AssertContains(shader, "float3 shallowColor = finalColor * _OceanDisplayShallowGain + _OceanDisplayShallowBias;", "OceanSurface should keep shallow response tied to original refraction and lighting");
         AssertContains(shader, "max(lerp(deepColor, shallowColor, shallowMask), float3(0.0f, 0.0f, 0.0f))", "OceanSurface should blend the RenderDoc-calibrated deep and shallow responses");
         AssertContains(shader, "lerp(finalColor, displayColor, saturate(_OceanDisplayResponseStrength))", "OceanSurface should expose a strength control for the display response");
-        AssertContains(shader, "finalColor = ApplyOceanDisplayResponse(finalColor, baseRefractionDepth);", "OceanSurface should apply the display response after lighting, refraction, and reflection composition");
+        AssertContains(shader, "finalColor = ApplyOceanDisplayResponse(finalColor, baseRefractionDepth, zoomedOutFactor);", "OceanSurface should not feed water_color texture RGB directly into the display response");
+        AssertContains(shader, "float3 BuildOceanCloseWaterColor(float3 waterColorMap, float baseRefractionDepth)", "OceanSurface should build a close water-color response from map-space water color and refraction depth");
+        AssertContains(shader, "float shallowMask = saturate(1.0f - baseRefractionDepth / max(_OceanCloseWaterColorShallowDepth, 0.0001f));", "OceanSurface should use the broader close shallow-water mask validated in RenderDoc");
+        AssertContains(shader, "float3 closeWaterColor = _OceanCloseWaterColorBase + waterColorMap * _OceanCloseWaterColorScale;", "OceanSurface should use map-space water color as the close low-frequency water base");
+        AssertContains(shader, "closeWaterColor += _OceanCloseWaterColorShallowBoost * shallowMask;", "OceanSurface should apply a depth-derived shallow boost to the close water-color base");
+        AssertContains(shader, "float3 BuildOceanFarMapWaterColor(float3 composedColor, float3 waterColorMap)", "OceanSurface should keep the existing far-map water response separated");
+        AssertContains(shader, "float3 farMapColor = _OceanFarMapWaterBase + waterColorMap * _OceanFarMapWaterScale;", "OceanSurface should build the far-map response from map-space water color");
+        AssertContains(shader, "float3 positiveDetail = max(composedColor - farMapColor, float3(0.0f, 0.0f, 0.0f)) * _OceanFarMapDetailStrength;", "OceanSurface should avoid reintroducing far-zoom terrain-shadow darkening as detail");
+        AssertContains(shader, "float3 ApplyOceanWaterColorMapResponse(float3 composedColor, float3 waterColorMap, float baseRefractionDepth, float zoomedOutFactor)", "OceanSurface should apply close and far map-space water-color responses after the close-water composition");
+        AssertContains(shader, "float3 closeDetail = (composedColor - _OceanDisplayDeepBase) * _OceanCloseWaterColorDetailStrength;", "OceanSurface should preserve signed Ocean lighting/reflection detail over the close water-color response");
+        AssertContains(shader, "float3 responseColor = lerp(closeWaterColor, farMapColor, zoomedOut);", "OceanSurface should transition from close water-color response to far-map response by zoom factor");
+        AssertContains(shader, "(1.0f - zoomedOut) * _OceanCloseWaterColorResponseStrength", "OceanSurface should apply the close water-color response at low camera heights");
+        AssertContains(shader, "zoomedOut * _OceanFarMapResponseStrength", "OceanSurface should retain the far-map response at strategic zoom");
+        AssertContains(shader, "return lerp(composedColor, responseColor, responseBlend);", "OceanSurface should blend from the composed Ocean result into the map-space water-color response");
+        AssertContains(shader, "float3 waterColorMap = ApplyOceanWaterColorMapTint(waterColorAndSpec.rgb);", "OceanSurface should keep a named tinted water-color map for the far-map response");
+        AssertContains(shader, "finalColor = ApplyOceanWaterColorMapResponse(finalColor, waterColorMap, baseRefractionDepth, zoomedOutFactor);", "OceanSurface should apply close/far water-color response before writing the Ocean target");
         AssertContains(shader, "streams.ColorTarget = float4(finalColor, 1.0f);", "OceanSurface should output opaque normal ocean pixels");
+        AssertNotContains(shader, "ApplyOceanRegionalDisplayTint", "OceanSurface should not transfer water_color RGB into the final display response");
+        AssertNotContains(shader, "SanitizeOceanRegionalWaterColor", "OceanSurface should not rely on warm-color rejection tricks in the final display response");
+        AssertNotContains(shader, "regionalWaterColor", "OceanSurface should not keep the removed regional display-tint path");
+        AssertNotContains(shader, "warmReject", "OceanSurface should not keep the removed warm-sample reject workaround");
+        AssertNotContains(shader, "_OceanCloseMapface", "OceanSurface should not use global close-mapface constants that make Italy and East Asia nearshore converge to one color");
         AssertNotContains(shader, "_WaterFlowNormalSpeed", "OceanSurface should use CK3's flow time directly, not an extra flow-normal speed multiplier");
         AssertNotContains(shader, "0.86f", "OceanSurface should not keep the old hardcoded translucent alpha");
         AssertNotContains(shader, "1920.0f", "OceanSurface should not hard-code desktop viewport width in refraction offset");
@@ -216,6 +292,13 @@ internal static class OceanShaderTextTests
             "FlatMap",
             "_WaterToSunDir",
             "_DefaultEnvironmentSun",
+            "Tony",
+            "ColorCube",
+            "Mapface",
+            "FixedExposure",
+            "SunIntensity",
+            "ToneMap",
+            "LUT",
         ];
 
         foreach (string token in forbidden)

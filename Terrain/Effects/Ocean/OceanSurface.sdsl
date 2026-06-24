@@ -21,6 +21,8 @@ namespace Terrain
         stage float _WaterRefractionShoreMaskSharpness = 1.0f;
         stage float _WaterFadeShoreMaskDepth = 0.5f;
         stage float _WaterFadeShoreMaskSharpness = 5.0f;
+        stage float _WaterSeeThroughShoreMaskDepth = 0.0f;
+        stage float _WaterSeeThroughShoreMaskSharpness = 1.0f;
         stage float _WaterFoamShoreMaskDepth = 0.0f;
         stage float _WaterFoamShoreMaskSharpness = 1.0f;
 
@@ -52,22 +54,38 @@ namespace Terrain
 
         stage float _WaterFresnelBias = 0.01f;
         stage float _WaterFresnelPow = 4.3f;
-        stage float _WaterReflectionNormalFlatten = 3.0f;
-        stage float _WaterReflectionIntensity = 0.10f;
-        stage float _WaterSpecular = 0.01f;
+        stage float _WaterReflectionNormalFlatten = 0.6f;
+        stage float _WaterReflectionIntensity = 0.25f;
+        stage float _WaterSpecular = 0.02f;
         stage float _WaterGlossBase = 1.15f;
-        stage float _WaterGlossScale = 0.1f;
+        stage float _WaterGlossScale = 0.4f;
         stage float _WaterDiffuseMultiplier = 0.20f;
         stage float _OceanSceneLightingScale = 0.18f;
         stage float _OceanRefractionColorScale = 0.30f;
-        stage float _OceanWaterColorTextureInfluence = 0.20f;
+        stage float _OceanZoomedOutStartHeight = 650.0f;
+        stage float _OceanZoomedOutEndHeight = 2500.0f;
+        stage float _OceanZoomedOutWaterColorTextureInfluence = 1.0f;
+        stage float _OceanZoomedOutRefractionInfluence = 0.0f;
+        stage float3 _WaterColorMapTint = float3(0.8324021f, 0.7931101f, 1.0f);
+        stage float _WaterColorMapTintFactor = 0.05f;
         stage float3 _OceanDisplayDeepBase = float3(0.115f, 0.185f, 0.213f);
         stage float3 _OceanDisplayDeepReference = float3(0.065f, 0.128f, 0.146f);
         stage float _OceanDisplayDeepDetailGain = 2.0f;
+        stage float _OceanZoomedOutDisplayDetailGain = 1.0f;
         stage float _OceanDisplayShallowGain = 0.8f;
         stage float3 _OceanDisplayShallowBias = float3(0.16f, 0.22f, 0.20f);
         stage float _OceanDisplayShallowDepth = 6.0f;
         stage float _OceanDisplayResponseStrength = 1.0f;
+        stage float3 _OceanCloseWaterColorBase = float3(0.14f, 0.20f, 0.22f);
+        stage float3 _OceanCloseWaterColorScale = float3(2.0f, 2.4f, 2.3f);
+        stage float3 _OceanCloseWaterColorShallowBoost = float3(0.055f, 0.055f, 0.025f);
+        stage float _OceanCloseWaterColorShallowDepth = 16.0f;
+        stage float _OceanCloseWaterColorDetailStrength = 1.0f;
+        stage float _OceanCloseWaterColorResponseStrength = 0.70f;
+        stage float3 _OceanFarMapWaterBase = float3(0.10f, 0.135f, 0.15f);
+        stage float3 _OceanFarMapWaterScale = float3(1.0f, 1.25f, 1.45f);
+        stage float _OceanFarMapDetailStrength = 0.35f;
+        stage float _OceanFarMapResponseStrength = 1.0f;
 
         stage Texture2D<float4> WaterColorTexture;
         stage Texture2D<float4> AmbientNormalTexture;
@@ -111,9 +129,8 @@ namespace Terrain
 
         float2 ComputeMapWorldUv(float3 worldPosition)
         {
-            float2 worldUv = worldPosition.xz / max(_MapWorldSize, float2(1.0f, 1.0f));
-            worldUv.y = 1.0f - worldUv.y;
-            return worldUv;
+            // The local water_color asset already matches Terrain world-Z orientation.
+            return worldPosition.xz / max(_MapWorldSize, float2(1.0f, 1.0f));
         }
 
         float ComputeWaterFade(float depth)
@@ -146,19 +163,52 @@ namespace Terrain
             float3 toCameraDir = normalize(_CameraWorldPosition - refractionWorldPosition);
             float waterDistance = refractionDepth / max(toCameraDir.y, 0.0001f);
             float attenuation = saturate(exp(-_WaterSeeThroughDensity * max(waterDistance, 0.0f)));
-            return lerp(waterColorMap, bottomColor, attenuation);
+            float3 color = lerp(waterColorMap, bottomColor, attenuation);
+            float shoreMask = 1.0f - saturate((_WaterSeeThroughShoreMaskDepth - refractionDepth) * _WaterSeeThroughShoreMaskSharpness);
+            return lerp(color, waterColorMap, shoreMask);
         }
 
-        float3 CalcRefraction(float3 WorldSpacePos, float3 Normal, float2 ScreenPos, float3 WaterColor, float Depth)
+        float3 ApplyOceanWaterColorMapTint(float3 waterColorMap)
+        {
+            return lerp(waterColorMap, _WaterColorMapTint, saturate(_WaterColorMapTintFactor));
+        }
+
+        float ComputeOceanZoomedOutFactor()
+        {
+            float cameraHeight = max(_CameraWorldPosition.y - _WaterHeight, 0.0f);
+            float heightRange = max(_OceanZoomedOutEndHeight - _OceanZoomedOutStartHeight, 0.0001f);
+            return saturate((cameraHeight - _OceanZoomedOutStartHeight) / heightRange);
+        }
+
+        float ComputeOceanWaterColorTextureInfluence(float zoomedOutFactor)
+        {
+            float nearInfluence = 0.0f;
+            float zoomedOutInfluence = saturate(_OceanZoomedOutWaterColorTextureInfluence);
+            return lerp(nearInfluence, zoomedOutInfluence, saturate(zoomedOutFactor));
+        }
+
+        float3 CalcOceanWaterColor(float4 waterColorAndSpec, float facing, float zoomedOutFactor)
+        {
+            float3 baseWaterColor = lerp(DeepColor.rgb, ShallowColor.rgb, saturate(facing));
+            float3 waterColorMap = ApplyOceanWaterColorMapTint(waterColorAndSpec.rgb);
+            return lerp(baseWaterColor, waterColorMap, ComputeOceanWaterColorTextureInfluence(zoomedOutFactor));
+        }
+
+        float3 CalcRefraction(float3 WorldSpacePos, float3 Normal, float2 ScreenPos, float3 WaterColor, float Depth, float zoomedOutFactor)
         {
             float2 screenUv = ComputeScreenUv(float4(ScreenPos, 0.0f, 1.0f));
+            float refractionZoomBlend = 1.0f - pow(1.0f - saturate(zoomedOutFactor), 2.0f);
+            float refractionInfluence = lerp(
+                1.0f,
+                saturate(_OceanZoomedOutRefractionInfluence),
+                refractionZoomBlend);
 
             float4 baseRefractionSample = RefractionTexture.Sample(RefractionSampler, screenUv);
             float unfilteredBasePayload = SampleRefractionPayload(screenUv);
             float3 baseRefractionWorldPosition = DecodeRefractionWorldPosition(WorldSpacePos, unfilteredBasePayload);
             float baseRefractionDepth = WorldSpacePos.y - baseRefractionWorldPosition.y;
             float refractionShoreMask = ComputeRefractionShoreMask(min(Depth, baseRefractionDepth));
-            float2 refractionOffset = ComputeRefractionOffset(Normal, refractionShoreMask);
+            float2 refractionOffset = ComputeRefractionOffset(Normal, refractionShoreMask) * refractionInfluence;
 
             float2 offsetScreenUv = saturate(screenUv + refractionOffset);
             float4 offsetRefractionSample = RefractionTexture.Sample(RefractionSampler, offsetScreenUv);
@@ -171,8 +221,11 @@ namespace Terrain
             float refractionDepth = WorldSpacePos.y - refractionWorldPosition.y;
 
             float2 refractionWorldUv = ComputeMapWorldUv(refractionWorldPosition);
-            float3 refractionWaterColorMap = lerp(WaterColor, WaterColorTexture.Sample(OceanTextureSampler, refractionWorldUv).rgb, _OceanWaterColorTextureInfluence);
-            return CalcTerrainUnderwaterSeeThrough(refractionDepth, refractionWorldPosition, refractionWaterColorMap, refractionSample.rgb * _OceanRefractionColorScale);
+            float4 refractionWaterColorAndSpec = WaterColorTexture.Sample(OceanTextureSampler, refractionWorldUv);
+            float3 refractionWaterColorMap = ApplyOceanWaterColorMapTint(refractionWaterColorAndSpec.rgb);
+            refractionWaterColorMap = lerp(WaterColor, refractionWaterColorMap, ComputeOceanWaterColorTextureInfluence(zoomedOutFactor));
+            float3 refractedColor = CalcTerrainUnderwaterSeeThrough(refractionDepth, refractionWorldPosition, refractionWaterColorMap, refractionSample.rgb * _OceanRefractionColorScale);
+            return lerp(refractionWaterColorMap, refractedColor, refractionInfluence);
         }
 
         float3 DecodeWaterNormal(float4 packedNormal)
@@ -305,13 +358,44 @@ namespace Terrain
             return directDiffuse + directSpecular + environmentDiffuse + environmentSpecular;
         }
 
-        float3 ApplyOceanDisplayResponse(float3 finalColor, float baseRefractionDepth)
+        float3 ApplyOceanDisplayResponse(float3 finalColor, float baseRefractionDepth, float zoomedOutFactor)
         {
             float shallowMask = saturate(1.0f - baseRefractionDepth / max(_OceanDisplayShallowDepth, 0.0001f));
-            float3 deepColor = _OceanDisplayDeepBase + (finalColor - _OceanDisplayDeepReference) * _OceanDisplayDeepDetailGain;
+            float deepDetailGain = lerp(_OceanDisplayDeepDetailGain, _OceanZoomedOutDisplayDetailGain, saturate(zoomedOutFactor));
+            float3 deepColor = _OceanDisplayDeepBase + (finalColor - _OceanDisplayDeepReference) * deepDetailGain;
             float3 shallowColor = finalColor * _OceanDisplayShallowGain + _OceanDisplayShallowBias;
             float3 displayColor = max(lerp(deepColor, shallowColor, shallowMask), float3(0.0f, 0.0f, 0.0f));
             return lerp(finalColor, displayColor, saturate(_OceanDisplayResponseStrength));
+        }
+
+        float3 BuildOceanCloseWaterColor(float3 waterColorMap, float baseRefractionDepth)
+        {
+            float shallowMask = saturate(1.0f - baseRefractionDepth / max(_OceanCloseWaterColorShallowDepth, 0.0001f));
+            float3 closeWaterColor = _OceanCloseWaterColorBase + waterColorMap * _OceanCloseWaterColorScale;
+            closeWaterColor += _OceanCloseWaterColorShallowBoost * shallowMask;
+            return max(closeWaterColor, float3(0.0f, 0.0f, 0.0f));
+        }
+
+        float3 BuildOceanFarMapWaterColor(float3 composedColor, float3 waterColorMap)
+        {
+            float3 farMapColor = _OceanFarMapWaterBase + waterColorMap * _OceanFarMapWaterScale;
+            float3 positiveDetail = max(composedColor - farMapColor, float3(0.0f, 0.0f, 0.0f)) * _OceanFarMapDetailStrength;
+            return max(farMapColor + positiveDetail, float3(0.0f, 0.0f, 0.0f));
+        }
+
+        float3 ApplyOceanWaterColorMapResponse(float3 composedColor, float3 waterColorMap, float baseRefractionDepth, float zoomedOutFactor)
+        {
+            float zoomedOut = saturate(zoomedOutFactor);
+            float3 closeWaterColor = BuildOceanCloseWaterColor(waterColorMap, baseRefractionDepth);
+            float3 closeDetail = (composedColor - _OceanDisplayDeepBase) * _OceanCloseWaterColorDetailStrength;
+            closeWaterColor = max(closeWaterColor + closeDetail, float3(0.0f, 0.0f, 0.0f));
+
+            float3 farMapColor = BuildOceanFarMapWaterColor(composedColor, waterColorMap);
+            float3 responseColor = lerp(closeWaterColor, farMapColor, zoomedOut);
+            float responseBlend = saturate(
+                (1.0f - zoomedOut) * _OceanCloseWaterColorResponseStrength +
+                zoomedOut * _OceanFarMapResponseStrength);
+            return lerp(composedColor, responseColor, responseBlend);
         }
 
         stage override void PSMain()
@@ -321,8 +405,8 @@ namespace Terrain
             float2 screenUv = ComputeScreenUv(streams.ShadingPosition);
 
             float4 waterColorAndSpec = WaterColorTexture.Sample(OceanTextureSampler, worldUv);
-            float3 textureWaterColor = lerp(ShallowColor.rgb, DeepColor.rgb, saturate(waterColorAndSpec.b));
-            textureWaterColor = lerp(textureWaterColor, waterColorAndSpec.rgb, saturate(waterColorAndSpec.a * _OceanWaterColorTextureInfluence));
+            float zoomedOutFactor = ComputeOceanZoomedOutFactor();
+            float3 waterColorMap = ApplyOceanWaterColorMapTint(waterColorAndSpec.rgb);
 
             SFlowNormalSample flowNormal = SampleFlowNormal(worldUv, worldPosition.xz);
             float3 ambientNormal = SampleAmbientNormal(worldUv);
@@ -334,6 +418,7 @@ namespace Terrain
 
             float3 toCameraDir = normalize(_CameraWorldPosition - worldPosition);
             float facing = 1.0f - max(dot(waterNormal, toCameraDir), 0.0f);
+            float3 textureWaterColor = CalcOceanWaterColor(waterColorAndSpec, facing, zoomedOutFactor);
             float mappedGlossiness = max(_WaterGlossBase, waterColorAndSpec.a);
             float glossiness = saturate(mappedGlossiness * _WaterGlossScale * saturate(1.0f - _OceanRoughness));
             float3 waterDiffuse = textureWaterColor * _WaterDiffuseMultiplier;
@@ -349,13 +434,14 @@ namespace Terrain
                 toCameraDir,
                 shadow);
 
-            float3 refractionColor = CalcRefraction(worldPosition, waterNormal, streams.ShadingPosition.xy, textureWaterColor, baseRefractionDepth);
+            float3 refractionColor = CalcRefraction(worldPosition, waterNormal, streams.ShadingPosition.xy, waterColorMap, baseRefractionDepth, zoomedOutFactor);
             float3 reflectionColor = CalcReflection(waterNormal, toCameraDir);
             float fresnel = saturate(_WaterFresnelBias + pow(1.0f - saturate(abs(dot(toCameraDir, waterNormal))), max(_WaterFresnelPow, 0.0001f))) * waterFade;
 
             float3 finalColor = litWater * waterFade;
             finalColor += lerp(refractionColor, reflectionColor, fresnel);
-            finalColor = ApplyOceanDisplayResponse(finalColor, baseRefractionDepth);
+            finalColor = ApplyOceanDisplayResponse(finalColor, baseRefractionDepth, zoomedOutFactor);
+            finalColor = ApplyOceanWaterColorMapResponse(finalColor, waterColorMap, baseRefractionDepth, zoomedOutFactor);
             streams.ColorTarget = float4(finalColor, 1.0f);
         }
     };
