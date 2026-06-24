@@ -21,7 +21,7 @@ namespace Terrain
         stage float _WaterRefractionShoreMaskSharpness = 1.0f;
         stage float _WaterFadeShoreMaskDepth = 0.5f;
         stage float _WaterFadeShoreMaskSharpness = 5.0f;
-        stage float _WaterSeeThroughShoreMaskDepth = 0.0f;
+        stage float _WaterSeeThroughShoreMaskDepth = 3.0f;
         stage float _WaterSeeThroughShoreMaskSharpness = 1.0f;
         stage float _WaterFoamShoreMaskDepth = 0.0f;
         stage float _WaterFoamShoreMaskSharpness = 1.0f;

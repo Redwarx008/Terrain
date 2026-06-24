@@ -123,12 +123,27 @@
 - 先在 RenderDoc 里热替换完整 Ocean PS，保持 final mean 基本不漂移。
 - 优先调 `_WaterReflectionNormalFlatten`、`_WaterReflectionIntensity`、`_WaterSpecular`、`_WaterGlossScale` 这类源路径承载参数。
 
+### ❌ Mistake 5: 用反号补偿 see-through shore mask 的零阈值
+**What to avoid:**
+- 因为 `_WaterSeeThroughShoreMaskDepth=0` 导致岸边全回到 water color，就把公式改成 `(refractionDepth - _WaterSeeThroughShoreMaskDepth)`。
+
+**Why it's bad:**
+- CK3 源码和本项目 River 都使用 `1 - saturate((_WaterSeeThroughShoreMaskDepth - Depth) * sharpness)`，再 `lerp(Color, WaterColorMap, mask)`。
+- 这个公式要求 shore depth 是正阈值：浅水先走 see-through，超过阈值再回到 water color。
+- 反号会把坡度翻过来，形成“贴岸是水色，稍深处才透底”的反向过渡。
+
+**Correct approach:**
+- 保留 CK3 公式：`(_WaterSeeThroughShoreMaskDepth - refractionDepth)`。
+- 给 Ocean 一个正的 `_WaterSeeThroughShoreMaskDepth`；2026-06-25 `debug.rdc` 热替换验证 `3.0` 已能让岸边先透底、外侧回水体颜色。
+- 如果岸边又被纯 water color 覆盖，先检查阈值是否为 `0`，不要先改公式方向。
+
 ---
 
 ## References
 
 - Session log: `docs/log/2026/06/25/2026-06-25-ocean-ck3-renderdoc-hot-validation.md`
 - Session log: `docs/log/2026/06/25/2026-06-25-ocean-source-detail-calibration.md`
+- Session log: `docs/log/2026/06/25/2026-06-25-ocean-see-through-shore-mask-fix.md`
 - Temporary diagnostics: `tmp/renderdoc/hot-ab/diagnostics-20260625/component-sheet.png`
 - Temporary variants: `tmp/renderdoc/hot-ab/mcp-variants-20260625/*.png`
 

@@ -143,7 +143,7 @@ internal static class OceanShaderTextTests
         AssertContains(shader, "ComputeRefractionShoreMask", "OceanSurface should compute a refraction shore mask");
         AssertContains(shader, "CalcTerrainUnderwaterSeeThrough", "OceanSurface should apply see-through attenuation");
         AssertContains(shader, "exp(-_WaterSeeThroughDensity", "OceanSurface should attenuate see-through by density");
-        AssertContains(shader, "float shoreMask = 1.0f - saturate((_WaterSeeThroughShoreMaskDepth - refractionDepth) * _WaterSeeThroughShoreMaskSharpness);", "OceanSurface should include CK3's see-through shore mask");
+        AssertContains(shader, "float shoreMask = 1.0f - saturate((_WaterSeeThroughShoreMaskDepth - refractionDepth) * _WaterSeeThroughShoreMaskSharpness);", "OceanSurface should use CK3's positive-threshold see-through shore mask");
         AssertContains(shader, "return lerp(color, waterColorMap, shoreMask);", "OceanSurface should fade see-through back to water map by shore mask");
         AssertContains(shader, "FoamRampTexture.SampleLevel", "OceanSurface should sample foam ramp without mip/filter drift");
         AssertContains(shader, "0.5f / 256.0f", "OceanSurface should clamp foam ramp U by half a texel");
@@ -171,7 +171,7 @@ internal static class OceanShaderTextTests
         AssertContains(shader, "stage float _WaterReflectionIntensity = 0.25f;", "OceanSurface should use the RenderDoc-validated reflection intensity without changing the color baseline");
         AssertContains(shader, "stage float _OceanSceneLightingScale = 0.18f;", "OceanSurface should apply Ocean-only direct and environment lighting energy scaling");
         AssertContains(shader, "stage float _OceanRefractionColorScale = 0.30f;", "OceanSurface should apply Ocean-only refraction RGB scaling without crushing to CK3's black capture value");
-        AssertContains(shader, "stage float _WaterSeeThroughShoreMaskDepth = 0.0f;", "OceanSurface should default CK3 see-through shore depth to the captured ocean setting");
+        AssertContains(shader, "stage float _WaterSeeThroughShoreMaskDepth = 3.0f;", "OceanSurface should use a positive see-through shore depth so shallow water reveals the bottom before fading to water color");
         AssertContains(shader, "stage float _WaterSeeThroughShoreMaskSharpness = 1.0f;", "OceanSurface should expose CK3 see-through shore sharpness");
         AssertContains(shader, "stage float _OceanZoomedOutStartHeight = 650.0f;", "OceanSurface should start blending toward the CK3 far-map water path only after close camera heights");
         AssertContains(shader, "stage float _OceanZoomedOutEndHeight = 2500.0f;", "OceanSurface should fully enter the CK3 far-map water path at strategic zoom heights");

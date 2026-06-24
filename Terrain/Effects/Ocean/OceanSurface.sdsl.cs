@@ -36,7 +36,7 @@ namespace Terrain
         public static readonly ValueParameterKey<float> _WaterRefractionShoreMaskSharpness = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _WaterFadeShoreMaskDepth = ParameterKeys.NewValue<float>(0.5f);
         public static readonly ValueParameterKey<float> _WaterFadeShoreMaskSharpness = ParameterKeys.NewValue<float>(5.0f);
-        public static readonly ValueParameterKey<float> _WaterSeeThroughShoreMaskDepth = ParameterKeys.NewValue<float>(0.0f);
+        public static readonly ValueParameterKey<float> _WaterSeeThroughShoreMaskDepth = ParameterKeys.NewValue<float>(3.0f);
         public static readonly ValueParameterKey<float> _WaterSeeThroughShoreMaskSharpness = ParameterKeys.NewValue<float>(1.0f);
         public static readonly ValueParameterKey<float> _WaterFoamShoreMaskDepth = ParameterKeys.NewValue<float>(0.0f);
         public static readonly ValueParameterKey<float> _WaterFoamShoreMaskSharpness = ParameterKeys.NewValue<float>(1.0f);

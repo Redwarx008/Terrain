@@ -113,6 +113,8 @@
 
 **2026-06-25 Ocean 源路径细节补充：** 当前不再新增 CK3 mapface / Tony LUT / ColorCube / 全屏提亮后处理，最终水色低频基线保持 2026-06-24 close/far response。`debug.rdc` 热替换对比本地 Ocean EID 280 / final EID 3445 与 `ck3-cocean-ltaly.rdc` water EID 490 / final EID 1263 后，落地保守 v6：降低 `_WaterReflectionNormalFlatten` 到 `0.6`，提高 `_WaterReflectionIntensity` 到 `0.25`、`_WaterSpecular` 到 `0.02`、`_WaterGlossScale` 到 `0.4`；不改 `_WaterFlowNormalScale=0.025`，因为 `0.04` 没有明显改善且会增加浪纹漂移风险。该改动只增强 reflection/specular/gloss 源路径细节，shader 文本测试禁止引入 `Tony`、`ColorCube`、`Mapface`、`LUT`、`SunIntensity`、`ToneMap` 等后处理/亮度 token。
 
+**2026-06-25 Ocean 岸边透底补充：** 更新后的 `debug.rdc` 复核确认 Ocean 岸边透底过渡方向不能靠翻转 CK3 see-through shore mask 公式修复。CK3 源码和本项目 `RiverSurface` 都使用 `1 - saturate((_WaterSeeThroughShoreMaskDepth - Depth) * sharpness)` 再 `lerp(Color, WaterColorMap, mask)`；Ocean 此前默认 `_WaterSeeThroughShoreMaskDepth=0.0` 会让所有正 refraction depth 回到 water color。当前 Ocean 保留 CK3/River 公式，并把默认阈值改为 `3.0f`，让贴岸浅水先透底、外侧逐渐回到水体颜色；不改 River、shared refraction capture、global tonemap 或 scene lighting。
+
 ## 规划中 (Planned)
 
 | 功能 | 优先级 | 设计文档 |
