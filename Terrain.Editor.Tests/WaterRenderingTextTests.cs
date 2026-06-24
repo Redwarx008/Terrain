@@ -15,6 +15,7 @@ internal static class WaterRenderingTextTests
         TestHarness.Run("runtime compositor routes water stage through custom renderer", RuntimeCompositorRoutesWaterStageThroughCustomRenderer);
         TestHarness.Run("water rendering architecture avoids obsolete renderer names", WaterRenderingArchitectureAvoidsObsoleteRendererNames);
         TestHarness.Run("custom forward renderer rejects unsupported msaa outputs", CustomForwardRendererRejectsUnsupportedMsaaOutputs);
+        TestHarness.Run("custom forward renderer includes ocean sea level in capture clamp", CustomForwardRendererIncludesOceanSeaLevelInCaptureClamp);
         TestHarness.Run("ocean render feature exposes renderer callable water draw", OceanRenderFeatureExposesRendererCallableWaterDraw);
         TestHarness.Run("river render feature exposes renderer callable water chain", RiverRenderFeatureExposesRendererCallableWaterChain);
     }
@@ -159,6 +160,18 @@ internal static class WaterRenderingTextTests
         AssertNotContains(renderer, "viewOutputTarget?.MultisampleCount != MultisampleCount.None", "CustomForwardRenderer should not treat a missing color target as unsupported MSAA.");
         AssertNotContains(renderer, "viewDepthStencil?.MultisampleCount != MultisampleCount.None", "CustomForwardRenderer should not treat a missing depth target as unsupported MSAA.");
         AssertContains(renderer, "CustomForwardRenderer does not support MSAA output targets", "CustomForwardRenderer should fail fast instead of silently dropping MSAA output.");
+    }
+
+    private static void CustomForwardRendererIncludesOceanSeaLevelInCaptureClamp()
+    {
+        string renderer = ReadRepositoryText("Terrain/Rendering/CustomForwardRenderer.cs");
+        string oceanFeature = ReadRepositoryText("Terrain/Rendering/Ocean/OceanRenderFeature.cs");
+
+        AssertContains(renderer, "oceanRenderFeature.GetRefractionMaxCameraHeight", "CustomForwardRenderer should include Ocean ranges when resolving the shared refraction capture clamp.");
+        AssertOccursBefore(renderer, "float refractionMaxCameraHeight = ResolveWaterRefractionMaxCameraHeight();", "waterRefractionCapturePass.Capture(", "CustomForwardRenderer should resolve the shared Ocean/River capture clamp before issuing the capture.");
+        AssertContains(oceanFeature, "internal float GetRefractionMaxCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)", "OceanRenderFeature should expose Ocean range clamp resolution to CustomForwardRenderer.");
+        AssertContains(oceanFeature, "oceanObject.SeaLevel + 1.0f", "Ocean refraction capture clamp should include high Ocean sea levels with padding.");
+        AssertContains(oceanFeature, "MathF.Max(maxHeight, oceanObject.SeaLevel + 1.0f)", "Ocean refraction capture clamp should keep the largest Ocean sea level in the draw range.");
     }
 
     private static void OceanRenderFeatureExposesRendererCallableWaterDraw()

@@ -372,16 +372,25 @@ public partial class CustomForwardRenderer : SceneRendererBase, ISharedRenderer
     private float ResolveWaterRefractionMaxCameraHeight()
     {
         float refractionMaxCameraHeight = 50.0f;
-        if (riverRenderFeature == null)
+
+        if (oceanRenderFeature != null)
         {
-            return refractionMaxCameraHeight;
+            foreach (var range in oceanWaterRanges)
+            {
+                refractionMaxCameraHeight = MathF.Max(
+                    refractionMaxCameraHeight,
+                    oceanRenderFeature.GetRefractionMaxCameraHeight(range.Stage, range.StartIndex, range.EndIndex));
+            }
         }
 
-        foreach (var range in riverWaterRanges)
+        if (riverRenderFeature != null)
         {
-            refractionMaxCameraHeight = MathF.Max(
-                refractionMaxCameraHeight,
-                riverRenderFeature.GetRefractionMaxCameraHeight(range.Stage, range.StartIndex, range.EndIndex));
+            foreach (var range in riverWaterRanges)
+            {
+                refractionMaxCameraHeight = MathF.Max(
+                    refractionMaxCameraHeight,
+                    riverRenderFeature.GetRefractionMaxCameraHeight(range.Stage, range.StartIndex, range.EndIndex));
+            }
         }
 
         return refractionMaxCameraHeight;

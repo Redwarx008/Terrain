@@ -159,7 +159,8 @@ namespace Terrain
         float2 ComputeRefractionOffset(float3 normal, float shoreMask)
         {
             float2 viewNormal = mul(float4(normal.x, 0.0f, normal.z, 0.0f), _ViewMatrix).xy;
-            float2 refractionOffset = viewNormal * float2(-1.0f / 1920.0f, 1.0f / 1080.0f);
+            float2 inverseViewSize = 1.0f / max(_ViewSize, float2(1.0f, 1.0f));
+            float2 refractionOffset = viewNormal * float2(-inverseViewSize.x, inverseViewSize.y);
             return refractionOffset * max(_WaterRefractionScale, 0.0f) * shoreMask * saturate(_WaterRefractionFade);
         }
 

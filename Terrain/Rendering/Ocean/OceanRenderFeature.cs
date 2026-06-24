@@ -106,6 +106,20 @@ public sealed class OceanRenderFeature : RootRenderFeature
         return;
     }
 
+    internal float GetRefractionMaxCameraHeight(RenderViewStage renderViewStage, int startIndex, int endIndex)
+    {
+        float maxHeight = 50.0f;
+        for (int index = startIndex; index < endIndex; index++)
+        {
+            if (renderViewStage.SortedRenderNodes[index].RenderObject is OceanRenderObject oceanObject && oceanObject.Enabled)
+            {
+                maxHeight = MathF.Max(maxHeight, oceanObject.SeaLevel + 1.0f);
+            }
+        }
+
+        return maxHeight;
+    }
+
     internal void DrawWater(
         RenderDrawContext context,
         RenderView renderView,

@@ -532,6 +532,8 @@ internal static class RiverShaderTextTests
         AssertContains(shader, "float refractionPayload = SampleRefractionPayload(screenUv);", "RiverSurface should read the base refraction payload with point/Load semantics");
         AssertContains(shader, "float3 refractionWorldPosition = DecodeRefractionWorldPosition(WorldSpacePos, refractionPayload);", "RiverSurface should decode the base refraction world position from the unfiltered payload");
         AssertContains(shader, "Depth = min(Depth, refractionDepth);", "RiverSurface should use the shallower depth for the refraction shore mask");
+        AssertContains(shader, "float2 inverseViewSize = 1.0f / max(_ViewSize, float2(1.0f, 1.0f));", "RiverSurface should scale refraction offset by the active view size");
+        AssertContains(shader, "float2 refractionOffset = viewNormal * float2(-inverseViewSize.x, inverseViewSize.y);", "RiverSurface should not hard-code a 1080p refraction offset");
         AssertContains(shader, "float4 offsetRefractionSample = RefractionTexture.Sample(RefractionSampler, screenUv + refractionOffset);", "RiverSurface should sample offset refraction separately");
         AssertContains(shader, "float offsetRefractionPayload = SampleRefractionPayload(screenUv + refractionOffset);", "RiverSurface should read the offset refraction payload with point/Load semantics");
         AssertContains(shader, "float3 offsetRefractionWorldPosition = DecodeRefractionWorldPosition(WorldSpacePos, offsetRefractionPayload);", "RiverSurface should decode the offset refraction world position from the unfiltered payload");
@@ -551,6 +553,8 @@ internal static class RiverShaderTextTests
         AssertNotContains(shader, "RiverDepthFromCrossSection(riverUv.y", "RiverSurface should not use the bank-width power helper for this path");
         AssertNotContains(shader, "DecodeRefractionWorldPosition(WorldSpacePos, refractionSample.a)", "RiverSurface should not linearly filter the base refraction distance payload");
         AssertNotContains(shader, "DecodeRefractionWorldPosition(WorldSpacePos, offsetRefractionSample.a)", "RiverSurface should not linearly filter the offset refraction distance payload");
+        AssertNotContains(shader, "1920.0f", "RiverSurface should not hard-code desktop viewport width in refraction offset");
+        AssertNotContains(shader, "1080.0f", "RiverSurface should not hard-code desktop viewport height in refraction offset");
     }
 
     private static void SurfaceShaderUsesTargetAdvancedAlphaBranch()
