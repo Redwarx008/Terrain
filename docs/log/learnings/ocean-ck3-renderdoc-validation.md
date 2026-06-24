@@ -143,7 +143,8 @@
 
 - Session log: `docs/log/2026/06/25/2026-06-25-ocean-ck3-renderdoc-hot-validation.md`
 - Session log: `docs/log/2026/06/25/2026-06-25-ocean-source-detail-calibration.md`
-- Session log: `docs/log/2026/06/25/2026-06-25-ocean-see-through-shore-mask-fix.md`
+- Session log: `docs/log/2026/06/25/2026-06-25-ocean-see-through-transition-direction.md`
+- Superseded failed attempt: `docs/log/2026/06/25/2026-06-25-ocean-see-through-shore-mask-fix.md`
 - Temporary diagnostics: `tmp/renderdoc/hot-ab/diagnostics-20260625/component-sheet.png`
 - Temporary variants: `tmp/renderdoc/hot-ab/mcp-variants-20260625/*.png`
 

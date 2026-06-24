@@ -50,23 +50,24 @@
 
 **Findings:**
 - `HOT_VIS_REFRACTION` 与 `HOT_VIS_WATER_COLOR_MAP` 在岸边像素完全同值，说明 `CalcTerrainUnderwaterSeeThrough` 的结果被替换成纯 water-color。
-- 根因是 shore mask 方向写反：默认 `_WaterSeeThroughShoreMaskDepth=0` 时，任意正 `refractionDepth` 都让 `shoreMask=1`，最终 `return lerp(color, waterColorMap, 1)`，水下透视被完全覆盖。
-- 修正为 `(refractionDepth - _WaterSeeThroughShoreMaskDepth)` 后，岸边 final 代表点从 `[0.302,0.443,0.455]` 降到 `[0.290,0.435,0.447]`，岸线底色/细节重新参与。
+- 当时误判为 shore mask 公式方向写反，并尝试改成 `(refractionDepth - _WaterSeeThroughShoreMaskDepth)`。
+- 后续 `2026-06-25-ocean-see-through-transition-direction.md` 已纠正：CK3/River 公式方向本身正确，真正问题是 Ocean 的 `_WaterSeeThroughShoreMaskDepth=0`。
 - `HOT_APPROACHING_WAVES` 的 mask 诊断大面积铺满海面，未证明是可靠 CK3 路径，本轮不落地。
 
-### 3. 源码修复
+### 3. 失败的源码尝试
 **Files Changed:**
 - `Terrain/Effects/Ocean/OceanSurface.sdsl`
 - `Terrain.Editor.Tests/OceanShaderTextTests.cs`
 
-**Implementation:**
+**Attempted Implementation:**
 ```hlsl
 float shoreMask = 1.0f - saturate((refractionDepth - _WaterSeeThroughShoreMaskDepth) * _WaterSeeThroughShoreMaskSharpness);
 ```
 
-**Rationale:**
-- 对正 refraction depth，默认 depth threshold `0` 应保持 see-through 路径，而不是强制回到 water-color。
-- 浅到接近阈值时才 fade 回 water map。
+**Why It Was Wrong:**
+- CK3 源码和本项目 `RiverSurface` 都使用 `(_WaterSeeThroughShoreMaskDepth - refractionDepth)`。
+- 公式要求 shore depth 是正阈值；用反号补偿 `0` 阈值会把过渡坡度反过来，形成贴岸先 water color、稍深处才透底。
+- 正确落地修复是保留 CK3/River 公式，并把 Ocean `_WaterSeeThroughShoreMaskDepth` 改为 `3.0f`。
 
 ---
 
@@ -103,6 +104,6 @@ dotnet run --project Terrain.Editor.Tests\Terrain.Editor.Tests.csproj --no-resto
 ## Quick Reference for Future Claude
 
 **What Claude Should Know:**
-- `(_WaterSeeThroughShoreMaskDepth - refractionDepth)` 是反号，会让默认 depth `0` 覆盖所有正深度透底。
-- 正确方向是 `(refractionDepth - _WaterSeeThroughShoreMaskDepth)`。
+- 本日志记录的是失败尝试，不要使用 `(refractionDepth - _WaterSeeThroughShoreMaskDepth)` 反号公式。
+- 正确结论见 `2026-06-25-ocean-see-through-transition-direction.md`：保留 CK3/River 的 `(_WaterSeeThroughShoreMaskDepth - refractionDepth)`，并使用正阈值。
 - `HOT_APPROACHING_WAVES` 在本帧没有通过 mask 验证，不要直接搬到 SDSL。
