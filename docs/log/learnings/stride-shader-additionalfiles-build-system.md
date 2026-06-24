@@ -1,30 +1,45 @@
-# Stride Shader AdditionalFiles Build System
+# Stride Shader Source Item Registration
 
 **Topic**: Stride SDSL/SDFX project item registration
 **Date**: 2026-06-24
-**Related Sessions**: [2026-06-24-stride-shader-additionalfiles-fix](../2026/06/24/2026-06-24-stride-shader-additionalfiles-fix.md)
+**Updated**: 2026-06-24
+**Related Sessions**:
+- [2026-06-24-vs-mcp-current-break-inspection](../2026/06/24/2026-06-24-vs-mcp-current-break-inspection.md)
+- [2026-06-24-stride-shader-additionalfiles-fix](../2026/06/24/2026-06-24-stride-shader-additionalfiles-fix.md)
 
 ---
 
 ## Problem / Context
 
-Stride asset build failed with:
+`Terrain.Windows.exe` broke in Visual Studio at:
 
 ```text
-Shader or Effect file is using old build system. Please use ItemType AdditionalFiles instead of None and remove the Generator metadata
+E:\WorkSpace\stride\sources\engine\Stride.Rendering\Rendering\RootEffectRenderFeature.cs:591
+renderEffect.PendingEffect.Wait()
 ```
 
-The project still registered shader source files with `None Update="...sdsl"` and `LastGenOutput`. That was compatible with older guidance, but the current Stride targets reject it.
+The inner shader compiler error was:
+
+```text
+E1202: The mixin [MaterialTerrainDiffuse] dependency is not in the module
+E1202: The mixin [MaterialTerrainDisplacement] dependency is not in the module
+```
+
+The shader files existed and `Terrain.sdpkg` included `Effects`, but `Terrain/Terrain.csproj` had removed `Effects/**/*.sdsl` and `Effects/**/*.sdfx` from `None` and re-added them as `AdditionalFiles`.
+
+`Terrain.Editor/Terrain.Editor.csproj` had the same registration pattern for editor-local shaders, so the same missing-module failure could occur for `EditorTerrain*` and brush decal shader permutations.
+
+That let some asset-generation paths appear healthy, but runtime effect compilation could still miss the shader source module entries for fresh permutations.
 
 ---
 
-## Solution / Pattern
+## Correct Pattern
 
-Remove shader source files from default `None` items, register them as `AdditionalFiles`, and keep generated key files as compiled C#:
+For this project and the current Stride targets, keep shader source files in the `None` item pipeline with `StrideShaderKeyGenerator`, and keep generated key files as compiled C# in every Stride project that owns local shader sources:
 
 ```xml
 <ItemGroup>
-  <Compile Update="Effects\Ocean\OceanSurface.sdsl.cs">
+  <Compile Update="Effects\Material\MaterialTerrainDisplacement.sdsl.cs">
     <DesignTime>True</DesignTime>
     <DesignTimeSharedInput>True</DesignTimeSharedInput>
     <AutoGen>True</AutoGen>
@@ -32,74 +47,64 @@ Remove shader source files from default `None` items, register them as `Addition
 </ItemGroup>
 
 <ItemGroup>
-  <None Remove="Effects\**\*.sdsl" />
-  <None Remove="Effects\**\*.sdfx" />
-  <AdditionalFiles Include="Effects\**\*.sdsl" />
-  <AdditionalFiles Include="Effects\**\*.sdfx" />
+  <None Update="Effects\**\*.sdsl" Generator="StrideShaderKeyGenerator" />
+  <None Update="Effects\**\*.sdfx" Generator="StrideShaderKeyGenerator" />
 </ItemGroup>
 ```
 
-Do not put `Generator`, `LastGenOutput`, or shader-source `None` metadata on `.sdsl` / `.sdfx` files.
+Do not remove `Effects/**/*.sdsl` from `None` and do not rely on `AdditionalFiles` for runtime shader source registration.
 
 ---
 
-## Key Insights
+## Why This Was Confusing
 
-### 1. Generated key files are still compiled
+An earlier session interpreted an asset-build-system message as requiring `AdditionalFiles`. That conclusion was incomplete for this repository: the final check must include runtime effect compilation, not only generated-file update or asset build.
 
-`*.sdsl.cs` files remain `Compile Update` items because runtime C# bindings use generated `*Keys` classes. The build-system change applies to shader source file items, not to generated C# key files.
-
-### 2. Current Stride target error supersedes older templates
-
-Older Stride examples and local notes may still mention `None Update` or `StrideShaderKeyGenerator`. If the asset target emits the AdditionalFiles error, follow the target error and update the project file.
-
----
-
-## When to Use
-
-- Adding or moving `.sdsl` / `.sdfx` files in this project.
-- Fixing asset build errors that mention the old shader build system.
-- Updating text tests that assert shader registration.
-
----
-
-## Common Mistakes
-
-### Mistake: Keeping `LastGenOutput` for shader source files
-
-**What to avoid:**
-- `None Update="Effects\...\*.sdsl"`
-- `LastGenOutput`
-- `Generator="StrideShaderKeyGenerator"`
-
-**Why it's bad:**
-- Current Stride targets classify that as the old build system and fail before shader compilation.
-
-**Correct approach:**
-- Remove `Effects\**\*.sdsl` / `Effects\**\*.sdfx` from `None`.
-- Use `AdditionalFiles Include="Effects\**\*.sdsl"` / `AdditionalFiles Include="Effects\**\*.sdfx"` for shader source files.
-- Keep `Compile Update="Effects\...\*.sdsl.cs"` for generated key files.
+Existing cached compiled effects can hide the problem. The failure may only appear when a fresh effect permutation is requested or the effect cache is invalidated.
 
 ---
 
 ## Verification
 
-Run:
+Run all of these after changing shader registration:
 
 ```powershell
 dotnet msbuild Terrain\Terrain.csproj "/t:_StridePrepareAssetCompiler;StrideAssetUpdateGeneratedFiles" /p:Configuration=Debug /p:TargetFramework=net10.0-windows
+dotnet msbuild Terrain\Terrain.csproj /t:StrideCleanAsset /p:Configuration=Debug /p:TargetFramework=net10.0-windows
+dotnet msbuild Terrain\Terrain.csproj /t:StrideCompileAsset /p:Configuration=Debug /p:TargetFramework=net10.0-windows
 dotnet msbuild Terrain.Editor\Terrain.Editor.csproj "/t:_StridePrepareAssetCompiler;StrideAssetUpdateGeneratedFiles" /p:Configuration=Debug /p:TargetFramework=net10.0-windows
+dotnet msbuild Terrain.Editor\Terrain.Editor.csproj /t:StrideCleanAsset /p:Configuration=Debug /p:TargetFramework=net10.0-windows
 dotnet msbuild Terrain.Editor\Terrain.Editor.csproj /t:StrideCompileAsset /p:Configuration=Debug /p:TargetFramework=net10.0-windows
+dotnet build Terrain.sln --no-restore
+dotnet run --project Terrain.Editor.Tests\Terrain.Editor.Tests.csproj --no-restore
 ```
 
-Also scan project files:
-
-```powershell
-rg -n '<None Update=".*\.(sdsl|sdfx)"|LastGenOutput|Generator="StrideShaderKeyGenerator"' Terrain/Terrain.csproj Terrain.Editor/Terrain.Editor.csproj
-```
-
-Expected: no matches.
+Then run `Terrain.Windows.exe` and `Terrain.Editor.exe` long enough to request their effect permutations. A 20-second smoke run should not emit `Could not compile shader` or `E1202`.
 
 ---
 
-*Learning Document Version: 1.0*
+## Common Mistakes
+
+### Mistake: Moving project shaders to AdditionalFiles
+
+**What to avoid:**
+
+```xml
+<None Remove="Effects\**\*.sdsl" />
+<None Remove="Effects\**\*.sdfx" />
+<AdditionalFiles Include="Effects\**\*.sdsl" />
+<AdditionalFiles Include="Effects\**\*.sdfx" />
+```
+
+**Why it is bad:**
+- Runtime effect compilation can fail to resolve local mixins from the shader module.
+- Existing shader cache may mask the failure until a new permutation is compiled.
+
+**Correct approach:**
+- Keep shader sources as `None Update="Effects\**\*.sdsl"` / `None Update="Effects\**\*.sdfx"` with `Generator="StrideShaderKeyGenerator"`.
+- Keep `Compile Update="Effects\...\*.sdsl.cs"` entries for generated key files.
+- Verify with both asset compile and runtime smoke.
+
+---
+
+*Learning Document Version: 2.0*

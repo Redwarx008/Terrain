@@ -52,6 +52,7 @@ MapSurfaceCoordinatorTests.RunAll();
 OceanRenderingTests.RunAll();
 OceanResourceTextTests.RunAll();
 OceanShaderTextTests.RunAll();
+EditorShaderTextTests.RunAll();
 WaterRenderingTextTests.RunAll();
 RiverShaderTextTests.RunAll();
 RiverShaderCompileTests.RunAll();

@@ -26,25 +26,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!--<Compile Update="Effects\Build\TerrainBuildLodLookup.sdsl.cs">
+    <Compile Update="Effects\Material\MaterialTerrainDiffuse.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
-    <None Remove="Effects\**\*.sdsl" />
-    <None Remove="Effects\**\*.sdfx" />
-    <AdditionalFiles Include="Effects\**\*.sdsl" />
-    <AdditionalFiles Include="Effects\**\*.sdfx" />
-    <None Update="Resources\heightmap.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Resources\Grid_Gray_128x128.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>-->
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Update="Effects\Material\MaterialTerrainDiffuse.sdsl.cs">
+    <Compile Update="Effects\Material\MaterialTerrainDisplacement.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
@@ -102,9 +89,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Effects\**\*.sdsl" />
-    <None Remove="Effects\**\*.sdfx" />
-    <AdditionalFiles Include="Effects\**\*.sdsl" />
-    <AdditionalFiles Include="Effects\**\*.sdfx" />
+    <None Update="Effects\**\*.sdsl" Generator="StrideShaderKeyGenerator" />
+    <None Update="Effects\**\*.sdfx" Generator="StrideShaderKeyGenerator" />
   </ItemGroup>
 </Project>

@@ -378,9 +378,8 @@ internal static class RiverShaderTextTests
 
         AssertContains(package, "!dir Effects", "Terrain.sdpkg should include the Effects folder that contains RiverStrideLighting.sdsl");
         AssertContains(project, "<Compile Update=\"Effects\\River\\RiverStrideLighting.sdsl.cs\">", "Terrain.csproj should compile generated RiverStrideLighting shader keys");
-        AssertContains(project, "<None Remove=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should remove shader sources from the legacy None item type");
-        AssertContains(project, "<AdditionalFiles Include=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should include RiverStrideLighting as a Stride shader input through the Effects wildcard");
-        AssertNotContains(project, "<None Update=\"Effects\\River\\RiverStrideLighting.sdsl\">", "Terrain.csproj should not use the legacy None shader item type for RiverStrideLighting");
+        AssertContains(project, "<None Update=\"Effects\\**\\*.sdsl\" Generator=\"StrideShaderKeyGenerator\" />", "Terrain.csproj should keep RiverStrideLighting in the Stride shader item pipeline through the Effects wildcard");
+        AssertNotContains(project, "<AdditionalFiles Include=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should not move RiverStrideLighting out of the Stride None item pipeline");
         AssertNotContains(project, "<LastGenOutput>RiverStrideLighting.sdsl.cs</LastGenOutput>", "Terrain.csproj should not use legacy LastGenOutput metadata for RiverStrideLighting");
     }
 

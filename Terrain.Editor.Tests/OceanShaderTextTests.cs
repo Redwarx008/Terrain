@@ -247,10 +247,9 @@ internal static class OceanShaderTextTests
 
         AssertContains(project, "<Compile Update=\"Effects\\Ocean\\OceanVertexStreams.sdsl.cs\">", "Terrain.csproj should compile generated OceanVertexStreams keys");
         AssertContains(project, "<Compile Update=\"Effects\\Ocean\\OceanSurface.sdsl.cs\">", "Terrain.csproj should compile generated OceanSurface keys");
-        AssertContains(project, "<None Remove=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should remove shader sources from the legacy None item type");
-        AssertContains(project, "<AdditionalFiles Include=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should include all SDSL files as Stride shader inputs");
-        AssertNotContains(project, "<None Update=\"Effects\\Ocean\\OceanVertexStreams.sdsl\">", "Terrain.csproj should not use the legacy None shader item type for OceanVertexStreams");
-        AssertNotContains(project, "<None Update=\"Effects\\Ocean\\OceanSurface.sdsl\">", "Terrain.csproj should not use the legacy None shader item type for OceanSurface");
+        AssertContains(project, "<None Update=\"Effects\\**\\*.sdsl\" Generator=\"StrideShaderKeyGenerator\" />", "Terrain.csproj should keep SDSL files registered for Stride shader key generation");
+        AssertContains(project, "<None Update=\"Effects\\**\\*.sdfx\" Generator=\"StrideShaderKeyGenerator\" />", "Terrain.csproj should keep SDFX files registered for Stride shader key generation");
+        AssertNotContains(project, "<AdditionalFiles Include=\"Effects\\**\\*.sdsl\" />", "Terrain.csproj should not move shader sources out of the Stride None item pipeline");
         AssertNotContains(project, "<LastGenOutput>OceanVertexStreams.sdsl.cs</LastGenOutput>", "Terrain.csproj should not use legacy LastGenOutput metadata for OceanVertexStreams");
         AssertNotContains(project, "<LastGenOutput>OceanSurface.sdsl.cs</LastGenOutput>", "Terrain.csproj should not use legacy LastGenOutput metadata for OceanSurface");
     }

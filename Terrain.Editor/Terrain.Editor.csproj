@@ -51,16 +51,6 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Remove="Effects\**\*.sdsl" />
-    <None Remove="Effects\**\*.sdfx" />
-    <AdditionalFiles Include="Effects\**\*.sdsl" />
-    <AdditionalFiles Include="Effects\**\*.sdfx" />
-  </ItemGroup>
-
-  <!--<ItemGroup>
     <Compile Update="Effects\EditorTerrainDiffuse.sdsl.cs">
       <DesignTime>True</DesignTime>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
@@ -86,13 +76,35 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
     </Compile>
-  </ItemGroup>-->
+  </ItemGroup>
 
-  <!--<ItemGroup>
-    <None Remove="Effects\**\*.sdsl" />
-    <None Remove="Effects\**\*.sdfx" />
-    <AdditionalFiles Include="Effects\**\*.sdsl" />
-    <AdditionalFiles Include="Effects\**\*.sdfx" />
-  </ItemGroup>-->
+  <ItemGroup>
+    <None Update="Effects\**\*.sdsl" Generator="StrideShaderKeyGenerator" />
+    <None Update="Effects\**\*.sdfx" Generator="StrideShaderKeyGenerator" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Effects\BrushDecalShader.sdsl">
+      <LastGenOutput>BrushDecalShader.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainBuildSplatMap.sdsl">
+      <LastGenOutput>EditorTerrainBuildSplatMap.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainDiffuse.sdsl">
+      <LastGenOutput>EditorTerrainDiffuse.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainDisplacement.sdsl">
+      <LastGenOutput>EditorTerrainDisplacement.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainForwardShadingEffect.sdfx">
+      <LastGenOutput>EditorTerrainForwardShadingEffect.sdfx.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainHeightParameters.sdsl">
+      <LastGenOutput>EditorTerrainHeightParameters.sdsl.cs</LastGenOutput>
+    </None>
+    <None Update="Effects\EditorTerrainHeightStream.sdsl">
+      <LastGenOutput>EditorTerrainHeightStream.sdsl.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
 
 </Project>
