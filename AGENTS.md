@@ -9,6 +9,12 @@
 - 对视觉或 GPU 行为，应使用更能证明问题的验证方式：RenderDoc 截帧对比、shader 编译验证、shader 文本回归、截图/视觉回归、运行时 smoke test 或明确的手动编辑器验证。
 - 如果用户明确要求“不要 TDD”“先探索”“先热替换验证”“先看 RenderDoc”，按用户要求执行，并在最终说明采用了哪种验证方式。
 
+## Git 提交边界
+- superpowers 生成的流程文档只作为本地工作辅助：禁止 stage、commit 或 push `.superpowers/**`、`docs/superpowers/**`。
+- 明确禁止提交 superpowers 的 design/spec/plan 文档，尤其是 `docs/superpowers/specs/**`、`docs/superpowers/specs/*-design.md`、`docs/superpowers/plans/**`。
+- 即使 superpowers 计划要求提交文档，也必须先按本项目规则过滤掉 superpowers 自身的 specs/plans/design/brainstorm 产物；除非用户先明确修改本规则，否则不能纳入提交。
+- 项目状态文档仍按会话结束流程维护：`docs/log/**`、`docs/log/learnings/**`、`docs/log/decisions/**`、`docs/ARCHITECTURE_OVERVIEW.md`、`docs/CURRENT_FEATURES.md` 不属于 superpowers 自身文档。
+
 ## 会话延续（必须遵守）
 
 ### 启动流程

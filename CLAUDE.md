@@ -2,6 +2,13 @@
 - **请始终使用简体中文与我对话**
 - **引擎源码在 E:\WorkSpace\stride**
 
+## 工作流优先级与 Git 提交边界
+- **项目指令与用户明确要求优先于通用 agent / superpowers 工作流**
+- superpowers 生成的流程文档只作为本地工作辅助：禁止 stage、commit 或 push `.superpowers/**`、`docs/superpowers/**`。
+- 明确禁止提交 superpowers 的 design/spec/plan 文档，尤其是 `docs/superpowers/specs/**`、`docs/superpowers/specs/*-design.md`、`docs/superpowers/plans/**`。
+- 即使 superpowers 计划要求提交文档，也必须先按本项目规则过滤掉 superpowers 自身的 specs/plans/design/brainstorm 产物；除非用户先明确修改本规则，否则不能纳入提交。
+- 项目状态文档仍按会话结束流程维护：`docs/log/**`、`docs/log/learnings/**`、`docs/log/decisions/**`、`docs/ARCHITECTURE_OVERVIEW.md`、`docs/CURRENT_FEATURES.md` 不属于 superpowers 自身文档。
+
 ## 会话延续（必须遵守）
 
 ### 启动流程

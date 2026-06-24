@@ -17,5 +17,6 @@ Cache/
 .planning/config.json
 .worktrees/
 .superpowers/
+docs/superpowers/
 LaunchSetting.json
 /game/
